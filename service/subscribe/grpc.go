@@ -25,7 +25,7 @@ type GrpcSubscribe struct {
 
 type Option func(o *GrpcSubscribe)
 
-// Subscribe 订阅服务
+// Subscribe subscribe GRPC service
 func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 	dfLog := log.NewHelper(g.log)
 	endpoint := "discovery:///" + g.name
