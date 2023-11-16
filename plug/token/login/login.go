@@ -17,10 +17,8 @@ type Login struct {
 }
 
 func (l *Login) Init(Token *conf.Token) error {
-	// 加密方式
 	method = Token.Jwt.LoginMethod
 
-	//  私钥
 	privateBlock, _ := pem.Decode([]byte(Token.Jwt.LoginPrivateKey))
 	if privateBlock == nil {
 		panic("failed to parse PEM block containing the private key")
@@ -32,7 +30,6 @@ func (l *Login) Init(Token *conf.Token) error {
 	}
 	privateKey = prk
 
-	// 公钥
 	publicBlock, _ := pem.Decode([]byte(Token.Jwt.LoginPublicKey))
 	if err != nil {
 		return err

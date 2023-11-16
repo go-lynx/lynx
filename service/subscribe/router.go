@@ -6,7 +6,7 @@ import (
 	"github.com/go-lynx/lynx/boot"
 )
 
-// NewNodeRouter 创建路由策略
+// NewNodeRouter Synchronize Remote Service Routing Strategy
 func NewNodeRouter(name string) selector.NodeFilter {
 	boot.GetHelper().Infof("Synchronizing [%v] routing policy", name)
 	return boot.Polaris().NodeFilter(polaris.WithRouterService(name))
