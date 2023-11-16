@@ -36,6 +36,9 @@ func TestJwtTokenSigning(t *testing.T) {
 	}
 
 	privateKey, err := x509.ParseECPrivateKey(privateBlock.Bytes)
+	if err != nil {
+		panic(err)
+	}
 
 	// 将公钥转换为 PEM
 	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
