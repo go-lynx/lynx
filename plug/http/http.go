@@ -15,7 +15,16 @@ import (
 var plugName = "http"
 
 type ServiceHttp struct {
-	http *http.Server
+	http   *http.Server
+	weight int
+}
+
+type Option func(h *ServiceHttp)
+
+func Weight(w int) Option {
+	return func(h *ServiceHttp) {
+		h.weight = w
+	}
 }
 
 func (h *ServiceHttp) Name() string {
@@ -23,7 +32,7 @@ func (h *ServiceHttp) Name() string {
 }
 
 func (h *ServiceHttp) Weight() int {
-	return 600
+	return h.weight
 }
 
 func (h *ServiceHttp) Load(b *conf.Bootstrap) (plug.Plug, error) {
@@ -72,6 +81,13 @@ func GetHTTP() *http.Server {
 	return boot.GetPlug(plugName).(*ServiceHttp).http
 }
 
-func Http() plug.Plug {
-	return &ServiceHttp{}
+func Http(opts ...Option) plug.Plug {
+	s := &ServiceHttp{
+		weight: 600,
+	}
+
+	for _, option := range opts {
+		option(s)
+	}
+	return s
 }

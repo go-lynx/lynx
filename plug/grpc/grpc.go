@@ -20,22 +20,29 @@ var plugName = "grpc"
 
 type ServiceGrpc struct {
 	grpc      *grpc.Server
+	weight    int
 	tls       bool
 	serverCrt []byte
 	serverKey []byte
 	rootCA    []byte
 }
 
-type Option func(o *ServiceGrpc)
+type Option func(g *ServiceGrpc)
 
 func EnableTls() Option {
-	return func(o *ServiceGrpc) {
-		o.tls = true
+	return func(g *ServiceGrpc) {
+		g.tls = true
+	}
+}
+
+func Weight(w int) Option {
+	return func(g *ServiceGrpc) {
+		g.weight = w
 	}
 }
 
 func (g *ServiceGrpc) Weight() int {
-	return 500
+	return g.weight
 }
 
 func (g *ServiceGrpc) Name() string {
@@ -139,11 +146,12 @@ func GetGRPC() *grpc.Server {
 }
 
 func Grpc(opts ...Option) plug.Plug {
-	s := ServiceGrpc{
-		tls: false,
+	s := &ServiceGrpc{
+		tls:    false,
+		weight: 500,
 	}
 	for _, option := range opts {
-		option(&s)
+		option(s)
 	}
-	return &s
+	return s
 }

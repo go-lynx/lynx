@@ -12,7 +12,16 @@ import (
 var plugName = "redis"
 
 type PlugRedis struct {
-	rdb *redis.Client
+	rdb    *redis.Client
+	weight int
+}
+
+type Option func(r *PlugRedis)
+
+func Weight(w int) Option {
+	return func(r *PlugRedis) {
+		r.weight = w
+	}
 }
 
 func (r *PlugRedis) Name() string {
@@ -20,7 +29,7 @@ func (r *PlugRedis) Name() string {
 }
 
 func (r *PlugRedis) Weight() int {
-	return 999
+	return r.weight
 }
 
 func (r *PlugRedis) Load(b *conf.Bootstrap) (plug.Plug, error) {
@@ -56,6 +65,12 @@ func GetRedis() *redis.Client {
 	return boot.GetPlug(plugName).(*PlugRedis).rdb
 }
 
-func Redis() plug.Plug {
-	return &PlugRedis{}
+func Redis(opts ...Option) plug.Plug {
+	r := &PlugRedis{
+		weight: 1001,
+	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }

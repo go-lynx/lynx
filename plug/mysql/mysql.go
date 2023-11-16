@@ -13,18 +13,27 @@ import (
 var plugName = "mysql"
 
 type PlugMysql struct {
-	dri *sql.Driver
+	dri    *sql.Driver
+	weight int
 }
 
-func (m *PlugMysql) Name() string {
+type Option func(db *PlugMysql)
+
+func Weight(w int) Option {
+	return func(db *PlugMysql) {
+		db.weight = w
+	}
+}
+
+func (db *PlugMysql) Name() string {
 	return plugName
 }
 
-func (m *PlugMysql) Weight() int {
-	return 1000
+func (db *PlugMysql) Weight() int {
+	return db.weight
 }
 
-func (m *PlugMysql) Load(b *conf.Bootstrap) (plug.Plug, error) {
+func (db *PlugMysql) Load(b *conf.Bootstrap) (plug.Plug, error) {
 	boot.GetHelper().Infof("Initializing database")
 	drv, err := sql.Open(
 		b.Data.Database.Driver,
@@ -47,14 +56,14 @@ func (m *PlugMysql) Load(b *conf.Bootstrap) (plug.Plug, error) {
 		return nil, err
 	}
 
-	m.dri = drv
+	db.dri = drv
 	boot.GetHelper().Infof("Database successfully initialized")
-	return m, nil
+	return db, nil
 }
 
-func (m *PlugMysql) Unload() error {
+func (db *PlugMysql) Unload() error {
 	boot.GetHelper().Info("message", "Closing the DataBase resources")
-	if err := m.dri.Close(); err != nil {
+	if err := db.dri.Close(); err != nil {
 		boot.GetHelper().Error(err)
 		return err
 	}
@@ -65,6 +74,12 @@ func GetDB() *sql.Driver {
 	return boot.GetPlug(plugName).(*PlugMysql).dri
 }
 
-func Mysql() plug.Plug {
-	return &PlugMysql{}
+func Mysql(opts ...Option) plug.Plug {
+	db := &PlugMysql{
+		weight: 1000,
+	}
+	for _, opt := range opts {
+		opt(db)
+	}
+	return db
 }
