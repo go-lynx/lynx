@@ -19,8 +19,16 @@ type PlugTracer struct {
 	weight int
 }
 
+type Option func(t *PlugTracer)
+
+func Weight(w int) Option {
+	return func(t *PlugTracer) {
+		t.weight = w
+	}
+}
+
 func (t *PlugTracer) Weight() int {
-	return 700
+	return t.weight
 }
 
 func (t *PlugTracer) Name() string {
@@ -55,6 +63,12 @@ func (t *PlugTracer) Unload() error {
 	return nil
 }
 
-func Tracer() plug.Plug {
-	return &PlugTracer{}
+func Tracer(opts ...Option) plug.Plug {
+	t := &PlugTracer{
+		weight: 700,
+	}
+	for _, opt := range opts {
+		opt(t)
+	}
+	return t
 }

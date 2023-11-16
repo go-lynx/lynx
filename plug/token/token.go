@@ -11,12 +11,13 @@ import (
 var plugName = "token"
 
 type PlugToken struct {
-	t conf.Token
-	l []LoaderToken
+	t      conf.Token
+	l      []LoaderToken
+	weight int
 }
 
 func (t *PlugToken) Weight() int {
-	return 300
+	return t.weight
 }
 
 func (t *PlugToken) Name() string {
@@ -70,7 +71,8 @@ func GetName() string {
 
 func Token(l ...LoaderToken) plug.Plug {
 	return &PlugToken{
-		l: l,
+		weight: 0,
+		l:      l,
 	}
 }
 
