@@ -6,7 +6,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/conf"
-	"github.com/go-lynx/lynx/plug"
+	"github.com/go-lynx/lynx/plugin"
 	"time"
 )
 
@@ -33,7 +33,7 @@ func (db *PlugMysql) Weight() int {
 	return db.weight
 }
 
-func (db *PlugMysql) Load(b *conf.Bootstrap) (plug.Plug, error) {
+func (db *PlugMysql) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 	boot.GetHelper().Infof("Initializing database")
 	drv, err := sql.Open(
 		b.Data.Database.Driver,
@@ -71,10 +71,10 @@ func (db *PlugMysql) Unload() error {
 }
 
 func GetDB() *sql.Driver {
-	return boot.GetPlug(plugName).(*PlugMysql).dri
+	return boot.GetPlugin(plugName).(*PlugMysql).dri
 }
 
-func Mysql(opts ...Option) plug.Plug {
+func Mysql(opts ...Option) plugin.Plugin {
 	db := &PlugMysql{
 		weight: 1000,
 	}

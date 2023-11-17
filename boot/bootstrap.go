@@ -6,7 +6,7 @@ import (
 	"github.com/go-kratos/kratos/v2/encoding/json"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/conf"
-	"github.com/go-lynx/lynx/plug"
+	"github.com/go-lynx/lynx/plugin"
 	"google.golang.org/protobuf/encoding/protojson"
 	"os"
 	"time"
@@ -39,7 +39,7 @@ func GetHostname() string {
 type wireApp func(confServer *conf.Bootstrap, logger log.Logger) (*kratos.App, error)
 
 type App struct {
-	p []plug.Plug
+	p []plugin.Plugin
 	wireApp
 }
 
@@ -51,7 +51,7 @@ func init() {
 	}
 }
 
-func NewApp(w wireApp, p ...plug.Plug) *App {
+func NewApp(w wireApp, p ...plugin.Plugin) *App {
 	return &App{
 		p:       p,
 		wireApp: w,
@@ -71,7 +71,7 @@ func (a *App) Run() {
 	dfLog.Infof("Lynx application is starting up")
 
 	a.initPolaris(&bc)
-	a.loadingPlug(&bc)
+	a.loadingPlugin(&bc)
 
 	app, err := a.wireApp(&bc, logger)
 	if err != nil {
@@ -79,7 +79,7 @@ func (a *App) Run() {
 		panic(err)
 	}
 
-	defer a.cleanPlug()
+	defer a.cleanPlugin()
 	t := (time.Now().UnixNano() - st.UnixNano()) / 1e6
 	dfLog.Infof("Lynx application started successfully，elapsed time：%v ms, port listening initiated.", t)
 
