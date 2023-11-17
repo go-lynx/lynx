@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/conf"
-	"github.com/go-lynx/lynx/plug"
+	"github.com/go-lynx/lynx/plugin"
 	"github.com/redis/go-redis/v9"
 	"time"
 )
@@ -32,7 +32,7 @@ func (r *PlugRedis) Weight() int {
 	return r.weight
 }
 
-func (r *PlugRedis) Load(b *conf.Bootstrap) (plug.Plug, error) {
+func (r *PlugRedis) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 	boot.GetHelper().Infof("Initializing Redis")
 	r.rdb = redis.NewClient(&redis.Options{
 		Addr:         b.Data.Redis.Addr,
@@ -62,10 +62,10 @@ func (r *PlugRedis) Unload() error {
 }
 
 func GetRedis() *redis.Client {
-	return boot.GetPlug(plugName).(*PlugRedis).rdb
+	return boot.GetPlugin(plugName).(*PlugRedis).rdb
 }
 
-func Redis(opts ...Option) plug.Plug {
+func Redis(opts ...Option) plugin.Plugin {
 	r := &PlugRedis{
 		weight: 1001,
 	}

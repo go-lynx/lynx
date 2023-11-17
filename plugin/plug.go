@@ -1,12 +1,12 @@
-package plug
+package plugin
 
 import (
 	"github.com/go-lynx/lynx/conf"
 )
 
-type Plug interface {
+type Plugin interface {
 	Weight() int
 	Name() string
-	Load(b *conf.Bootstrap) (Plug, error)
+	Load(b *conf.Bootstrap) (Plugin, error)
 	Unload() error
 }

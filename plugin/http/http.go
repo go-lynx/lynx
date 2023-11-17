@@ -9,7 +9,7 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/http"
 	boot "github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/conf"
-	"github.com/go-lynx/lynx/plug"
+	"github.com/go-lynx/lynx/plugin"
 )
 
 var plugName = "http"
@@ -35,7 +35,7 @@ func (h *ServiceHttp) Weight() int {
 	return h.weight
 }
 
-func (h *ServiceHttp) Load(b *conf.Bootstrap) (plug.Plug, error) {
+func (h *ServiceHttp) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 	boot.GetHelper().Infof("Initializing HTTP service")
 	var opts = []http.ServerOption{
 		http.Middleware(
@@ -78,10 +78,10 @@ func (h *ServiceHttp) Unload() error {
 }
 
 func GetHTTP() *http.Server {
-	return boot.GetPlug(plugName).(*ServiceHttp).http
+	return boot.GetPlugin(plugName).(*ServiceHttp).http
 }
 
-func Http(opts ...Option) plug.Plug {
+func Http(opts ...Option) plugin.Plugin {
 	s := &ServiceHttp{
 		weight: 600,
 	}

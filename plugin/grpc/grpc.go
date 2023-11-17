@@ -13,7 +13,7 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/conf"
-	"github.com/go-lynx/lynx/plug"
+	"github.com/go-lynx/lynx/plugin"
 )
 
 var plugName = "grpc"
@@ -49,7 +49,7 @@ func (g *ServiceGrpc) Name() string {
 	return plugName
 }
 
-func (g *ServiceGrpc) Load(b *conf.Bootstrap) (plug.Plug, error) {
+func (g *ServiceGrpc) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 	boot.GetHelper().Infof("Initializing GRPC service")
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
@@ -142,10 +142,10 @@ func (g *ServiceGrpc) initTls(b *conf.Bootstrap) error {
 }
 
 func GetGRPC() *grpc.Server {
-	return boot.GetPlug(plugName).(*ServiceGrpc).grpc
+	return boot.GetPlugin(plugName).(*ServiceGrpc).grpc
 }
 
-func Grpc(opts ...Option) plug.Plug {
+func Grpc(opts ...Option) plugin.Plugin {
 	s := &ServiceGrpc{
 		tls:    false,
 		weight: 500,
