@@ -11,13 +11,13 @@ import (
 )
 
 func TestJwtTokenSigning(t *testing.T) {
-	// 加密
+	// Generate a key
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		panic(err)
 	}
 
-	// 将密钥转换为 PEM
+	// Convert the key to a PEM
 	keyBytes, err := x509.MarshalECPrivateKey(key)
 	if err != nil {
 		panic(err)
@@ -27,20 +27,20 @@ func TestJwtTokenSigning(t *testing.T) {
 		Bytes: keyBytes,
 	})
 
-	fmt.Println("私钥\n" + string(keyPem))
+	fmt.Println("Private key:")
+	fmt.Println(string(keyPem))
 
-	// 从字符串反转取私钥
+	// Reverse parse the private key
 	privateBlock, _ := pem.Decode(keyPem)
 	if privateBlock == nil {
 		panic("failed to parse PEM block containing the public key")
 	}
-
 	privateKey, err := x509.ParseECPrivateKey(privateBlock.Bytes)
 	if err != nil {
 		panic(err)
 	}
 
-	// 将公钥转换为 PEM
+	// Convert the public key to a PEM
 	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	if err != nil {
 		panic(err)
@@ -50,8 +50,10 @@ func TestJwtTokenSigning(t *testing.T) {
 		Bytes: pubKeyBytes,
 	})
 
-	fmt.Println("公钥\n" + string(pubKeyPem))
+	fmt.Println("Public key:")
+	fmt.Println(string(pubKeyPem))
 
+	// Sign a JWT token
 	signing, err := Sign(&LoginClaims{
 		Id:       123,
 		Nickname: "老王",
@@ -59,9 +61,9 @@ func TestJwtTokenSigning(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("\njwt私钥签名：" + signing + "\n")
+	fmt.Printf("JWT private key signing: %s\n", signing)
 
-	// 从字符串反转取公钥
+	// Reverse parse the public key
 	block, _ := pem.Decode(pubKeyPem)
 	if block == nil {
 		panic("failed to parse PEM block containing the public key")
@@ -73,14 +75,14 @@ func TestJwtTokenSigning(t *testing.T) {
 
 	pubKey, ok := pubKeyInterface.(*ecdsa.PublicKey)
 	if !ok {
-		panic("未能成功解析出公钥")
+		panic("cannot parse public key")
 	}
 
-	// 解密
+	// Verify the JWT token
 	l := &LoginClaims{}
 	check, err := Check(signing, l, *pubKey)
 	if check {
-		fmt.Printf("jwt公钥解密：%d", l.Id)
+		fmt.Printf("JWT public key verification: %d\n", l.Id)
 	}
 	if err != nil {
 		panic(err)

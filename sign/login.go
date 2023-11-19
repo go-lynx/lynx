@@ -26,19 +26,19 @@ func (c *LoginClaims) Valid() error {
 }
 
 func (c *LoginClaims) Init() error {
-	// 设置当前签名时间
+	// set current sign time
 	now := time.Now()
 	c.IssuedAt = jwt.NewNumericDate(now)
 	c.Issuer = "rc"
 
-	// 如果载体中的 exp 存在并且已经过期 则直接给他去掉
+	// exp expired
 	if c.ExpiresAt != nil {
 		if now.Unix() > c.ExpiresAt.Unix() {
 			c.ExpiresAt = nil
 		}
 	}
 
-	// exp 如果没设置，默认设置 JWT 1小时过期时间
+	// exp not set, give a default value
 	if c.ExpiresAt == nil {
 		c.ExpiresAt = jwt.NewNumericDate(now.Add(time.Hour * 1))
 	}
