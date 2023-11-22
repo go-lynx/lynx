@@ -7,11 +7,8 @@ import (
 
 type CustomClaims interface {
 	Init() error
-
 	Valid() error
-
 	Decoration() error
-
 	jwt.Claims
 }
 
