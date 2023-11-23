@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -68,25 +69,30 @@ func run(_ *cobra.Command, args []string) {
 	}
 
 	// creation of multiple projects
-	done := make(chan error, 1)
+	done := make(chan error, len(names))
+	var wg sync.WaitGroup
 	for _, name := range names {
+		wg.Add(1)
 		projectName, workingDir := processProjectParams(name, wd)
 		p := &Project{Name: projectName}
 		go func() {
 			done <- p.New(ctx, workingDir, repoURL, branch)
+			wg.Done()
 		}()
 	}
-	select {
-	case <-ctx.Done():
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			_, _ = fmt.Fprint(os.Stderr, "\033[31mERROR: project creation timed out\033[m\n")
-			return
-		}
-		_, _ = fmt.Fprintf(os.Stderr, "\033[31mERROR: failed to create project(%s)\033[m\n", ctx.Err().Error())
-	case err = <-done:
+
+	wg.Wait()
+	close(done)
+
+	// Read errors from the done channel until it's closed
+	for err := range done {
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "\033[31mERROR: Failed to create project(%s)\033[m\n", err.Error())
 		}
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		_, _ = fmt.Fprint(os.Stderr, "\033[31mERROR: project creation timed out\033[m\n")
+		return
 	}
 }
 
