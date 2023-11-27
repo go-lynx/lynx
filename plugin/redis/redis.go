@@ -2,9 +2,10 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-lynx/lynx/boot"
-	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugin/redis/conf"
 	"github.com/redis/go-redis/v9"
 	"time"
 )
@@ -32,15 +33,20 @@ func (r *PlugRedis) Weight() int {
 	return r.weight
 }
 
-func (r *PlugRedis) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
+func (r *PlugRedis) Load(base interface{}) (plugin.Plugin, error) {
+	c, ok := base.(*conf.Redis)
+	if !ok {
+		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+	}
+
 	boot.GetHelper().Infof("Initializing Redis")
 	r.rdb = redis.NewClient(&redis.Options{
-		Addr:         b.Data.Redis.Addr,
-		Password:     b.Data.Redis.Password,
-		DB:           int(b.Data.Redis.Db),
-		DialTimeout:  b.Data.Redis.DialTimeout.AsDuration(),
-		WriteTimeout: b.Data.Redis.WriteTimeout.AsDuration(),
-		ReadTimeout:  b.Data.Redis.ReadTimeout.AsDuration(),
+		Addr:         c.Addr,
+		Password:     c.Password,
+		DB:           int(c.Db),
+		DialTimeout:  c.DialTimeout.AsDuration(),
+		WriteTimeout: c.WriteTimeout.AsDuration(),
+		ReadTimeout:  c.ReadTimeout.AsDuration(),
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

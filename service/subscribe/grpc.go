@@ -12,7 +12,7 @@ import (
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/boot"
-	"github.com/go-lynx/lynx/conf"
+	"github.com/go-lynx/lynx/service/conf"
 	gGrpc "google.golang.org/grpc"
 )
 
@@ -52,7 +52,7 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 		return nil
 	}
 
-	source, err := boot.Polaris().Config(polaris.WithConfigFile(polaris.File{
+	source, err := boot.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
 		Name:  "tls-root.yaml",
 		Group: g.name,
 	}))

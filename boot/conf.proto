@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package lynx.protobuf;
+
+option go_package = "github.com/go-lynx/lynx/boot";
+
+import "google/protobuf/duration.proto";
+
+
+message Lynx {
+  Application application = 1;
+  Polaris polaris = 2;
+}
+
+message Application {
+  string name = 1;
+  string version = 2;
+}
+
+
+message Polaris {
+  string namespace = 1;
+  string token = 2;
+  int32 weight = 4;
+  int32 ttl = 5;
+  google.protobuf.Duration timeout = 6;
+}

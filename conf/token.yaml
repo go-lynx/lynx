@@ -1,4 +1,0 @@
-jwt:
-  login_method: ES384
-  login_private_key: xxx
-  login_public_key: xxx

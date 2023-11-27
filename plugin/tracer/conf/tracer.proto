@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package lynx.protobuf.tracer;
+
+option go_package = "github.com/go-lynx/lynx/plugin/tracer/conf";
+
+import "config.proto";
+
+message Tracer {
+  string addr = 1;
+  lynx.protobuf.Lynx lynx = 2;
+}

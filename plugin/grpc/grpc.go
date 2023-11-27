@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"github.com/go-kratos/kratos/contrib/polaris/v2"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -12,8 +13,8 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/validate"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/boot"
-	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugin/grpc/conf"
 )
 
 var plugName = "grpc"
@@ -49,11 +50,16 @@ func (g *ServiceGrpc) Name() string {
 	return plugName
 }
 
-func (g *ServiceGrpc) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
+func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
+	c, ok := base.(*conf.Grpc)
+	if !ok {
+		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+	}
 	boot.GetHelper().Infof("Initializing GRPC service")
+
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
-			tracing.Server(tracing.WithTracerName(b.Server.Name)),
+			tracing.Server(tracing.WithTracerName(c.Lynx.Application.Name)),
 			logging.Server(boot.GetLogger()),
 			validate.Validator(),
 			// Recovery program after exception
@@ -62,21 +68,22 @@ func (g *ServiceGrpc) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 					return nil
 				}),
 			),
-			boot.GrpcRateLimit(b.Server),
+			boot.GrpcRateLimit(c.Lynx),
 		),
 	}
-	if b.Server.Grpc.Network != "" {
-		opts = append(opts, grpc.Network(b.Server.Grpc.Network))
+
+	if c.Network != "" {
+		opts = append(opts, grpc.Network(c.Network))
 	}
-	if b.Server.Grpc.Addr != "" {
-		opts = append(opts, grpc.Address(b.Server.Grpc.Addr))
+	if c.Addr != "" {
+		opts = append(opts, grpc.Address(c.Addr))
 	}
-	if b.Server.Grpc.Timeout != nil {
-		opts = append(opts, grpc.Timeout(b.Server.Grpc.Timeout.AsDuration()))
+	if c.Timeout != nil {
+		opts = append(opts, grpc.Timeout(c.Timeout.AsDuration()))
 	}
 
 	if g.tls {
-		err := g.initTls(b)
+		err := g.initTls(c)
 		if err != nil {
 			return nil, err
 		}
@@ -94,7 +101,7 @@ func (g *ServiceGrpc) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 		opts = append(opts, grpc.TLSConfig(&tls.Config{
 			Certificates: []tls.Certificate{cert},
 			ClientCAs:    certPool,
-			ServerName:   b.Server.Name,
+			ServerName:   c.Lynx.Application.Name,
 			ClientAuth:   tls.RequireAndVerifyClientCert,
 		}))
 	}
@@ -112,31 +119,30 @@ func (g *ServiceGrpc) Unload() error {
 	return nil
 }
 
-func (g *ServiceGrpc) initTls(b *conf.Bootstrap) error {
-	source, err := boot.Polaris().Config(polaris.WithConfigFile(polaris.File{
+func (g *ServiceGrpc) initTls(c *conf.Grpc) error {
+	source, err := boot.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
 		Name:  "tls-service.yaml",
-		Group: b.Server.Name,
+		Group: c.Lynx.Application.Name,
 	}))
 
 	if err != nil {
 		return err
 	}
 
-	c := config.New(
+	sc := config.New(
 		config.WithSource(source),
 	)
 
-	if err := c.Load(); err != nil {
+	if err := sc.Load(); err != nil {
 		return err
 	}
-	var t conf.TlsService
-	if err := c.Scan(&t); err != nil {
+	if err := sc.Scan(&c); err != nil {
 		return err
 	}
 
-	g.serverKey = []byte(t.ServerKey)
-	g.rootCA = []byte(t.RootCA)
-	g.serverCrt = []byte(t.ServerCrt)
+	g.serverKey = []byte(c.Tls.ServerKey)
+	g.rootCA = []byte(c.Tls.RootCA)
+	g.serverCrt = []byte(c.Tls.ServerCrt)
 
 	return nil
 }

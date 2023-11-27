@@ -1,12 +1,13 @@
-package mysql
+package rds
 
 import (
 	"context"
 	_ "database/sql"
 	"entgo.io/ent/dialect/sql"
+	"fmt"
 	"github.com/go-lynx/lynx/boot"
-	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugin/rds/conf"
 	"time"
 )
 
@@ -33,11 +34,16 @@ func (db *PlugMysql) Weight() int {
 	return db.weight
 }
 
-func (db *PlugMysql) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
+func (db *PlugMysql) Load(base interface{}) (plugin.Plugin, error) {
+	c, ok := base.(*conf.Rds)
+	if !ok {
+		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+	}
+
 	boot.GetHelper().Infof("Initializing database")
 	drv, err := sql.Open(
-		b.Data.Database.Driver,
-		b.Data.Database.Source,
+		c.Driver,
+		c.Source,
 	)
 
 	if err != nil {
@@ -45,9 +51,9 @@ func (db *PlugMysql) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 		panic(err)
 	}
 
-	drv.DB().SetMaxIdleConns(int(b.Data.Database.MinConn))
-	drv.DB().SetMaxOpenConns(int(b.Data.Database.MaxConn))
-	drv.DB().SetConnMaxIdleTime(b.Data.Database.MaxIdleTime.AsDuration())
+	drv.DB().SetMaxIdleConns(int(c.MinConn))
+	drv.DB().SetMaxOpenConns(int(c.MaxConn))
+	drv.DB().SetConnMaxIdleTime(c.MaxIdleTime.AsDuration())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

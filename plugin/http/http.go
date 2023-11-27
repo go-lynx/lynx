@@ -2,14 +2,15 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/middleware/validate"
 	"github.com/go-kratos/kratos/v2/transport/http"
-	boot "github.com/go-lynx/lynx/boot"
-	"github.com/go-lynx/lynx/conf"
+	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugin/http/conf"
 )
 
 var plugName = "http"
@@ -35,12 +36,17 @@ func (h *ServiceHttp) Weight() int {
 	return h.weight
 }
 
-func (h *ServiceHttp) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
+func (h *ServiceHttp) Load(base interface{}) (plugin.Plugin, error) {
+	c, ok := base.(*conf.Http)
+	if !ok {
+		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+	}
+
 	boot.GetHelper().Infof("Initializing HTTP service")
 	var opts = []http.ServerOption{
 		http.Middleware(
 			tracing.Server(
-				tracing.WithTracerName(b.Server.Name),
+				tracing.WithTracerName(c.Lynx.Application.Name),
 			),
 			logging.Server(boot.GetLogger()),
 			validate.Validator(),
@@ -49,19 +55,19 @@ func (h *ServiceHttp) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 					return nil
 				}),
 			),
-			boot.HttpRateLimit(b.Server),
+			boot.HttpRateLimit(c.Lynx),
 			ResponsePack(),
 		),
 		http.ResponseEncoder(ResponseEncoder),
 	}
-	if b.Server.Http.Network != "" {
-		opts = append(opts, http.Network(b.Server.Http.Network))
+	if c.Network != "" {
+		opts = append(opts, http.Network(c.Network))
 	}
-	if b.Server.Http.Addr != "" {
-		opts = append(opts, http.Address(b.Server.Http.Addr))
+	if c.Addr != "" {
+		opts = append(opts, http.Address(c.Addr))
 	}
-	if b.Server.Http.Timeout != nil {
-		opts = append(opts, http.Timeout(b.Server.Http.Timeout.AsDuration()))
+	if c.Timeout != nil {
+		opts = append(opts, http.Timeout(c.Timeout.AsDuration()))
 	}
 	h.http = http.NewServer(opts...)
 	boot.GetHelper().Infof("HTTP service successfully initialized")

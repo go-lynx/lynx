@@ -2,9 +2,10 @@ package tracer
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/go-lynx/lynx/boot"
-	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugin/tracer/conf"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
@@ -35,16 +36,21 @@ func (t *PlugTracer) Name() string {
 	return plugName
 }
 
-func (t *PlugTracer) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
+func (t *PlugTracer) Load(base interface{}) (plugin.Plugin, error) {
+	c, ok := base.(*conf.Tracer)
+	if !ok {
+		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+	}
+
 	boot.GetHelper().Infof("Initializing link monitoring component")
-	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(b.Server.Tracer.Addr)))
+	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(c.Addr)))
 	if err != nil {
 		return nil, err
 	}
 	buf := new(bytes.Buffer)
-	buf.WriteString(b.Server.Name)
+	buf.WriteString(c.Lynx.Application.Name)
 	buf.WriteString("-")
-	buf.WriteString(b.Server.Version)
+	buf.WriteString(c.Lynx.Application.Version)
 	tp := traceSdk.NewTracerProvider(
 		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(1.0))),
 		traceSdk.WithBatcher(exp),
