@@ -1,5 +1,6 @@
 syntax = "proto3";
-package kratos.api;
+
+package lynx.protobuf.service;
 
 option go_package = "base/conf;conf";
 

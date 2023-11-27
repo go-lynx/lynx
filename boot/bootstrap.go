@@ -5,7 +5,6 @@ import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/encoding/json"
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
 	"google.golang.org/protobuf/encoding/protojson"
 	"os"
@@ -36,7 +35,7 @@ func GetHostname() string {
 	return id
 }
 
-type wireApp func(confServer *conf.Bootstrap, logger log.Logger) (*kratos.App, error)
+type wireApp func(confServer *Lynx, logger log.Logger) (*kratos.App, error)
 
 type App struct {
 	p []plugin.Plugin
@@ -64,7 +63,7 @@ func (a *App) Run() {
 	st := time.Now()
 
 	log.Infof("Lynx reading local bootstrap configuration file/folder:%v", flagConf)
-	var bc conf.Bootstrap
+	var bc Lynx
 	configLoad(&bc)
 
 	logger := InitLogger()

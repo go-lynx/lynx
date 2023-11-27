@@ -1,7 +1,6 @@
 package boot
 
 import (
-	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
 	"sync"
 )
@@ -17,11 +16,12 @@ var (
 	pluginMapLock = sync.RWMutex{}
 )
 
-func (a *App) loadingPlugin(b *conf.Bootstrap) {
+func (a *App) loadingPlugin(b *Lynx) {
 	if a.p == nil || len(a.p) == 0 {
 		return
 	}
 
+	// Load plugins based on weight
 	for i := 0; i < len(a.p); i++ {
 		a.pluginCheck(i)
 		p, err := a.p[i].Load(b)

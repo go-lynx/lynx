@@ -1,16 +1,11 @@
 syntax = "proto3";
-package kratos.api;
 
-option go_package = "base/conf;conf";
+package lynx.protobuf.token;
 
-message Token {
-  JWT jwt = 1;
-}
+option go_package = "github.com/go-lynx/lynx/plugin/token/conf";
 
-message JWT {
-
+message jtw {
   string login_method = 1;
   string login_private_key = 2;
   string login_public_key = 3;
-
 }

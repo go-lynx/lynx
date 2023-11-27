@@ -3,10 +3,9 @@ package boot
 import (
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/config/file"
-	"github.com/go-lynx/lynx/conf"
 )
 
-func configLoad(bc *conf.Bootstrap, s ...config.Source) {
+func configLoad(lynx *Lynx, s ...config.Source) {
 	var c config.Config
 	if s == nil {
 		c = config.New(
@@ -26,14 +25,14 @@ func configLoad(bc *conf.Bootstrap, s ...config.Source) {
 		panic(err)
 	}
 
-	if err := c.Scan(bc); err != nil {
+	if err := c.Scan(lynx); err != nil {
 		panic(err)
 	}
 
 	// local file close
 	if s == nil {
-		name = bc.Server.Name
-		version = bc.Server.Version
+		name = lynx.Application.Name
+		version = lynx.Application.Version
 
 		defer func(c config.Config) {
 			err := c.Close()
