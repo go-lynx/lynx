@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/redis/conf"
@@ -39,7 +40,7 @@ func (r *PlugRedis) Load(base interface{}) (plugin.Plugin, error) {
 		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
 	}
 
-	boot.GetHelper().Infof("Initializing Redis")
+	app.GetHelper().Infof("Initializing Redis")
 	r.rdb = redis.NewClient(&redis.Options{
 		Addr:         c.Addr,
 		Password:     c.Password,
@@ -54,14 +55,14 @@ func (r *PlugRedis) Load(base interface{}) (plugin.Plugin, error) {
 	if err != nil {
 		return nil, err
 	}
-	boot.GetHelper().Infof("Redis successfully initialized")
+	app.GetHelper().Infof("Redis successfully initialized")
 	return r, nil
 }
 
 func (r *PlugRedis) Unload() error {
-	boot.GetHelper().Info("message", "Closing the Redis resources")
+	app.GetHelper().Info("message", "Closing the Redis resources")
 	if err := r.rdb.Close(); err != nil {
-		boot.GetHelper().Error(err)
+		app.GetHelper().Error(err)
 		return err
 	}
 	return nil

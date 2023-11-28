@@ -2,6 +2,7 @@ package polaris
 
 import (
 	"github.com/go-kratos/kratos/contrib/polaris/v2"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/boot"
 	"github.com/polarismesh/polaris-go/api"
 )
@@ -14,7 +15,7 @@ var (
 func initPolaris(lynx *boot.Lynx) {
 	sdk, err := api.InitContextByConfig(api.NewConfiguration())
 	if err != nil {
-		boot.GetHelper().Error(err)
+		app.GetHelper().Error(err)
 		panic(err)
 	}
 
@@ -28,7 +29,7 @@ func initPolaris(lynx *boot.Lynx) {
 func polarisConfigLoad(lynx *boot.Lynx) {
 	fileName := lynx.Application.Name + "-" + lynx.Application.Version + ".fileName"
 
-	boot.GetHelper().Infof("Reading from the configuration center,file:[%v] group:[%v] namespace:[%v]",
+	app.GetHelper().Infof("Reading from the configuration center,file:[%v] group:[%v] namespace:[%v]",
 		fileName,
 		lynx.Application.Name,
 		lynx.Polaris.Namespace)
@@ -38,7 +39,7 @@ func polarisConfigLoad(lynx *boot.Lynx) {
 		Group: lynx.Application.Name,
 	}))
 	if err != nil {
-		boot.GetHelper().Error(err)
+		app.GetHelper().Error(err)
 		panic(err)
 	}
 }

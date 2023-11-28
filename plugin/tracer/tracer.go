@@ -3,7 +3,7 @@ package tracer
 import (
 	"bytes"
 	"fmt"
-	"github.com/go-lynx/lynx/boot"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/tracer/conf"
 	"go.opentelemetry.io/otel"
@@ -42,7 +42,7 @@ func (t *PlugTracer) Load(base interface{}) (plugin.Plugin, error) {
 		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
 	}
 
-	boot.GetHelper().Infof("Initializing link monitoring component")
+	app.GetHelper().Infof("Initializing link monitoring component")
 	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(c.Addr)))
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (t *PlugTracer) Load(base interface{}) (plugin.Plugin, error) {
 		)),
 	)
 	otel.SetTracerProvider(tp)
-	boot.GetHelper().Infof("Link monitoring component successfully initialized")
+	app.GetHelper().Infof("Link monitoring component successfully initialized")
 	return t, nil
 }
 

@@ -11,8 +11,8 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
+	"github.com/go-lynx/lynx/app/conf"
 	polaris2 "github.com/go-lynx/lynx/plugin/polaris"
-	"github.com/go-lynx/lynx/service/conf"
 	gGrpc "google.golang.org/grpc"
 )
 

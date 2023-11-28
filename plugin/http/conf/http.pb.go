@@ -7,8 +7,8 @@
 package conf
 
 import (
+	conf "github.com/go-lynx/lynx/app/conf"
 	boot "github.com/go-lynx/lynx/boot"
-	conf "github.com/go-lynx/lynx/service/conf"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"

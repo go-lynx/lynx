@@ -1,4 +1,4 @@
-package boot
+package app
 
 import (
 	"github.com/go-lynx/lynx/plugin"
