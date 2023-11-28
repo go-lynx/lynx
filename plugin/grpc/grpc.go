@@ -15,9 +15,11 @@ import (
 	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/grpc/conf"
+	polaris2 "github.com/go-lynx/lynx/plugin/polaris"
+	"github.com/go-lynx/lynx/service/limiter"
 )
 
-var plugName = "grpc"
+var name = "grpc"
 
 type ServiceGrpc struct {
 	grpc      *grpc.Server
@@ -47,7 +49,7 @@ func (g *ServiceGrpc) Weight() int {
 }
 
 func (g *ServiceGrpc) Name() string {
-	return plugName
+	return name
 }
 
 func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
@@ -68,7 +70,7 @@ func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
 					return nil
 				}),
 			),
-			boot.GrpcRateLimit(c.Lynx),
+			limiter.GrpcRateLimit(c.Lynx),
 		),
 	}
 
@@ -120,7 +122,7 @@ func (g *ServiceGrpc) Unload() error {
 }
 
 func (g *ServiceGrpc) initTls(c *conf.Grpc) error {
-	source, err := boot.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
+	source, err := polaris2.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
 		Name:  "tls-service.yaml",
 		Group: c.Lynx.Application.Name,
 	}))
@@ -148,7 +150,7 @@ func (g *ServiceGrpc) initTls(c *conf.Grpc) error {
 }
 
 func GetGRPC() *grpc.Server {
-	return boot.GetPlugin(plugName).(*ServiceGrpc).grpc
+	return boot.GetPlugin(name).(*ServiceGrpc).grpc
 }
 
 func Grpc(opts ...Option) plugin.Plugin {

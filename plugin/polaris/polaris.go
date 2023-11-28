@@ -1,18 +1,20 @@
-package boot
+package polaris
 
 import (
 	"github.com/go-kratos/kratos/contrib/polaris/v2"
+	"github.com/go-lynx/lynx/boot"
 	"github.com/polarismesh/polaris-go/api"
 )
 
 var (
-	p polaris.Polaris
+	p    polaris.Polaris
+	name = "polaris"
 )
 
-func (a *App) initPolaris(lynx *Lynx) {
+func initPolaris(lynx *boot.Lynx) {
 	sdk, err := api.InitContextByConfig(api.NewConfiguration())
 	if err != nil {
-		GetHelper().Error(err)
+		boot.GetHelper().Error(err)
 		panic(err)
 	}
 
@@ -21,14 +23,12 @@ func (a *App) initPolaris(lynx *Lynx) {
 		polaris.WithService(lynx.Application.Name),
 		polaris.WithNamespace(lynx.Polaris.Namespace),
 	)
-
-	polarisConfigLoad(lynx)
 }
 
-func polarisConfigLoad(lynx *Lynx) {
+func polarisConfigLoad(lynx *boot.Lynx) {
 	fileName := lynx.Application.Name + "-" + lynx.Application.Version + ".fileName"
 
-	dfLog.Infof("Reading from the configuration center,file:[%v] group:[%v] namespace:[%v]",
+	boot.GetHelper().Infof("Reading from the configuration center,file:[%v] group:[%v] namespace:[%v]",
 		fileName,
 		lynx.Application.Name,
 		lynx.Polaris.Namespace)
@@ -38,11 +38,9 @@ func polarisConfigLoad(lynx *Lynx) {
 		Group: lynx.Application.Name,
 	}))
 	if err != nil {
-		dfLog.Error(err)
+		boot.GetHelper().Error(err)
 		panic(err)
 	}
-
-	configLoad(lynx, source)
 }
 
 func GetPolaris() *polaris.Polaris {

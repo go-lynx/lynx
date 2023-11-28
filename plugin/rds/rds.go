@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var plugName = "mysql"
+var name = "mysql"
 
 type PlugMysql struct {
 	dri    *sql.Driver
@@ -27,7 +27,7 @@ func Weight(w int) Option {
 }
 
 func (db *PlugMysql) Name() string {
-	return plugName
+	return name
 }
 
 func (db *PlugMysql) Weight() int {
@@ -76,11 +76,11 @@ func (db *PlugMysql) Unload() error {
 	return nil
 }
 
-func GetDB() *sql.Driver {
-	return boot.GetPlugin(plugName).(*PlugMysql).dri
+func GetDriver() *sql.Driver {
+	return boot.GetPlugin(name).(*PlugMysql).dri
 }
 
-func Mysql(opts ...Option) plugin.Plugin {
+func Rds(opts ...Option) plugin.Plugin {
 	db := &PlugMysql{
 		weight: 1000,
 	}
