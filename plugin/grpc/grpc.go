@@ -12,11 +12,12 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/middleware/validate"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
+	"github.com/go-lynx/lynx/app"
+	"github.com/go-lynx/lynx/app/limiter"
 	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/grpc/conf"
 	polaris2 "github.com/go-lynx/lynx/plugin/polaris"
-	"github.com/go-lynx/lynx/service/limiter"
 )
 
 var name = "grpc"
@@ -57,12 +58,12 @@ func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
 	}
-	boot.GetHelper().Infof("Initializing GRPC service")
+	app.GetHelper().Infof("Initializing GRPC service")
 
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
 			tracing.Server(tracing.WithTracerName(c.Lynx.Application.Name)),
-			logging.Server(boot.GetLogger()),
+			logging.Server(app.GetLogger()),
 			validate.Validator(),
 			// Recovery program after exception
 			recovery.Recovery(
@@ -109,14 +110,14 @@ func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
 	}
 
 	g.grpc = grpc.NewServer(opts...)
-	boot.GetHelper().Infof("GRPC service successfully initialized")
+	app.GetHelper().Infof("GRPC service successfully initialized")
 	return g, nil
 }
 
 func (g *ServiceGrpc) Unload() error {
-	boot.GetHelper().Info("message", "Closing the GRPC resources")
+	app.GetHelper().Info("message", "Closing the GRPC resources")
 	if err := g.grpc.Stop(nil); err != nil {
-		boot.GetHelper().Error(err)
+		app.GetHelper().Error(err)
 	}
 	return nil
 }

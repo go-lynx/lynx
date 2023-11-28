@@ -1,4 +1,4 @@
-package boot
+package app
 
 import (
 	"github.com/go-kratos/kratos/v2/log"
@@ -13,6 +13,7 @@ var (
 )
 
 func InitLogger() log.Logger {
+	log.Infof("Lynx Log component loading")
 	l := log.With(log.NewStdLogger(os.Stdout),
 		"ts", log.DefaultTimestamp,
 		"caller", log.DefaultCaller,

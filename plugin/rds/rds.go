@@ -5,6 +5,7 @@ import (
 	_ "database/sql"
 	"entgo.io/ent/dialect/sql"
 	"fmt"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/rds/conf"
@@ -40,14 +41,14 @@ func (db *PlugMysql) Load(base interface{}) (plugin.Plugin, error) {
 		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
 	}
 
-	boot.GetHelper().Infof("Initializing database")
+	app.GetHelper().Infof("Initializing database")
 	drv, err := sql.Open(
 		c.Driver,
 		c.Source,
 	)
 
 	if err != nil {
-		boot.GetHelper().Errorf("failed opening connection to dataBase: %v", err)
+		app.GetHelper().Errorf("failed opening connection to dataBase: %v", err)
 		panic(err)
 	}
 
@@ -63,14 +64,14 @@ func (db *PlugMysql) Load(base interface{}) (plugin.Plugin, error) {
 	}
 
 	db.dri = drv
-	boot.GetHelper().Infof("Database successfully initialized")
+	app.GetHelper().Infof("Database successfully initialized")
 	return db, nil
 }
 
 func (db *PlugMysql) Unload() error {
-	boot.GetHelper().Info("message", "Closing the DataBase resources")
+	app.GetHelper().Info("message", "Closing the DataBase resources")
 	if err := db.dri.Close(); err != nil {
-		boot.GetHelper().Error(err)
+		app.GetHelper().Error(err)
 		return err
 	}
 	return nil

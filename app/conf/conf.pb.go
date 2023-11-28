@@ -4,7 +4,7 @@
 // 	protoc        v4.23.0
 // source: config.proto
 
-package boot
+package conf
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
