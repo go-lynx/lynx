@@ -11,9 +11,10 @@ import (
 	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/http/conf"
+	"github.com/go-lynx/lynx/service/limiter"
 )
 
-var plugName = "http"
+var name = "http"
 
 type ServiceHttp struct {
 	http   *http.Server
@@ -29,7 +30,7 @@ func Weight(w int) Option {
 }
 
 func (h *ServiceHttp) Name() string {
-	return plugName
+	return name
 }
 
 func (h *ServiceHttp) Weight() int {
@@ -43,6 +44,7 @@ func (h *ServiceHttp) Load(base interface{}) (plugin.Plugin, error) {
 	}
 
 	boot.GetHelper().Infof("Initializing HTTP service")
+
 	var opts = []http.ServerOption{
 		http.Middleware(
 			tracing.Server(
@@ -55,11 +57,12 @@ func (h *ServiceHttp) Load(base interface{}) (plugin.Plugin, error) {
 					return nil
 				}),
 			),
-			boot.HttpRateLimit(c.Lynx),
+			limiter.HttpRateLimit(c.Lynx),
 			ResponsePack(),
 		),
 		http.ResponseEncoder(ResponseEncoder),
 	}
+
 	if c.Network != "" {
 		opts = append(opts, http.Network(c.Network))
 	}
@@ -69,6 +72,7 @@ func (h *ServiceHttp) Load(base interface{}) (plugin.Plugin, error) {
 	if c.Timeout != nil {
 		opts = append(opts, http.Timeout(c.Timeout.AsDuration()))
 	}
+
 	h.http = http.NewServer(opts...)
 	boot.GetHelper().Infof("HTTP service successfully initialized")
 	return h, nil
@@ -84,7 +88,7 @@ func (h *ServiceHttp) Unload() error {
 }
 
 func GetHTTP() *http.Server {
-	return boot.GetPlugin(plugName).(*ServiceHttp).http
+	return boot.GetPlugin(name).(*ServiceHttp).http
 }
 
 func Http(opts ...Option) plugin.Plugin {

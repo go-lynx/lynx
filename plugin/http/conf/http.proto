@@ -5,7 +5,7 @@ package lynx.protobuf.http;
 option go_package = "github.com/go-lynx/lynx/plugin/http/conf";
 
 import "google/protobuf/duration.proto";
-import "config.proto";
+import "conf.proto";
 import "conf/tls_service.proto";
 
 message http {

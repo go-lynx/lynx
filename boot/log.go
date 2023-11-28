@@ -16,14 +16,14 @@ func InitLogger() log.Logger {
 	l := log.With(log.NewStdLogger(os.Stdout),
 		"ts", log.DefaultTimestamp,
 		"caller", log.DefaultCaller,
-		"service.id", id,
-		"service.name", name,
-		"service.version", version,
+		"service.id", app.host,
+		"service.name", app.name,
+		"service.version", app.version,
 		"trace.id", tracing.TraceID,
 		"span.id", tracing.SpanID,
 	)
 	dfLog = log.NewHelper(l)
-	dfLog.Infof("Log component loaded successfully")
+	log.Info("Lynx Log component loaded successfully")
 	logger = &l
 	return *logger
 }

@@ -4,7 +4,7 @@ package lynx.protobuf.tracer;
 
 option go_package = "github.com/go-lynx/lynx/plugin/tracer/conf";
 
-import "config.proto";
+import "conf.proto";
 
 message Tracer {
   string addr = 1;
