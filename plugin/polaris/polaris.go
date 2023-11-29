@@ -28,7 +28,7 @@ func (p *PlugPolaris) Name() string {
 func (p *PlugPolaris) Load(base interface{}) (plugin.Plugin, error) {
 	c, ok := base.(*conf.Polaris)
 	if !ok {
-		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+		return nil, fmt.Errorf("invalid c type, expected conf.Polaris")
 	}
 	sdk, err := api.InitContextByConfig(api.NewConfiguration())
 	if err != nil {
@@ -41,6 +41,9 @@ func (p *PlugPolaris) Load(base interface{}) (plugin.Plugin, error) {
 		polaris.WithService(app.Name()),
 		polaris.WithNamespace(c.Namespace),
 	)
+
+	// set polaris plane for lynx
+	app.Lynx().SetControlPlane(p)
 	return p, nil
 }
 

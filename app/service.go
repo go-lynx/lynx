@@ -41,5 +41,9 @@ func ServiceDiscovery() registry.Discovery {
 }
 
 func (a *LynxApp) ControlPlane() ControlPlane {
-	return Lynx().cp
+	return Lynx().plane
+}
+
+func (a *LynxApp) SetControlPlane(plane ControlPlane) {
+	Lynx().plane = plane
 }
