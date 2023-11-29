@@ -7,7 +7,7 @@ import (
 )
 
 // NewNodeRouter Synchronize Remote Service Routing Strategy
-func NewNodeRouter(name string) selector.NodeFilter {
-	app.GetHelper().Infof("Synchronizing [%v] routing policy", name)
+func (p *PlugPolaris) NewNodeRouter(name string) selector.NodeFilter {
+	app.Lynx().GetHelper().Infof("Synchronizing [%v] routing policy", name)
 	return GetPolaris().NodeFilter(polaris.WithRouterService(name))
 }

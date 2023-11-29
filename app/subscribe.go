@@ -4,15 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"github.com/go-kratos/kratos/contrib/polaris/v2"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
-	"github.com/go-lynx/lynx/app/conf"
-	polaris2 "github.com/go-lynx/lynx/plugin/polaris"
+	"github.com/go-lynx/lynx/conf"
 	gGrpc "google.golang.org/grpc"
 )
 
@@ -51,23 +49,17 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 		return nil
 	}
 
-	source, err := polaris2.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
-		Name:  "tls-root.yaml",
-		Group: g.name,
-	}))
-
-	if err != nil {
-		panic(err)
-	}
+	s, err := Lynx().ControlPlane().Config("tls-root.yaml", g.name)
 
 	c := config.New(
-		config.WithSource(source),
+		config.WithSource(s),
 	)
 
 	if err := c.Load(); err != nil {
 		panic(err)
 	}
-	var t conf.TlsRoot
+
+	var t conf.Tls
 	if err := c.Scan(&t); err != nil {
 		panic(err)
 	}

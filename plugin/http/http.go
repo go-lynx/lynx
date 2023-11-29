@@ -56,6 +56,7 @@ func (h *ServiceHttp) Load(base interface{}) (plugin.Plugin, error) {
 				}),
 			),
 			ResponsePack(),
+			app.Lynx().ControlPlane().HttpRateLimit(),
 		),
 		http.ResponseEncoder(ResponseEncoder),
 	}

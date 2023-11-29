@@ -4,7 +4,7 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/config/file"
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-lynx/lynx/app/conf"
+	"github.com/go-lynx/lynx/conf"
 )
 
 // localBootFileLoad Boot configuration file for service startup loaded from local

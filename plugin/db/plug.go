@@ -13,5 +13,5 @@ func init() {
 }
 
 func GetDriver() *sql.Driver {
-	return app.Lynx().PlugManager().GetPlugin(name).(*PlugMysql).dri
+	return app.Lynx().PlugManager().GetPlugin(name).(*PlugDB).dri
 }

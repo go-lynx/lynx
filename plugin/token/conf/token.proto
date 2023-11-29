@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package lynx.protobuf.token;
+package lynx.protobuf.plugin.token;
 
 option go_package = "github.com/go-lynx/lynx/plugin/token/conf";
 

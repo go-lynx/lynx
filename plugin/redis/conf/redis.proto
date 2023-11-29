@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package lynx.protobuf.redis;
+package lynx.protobuf.plugin.redis;
 
-option go_package = "base/config;config";
+option go_package = "github.com/go-lynx/lynx/plugin/redis/conf";
 
 import "google/protobuf/duration.proto";
 

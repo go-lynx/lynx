@@ -42,15 +42,15 @@ func (t *PlugTracer) Load(base interface{}) (plugin.Plugin, error) {
 		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
 	}
 
-	app.GetHelper().Infof("Initializing link monitoring component")
+	app.Lynx().GetHelper().Infof("Initializing link monitoring component")
 	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(c.Addr)))
 	if err != nil {
 		return nil, err
 	}
 	buf := new(bytes.Buffer)
-	buf.WriteString(c.Lynx.Application.Name)
+	buf.WriteString(app.Name())
 	buf.WriteString("-")
-	buf.WriteString(c.Lynx.Application.Version)
+	buf.WriteString(app.Version())
 	tp := traceSdk.NewTracerProvider(
 		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(1.0))),
 		traceSdk.WithBatcher(exp),
@@ -61,7 +61,7 @@ func (t *PlugTracer) Load(base interface{}) (plugin.Plugin, error) {
 		)),
 	)
 	otel.SetTracerProvider(tp)
-	app.GetHelper().Infof("Link monitoring component successfully initialized")
+	app.Lynx().GetHelper().Infof("Link monitoring component successfully initialized")
 	return t, nil
 }
 
