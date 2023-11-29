@@ -30,7 +30,7 @@ func init() {
 	}
 }
 
-type wireApp func(confServer *conf.Lynx, logger log.Logger) (*kratos.App, error)
+type wireApp func(confServer *conf.Bootstrap, logger log.Logger) (*kratos.App, error)
 
 // Run This function is the application startup entry point
 func (b *Boot) Run() {
@@ -42,15 +42,17 @@ func (b *Boot) Run() {
 
 	app.Lynx().GetHelper().Infof("Lynx application is starting up")
 	// Load the plugin first, then execute the wireApp
+	defer app.Lynx().PlugManager().UnloadPlugins()
 	app.Lynx().PlugManager().LoadPlugins()
+
 	k, err := b.wire(c, app.Lynx().GetLogger())
 	if err != nil {
 		app.Lynx().GetHelper().Error(err)
 		panic(err)
 	}
+
 	t := (time.Now().UnixNano() - st.UnixNano()) / 1e6
 	app.Lynx().GetHelper().Infof("Lynx application started successfully，elapsed time：%v ms, port listening initiated.", t)
-	defer app.Lynx().PlugManager().UnloadPlugins()
 
 	// kratos start and wait for stop signal
 	if err := k.Run(); err != nil {

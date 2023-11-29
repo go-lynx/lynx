@@ -8,8 +8,8 @@ import (
 )
 
 // localBootFileLoad Boot configuration file for service startup loaded from local
-func localBootFileLoad() *conf.Lynx {
-	log.Info("Lynx reading local bootstrap configuration file/folder:%v", flagConf)
+func localBootFileLoad() *conf.Bootstrap {
+	log.Info("Lynx reading local bootstrap configuration file/folder:" + flagConf)
 	c := config.New(
 		config.WithSource(
 			file.NewSource(flagConf),
@@ -18,8 +18,8 @@ func localBootFileLoad() *conf.Lynx {
 	if err := c.Load(); err != nil {
 		panic(err)
 	}
-	var lynx conf.Lynx
-	if err := c.Scan(&lynx); err != nil {
+	var bootstrap conf.Bootstrap
+	if err := c.Scan(&bootstrap); err != nil {
 		panic(err)
 	}
 
@@ -30,5 +30,5 @@ func localBootFileLoad() *conf.Lynx {
 			panic(err)
 		}
 	}(c)
-	return &lynx
+	return &bootstrap
 }

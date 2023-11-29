@@ -4,8 +4,9 @@ package lynx.protobuf.app.conf;
 
 option go_package = "github.com/go-lynx/lynx/conf";
 
-import "google/protobuf/duration.proto";
-
+message Bootstrap {
+  Lynx lynx = 1;
+}
 
 message Lynx {
   Application application = 1;
