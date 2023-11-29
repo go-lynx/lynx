@@ -13,41 +13,41 @@ import (
 
 var name = "db"
 
-type PlugMysql struct {
+type PlugDB struct {
 	dri    *sql.Driver
 	weight int
 }
 
-type Option func(db *PlugMysql)
+type Option func(db *PlugDB)
 
 func Weight(w int) Option {
-	return func(db *PlugMysql) {
+	return func(db *PlugDB) {
 		db.weight = w
 	}
 }
 
-func (db *PlugMysql) Name() string {
+func (db *PlugDB) Name() string {
 	return name
 }
 
-func (db *PlugMysql) Weight() int {
+func (db *PlugDB) Weight() int {
 	return db.weight
 }
 
-func (db *PlugMysql) Load(base interface{}) (plugin.Plugin, error) {
-	c, ok := base.(*conf.Rds)
+func (db *PlugDB) Load(base interface{}) (plugin.Plugin, error) {
+	c, ok := base.(*conf.Db)
 	if !ok {
 		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
 	}
 
-	app.GetHelper().Infof("Initializing database")
+	app.Lynx().GetHelper().Infof("Initializing database")
 	drv, err := sql.Open(
 		c.Driver,
 		c.Source,
 	)
 
 	if err != nil {
-		app.GetHelper().Errorf("failed opening connection to dataBase: %v", err)
+		app.Lynx().GetHelper().Errorf("failed opening connection to dataBase: %v", err)
 		panic(err)
 	}
 
@@ -63,21 +63,21 @@ func (db *PlugMysql) Load(base interface{}) (plugin.Plugin, error) {
 	}
 
 	db.dri = drv
-	app.GetHelper().Infof("Database successfully initialized")
+	app.Lynx().GetHelper().Infof("Database successfully initialized")
 	return db, nil
 }
 
-func (db *PlugMysql) Unload() error {
-	app.GetHelper().Info("message", "Closing the DataBase resources")
+func (db *PlugDB) Unload() error {
+	app.Lynx().GetHelper().Info("message", "Closing the DataBase resources")
 	if err := db.dri.Close(); err != nil {
-		app.GetHelper().Error(err)
+		app.Lynx().GetHelper().Error(err)
 		return err
 	}
 	return nil
 }
 
 func Db(opts ...Option) plugin.Plugin {
-	db := &PlugMysql{
+	db := &PlugDB{
 		weight: 1000,
 	}
 	for _, opt := range opts {

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package lynx.protobuf.tracer;
+package lynx.protobuf.plugin.tracer;
 
 option go_package = "github.com/go-lynx/lynx/plugin/tracer/conf";
 

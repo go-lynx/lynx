@@ -1,49 +1,55 @@
 package polaris
 
 import (
+	"fmt"
 	"github.com/go-kratos/kratos/contrib/polaris/v2"
 	"github.com/go-lynx/lynx/app"
-	"github.com/go-lynx/lynx/boot"
+	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugin/polaris/conf"
 	"github.com/polarismesh/polaris-go/api"
 )
 
-var (
-	p    polaris.Polaris
-	name = "polaris"
-)
+var name = "polaris"
 
-func initPolaris(lynx *boot.Lynx) {
+type PlugPolaris struct {
+	polaris polaris.Polaris
+	conf    *conf.Polaris
+	weight  int
+}
+
+func (p *PlugPolaris) Weight() int {
+	return p.weight
+}
+
+func (p *PlugPolaris) Name() string {
+	return name
+}
+
+func (p *PlugPolaris) Load(base interface{}) (plugin.Plugin, error) {
+	c, ok := base.(*conf.Polaris)
+	if !ok {
+		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+	}
 	sdk, err := api.InitContextByConfig(api.NewConfiguration())
 	if err != nil {
-		app.GetHelper().Error(err)
+		app.Lynx().GetHelper().Error(err)
 		panic(err)
 	}
 
-	p = polaris.New(
+	p.polaris = polaris.New(
 		sdk,
-		polaris.WithService(lynx.Application.Name),
-		polaris.WithNamespace(lynx.Polaris.Namespace),
+		polaris.WithService(app.Name()),
+		polaris.WithNamespace(c.Namespace),
 	)
+	return p, nil
 }
 
-func polarisConfigLoad(lynx *boot.Lynx) {
-	fileName := lynx.Application.Name + "-" + lynx.Application.Version + ".fileName"
+func (p *PlugPolaris) Unload() error {
+	return nil
+}
 
-	app.GetHelper().Infof("Reading from the configuration center,file:[%v] group:[%v] namespace:[%v]",
-		fileName,
-		lynx.Application.Name,
-		lynx.Polaris.Namespace)
-
-	source, err := p.Config(polaris.WithConfigFile(polaris.File{
-		Name:  fileName,
-		Group: lynx.Application.Name,
-	}))
-	if err != nil {
-		app.GetHelper().Error(err)
-		panic(err)
+func Polaris() plugin.Plugin {
+	return &PlugPolaris{
+		weight: 999999,
 	}
-}
-
-func GetPolaris() *polaris.Polaris {
-	return &p
 }

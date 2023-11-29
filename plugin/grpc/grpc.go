@@ -5,8 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"github.com/go-kratos/kratos/contrib/polaris/v2"
-	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
@@ -15,18 +13,14 @@ import (
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/grpc/conf"
-	polaris2 "github.com/go-lynx/lynx/plugin/polaris"
 )
 
 var name = "grpc"
 
 type ServiceGrpc struct {
-	grpc      *grpc.Server
-	weight    int
-	tls       bool
-	serverCrt []byte
-	serverKey []byte
-	rootCA    []byte
+	grpc   *grpc.Server
+	weight int
+	tls    bool
 }
 
 type Option func(g *ServiceGrpc)
@@ -69,6 +63,7 @@ func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
 					return nil
 				}),
 			),
+			app.Lynx().ControlPlane().GrpcRateLimit(),
 		),
 	}
 
@@ -83,18 +78,12 @@ func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
 	}
 
 	if g.tls {
-		err := g.initTls(c)
+		cert, err := tls.X509KeyPair([]byte(app.Lynx().Tls().Crt), []byte(app.Lynx().Tls().Key))
 		if err != nil {
 			return nil, err
 		}
-
-		cert, err := tls.X509KeyPair(g.serverCrt, g.serverKey)
-		if err != nil {
-			return nil, err
-		}
-
 		certPool := x509.NewCertPool()
-		if !certPool.AppendCertsFromPEM(g.rootCA) {
+		if !certPool.AppendCertsFromPEM([]byte(app.Lynx().Tls().RootCA)) {
 			return nil, err
 		}
 
@@ -116,34 +105,6 @@ func (g *ServiceGrpc) Unload() error {
 	if err := g.grpc.Stop(nil); err != nil {
 		app.Lynx().GetHelper().Error(err)
 	}
-	return nil
-}
-
-func (g *ServiceGrpc) initTls(c *conf.Grpc) error {
-	source, err := polaris2.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
-		Name:  "tls-service.yaml",
-		Group: app.Name(),
-	}))
-
-	if err != nil {
-		return err
-	}
-
-	sc := config.New(
-		config.WithSource(source),
-	)
-
-	if err := sc.Load(); err != nil {
-		return err
-	}
-	if err := sc.Scan(&c); err != nil {
-		return err
-	}
-
-	g.serverKey = []byte(c.Tls.ServerKey)
-	g.rootCA = []byte(c.Tls.RootCA)
-	g.serverCrt = []byte(c.Tls.ServerCrt)
-
 	return nil
 }
 

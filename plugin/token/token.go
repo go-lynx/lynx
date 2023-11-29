@@ -26,7 +26,7 @@ func (t *PlugToken) Name() string {
 }
 
 func (t *PlugToken) Load(_ interface{}) (plugin.Plugin, error) {
-	app.GetHelper().Infof("Initializing service token")
+	app.Lynx().GetHelper().Infof("Initializing service token")
 
 	source, err := polaris2.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
 		Name:  "token.yaml",
@@ -58,7 +58,7 @@ func (t *PlugToken) Load(_ interface{}) (plugin.Plugin, error) {
 		}
 	}
 
-	app.GetHelper().Infof("Service token successfully initialized")
+	app.Lynx().GetHelper().Infof("Service token successfully initialized")
 	return t, nil
 }
 

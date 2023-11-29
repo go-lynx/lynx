@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package lynx.protobuf.app.conf;
 
-option go_package = "github.com/go-lynx/lynx/app/conf";
+option go_package = "github.com/go-lynx/lynx/conf";
 
 message Tls {
   string crt = 1;

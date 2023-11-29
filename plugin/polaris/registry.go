@@ -4,29 +4,28 @@ import (
 	"github.com/go-kratos/kratos/contrib/polaris/v2"
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-lynx/lynx/app"
-	"github.com/go-lynx/lynx/app/conf"
 )
 
 // NewServiceRegistry PolarisRegistry
-func NewServiceRegistry(lynx *conf.Lynx) registry.Registrar {
-	app.GetHelper().Infof("Service registration in progress")
+func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
+	app.Lynx().GetHelper().Infof("Service registration in progress")
 	r := GetPolaris().Registry(
-		polaris.WithRegistryServiceToken(lynx.Polaris.Token),
-		polaris.WithRegistryTimeout(lynx.Polaris.Timeout.AsDuration()),
-		polaris.WithRegistryTTL(int(lynx.Polaris.Ttl)),
-		polaris.WithRegistryWeight(int(lynx.Polaris.Weight)),
+		polaris.WithRegistryServiceToken(GetPlugPolaris().conf.Token),
+		polaris.WithRegistryTimeout(GetPlugPolaris().conf.Timeout.AsDuration()),
+		polaris.WithRegistryTTL(int(GetPlugPolaris().conf.Ttl)),
+		polaris.WithRegistryWeight(int(GetPlugPolaris().conf.Weight)),
 	)
 	return r
 }
 
 // NewServiceDiscovery PolarisDiscovery
-func NewServiceDiscovery(lynx *conf.Lynx) registry.Discovery {
-	app.GetHelper().Infof("Service discovery in progress")
+func (p *PlugPolaris) NewServiceDiscovery() registry.Discovery {
+	app.Lynx().GetHelper().Infof("Service discovery in progress")
 	r := GetPolaris().Registry(
-		polaris.WithRegistryServiceToken(lynx.Polaris.Token),
-		polaris.WithRegistryTimeout(lynx.Polaris.Timeout.AsDuration()),
-		polaris.WithRegistryTTL(int(lynx.Polaris.Ttl)),
-		polaris.WithRegistryWeight(int(lynx.Polaris.Weight)),
+		polaris.WithRegistryServiceToken(GetPlugPolaris().conf.Token),
+		polaris.WithRegistryTimeout(GetPlugPolaris().conf.Timeout.AsDuration()),
+		polaris.WithRegistryTTL(int(GetPlugPolaris().conf.Ttl)),
+		polaris.WithRegistryWeight(int(GetPlugPolaris().conf.Weight)),
 	)
 	return r
 }

@@ -20,6 +20,8 @@ func NewLynxPluginManager(p ...plugin.Plugin) *LynxPluginManager {
 }
 
 func (m *LynxPluginManager) LoadPlugins() {
+	// Load plugins from a YAML file
+
 	// Load plugins based on weight
 	for i := 0; i < len(m.plugins); i++ {
 		p, err := m.plugins[i].Load(nil)

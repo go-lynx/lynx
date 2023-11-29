@@ -2,7 +2,7 @@ package app
 
 import (
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-lynx/lynx/app/conf"
+	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
 	"os"
 )
@@ -18,7 +18,9 @@ type LynxApp struct {
 	version     string
 	dfLog       *log.Helper
 	logger      log.Logger
+	tls         *conf.Tls
 	plugManager *LynxPluginManager
+	cp          ControlPlane
 }
 
 func Lynx() *LynxApp {
@@ -45,7 +47,8 @@ func NewApp(lynx *conf.Lynx, p ...plugin.Plugin) *LynxApp {
 		name:        lynx.Application.Name,
 		version:     lynx.Application.Version,
 		plugManager: NewLynxPluginManager(p...),
-	} // The lynxApp is in Singleton pattern
+	}
+	// The lynxApp is in Singleton pattern
 	lynxApp = app
 	return app
 }

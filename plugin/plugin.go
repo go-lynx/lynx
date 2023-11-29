@@ -5,7 +5,7 @@ import (
 )
 
 var (
-	factory = newFactory()
+	factory = newGlobalPluginFactory()
 )
 
 func GlobalPluginFactory() *Factory {
@@ -28,7 +28,7 @@ type Factory struct {
 	creators map[string]func() Plugin
 }
 
-func newFactory() *Factory {
+func newGlobalPluginFactory() *Factory {
 	return &Factory{
 		creators: make(map[string]func() Plugin),
 	}
