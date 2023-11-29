@@ -12,15 +12,35 @@ type LynxPluginManager struct {
 
 func NewLynxPluginManager(p ...plugin.Plugin) *LynxPluginManager {
 	m := &LynxPluginManager{
-		plugins: p,
+		plugins: make([]plugin.Plugin, 10),
 		factory: plugin.GlobalPluginFactory(),
 		plugMap: make(map[string]plugin.Plugin),
+	}
+
+	if p != nil && len(p) > 1 {
+		m.plugins = append(m.plugins, p...)
+		for i := 0; i < len(p); i++ {
+			m.pluginCheck(p[i].Name())
+			m.plugMap[p[i].Name()] = p[i]
+		}
 	}
 	return m
 }
 
 func (m *LynxPluginManager) LoadPlugins() {
-	// Load plugins from a YAML file
+	plugMarks := ParseConfig()
+	for i := 0; i < len(plugMarks); i++ {
+		if _, exists := m.plugMap[plugMarks[i]]; !exists {
+			p, err := m.factory.Create(plugMarks[i])
+			if err != nil {
+				Lynx().dfLog.Errorf("Plugin factory load error: %v", err)
+				panic(err)
+			}
+			m.plugins = append(m.plugins, p)
+			m.pluginCheck(p.Name())
+			m.plugMap[p.Name()] = p
+		}
+	}
 
 	// Load plugins based on weight
 	for i := 0; i < len(m.plugins); i++ {
@@ -29,8 +49,6 @@ func (m *LynxPluginManager) LoadPlugins() {
 			Lynx().dfLog.Errorf("Exception in initializing %v plugin :", p.Name(), err)
 			panic(err)
 		}
-		m.pluginCheck(p.Name())
-		m.plugMap[p.Name()] = p
 	}
 }
 

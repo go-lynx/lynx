@@ -19,8 +19,8 @@ type LynxApp struct {
 	dfLog       *log.Helper
 	logger      log.Logger
 	tls         *conf.Tls
+	plane       ControlPlane
 	plugManager *LynxPluginManager
-	cp          ControlPlane
 }
 
 func Lynx() *LynxApp {
