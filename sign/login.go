@@ -29,7 +29,7 @@ func (c *LoginClaims) Init() error {
 	// set current sign time
 	now := time.Now()
 	c.IssuedAt = jwt.NewNumericDate(now)
-	c.Issuer = "rc"
+	c.Issuer = "lynx"
 
 	// exp expired
 	if c.ExpiresAt != nil {
