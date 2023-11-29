@@ -1,55 +1,55 @@
 package app
 
 import (
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/app/conf"
 	"github.com/go-lynx/lynx/plugin"
+	"os"
 )
 
 var (
-	// The app is in Singleton pattern
-	app *LynxApp
+	// The lynxApp is in Singleton pattern
+	lynxApp *LynxApp
 )
 
 type LynxApp struct {
 	host        string
 	name        string
 	version     string
-	plugManager LynxPluginManager
+	dfLog       *log.Helper
+	logger      log.Logger
+	plugManager *LynxPluginManager
 }
 
-func App() *LynxApp {
-	return app
+func Lynx() *LynxApp {
+	return lynxApp
 }
 
 func Host() string {
-	return app.host
+	return lynxApp.host
 }
 
 func Name() string {
-	return app.name
+	return lynxApp.name
 }
 
-func version() string {
-	return app.version
+func Version() string {
+	return lynxApp.version
 }
 
 // NewApp create a lynx microservice
 func NewApp(lynx *conf.Lynx, p ...plugin.Plugin) *LynxApp {
-	a := &LynxApp{
-		name:    lynx.Application.Name,
-		version: lynx.Application.Version,
-	}
-
-	// Manually load the plugins
-	if p != nil && len(p) > 0 {
-		a.plugManager.Init(p...)
-	}
-
-	// The app is in Singleton pattern
-	app = a
-	return a
+	host, _ := os.Hostname()
+	var app = &LynxApp{
+		host:        host,
+		name:        lynx.Application.Name,
+		version:     lynx.Application.Version,
+		plugManager: NewLynxPluginManager(p...),
+	} // The lynxApp is in Singleton pattern
+	lynxApp = app
+	return app
 }
 
 func (a *LynxApp) PlugManager() *LynxPluginManager {
-	return &a.plugManager
+	return a.plugManager
 }

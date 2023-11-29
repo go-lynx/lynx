@@ -6,33 +6,25 @@ import (
 	"os"
 )
 
-var (
-	// dfLog is log manage module
-	dfLog  *log.Helper
-	logger *log.Logger
-)
-
-func InitLogger() log.Logger {
+func (a *LynxApp) InitLogger() {
 	log.Infof("Lynx Log component loading")
-	l := log.With(log.NewStdLogger(os.Stdout),
+	a.logger = log.With(log.NewStdLogger(os.Stdout),
 		"ts", log.DefaultTimestamp,
 		"caller", log.DefaultCaller,
-		"service.id", app.host,
-		"service.name", app.name,
-		"service.version", app.version,
+		"service.id", lynxApp.host,
+		"service.name", lynxApp.name,
+		"service.version", lynxApp.version,
 		"trace.id", tracing.TraceID,
 		"span.id", tracing.SpanID,
 	)
-	dfLog = log.NewHelper(l)
+	a.dfLog = log.NewHelper(a.logger)
 	log.Info("Lynx Log component loaded successfully")
-	logger = &l
-	return *logger
 }
 
-func GetHelper() *log.Helper {
-	return dfLog
+func (a *LynxApp) GetHelper() *log.Helper {
+	return Lynx().dfLog
 }
 
-func GetLogger() log.Logger {
-	return *logger
+func (a *LynxApp) GetLogger() log.Logger {
+	return Lynx().logger
 }

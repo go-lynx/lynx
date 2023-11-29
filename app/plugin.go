@@ -10,20 +10,21 @@ type LynxPluginManager struct {
 	factory *plugin.Factory
 }
 
-func (m *LynxPluginManager) Init(p ...plugin.Plugin) {
-	m.factory = plugin.NewFactory()
-	// Which plugins to load through the configuration file
+func NewLynxPluginManager(p ...plugin.Plugin) *LynxPluginManager {
+	m := &LynxPluginManager{
+		plugins: p,
+		factory: plugin.GlobalPluginFactory(),
+		plugMap: make(map[string]plugin.Plugin),
+	}
+	return m
 }
 
 func (m *LynxPluginManager) LoadPlugins() {
-	if m.plugins == nil {
-		m.Init()
-	}
 	// Load plugins based on weight
 	for i := 0; i < len(m.plugins); i++ {
 		p, err := m.plugins[i].Load(nil)
 		if err != nil {
-			dfLog.Errorf("Exception in initializing %v plugin :", p.Name(), err)
+			Lynx().dfLog.Errorf("Exception in initializing %v plugin :", p.Name(), err)
 			panic(err)
 		}
 		m.pluginCheck(p.Name())
@@ -34,7 +35,7 @@ func (m *LynxPluginManager) LoadPlugins() {
 func (m *LynxPluginManager) pluginCheck(name string) {
 	// Check for duplicate plugin names
 	if existingPlugin, exists := m.plugMap[name]; exists {
-		dfLog.Errorf("Duplicate plugin name: %v . Existing Plugin: %v", name, existingPlugin)
+		Lynx().dfLog.Errorf("Duplicate plugin name: %v . Existing Plugin: %v", name, existingPlugin)
 		panic("Duplicate plugin name: " + name)
 	}
 }
@@ -43,9 +44,13 @@ func (m *LynxPluginManager) UnloadPlugins() {
 	for i := 0; i < len(m.plugins); i++ {
 		err := m.plugins[i].Unload()
 		if err != nil {
-			dfLog.Errorf("Exception in uninstalling %v plugin", m.plugins[i].Name(), err)
+			Lynx().dfLog.Errorf("Exception in uninstalling %v plugin", m.plugins[i].Name(), err)
 		}
 	}
+}
+
+func (m *LynxPluginManager) GetPlugin(name string) plugin.Plugin {
+	return m.plugMap[name]
 }
 
 type ByWeight []plugin.Plugin

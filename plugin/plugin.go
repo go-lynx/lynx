@@ -4,6 +4,14 @@ import (
 	"errors"
 )
 
+var (
+	factory = newFactory()
+)
+
+func GlobalPluginFactory() *Factory {
+	return factory
+}
+
 type Plugin interface {
 	Weight() int
 	Name() string
@@ -20,7 +28,7 @@ type Factory struct {
 	creators map[string]func() Plugin
 }
 
-func NewFactory() *Factory {
+func newFactory() *Factory {
 	return &Factory{
 		creators: make(map[string]func() Plugin),
 	}

@@ -4,7 +4,7 @@
 // 	protoc        v4.23.0
 // source: redis.proto
 
-package conf
+package config
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
