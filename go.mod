@@ -7,7 +7,6 @@ require (
 	github.com/go-kratos/kratos/contrib/polaris/v2 v2.0.0-20230830131453-6c026bce56a9
 	github.com/go-kratos/kratos/v2 v2.7.1
 	github.com/golang-jwt/jwt/v5 v5.0.0
-	github.com/google/wire v0.5.0
 	github.com/polarismesh/polaris-go v1.3.0
 	github.com/redis/go-redis/v9 v9.2.1
 	go.opentelemetry.io/otel v1.19.0
