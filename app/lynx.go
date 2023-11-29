@@ -40,12 +40,12 @@ func Version() string {
 }
 
 // NewApp create a lynx microservice
-func NewApp(lynx *conf.Lynx, p ...plugin.Plugin) *LynxApp {
+func NewApp(c *conf.Bootstrap, p ...plugin.Plugin) *LynxApp {
 	host, _ := os.Hostname()
 	var app = &LynxApp{
 		host:        host,
-		name:        lynx.Application.Name,
-		version:     lynx.Application.Version,
+		name:        c.Lynx.Application.Name,
+		version:     c.Lynx.Application.Version,
 		plugManager: NewLynxPluginManager(p...),
 	}
 	// The lynxApp is in Singleton pattern
