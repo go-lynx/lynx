@@ -1,4 +1,4 @@
-package rds
+package db
 
 import (
 	"context"
@@ -6,13 +6,12 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"fmt"
 	"github.com/go-lynx/lynx/app"
-	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/plugin"
-	"github.com/go-lynx/lynx/plugin/rds/conf"
+	"github.com/go-lynx/lynx/plugin/db/conf"
 	"time"
 )
 
-var name = "mysql"
+var name = "db"
 
 type PlugMysql struct {
 	dri    *sql.Driver
@@ -77,11 +76,7 @@ func (db *PlugMysql) Unload() error {
 	return nil
 }
 
-func GetDriver() *sql.Driver {
-	return boot.GetPlugin(name).(*PlugMysql).dri
-}
-
-func Rds(opts ...Option) plugin.Plugin {
+func Db(opts ...Option) plugin.Plugin {
 	db := &PlugMysql{
 		weight: 1000,
 	}

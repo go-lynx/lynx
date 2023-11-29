@@ -1,4 +1,4 @@
-package registry
+package app
 
 import (
 	"github.com/go-lynx/lynx/app/conf"

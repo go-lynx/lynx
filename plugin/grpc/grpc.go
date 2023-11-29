@@ -13,8 +13,6 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/validate"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/app"
-	"github.com/go-lynx/lynx/app/limiter"
-	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/grpc/conf"
 	polaris2 "github.com/go-lynx/lynx/plugin/polaris"
@@ -58,12 +56,12 @@ func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
 	}
-	app.GetHelper().Infof("Initializing GRPC service")
+	app.Lynx().GetHelper().Infof("Initializing GRPC service")
 
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
-			tracing.Server(tracing.WithTracerName(c.Lynx.Application.Name)),
-			logging.Server(app.GetLogger()),
+			tracing.Server(tracing.WithTracerName(app.Name())),
+			logging.Server(app.Lynx().GetLogger()),
 			validate.Validator(),
 			// Recovery program after exception
 			recovery.Recovery(
@@ -71,7 +69,6 @@ func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
 					return nil
 				}),
 			),
-			limiter.GrpcRateLimit(c.Lynx),
 		),
 	}
 
@@ -104,20 +101,20 @@ func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
 		opts = append(opts, grpc.TLSConfig(&tls.Config{
 			Certificates: []tls.Certificate{cert},
 			ClientCAs:    certPool,
-			ServerName:   c.Lynx.Application.Name,
+			ServerName:   app.Name(),
 			ClientAuth:   tls.RequireAndVerifyClientCert,
 		}))
 	}
 
 	g.grpc = grpc.NewServer(opts...)
-	app.GetHelper().Infof("GRPC service successfully initialized")
+	app.Lynx().GetHelper().Infof("GRPC service successfully initialized")
 	return g, nil
 }
 
 func (g *ServiceGrpc) Unload() error {
-	app.GetHelper().Info("message", "Closing the GRPC resources")
+	app.Lynx().GetHelper().Info("message", "Closing the GRPC resources")
 	if err := g.grpc.Stop(nil); err != nil {
-		app.GetHelper().Error(err)
+		app.Lynx().GetHelper().Error(err)
 	}
 	return nil
 }
@@ -125,7 +122,7 @@ func (g *ServiceGrpc) Unload() error {
 func (g *ServiceGrpc) initTls(c *conf.Grpc) error {
 	source, err := polaris2.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
 		Name:  "tls-service.yaml",
-		Group: c.Lynx.Application.Name,
+		Group: app.Name(),
 	}))
 
 	if err != nil {
@@ -148,10 +145,6 @@ func (g *ServiceGrpc) initTls(c *conf.Grpc) error {
 	g.serverCrt = []byte(c.Tls.ServerCrt)
 
 	return nil
-}
-
-func GetGRPC() *grpc.Server {
-	return boot.GetPlugin(name).(*ServiceGrpc).grpc
 }
 
 func Grpc(opts ...Option) plugin.Plugin {

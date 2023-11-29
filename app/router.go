@@ -1,4 +1,4 @@
-package subscribe
+package app
 
 import (
 	"github.com/go-kratos/kratos/v2/selector"

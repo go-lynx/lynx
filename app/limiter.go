@@ -1,4 +1,4 @@
-package limiter
+package app
 
 import (
 	"github.com/go-kratos/kratos/v2/middleware"

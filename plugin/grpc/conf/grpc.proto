@@ -5,14 +5,9 @@ package lynx.protobuf.grpc;
 option go_package = "github.com/go-lynx/lynx/plugin/grpc/conf";
 
 import "google/protobuf/duration.proto";
-import "conf.proto";
-import "conf/tls_service.proto";
-
 
 message grpc {
   string network = 1;
   string addr = 2;
   google.protobuf.Duration timeout = 3;
-  lynx.protobuf.Lynx lynx = 4;
-  lynx.protobuf.service.TlsService tls = 5;
 }

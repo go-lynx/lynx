@@ -9,8 +9,6 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/validate"
 	"github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/go-lynx/lynx/app"
-	"github.com/go-lynx/lynx/app/limiter"
-	"github.com/go-lynx/lynx/boot"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/http/conf"
 )
@@ -43,22 +41,20 @@ func (h *ServiceHttp) Load(base interface{}) (plugin.Plugin, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
 	}
-
-	app.GetHelper().Infof("Initializing HTTP service")
+	app.Lynx().GetHelper().Infof("Initializing HTTP service")
 
 	var opts = []http.ServerOption{
 		http.Middleware(
 			tracing.Server(
-				tracing.WithTracerName(c.Lynx.Application.Name),
+				tracing.WithTracerName(app.Name()),
 			),
-			logging.Server(app.GetLogger()),
+			logging.Server(app.Lynx().GetLogger()),
 			validate.Validator(),
 			recovery.Recovery(
 				recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
 					return nil
 				}),
 			),
-			limiter.HttpRateLimit(c.Lynx),
 			ResponsePack(),
 		),
 		http.ResponseEncoder(ResponseEncoder),
@@ -75,21 +71,17 @@ func (h *ServiceHttp) Load(base interface{}) (plugin.Plugin, error) {
 	}
 
 	h.http = http.NewServer(opts...)
-	app.GetHelper().Infof("HTTP service successfully initialized")
+	app.Lynx().GetHelper().Infof("HTTP service successfully initialized")
 	return h, nil
 }
 
 func (h *ServiceHttp) Unload() error {
-	app.GetHelper().Info("message", "Closing the HTTP resources")
+	app.Lynx().GetHelper().Info("message", "Closing the HTTP resources")
 	if err := h.http.Close(); err != nil {
-		app.GetHelper().Error(err)
+		app.Lynx().GetHelper().Error(err)
 		return err
 	}
 	return nil
-}
-
-func GetHTTP() *http.Server {
-	return boot.GetPlugin(name).(*ServiceHttp).http
 }
 
 func Http(opts ...Option) plugin.Plugin {

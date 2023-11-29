@@ -1,4 +1,4 @@
-package subscribe
+package app
 
 import (
 	"context"
@@ -37,7 +37,6 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 			logging.Client(g.log),
 			tracing.Client(),
 		),
-		grpc.WithNodeFilter(NewNodeRouter(g.name)),
 		grpc.WithTLSConfig(g.tlsLoad()),
 	)
 	if err != nil {
