@@ -58,3 +58,8 @@ func main() {
 ```
 
 Join us in our journey to simplify microservices development with Lynx, the plug-and-play Go Microservices Framework.
+
+## Ding Talk
+
+![1701348496089](https://github.com/go-lynx/lynx/assets/32378959/cfeacfb8-95d4-4b23-8299-a868502f1076)
+
