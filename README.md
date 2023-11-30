@@ -35,5 +35,26 @@ Lynx harnesses the power of several open-source projects for its core components
 - [Seata](https://github.com/seata/seata)
 - [Kratos](https://github.com/go-kratos/kratos)
 - [Polaris](https://github.com/polarismesh/polaris)
+## Quick Install
+
+> If you want to use this microservice code template, all you need to do is execute the following command to install the Lynx CLI command-line tool, and then run the new command to automatically initialize a runnable project (the new command can support multiple project names).
+
+```shell
+go install github.com/go-lynx/lynx/cmd/lynx@latest
+```
+
+```shell
+lynx new demo1 demo2 demo3
+```
+
+## Quick Start Code
+
+To get your microservice up and running in no time, use the following code (Some functionalities can be plugged in or out based on your choice.):
+
+```go
+func main() {
+    boot.LynxApplication(wireApp).Run()
+}
+```
 
 Join us in our journey to simplify microservices development with Lynx, the plug-and-play Go Microservices Framework.
