@@ -4,7 +4,8 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
-	"github.com/go-lynx/lynx/conf"
+	"fmt"
+	"github.com/go-lynx/lynx/plugin/token/conf"
 )
 
 var (
@@ -16,10 +17,15 @@ var (
 type Login struct {
 }
 
-func (l *Login) Init(Token *conf.Token) error {
-	method = Token.Jwt.LoginMethod
+func (l *Login) Init(base interface{}) error {
+	c, ok := base.(*conf.Jtw)
+	if !ok {
+		return fmt.Errorf("invalid c type, expected *conf.Grpc")
+	}
 
-	privateBlock, _ := pem.Decode([]byte(Token.Jwt.LoginPrivateKey))
+	method = c.LoginMethod
+
+	privateBlock, _ := pem.Decode([]byte(c.LoginPrivateKey))
 	if privateBlock == nil {
 		panic("failed to parse PEM block containing the private key")
 	}
@@ -30,7 +36,7 @@ func (l *Login) Init(Token *conf.Token) error {
 	}
 	privateKey = prk
 
-	publicBlock, _ := pem.Decode([]byte(Token.Jwt.LoginPublicKey))
+	publicBlock, _ := pem.Decode([]byte(c.LoginPublicKey))
 	if err != nil {
 		return err
 	}

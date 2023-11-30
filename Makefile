@@ -25,12 +25,12 @@ init:
 
 
 .PHONY: config
-# generate server config
+# generate server  config
 config:
-	protoc --proto_path=./conf \
-		   --proto_path=./third_party \
- 	       --go_out=paths=source_relative:./conf \
-	       $(CONF_PROTO_FILES)
+	for PROTO_FILE in $$(find . -name '*.proto'); do \
+		DIR=$$(dirname "$$PROTO_FILE"); \
+		protoc --proto_path="$$DIR" -I ./third_party -I ./boot -I ./app --go_out=paths=source_relative:"$$DIR" "$$PROTO_FILE"; \
+	done
 
 # show help
 help:

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.redis;
+
+option go_package = "github.com/go-lynx/lynx/plugin/redis/conf";
+
+import "google/protobuf/duration.proto";
+
+message redis {
+  string network = 1;
+  string addr = 2;
+  string password = 3;
+  int32 db = 4;
+  google.protobuf.Duration dial_timeout = 5;
+  google.protobuf.Duration read_timeout = 6;
+  google.protobuf.Duration write_timeout = 7;
+}

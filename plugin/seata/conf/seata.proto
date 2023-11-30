@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.seata;
+
+option go_package = "base/config;config";
+
+import "google/protobuf/duration.proto";
+
+message Seata {
+  string addr = 1;
+  string token = 2;
+  google.protobuf.Duration dial_timeout = 3;
+}

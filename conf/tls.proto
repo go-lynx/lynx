@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package lynx.protobuf.app.conf;
+
+option go_package = "github.com/go-lynx/lynx/conf";
+
+message Tls {
+  string crt = 1;
+  string key = 2;
+  string rootCA = 3;
+}

@@ -3,15 +3,16 @@ package token
 import (
 	"github.com/go-kratos/kratos/contrib/polaris/v2"
 	"github.com/go-kratos/kratos/v2/config"
-	"github.com/go-lynx/lynx/boot"
-	"github.com/go-lynx/lynx/conf"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
+	polaris2 "github.com/go-lynx/lynx/plugin/polaris"
+	"github.com/go-lynx/lynx/plugin/token/conf"
 )
 
 var plugName = "token"
 
 type PlugToken struct {
-	t      conf.Token
+	t      conf.Jtw
 	l      []LoaderToken
 	weight int
 }
@@ -24,10 +25,10 @@ func (t *PlugToken) Name() string {
 	return plugName
 }
 
-func (t *PlugToken) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
-	boot.GetHelper().Infof("Initializing service token")
+func (t *PlugToken) Load(_ config.Value) (plugin.Plugin, error) {
+	app.Lynx().GetHelper().Infof("Initializing service token")
 
-	source, err := boot.Polaris().Config(polaris.WithConfigFile(polaris.File{
+	source, err := polaris2.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
 		Name:  "token.yaml",
 		Group: "common",
 	}))
@@ -36,15 +37,15 @@ func (t *PlugToken) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 		return nil, err
 	}
 
-	c := config.New(
+	s := config.New(
 		config.WithSource(source),
 	)
 
-	if err := c.Load(); err != nil {
+	if err := s.Load(); err != nil {
 		return nil, err
 	}
 
-	if err := c.Scan(&t.t); err != nil {
+	if err := s.Scan(&t.t); err != nil {
 		return nil, err
 	}
 
@@ -57,7 +58,7 @@ func (t *PlugToken) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 		}
 	}
 
-	boot.GetHelper().Infof("Service token successfully initialized")
+	app.Lynx().GetHelper().Infof("Service token successfully initialized")
 	return t, nil
 }
 
@@ -77,5 +78,5 @@ func Token(l ...LoaderToken) plugin.Plugin {
 }
 
 type LoaderToken interface {
-	Init(Token *conf.Token) error
+	Init(Token *conf.Jtw) error
 }

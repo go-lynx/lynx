@@ -1,69 +1,18 @@
 syntax = "proto3";
-package kratos.api;
 
-option go_package = "base/conf;conf";
+package lynx.protobuf.app.conf;
 
-import "google/protobuf/duration.proto";
+option go_package = "github.com/go-lynx/lynx/conf";
 
 message Bootstrap {
-  Server server = 1;
-  Data data = 2;
+  Lynx lynx = 1;
 }
 
-message Server {
+message Lynx {
+  Application application = 1;
+}
 
-  message HTTP {
-    string network = 1;
-    string addr = 2;
-    google.protobuf.Duration timeout = 3;
-  }
-
-  message GRPC {
-    string network = 1;
-    string addr = 2;
-    google.protobuf.Duration timeout = 3;
-  }
-
-  message Tracer {
-    string addr = 2;
-  }
-
-  message Polaris {
-    string namespace = 1;
-    string token = 2;
-    int32 weight = 4;
-    int32 ttl = 5;
-    google.protobuf.Duration timeout = 6;
-  }
-
+message Application {
   string name = 1;
   string version = 2;
-  HTTP http = 3;
-  GRPC grpc = 4;
-  Tracer tracer = 5;
-  Polaris polaris = 6;
-}
-
-message Data {
-
-  message Database {
-    string driver = 1;
-    string source = 2;
-    int32 min_conn = 3;
-    int32 max_conn = 4;
-    google.protobuf.Duration max_idle_time = 5;
-  }
-
-  message Redis {
-    string network = 1;
-    string addr = 2;
-    string password = 3;
-    int32 db = 7;
-    google.protobuf.Duration dial_timeout = 4;
-    google.protobuf.Duration read_timeout = 5;
-    google.protobuf.Duration write_timeout = 6;
-  }
-
-  Database database = 1;
-  Redis redis = 2;
 }

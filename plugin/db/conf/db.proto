@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.db;
+
+option go_package = "github.com/go-lynx/lynx/plugin/db/conf";
+
+import "google/protobuf/duration.proto";
+
+message db {
+  string driver = 1;
+  string source = 2;
+  int32 min_conn = 3;
+  int32 max_conn = 4;
+  google.protobuf.Duration max_idle_time = 5;
+}
