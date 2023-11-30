@@ -17,10 +17,10 @@ func NewLynxPluginManager(p ...plugin.Plugin) *LynxPluginManager {
 		plugMap: make(map[string]plugin.Plugin),
 	}
 
+	// Manually set plugins
 	if p != nil && len(p) > 1 {
 		m.plugins = append(m.plugins, p...)
 		for i := 0; i < len(p); i++ {
-			m.pluginCheck(p[i].Name())
 			m.plugMap[p[i].Name()] = p[i]
 		}
 	}
@@ -28,20 +28,6 @@ func NewLynxPluginManager(p ...plugin.Plugin) *LynxPluginManager {
 }
 
 func (m *LynxPluginManager) LoadPlugins() {
-	plugMarks := ParseConfig()
-	for i := 0; i < len(plugMarks); i++ {
-		if _, exists := m.plugMap[plugMarks[i]]; !exists {
-			p, err := m.factory.Create(plugMarks[i])
-			if err != nil {
-				Lynx().dfLog.Errorf("Plugin factory load error: %v", err)
-				panic(err)
-			}
-			m.plugins = append(m.plugins, p)
-			m.pluginCheck(p.Name())
-			m.plugMap[p.Name()] = p
-		}
-	}
-
 	// Load plugins based on weight
 	for i := 0; i < len(m.plugins); i++ {
 		p, err := m.plugins[i].Load(nil)
@@ -52,19 +38,31 @@ func (m *LynxPluginManager) LoadPlugins() {
 	}
 }
 
-func (m *LynxPluginManager) pluginCheck(name string) {
-	// Check for duplicate plugin names
-	if existingPlugin, exists := m.plugMap[name]; exists {
-		Lynx().dfLog.Errorf("Duplicate plugin name: %v . Existing Plugin: %v", name, existingPlugin)
-		panic("Duplicate plugin name: " + name)
-	}
-}
-
 func (m *LynxPluginManager) UnloadPlugins() {
 	for i := 0; i < len(m.plugins); i++ {
 		err := m.plugins[i].Unload()
 		if err != nil {
 			Lynx().dfLog.Errorf("Exception in uninstalling %v plugin", m.plugins[i].Name(), err)
+		}
+	}
+}
+
+func (m *LynxPluginManager) LoadSpecificPlugins(plugins []string) {
+	// Load plugins based on weight
+	for i := 0; i < len(plugins); i++ {
+		p, err := m.plugMap[plugins[i]].Load(nil)
+		if err != nil {
+			Lynx().dfLog.Errorf("Exception in initializing %v plugin :", p.Name(), err)
+			panic(err)
+		}
+	}
+}
+
+func (m *LynxPluginManager) UnloadSpecificPlugins(plugins []string) {
+	for i := 0; i < len(plugins); i++ {
+		err := m.plugMap[plugins[i]].Unload()
+		if err != nil {
+			Lynx().dfLog.Errorf("Exception in uninstalling %v plugin", plugins[i], err)
 		}
 	}
 }
