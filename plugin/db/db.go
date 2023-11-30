@@ -4,7 +4,7 @@ import (
 	"context"
 	_ "database/sql"
 	"entgo.io/ent/dialect/sql"
-	"fmt"
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/db/conf"
@@ -34,10 +34,11 @@ func (db *PlugDB) Weight() int {
 	return db.weight
 }
 
-func (db *PlugDB) Load(base interface{}) (plugin.Plugin, error) {
-	c, ok := base.(*conf.Db)
-	if !ok {
-		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+func (db *PlugDB) Load(b config.Value) (plugin.Plugin, error) {
+	var c conf.Db
+	err := b.Scan(&c)
+	if err != nil {
+		return nil, err
 	}
 
 	app.Lynx().GetHelper().Infof("Initializing database")

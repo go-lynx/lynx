@@ -47,7 +47,7 @@ func (b *Boot) Run() {
 	app.Lynx().PlugManager().PreparePlug(b.conf)
 
 	// Load the plugin first, then execute the wireApp
-	app.Lynx().PlugManager().LoadPlugins()
+	app.Lynx().PlugManager().LoadPlugins(b.conf)
 	k, err := b.wire(c, app.Lynx().GetLogger())
 	if err != nil {
 		app.Lynx().GetHelper().Error(err)

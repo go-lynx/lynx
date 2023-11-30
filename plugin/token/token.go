@@ -25,7 +25,7 @@ func (t *PlugToken) Name() string {
 	return plugName
 }
 
-func (t *PlugToken) Load(_ interface{}) (plugin.Plugin, error) {
+func (t *PlugToken) Load(_ config.Value) (plugin.Plugin, error) {
 	app.Lynx().GetHelper().Infof("Initializing service token")
 
 	source, err := polaris2.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
