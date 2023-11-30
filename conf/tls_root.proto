@@ -1,8 +1,0 @@
-syntax = "proto3";
-package kratos.api;
-
-option go_package = "base/conf;conf";
-
-message TlsRoot {
-  string rootCA = 1;
-}

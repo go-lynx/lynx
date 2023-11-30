@@ -2,9 +2,10 @@ package tracer
 
 import (
 	"bytes"
-	"github.com/go-lynx/lynx/boot"
-	"github.com/go-lynx/lynx/conf"
+	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugin/tracer/conf"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
@@ -35,16 +36,22 @@ func (t *PlugTracer) Name() string {
 	return plugName
 }
 
-func (t *PlugTracer) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
-	boot.GetHelper().Infof("Initializing link monitoring component")
-	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(b.Server.Tracer.Addr)))
+func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
+	var c conf.Tracer
+	err := b.Scan(&c)
+	if err != nil {
+		return nil, err
+	}
+
+	app.Lynx().GetHelper().Infof("Initializing link monitoring component")
+	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(c.Addr)))
 	if err != nil {
 		return nil, err
 	}
 	buf := new(bytes.Buffer)
-	buf.WriteString(b.Server.Name)
+	buf.WriteString(app.Name())
 	buf.WriteString("-")
-	buf.WriteString(b.Server.Version)
+	buf.WriteString(app.Version())
 	tp := traceSdk.NewTracerProvider(
 		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(1.0))),
 		traceSdk.WithBatcher(exp),
@@ -55,7 +62,7 @@ func (t *PlugTracer) Load(b *conf.Bootstrap) (plugin.Plugin, error) {
 		)),
 	)
 	otel.SetTracerProvider(tp)
-	boot.GetHelper().Infof("Link monitoring component successfully initialized")
+	app.Lynx().GetHelper().Infof("Link monitoring component successfully initialized")
 	return t, nil
 }
 

@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.token;
+
+option go_package = "github.com/go-lynx/lynx/plugin/token/conf";
+
+message jtw {
+  string login_method = 1;
+  string login_private_key = 2;
+  string login_public_key = 3;
+}

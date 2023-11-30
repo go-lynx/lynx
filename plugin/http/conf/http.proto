@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.http;
+
+option go_package = "github.com/go-lynx/lynx/plugin/http/conf";
+
+import "google/protobuf/duration.proto";
+
+message http {
+  string network = 1;
+  string addr = 2;
+  google.protobuf.Duration timeout = 3;
+}
