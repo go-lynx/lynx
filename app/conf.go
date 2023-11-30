@@ -1,9 +1,7 @@
 package app
 
-// ParseConfig Bootstrap plugin loading through remote or local configuration files
-func ParseConfig() []string {
-	if Lynx().ControlPlane() != nil {
+// PreparePlug Bootstrap plugin loading through remote or local configuration files
+func (m *LynxPluginManager) PreparePlug(yaml ...string) []string {
 
-	}
 	return nil
 }

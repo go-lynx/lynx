@@ -19,6 +19,7 @@ var (
 type Boot struct {
 	wire    wireApp
 	plugins []plugin.Plugin
+	conf    string
 }
 
 func init() {
@@ -36,15 +37,16 @@ type wireApp func(confServer *conf.Bootstrap, logger log.Logger) (*kratos.App, e
 func (b *Boot) Run() {
 	st := time.Now()
 
-	c := localBootFileLoad()
+	c := b.localBootFileLoad()
 	app.NewApp(c, b.plugins...)
 	app.Lynx().InitLogger()
 
 	app.Lynx().GetHelper().Infof("Lynx application is starting up")
-	// Load the plugin first, then execute the wireApp
 	defer app.Lynx().PlugManager().UnloadPlugins()
-	app.Lynx().PlugManager().LoadPlugins()
+	app.Lynx().PlugManager().PreparePlug(b.conf)
 
+	// Load the plugin first, then execute the wireApp
+	app.Lynx().PlugManager().LoadPlugins()
 	k, err := b.wire(c, app.Lynx().GetLogger())
 	if err != nil {
 		app.Lynx().GetHelper().Error(err)

@@ -22,6 +22,8 @@ type Plugin interface {
 type Manger interface {
 	LoadPlugins()
 	UnloadPlugins()
+	LoadSpecificPlugins(plugins []string)
+	UnloadSpecificPlugins(plugins []string)
 }
 
 type Factory struct {
@@ -44,4 +46,9 @@ func (f *Factory) Create(name string) (Plugin, error) {
 		return nil, errors.New("invalid plugin name")
 	}
 	return creator(), nil
+}
+
+func (f *Factory) Exists(name string) bool {
+	_, exists := f.creators[name]
+	return exists
 }

@@ -44,6 +44,11 @@ func (p *PlugPolaris) Load(base interface{}) (plugin.Plugin, error) {
 
 	// set polaris plane for lynx
 	app.Lynx().SetControlPlane(p)
+	app.Lynx().PlugManager().LoadSpecificPlugins(
+		app.Lynx().PlugManager().PreparePlug(
+			app.Lynx().GetBootConfiguration(),
+		),
+	)
 	return p, nil
 }
 
