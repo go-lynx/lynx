@@ -53,9 +53,9 @@ func (a *LynxApp) SetControlPlane(plane ControlPlane) {
 	Lynx().plane = plane
 }
 
-func (a *LynxApp) GetBootConfiguration() string {
+func (a *LynxApp) GetBootConfiguration() map[string]config.Value {
 	if Lynx().ControlPlane() == nil {
-		return ""
+		return make(map[string]config.Value)
 	}
 	yaml := Name() + ".yaml"
 	Lynx().GetHelper().Infof("Reading from the configuration center,file:[%v] group:[%v] namespace:[%v]", yaml, Name(), Lynx().ControlPlane().Namespace())
@@ -69,6 +69,6 @@ func (a *LynxApp) GetBootConfiguration() string {
 	if err := c.Load(); err != nil {
 		panic(err)
 	}
-	val, _ := c.Value("lynx").String()
+	val, _ := c.Value("lynx").Map()
 	return val
 }
