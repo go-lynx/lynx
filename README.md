@@ -37,7 +37,7 @@ Lynx harnesses the power of several open-source projects for its core components
 - [Polaris](https://github.com/polarismesh/polaris)
 ## Quick Install
 
-> If you want to use this microservice code template, all you need to do is execute the following command to install the Lynx CLI command-line tool, and then run the new command to automatically initialize a runnable project (the new command can support multiple project names).
+> If you want to use this lynx microservice, all you need to do is execute the following command to install the Lynx CLI command-line tool, and then run the new command to automatically initialize a runnable project (the new command can support multiple project names).
 
 ```shell
 go install github.com/go-lynx/lynx/cmd/lynx@latest
