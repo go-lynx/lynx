@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
@@ -45,11 +45,13 @@ func (g *ServiceGrpc) Name() string {
 	return name
 }
 
-func (g *ServiceGrpc) Load(base interface{}) (plugin.Plugin, error) {
-	c, ok := base.(*conf.Grpc)
-	if !ok {
-		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
+	var c conf.Grpc
+	err := b.Scan(&c)
+	if err != nil {
+		return nil, err
 	}
+
 	app.Lynx().GetHelper().Infof("Initializing GRPC service")
 
 	var opts = []grpc.ServerOption{

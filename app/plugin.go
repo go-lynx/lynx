@@ -1,7 +1,9 @@
 package app
 
 import (
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/plugin"
+	"sort"
 )
 
 type LynxPluginManager struct {
@@ -27,10 +29,11 @@ func NewLynxPluginManager(p ...plugin.Plugin) *LynxPluginManager {
 	return m
 }
 
-func (m *LynxPluginManager) LoadPlugins() {
-	// Load plugins based on weight
-	for i := 0; i < len(m.plugins); i++ {
-		_, err := m.plugins[i].Load(nil)
+func (m *LynxPluginManager) LoadPlugins(b map[string]config.Value) {
+	sort.Sort(ByWeight(m.plugins))
+	size := len(m.plugins)
+	for i := 0; i < size; i++ {
+		_, err := m.plugins[i].Load(b[m.plugins[i].Name()])
 		if err != nil {
 			Lynx().GetHelper().Errorf("Exception in initializing %v plugin :", m.plugins[i].Name(), err)
 			panic(err)
@@ -39,7 +42,8 @@ func (m *LynxPluginManager) LoadPlugins() {
 }
 
 func (m *LynxPluginManager) UnloadPlugins() {
-	for i := 0; i < len(m.plugins); i++ {
+	size := len(m.plugins)
+	for i := 0; i < size; i++ {
 		err := m.plugins[i].Unload()
 		if err != nil {
 			Lynx().GetHelper().Errorf("Exception in uninstalling %v plugin", m.plugins[i].Name(), err)
@@ -47,12 +51,17 @@ func (m *LynxPluginManager) UnloadPlugins() {
 	}
 }
 
-func (m *LynxPluginManager) LoadSpecificPlugins(plugins []string) {
+func (m *LynxPluginManager) LoadSpecificPlugins(name []string, b map[string]config.Value) {
 	// Load plugins based on weight
-	for i := 0; i < len(plugins); i++ {
-		_, err := m.plugMap[plugins[i]].Load(nil)
+	var plugs []plugin.Plugin
+	for i := 0; i < len(name); i++ {
+		plugs = append(plugs, m.plugMap[name[i]])
+	}
+	sort.Sort(ByWeight(plugs))
+	for i := 0; i < len(plugs); i++ {
+		_, err := plugs[i].Load(b[name[i]])
 		if err != nil {
-			Lynx().GetHelper().Errorf("Exception in initializing %v plugin :", plugins[i], err)
+			Lynx().GetHelper().Errorf("Exception in initializing %v plugin :", name[i], err)
 			panic(err)
 		}
 	}

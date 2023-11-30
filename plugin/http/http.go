@@ -2,7 +2,7 @@ package http
 
 import (
 	"context"
-	"fmt"
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
@@ -36,11 +36,13 @@ func (h *ServiceHttp) Weight() int {
 	return h.weight
 }
 
-func (h *ServiceHttp) Load(base interface{}) (plugin.Plugin, error) {
-	c, ok := base.(*conf.Http)
-	if !ok {
-		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
+	var c conf.Http
+	err := b.Scan(&c)
+	if err != nil {
+		return nil, err
 	}
+
 	app.Lynx().GetHelper().Infof("Initializing HTTP service")
 
 	var opts = []http.ServerOption{

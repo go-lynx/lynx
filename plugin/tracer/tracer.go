@@ -2,7 +2,7 @@ package tracer
 
 import (
 	"bytes"
-	"fmt"
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/tracer/conf"
@@ -36,10 +36,11 @@ func (t *PlugTracer) Name() string {
 	return plugName
 }
 
-func (t *PlugTracer) Load(base interface{}) (plugin.Plugin, error) {
-	c, ok := base.(*conf.Tracer)
-	if !ok {
-		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
+	var c conf.Tracer
+	err := b.Scan(&c)
+	if err != nil {
+		return nil, err
 	}
 
 	app.Lynx().GetHelper().Infof("Initializing link monitoring component")

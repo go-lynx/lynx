@@ -2,7 +2,7 @@ package redis
 
 import (
 	"context"
-	"fmt"
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/redis/conf"
@@ -33,10 +33,11 @@ func (r *PlugRedis) Weight() int {
 	return r.weight
 }
 
-func (r *PlugRedis) Load(base interface{}) (plugin.Plugin, error) {
-	c, ok := base.(*conf.Redis)
-	if !ok {
-		return nil, fmt.Errorf("invalid c type, expected *conf.Grpc")
+func (r *PlugRedis) Load(b config.Value) (plugin.Plugin, error) {
+	var c conf.Redis
+	err := b.Scan(&c)
+	if err != nil {
+		return nil, err
 	}
 
 	app.Lynx().GetHelper().Infof("Initializing Redis")
@@ -50,7 +51,7 @@ func (r *PlugRedis) Load(base interface{}) (plugin.Plugin, error) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := r.rdb.Ping(ctx).Result()
+	_, err = r.rdb.Ping(ctx).Result()
 	if err != nil {
 		return nil, err
 	}

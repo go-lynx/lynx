@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"errors"
+	"github.com/go-kratos/kratos/v2/config"
 )
 
 var (
@@ -15,7 +16,7 @@ func GlobalPluginFactory() *Factory {
 type Plugin interface {
 	Weight() int
 	Name() string
-	Load(config interface{}) (Plugin, error)
+	Load(config.Value) (Plugin, error)
 	Unload() error
 }
 
