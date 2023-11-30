@@ -30,8 +30,8 @@ func NewLynxPluginManager(p ...plugin.Plugin) *LynxPluginManager {
 }
 
 func (m *LynxPluginManager) LoadPlugins(b map[string]config.Value) {
-	sort.Sort(ByWeight(m.plugins))
 	size := len(m.plugins)
+	sort.Sort(ByWeight(m.plugins))
 	for i := 0; i < size; i++ {
 		_, err := m.plugins[i].Load(b[m.plugins[i].Name()])
 		if err != nil {
@@ -59,7 +59,7 @@ func (m *LynxPluginManager) LoadSpecificPlugins(name []string, b map[string]conf
 	}
 	sort.Sort(ByWeight(plugs))
 	for i := 0; i < len(plugs); i++ {
-		_, err := plugs[i].Load(b[name[i]])
+		_, err := plugs[i].Load(b[plugs[i].Name()])
 		if err != nil {
 			Lynx().GetHelper().Errorf("Exception in initializing %v plugin :", name[i], err)
 			panic(err)
