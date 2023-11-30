@@ -3,6 +3,7 @@ package boot
 import (
 	"flag"
 	"github.com/go-kratos/kratos/v2"
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/encoding/json"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/app"
@@ -19,7 +20,7 @@ var (
 type Boot struct {
 	wire    wireApp
 	plugins []plugin.Plugin
-	conf    string
+	conf    map[string]config.Value
 }
 
 func init() {
