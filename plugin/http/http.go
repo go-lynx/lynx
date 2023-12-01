@@ -17,6 +17,7 @@ var name = "http"
 
 type ServiceHttp struct {
 	http   *http.Server
+	conf   conf.Http
 	weight int
 }
 
@@ -37,8 +38,7 @@ func (h *ServiceHttp) Weight() int {
 }
 
 func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
-	var c conf.Http
-	err := b.Scan(&c)
+	err := b.Scan(&h.conf)
 	if err != nil {
 		return nil, err
 	}
@@ -63,14 +63,14 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 		http.ResponseEncoder(ResponseEncoder),
 	}
 
-	if c.Network != "" {
-		opts = append(opts, http.Network(c.Network))
+	if h.conf.Network != "" {
+		opts = append(opts, http.Network(h.conf.Network))
 	}
-	if c.Addr != "" {
-		opts = append(opts, http.Address(c.Addr))
+	if h.conf.Addr != "" {
+		opts = append(opts, http.Address(h.conf.Addr))
 	}
-	if c.Timeout != nil {
-		opts = append(opts, http.Timeout(c.Timeout.AsDuration()))
+	if h.conf.Timeout != nil {
+		opts = append(opts, http.Timeout(h.conf.Timeout.AsDuration()))
 	}
 
 	h.http = http.NewServer(opts...)
