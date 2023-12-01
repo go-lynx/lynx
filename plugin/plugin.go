@@ -21,10 +21,11 @@ type Plugin interface {
 }
 
 type Manger interface {
-	LoadPlugins()
+	LoadPlugins(map[string]config.Value)
 	UnloadPlugins()
-	LoadSpecificPlugins(plugins []string)
+	LoadSpecificPlugins(plugins []string, config map[string]config.Value)
 	UnloadSpecificPlugins(plugins []string)
+	GetPlugin(name string) Plugin
 }
 
 type Factory struct {
