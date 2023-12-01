@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package lynx.protobuf.plugin.seata;
 
-option go_package = "base/config;config";
+option go_package = "github.com/go-lynx/lynx/plugin/seata/conf";
 
 import "google/protobuf/duration.proto";
 
