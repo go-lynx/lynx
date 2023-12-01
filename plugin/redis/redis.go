@@ -14,6 +14,7 @@ var plugName = "redis"
 
 type PlugRedis struct {
 	rdb    *redis.Client
+	conf   conf.Redis
 	weight int
 }
 
@@ -34,20 +35,19 @@ func (r *PlugRedis) Weight() int {
 }
 
 func (r *PlugRedis) Load(b config.Value) (plugin.Plugin, error) {
-	var c conf.Redis
-	err := b.Scan(&c)
+	err := b.Scan(&r.conf)
 	if err != nil {
 		return nil, err
 	}
 
 	app.Lynx().GetHelper().Infof("Initializing Redis")
 	r.rdb = redis.NewClient(&redis.Options{
-		Addr:         c.Addr,
-		Password:     c.Password,
-		DB:           int(c.Db),
-		DialTimeout:  c.DialTimeout.AsDuration(),
-		WriteTimeout: c.WriteTimeout.AsDuration(),
-		ReadTimeout:  c.ReadTimeout.AsDuration(),
+		Addr:         r.conf.Addr,
+		Password:     r.conf.Password,
+		DB:           int(r.conf.Db),
+		DialTimeout:  r.conf.DialTimeout.AsDuration(),
+		WriteTimeout: r.conf.WriteTimeout.AsDuration(),
+		ReadTimeout:  r.conf.ReadTimeout.AsDuration(),
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

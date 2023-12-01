@@ -17,6 +17,7 @@ import (
 var plugName = "tracer"
 
 type PlugTracer struct {
+	conf   conf.Tracer
 	weight int
 }
 
@@ -37,14 +38,13 @@ func (t *PlugTracer) Name() string {
 }
 
 func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
-	var c conf.Tracer
-	err := b.Scan(&c)
+	err := b.Scan(&t.conf)
 	if err != nil {
 		return nil, err
 	}
 
 	app.Lynx().GetHelper().Infof("Initializing link monitoring component")
-	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(c.Addr)))
+	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(t.conf.Addr)))
 	if err != nil {
 		return nil, err
 	}

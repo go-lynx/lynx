@@ -15,6 +15,7 @@ var name = "db"
 
 type PlugDB struct {
 	dri    *sql.Driver
+	conf   conf.Db
 	weight int
 }
 
@@ -35,16 +36,15 @@ func (db *PlugDB) Weight() int {
 }
 
 func (db *PlugDB) Load(b config.Value) (plugin.Plugin, error) {
-	var c conf.Db
-	err := b.Scan(&c)
+	err := b.Scan(&db.conf)
 	if err != nil {
 		return nil, err
 	}
 
 	app.Lynx().GetHelper().Infof("Initializing database")
 	drv, err := sql.Open(
-		c.Driver,
-		c.Source,
+		db.conf.Driver,
+		db.conf.Source,
 	)
 
 	if err != nil {
@@ -52,9 +52,9 @@ func (db *PlugDB) Load(b config.Value) (plugin.Plugin, error) {
 		panic(err)
 	}
 
-	drv.DB().SetMaxIdleConns(int(c.MinConn))
-	drv.DB().SetMaxOpenConns(int(c.MaxConn))
-	drv.DB().SetConnMaxIdleTime(c.MaxIdleTime.AsDuration())
+	drv.DB().SetMaxIdleConns(int(db.conf.MinConn))
+	drv.DB().SetMaxOpenConns(int(db.conf.MaxConn))
+	drv.DB().SetConnMaxIdleTime(db.conf.MaxIdleTime.AsDuration())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

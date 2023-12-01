@@ -12,8 +12,8 @@ import (
 var plugName = "token"
 
 type PlugToken struct {
-	t      conf.Jtw
-	l      []LoaderToken
+	conf   conf.Jtw
+	token  []LoaderToken
 	weight int
 }
 
@@ -25,7 +25,12 @@ func (t *PlugToken) Name() string {
 	return plugName
 }
 
-func (t *PlugToken) Load(_ config.Value) (plugin.Plugin, error) {
+func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
+	err := b.Scan(&t.conf)
+	if err != nil {
+		return nil, err
+	}
+
 	app.Lynx().GetHelper().Infof("Initializing service token")
 
 	source, err := polaris2.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
@@ -45,13 +50,13 @@ func (t *PlugToken) Load(_ config.Value) (plugin.Plugin, error) {
 		return nil, err
 	}
 
-	if err := s.Scan(&t.t); err != nil {
+	if err := s.Scan(&t.conf); err != nil {
 		return nil, err
 	}
 
-	if t.l != nil && len(t.l) > 0 {
-		for _, l := range t.l {
-			err := l.Init(&t.t)
+	if t.token != nil && len(t.token) > 0 {
+		for _, l := range t.token {
+			err := l.Init(&t.conf)
 			if err != nil {
 				return nil, err
 			}
@@ -70,10 +75,10 @@ func GetName() string {
 	return plugName
 }
 
-func Token(l ...LoaderToken) plugin.Plugin {
+func Token(token ...LoaderToken) plugin.Plugin {
 	return &PlugToken{
 		weight: 0,
-		l:      l,
+		token:  token,
 	}
 }
 
