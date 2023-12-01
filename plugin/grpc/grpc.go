@@ -19,6 +19,7 @@ var name = "grpc"
 
 type ServiceGrpc struct {
 	grpc   *grpc.Server
+	conf   conf.Grpc
 	weight int
 	tls    bool
 }
@@ -46,8 +47,7 @@ func (g *ServiceGrpc) Name() string {
 }
 
 func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
-	var c conf.Grpc
-	err := b.Scan(&c)
+	err := b.Scan(&g.conf)
 	if err != nil {
 		return nil, err
 	}
@@ -69,14 +69,14 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 		),
 	}
 
-	if c.Network != "" {
-		opts = append(opts, grpc.Network(c.Network))
+	if g.conf.Network != "" {
+		opts = append(opts, grpc.Network(g.conf.Network))
 	}
-	if c.Addr != "" {
-		opts = append(opts, grpc.Address(c.Addr))
+	if g.conf.Addr != "" {
+		opts = append(opts, grpc.Address(g.conf.Addr))
 	}
-	if c.Timeout != nil {
-		opts = append(opts, grpc.Timeout(c.Timeout.AsDuration()))
+	if g.conf.Timeout != nil {
+		opts = append(opts, grpc.Timeout(g.conf.Timeout.AsDuration()))
 	}
 
 	if g.tls {
