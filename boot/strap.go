@@ -38,7 +38,7 @@ type wireApp func(confServer *conf.Bootstrap, logger log.Logger) (*kratos.App, e
 func (b *Boot) Run() {
 	st := time.Now()
 
-	c := b.localBootFileLoad()
+	c := b.loadLocalBootFile()
 	app.NewApp(c, b.plugins...)
 	app.Lynx().InitLogger()
 
