@@ -7,8 +7,8 @@ import (
 	"github.com/go-lynx/lynx/conf"
 )
 
-// localBootFileLoad Boot configuration file for service startup loaded from local
-func (b *Boot) localBootFileLoad() *conf.Bootstrap {
+// loadLocalBootFile Boot configuration file for service startup loaded from local
+func (b *Boot) loadLocalBootFile() *conf.Bootstrap {
 	log.Info("Lynx reading local bootstrap configuration file/folder:" + flagConf)
 	c := config.New(
 		config.WithSource(
