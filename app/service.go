@@ -52,11 +52,11 @@ func ServiceDiscovery() registry.Discovery {
 }
 
 func (a *LynxApp) ControlPlane() ControlPlane {
-	return Lynx().plane
+	return Lynx().controlPlane
 }
 
 func (a *LynxApp) SetControlPlane(plane ControlPlane) {
-	Lynx().plane = plane
+	Lynx().controlPlane = plane
 }
 
 func (a *LynxApp) GetBootConfiguration() map[string]config.Value {

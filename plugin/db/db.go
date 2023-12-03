@@ -69,11 +69,14 @@ func (db *PlugDB) Load(b config.Value) (plugin.Plugin, error) {
 }
 
 func (db *PlugDB) Unload() error {
-	app.Lynx().GetHelper().Info("message", "Closing the DataBase resources")
+	if db.dri == nil {
+		return nil
+	}
 	if err := db.dri.Close(); err != nil {
 		app.Lynx().GetHelper().Error(err)
 		return err
 	}
+	app.Lynx().GetHelper().Info("message", "Closing the DataBase resources")
 	return nil
 }
 

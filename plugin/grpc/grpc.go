@@ -105,10 +105,13 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 }
 
 func (g *ServiceGrpc) Unload() error {
-	app.Lynx().GetHelper().Info("message", "Closing the GRPC resources")
+	if g.grpc == nil {
+		return nil
+	}
 	if err := g.grpc.Stop(nil); err != nil {
 		app.Lynx().GetHelper().Error(err)
 	}
+	app.Lynx().GetHelper().Info("message", "Closing the GRPC resources")
 	return nil
 }
 

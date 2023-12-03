@@ -62,10 +62,6 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 		http.ResponseEncoder(ResponseEncoder),
 	}
 
-	if app.Lynx().ControlPlane() != nil {
-		opts = append(opts, http.Middleware(app.Lynx().ControlPlane().HttpRateLimit()))
-	}
-
 	if h.conf.Network != "" {
 		opts = append(opts, http.Network(h.conf.Network))
 	}
@@ -75,6 +71,9 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 	if h.conf.Timeout != nil {
 		opts = append(opts, http.Timeout(h.conf.Timeout.AsDuration()))
 	}
+	if app.Lynx().ControlPlane() != nil {
+		opts = append(opts, http.Middleware(app.Lynx().ControlPlane().HttpRateLimit()))
+	}
 
 	h.http = http.NewServer(opts...)
 	app.Lynx().GetHelper().Infof("HTTP service successfully initialized")
@@ -82,11 +81,14 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 }
 
 func (h *ServiceHttp) Unload() error {
-	app.Lynx().GetHelper().Info("message", "Closing the HTTP resources")
+	if h.http == nil {
+		return nil
+	}
 	if err := h.http.Close(); err != nil {
 		app.Lynx().GetHelper().Error(err)
 		return err
 	}
+	app.Lynx().GetHelper().Info("message", "Closing the HTTP resources")
 	return nil
 }
 

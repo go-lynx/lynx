@@ -42,12 +42,16 @@ func (r *PlugRedis) Load(b config.Value) (plugin.Plugin, error) {
 
 	app.Lynx().GetHelper().Infof("Initializing Redis")
 	r.rdb = redis.NewClient(&redis.Options{
-		Addr:         r.conf.Addr,
-		Password:     r.conf.Password,
-		DB:           int(r.conf.Db),
-		DialTimeout:  r.conf.DialTimeout.AsDuration(),
-		WriteTimeout: r.conf.WriteTimeout.AsDuration(),
-		ReadTimeout:  r.conf.ReadTimeout.AsDuration(),
+		Addr:            r.conf.Addr,
+		Password:        r.conf.Password,
+		DB:              int(r.conf.Db),
+		MinIdleConns:    int(r.conf.MinIdleConns),
+		MaxIdleConns:    int(r.conf.MaxIdleConns),
+		MaxActiveConns:  int(r.conf.MaxActiveConns),
+		DialTimeout:     r.conf.DialTimeout.AsDuration(),
+		WriteTimeout:    r.conf.WriteTimeout.AsDuration(),
+		ReadTimeout:     r.conf.ReadTimeout.AsDuration(),
+		ConnMaxIdleTime: r.conf.ConnMaxIdleTime.AsDuration(),
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -60,11 +64,14 @@ func (r *PlugRedis) Load(b config.Value) (plugin.Plugin, error) {
 }
 
 func (r *PlugRedis) Unload() error {
-	app.Lynx().GetHelper().Info("message", "Closing the Redis resources")
+	if r.rdb != nil {
+		return nil
+	}
 	if err := r.rdb.Close(); err != nil {
 		app.Lynx().GetHelper().Error(err)
 		return err
 	}
+	app.Lynx().GetHelper().Info("message", "Closing the Redis resources")
 	return nil
 }
 
