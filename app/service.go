@@ -38,10 +38,16 @@ type Config interface {
 }
 
 func ServiceRegistry() registry.Registrar {
+	if Lynx().ControlPlane() == nil {
+		return nil
+	}
 	return Lynx().ControlPlane().NewServiceRegistry()
 }
 
 func ServiceDiscovery() registry.Discovery {
+	if Lynx().ControlPlane() == nil {
+		return nil
+	}
 	return Lynx().ControlPlane().NewServiceDiscovery()
 }
 

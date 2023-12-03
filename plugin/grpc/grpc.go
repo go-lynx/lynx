@@ -65,7 +65,6 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 					return nil
 				}),
 			),
-			app.Lynx().ControlPlane().GrpcRateLimit(),
 		),
 	}
 
@@ -77,6 +76,9 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 	}
 	if g.conf.Timeout != nil {
 		opts = append(opts, grpc.Timeout(g.conf.Timeout.AsDuration()))
+	}
+	if app.Lynx().ControlPlane() != nil {
+		opts = append(opts, grpc.Middleware(app.Lynx().ControlPlane().HttpRateLimit()))
 	}
 
 	if g.tls {
