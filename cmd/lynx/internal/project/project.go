@@ -61,6 +61,7 @@ func run(_ *cobra.Command, args []string) {
 		var input string
 		err = survey.AskOne(prompt, &input)
 		if err != nil || input == "" {
+			fmt.Printf("\n❌ No project names found")
 			return
 		}
 		names = strings.Split(input, " ")
