@@ -62,7 +62,7 @@ func run(_ *cobra.Command, args []string) {
 		var input string
 		err = survey.AskOne(prompt, &input)
 		if err != nil || input == "" {
-			fmt.Printf("\n❌ No project names found")
+			fmt.Printf("\n❌ No project names found,Please provide the correct project name")
 			return
 		}
 		names = strings.Split(input, " ")
@@ -72,7 +72,7 @@ func run(_ *cobra.Command, args []string) {
 
 	names = checkDuplicates(names)
 	if len(names) < 1 {
-		fmt.Printf("\n❌ No project names found")
+		fmt.Printf("\n❌ No project names found,Please provide the correct project name")
 		return
 	}
 
