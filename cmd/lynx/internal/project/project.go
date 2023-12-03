@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -69,11 +70,11 @@ func run(_ *cobra.Command, args []string) {
 		names = args
 	}
 
+	names = checkDuplicates(names)
 	if len(names) < 1 {
 		fmt.Printf("\n❌ No project names found")
 		return
 	}
-	names = removeDuplicates(names)
 
 	// creation of multiple projects
 	done := make(chan error, len(names))
@@ -128,16 +129,18 @@ func processProjectParams(projectName string, workingDir string) (projectNameRes
 	return filepath.Base(_projectDir), filepath.Dir(_projectDir)
 }
 
-func removeDuplicates(names []string) []string {
+func checkDuplicates(names []string) []string {
 	encountered := map[string]bool{}
 	var result []string
 
+	pattern := `^[A-Za-z0-9_-]+$`
+	regex := regexp.MustCompile(pattern)
+
 	for _, name := range names {
-		if !encountered[name] {
+		if regex.MatchString(name) && !encountered[name] {
 			encountered[name] = true
 			result = append(result, name)
 		}
 	}
-
 	return result
 }
