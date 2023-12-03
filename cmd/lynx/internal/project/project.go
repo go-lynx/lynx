@@ -68,6 +68,12 @@ func run(_ *cobra.Command, args []string) {
 		names = args
 	}
 
+	if len(names) < 1 {
+		fmt.Printf("\n❌ No project names found")
+		return
+	}
+	names = removeDuplicates(names)
+
 	// creation of multiple projects
 	done := make(chan error, len(names))
 	var wg sync.WaitGroup
@@ -119,4 +125,18 @@ func processProjectParams(projectName string, workingDir string) (projectNameRes
 	}
 
 	return filepath.Base(_projectDir), filepath.Dir(_projectDir)
+}
+
+func removeDuplicates(names []string) []string {
+	encountered := map[string]bool{}
+	var result []string
+
+	for _, name := range names {
+		if !encountered[name] {
+			encountered[name] = true
+			result = append(result, name)
+		}
+	}
+
+	return result
 }
