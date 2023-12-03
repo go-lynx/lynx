@@ -58,9 +58,12 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 				}),
 			),
 			ResponsePack(),
-			app.Lynx().ControlPlane().HttpRateLimit(),
 		),
 		http.ResponseEncoder(ResponseEncoder),
+	}
+
+	if app.Lynx().ControlPlane() != nil {
+		opts = append(opts, http.Middleware(app.Lynx().ControlPlane().HttpRateLimit()))
 	}
 
 	if h.conf.Network != "" {
