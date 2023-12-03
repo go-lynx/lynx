@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-var plugName = "redis"
+var name = "redis"
 
 type PlugRedis struct {
 	rdb    *redis.Client
@@ -27,7 +27,7 @@ func Weight(w int) Option {
 }
 
 func (r *PlugRedis) Name() string {
-	return plugName
+	return name
 }
 
 func (r *PlugRedis) Weight() int {

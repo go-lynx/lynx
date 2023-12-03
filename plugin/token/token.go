@@ -9,7 +9,7 @@ import (
 	"github.com/go-lynx/lynx/plugin/token/conf"
 )
 
-var plugName = "token"
+var name = "token"
 
 type PlugToken struct {
 	conf   conf.Jtw
@@ -22,7 +22,7 @@ func (t *PlugToken) Weight() int {
 }
 
 func (t *PlugToken) Name() string {
-	return plugName
+	return name
 }
 
 func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
@@ -72,7 +72,7 @@ func (t *PlugToken) Unload() error {
 }
 
 func GetName() string {
-	return plugName
+	return name
 }
 
 func Token(token ...LoaderToken) plugin.Plugin {

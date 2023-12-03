@@ -61,7 +61,7 @@ func (m *LynxPluginManager) LoadSpecificPlugins(name []string, b map[string]conf
 	for i := 0; i < len(plugs); i++ {
 		_, err := plugs[i].Load(b[plugs[i].Name()])
 		if err != nil {
-			Lynx().GetHelper().Errorf("Exception in initializing %v plugin :", name[i], err)
+			Lynx().GetHelper().Errorf("Exception in initializing %v plugin :", plugs[i].Name(), err)
 			panic(err)
 		}
 	}

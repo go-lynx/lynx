@@ -5,7 +5,7 @@ import (
 )
 
 func init() {
-	plugin.GlobalPluginFactory().Register(plugName, func() plugin.Plugin {
+	plugin.GlobalPluginFactory().Register(name, func() plugin.Plugin {
 		return Token()
 	})
 }
