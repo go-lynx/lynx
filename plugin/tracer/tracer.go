@@ -14,7 +14,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
-var plugName = "tracer"
+var name = "tracer"
 
 type PlugTracer struct {
 	conf   conf.Tracer
@@ -34,7 +34,7 @@ func (t *PlugTracer) Weight() int {
 }
 
 func (t *PlugTracer) Name() string {
-	return plugName
+	return name
 }
 
 func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
