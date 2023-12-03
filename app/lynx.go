@@ -13,14 +13,14 @@ var (
 )
 
 type LynxApp struct {
-	host        string
-	name        string
-	version     string
-	dfLog       *log.Helper
-	logger      log.Logger
-	tls         *conf.Tls
-	plane       ControlPlane
-	plugManager *LynxPluginManager
+	host         string
+	name         string
+	version      string
+	dfLog        *log.Helper
+	logger       log.Logger
+	tls          *conf.Tls
+	controlPlane ControlPlane
+	plugManager  *LynxPluginManager
 }
 
 func Lynx() *LynxApp {

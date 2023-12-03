@@ -11,7 +11,11 @@ message redis {
   string addr = 2;
   string password = 3;
   int32 db = 4;
-  google.protobuf.Duration dial_timeout = 5;
-  google.protobuf.Duration read_timeout = 6;
-  google.protobuf.Duration write_timeout = 7;
+  int32 min_idle_conns = 5;
+  int32 max_idle_conns = 6;
+  int32 max_active_conns = 7;
+  google.protobuf.Duration conn_max_idle_time = 8;
+  google.protobuf.Duration dial_timeout = 9;
+  google.protobuf.Duration read_timeout = 10;
+  google.protobuf.Duration write_timeout = 11;
 }
