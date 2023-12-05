@@ -15,7 +15,7 @@ var name = "db"
 
 type PlugDB struct {
 	dri    *sql.Driver
-	conf   conf.Db
+	conf   *conf.Db
 	weight int
 }
 
@@ -24,6 +24,12 @@ type Option func(db *PlugDB)
 func Weight(w int) Option {
 	return func(db *PlugDB) {
 		db.weight = w
+	}
+}
+
+func Config(c *conf.Db) Option {
+	return func(db *PlugDB) {
+		db.conf = c
 	}
 }
 
@@ -36,7 +42,7 @@ func (db *PlugDB) Weight() int {
 }
 
 func (db *PlugDB) Load(b config.Value) (plugin.Plugin, error) {
-	err := b.Scan(&db.conf)
+	err := b.Scan(db.conf)
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +89,7 @@ func (db *PlugDB) Unload() error {
 func Db(opts ...Option) plugin.Plugin {
 	db := &PlugDB{
 		weight: 1000,
+		conf:   &conf.Db{},
 	}
 	for _, opt := range opts {
 		opt(db)
