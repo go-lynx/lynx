@@ -14,7 +14,7 @@ var name = "redis"
 
 type PlugRedis struct {
 	rdb    *redis.Client
-	conf   conf.Redis
+	conf   *conf.Redis
 	weight int
 }
 
@@ -23,6 +23,12 @@ type Option func(r *PlugRedis)
 func Weight(w int) Option {
 	return func(r *PlugRedis) {
 		r.weight = w
+	}
+}
+
+func Config(c *conf.Redis) Option {
+	return func(r *PlugRedis) {
+		r.conf = c
 	}
 }
 
@@ -35,7 +41,7 @@ func (r *PlugRedis) Weight() int {
 }
 
 func (r *PlugRedis) Load(b config.Value) (plugin.Plugin, error) {
-	err := b.Scan(&r.conf)
+	err := b.Scan(r.conf)
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +84,7 @@ func (r *PlugRedis) Unload() error {
 func Redis(opts ...Option) plugin.Plugin {
 	r := &PlugRedis{
 		weight: 1001,
+		conf:   &conf.Redis{},
 	}
 	for _, opt := range opts {
 		opt(r)

@@ -19,22 +19,21 @@ var name = "grpc"
 
 type ServiceGrpc struct {
 	grpc   *grpc.Server
-	conf   conf.Grpc
+	conf   *conf.Grpc
 	weight int
-	tls    bool
 }
 
 type Option func(g *ServiceGrpc)
 
-func EnableTls() Option {
-	return func(g *ServiceGrpc) {
-		g.tls = true
-	}
-}
-
 func Weight(w int) Option {
 	return func(g *ServiceGrpc) {
 		g.weight = w
+	}
+}
+
+func Config(c *conf.Grpc) Option {
+	return func(g *ServiceGrpc) {
+		g.conf = c
 	}
 }
 
@@ -47,7 +46,7 @@ func (g *ServiceGrpc) Name() string {
 }
 
 func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
-	err := b.Scan(&g.conf)
+	err := b.Scan(g.conf)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +80,7 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 		opts = append(opts, grpc.Middleware(app.Lynx().ControlPlane().HttpRateLimit()))
 	}
 
-	if g.tls {
+	if g.conf.Tls {
 		cert, err := tls.X509KeyPair([]byte(app.Lynx().Tls().Crt), []byte(app.Lynx().Tls().Key))
 		if err != nil {
 			return nil, err
@@ -117,8 +116,8 @@ func (g *ServiceGrpc) Unload() error {
 
 func Grpc(opts ...Option) plugin.Plugin {
 	s := &ServiceGrpc{
-		tls:    false,
 		weight: 500,
+		conf:   &conf.Grpc{},
 	}
 	for _, option := range opts {
 		option(s)

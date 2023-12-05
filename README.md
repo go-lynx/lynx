@@ -8,6 +8,7 @@
 <a href="https://discord.gg/2vq2Zsqq"><img src="https://img.shields.io/discord/1174545542689337497?label=chat&logo=discord" alt="Discord"></a>
 </p>
 
+##### Translate to: [简体中文](README_zh.md)
 
 ## Lynx: The Plug-and-Play Go Microservices Framework
 
