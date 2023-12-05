@@ -39,7 +39,7 @@ Lynx 利用了几个开源项目的力量作为其核心组件，包括：
 - [Polaris](https://github.com/polarismesh/polaris)
 ## 快速安装
 
-> 如果你想使用这个 Lynx 微服务，你只需要执行以下命令安装 Lynx CLI 命令行工具，然后运行新命令自动初始化一个可运行的项目（新命令可以支持多个项目名称）。
+> 如果你想使用这个 Lynx 微服务，你只需要执行以下命令安装 Lynx CLI 命令行工具，然后运行新命令自动初始化一个可运行的项目（new 命令可以支持多个项目名称）。
 
 ```shell
 go install github.com/go-lynx/lynx/cmd/lynx@latest
@@ -51,7 +51,7 @@ lynx new demo1 demo2 demo3
 
 ## 快速开始代码
 
-想要快速启动你的微服务，使用以下代码（一些功能可以根据你的选择插入或移出）：
+想要快速启动你的微服务，使用以下代码（一些功能可以根据你的配置文件插入或移出）：
 
 ```go
 func main() {
