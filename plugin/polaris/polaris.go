@@ -12,7 +12,7 @@ import (
 var name = "polaris"
 
 type PlugPolaris struct {
-	polaris polaris.Polaris
+	polaris *polaris.Polaris
 	conf    *conf.Polaris
 	weight  int
 }
@@ -51,11 +51,12 @@ func (p *PlugPolaris) Load(b config.Value) (plugin.Plugin, error) {
 		panic(err)
 	}
 
-	p.polaris = polaris.New(
+	polar := polaris.New(
 		sdk,
 		polaris.WithService(app.Name()),
 		polaris.WithNamespace(p.conf.Namespace),
 	)
+	p.polaris = &polar
 
 	// set polaris plane for lynx
 	app.Lynx().SetControlPlane(p)
