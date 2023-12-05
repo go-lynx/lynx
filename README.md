@@ -50,7 +50,7 @@ lynx new demo1 demo2 demo3
 
 ## Quick Start Code
 
-To get your microservice up and running in no time, use the following code (Some functionalities can be plugged in or out based on your choice.):
+To get your microservice up and running in no time, use the following code (Some functionalities can be plugged in or out based on your configuration file.):
 
 ```go
 func main() {
