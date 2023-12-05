@@ -12,7 +12,7 @@ import (
 var name = "token"
 
 type PlugToken struct {
-	conf   conf.Jtw
+	conf   *conf.Jtw
 	token  []LoaderToken
 	weight int
 }
@@ -26,7 +26,7 @@ func (t *PlugToken) Name() string {
 }
 
 func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
-	err := b.Scan(&t.conf)
+	err := b.Scan(t.conf)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
 
 	if t.token != nil && len(t.token) > 0 {
 		for _, l := range t.token {
-			err := l.Init(&t.conf)
+			err := l.Init(t.conf)
 			if err != nil {
 				return nil, err
 			}
@@ -79,6 +79,7 @@ func Token(token ...LoaderToken) plugin.Plugin {
 	return &PlugToken{
 		weight: 0,
 		token:  token,
+		conf:   &conf.Jtw{},
 	}
 }
 

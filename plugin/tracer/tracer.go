@@ -17,7 +17,7 @@ import (
 var name = "tracer"
 
 type PlugTracer struct {
-	conf   conf.Tracer
+	conf   *conf.Tracer
 	weight int
 }
 
@@ -26,6 +26,12 @@ type Option func(t *PlugTracer)
 func Weight(w int) Option {
 	return func(t *PlugTracer) {
 		t.weight = w
+	}
+}
+
+func Config(c *conf.Tracer) Option {
+	return func(t *PlugTracer) {
+		t.conf = c
 	}
 }
 
@@ -38,7 +44,7 @@ func (t *PlugTracer) Name() string {
 }
 
 func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
-	err := b.Scan(&t.conf)
+	err := b.Scan(t.conf)
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +79,7 @@ func (t *PlugTracer) Unload() error {
 func Tracer(opts ...Option) plugin.Plugin {
 	t := &PlugTracer{
 		weight: 700,
+		conf:   &conf.Tracer{},
 	}
 	for _, opt := range opts {
 		opt(t)

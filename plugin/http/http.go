@@ -17,7 +17,7 @@ var name = "http"
 
 type ServiceHttp struct {
 	http   *http.Server
-	conf   conf.Http
+	conf   *conf.Http
 	weight int
 }
 
@@ -26,6 +26,12 @@ type Option func(h *ServiceHttp)
 func Weight(w int) Option {
 	return func(h *ServiceHttp) {
 		h.weight = w
+	}
+}
+
+func Config(c *conf.Http) Option {
+	return func(h *ServiceHttp) {
+		h.conf = c
 	}
 }
 
@@ -38,7 +44,7 @@ func (h *ServiceHttp) Weight() int {
 }
 
 func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
-	err := b.Scan(&h.conf)
+	err := b.Scan(h.conf)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +101,7 @@ func (h *ServiceHttp) Unload() error {
 func Http(opts ...Option) plugin.Plugin {
 	s := &ServiceHttp{
 		weight: 600,
+		conf:   &conf.Http{},
 	}
 
 	for _, option := range opts {

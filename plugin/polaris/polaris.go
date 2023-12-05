@@ -13,8 +13,22 @@ var name = "polaris"
 
 type PlugPolaris struct {
 	polaris polaris.Polaris
-	conf    conf.Polaris
+	conf    *conf.Polaris
 	weight  int
+}
+
+type Option func(h *PlugPolaris)
+
+func Weight(w int) Option {
+	return func(h *PlugPolaris) {
+		h.weight = w
+	}
+}
+
+func Config(c *conf.Polaris) Option {
+	return func(p *PlugPolaris) {
+		p.conf = c
+	}
 }
 
 func (p *PlugPolaris) Weight() int {
@@ -26,7 +40,7 @@ func (p *PlugPolaris) Name() string {
 }
 
 func (p *PlugPolaris) Load(b config.Value) (plugin.Plugin, error) {
-	err := b.Scan(&p.conf)
+	err := b.Scan(p.conf)
 	if err != nil {
 		return nil, err
 	}
@@ -63,5 +77,6 @@ func (p *PlugPolaris) Unload() error {
 func Polaris() plugin.Plugin {
 	return &PlugPolaris{
 		weight: 999999,
+		conf:   &conf.Polaris{},
 	}
 }
