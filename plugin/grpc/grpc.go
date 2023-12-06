@@ -15,7 +15,10 @@ import (
 	"github.com/go-lynx/lynx/plugin/grpc/conf"
 )
 
-var name = "grpc"
+var (
+	name         = "grpc"
+	configPrefix = "lynx.grpc"
+)
 
 type ServiceGrpc struct {
 	grpc   *grpc.Server
@@ -43,6 +46,10 @@ func (g *ServiceGrpc) Weight() int {
 
 func (g *ServiceGrpc) Name() string {
 	return name
+}
+
+func (g *ServiceGrpc) ConfigPrefix() string {
+	return configPrefix
 }
 
 func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {

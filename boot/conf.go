@@ -29,6 +29,6 @@ func (b *Boot) loadLocalBootFile() *conf.Bootstrap {
 			panic(err)
 		}
 	}(c)
-	b.conf, _ = c.Value("lynx").Map()
+	b.conf = c
 	return &bootstrap
 }

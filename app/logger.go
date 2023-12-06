@@ -28,7 +28,10 @@ func (a *LynxApp) InitLogger() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	a.GetHelper().Infof("\n" + string(data))
+
+	if a.GetConfig().GetApplication().GetBanner() {
+		a.GetHelper().Infof("\n" + string(data))
+	}
 }
 
 func (a *LynxApp) GetHelper() *log.Helper {

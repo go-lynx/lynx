@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-var name = "db"
+var (
+	name         = "db"
+	configPrefix = "lynx.db"
+)
 
 type PlugDB struct {
 	dri    *sql.Driver
@@ -39,6 +42,10 @@ func (db *PlugDB) Name() string {
 
 func (db *PlugDB) Weight() int {
 	return db.weight
+}
+
+func (db *PlugDB) ConfigPrefix() string {
+	return configPrefix
 }
 
 func (db *PlugDB) Load(b config.Value) (plugin.Plugin, error) {

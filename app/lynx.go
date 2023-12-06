@@ -16,6 +16,7 @@ type LynxApp struct {
 	host         string
 	name         string
 	version      string
+	conf         *conf.Lynx
 	dfLog        *log.Helper
 	logger       log.Logger
 	tls          *conf.Tls
@@ -46,6 +47,7 @@ func NewApp(c *conf.Bootstrap, p ...plugin.Plugin) *LynxApp {
 		host:        host,
 		name:        c.Lynx.Application.Name,
 		version:     c.Lynx.Application.Version,
+		conf:        c.Lynx,
 		plugManager: NewLynxPluginManager(p...),
 	}
 	// The lynxApp is in Singleton pattern
@@ -55,4 +57,8 @@ func NewApp(c *conf.Bootstrap, p ...plugin.Plugin) *LynxApp {
 
 func (a *LynxApp) PlugManager() *LynxPluginManager {
 	return a.plugManager
+}
+
+func (a *LynxApp) GetConfig() *conf.Lynx {
+	return a.conf
 }

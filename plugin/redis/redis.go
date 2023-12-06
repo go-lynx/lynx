@@ -10,7 +10,10 @@ import (
 	"time"
 )
 
-var name = "redis"
+var (
+	name         = "redis"
+	configPrefix = "lynx.redis"
+)
 
 type PlugRedis struct {
 	rdb    *redis.Client
@@ -34,6 +37,10 @@ func Config(c *conf.Redis) Option {
 
 func (r *PlugRedis) Name() string {
 	return name
+}
+
+func (r *PlugRedis) ConfigPrefix() string {
+	return configPrefix
 }
 
 func (r *PlugRedis) Weight() int {

@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	plugin.GlobalPluginFactory().Register(name, func() plugin.Plugin {
+	plugin.GlobalPluginFactory().Register(name, configPrefix, func() plugin.Plugin {
 		return Polaris()
 	})
 }

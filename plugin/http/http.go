@@ -13,7 +13,10 @@ import (
 	"github.com/go-lynx/lynx/plugin/http/conf"
 )
 
-var name = "http"
+var (
+	name         = "http"
+	configPrefix = "lynx.http"
+)
 
 type ServiceHttp struct {
 	http   *http.Server
@@ -37,6 +40,10 @@ func Config(c *conf.Http) Option {
 
 func (h *ServiceHttp) Name() string {
 	return name
+}
+
+func (h *ServiceHttp) ConfigPrefix() string {
+	return configPrefix
 }
 
 func (h *ServiceHttp) Weight() int {
