@@ -1,11 +1,9 @@
 package token
 
 import (
-	"github.com/go-kratos/kratos/contrib/polaris/v2"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
-	polaris2 "github.com/go-lynx/lynx/plugin/polaris"
 	"github.com/go-lynx/lynx/plugin/token/conf"
 )
 
@@ -25,6 +23,10 @@ func (t *PlugToken) Name() string {
 	return name
 }
 
+func (t *PlugToken) ConfigPrefix() string {
+	return name
+}
+
 func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
 	err := b.Scan(t.conf)
 	if err != nil {
@@ -32,12 +34,7 @@ func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
 	}
 
 	app.Lynx().GetHelper().Infof("Initializing service token")
-
-	source, err := polaris2.GetPolaris().Config(polaris.WithConfigFile(polaris.File{
-		Name:  "token.yaml",
-		Group: "common",
-	}))
-
+	source, err := app.Lynx().ControlPlane().Config("token.yaml", "common")
 	if err != nil {
 		return nil, err
 	}

@@ -29,11 +29,15 @@ func NewLynxPluginManager(p ...plugin.Plugin) *LynxPluginManager {
 	return m
 }
 
-func (m *LynxPluginManager) LoadPlugins(b map[string]config.Value) {
+func (m *LynxPluginManager) LoadPlugins(conf config.Config) {
+	if m.plugins == nil || len(m.plugins) == 0 {
+		return
+	}
+
 	size := len(m.plugins)
 	sort.Sort(ByWeight(m.plugins))
 	for i := 0; i < size; i++ {
-		_, err := m.plugins[i].Load(b[m.plugins[i].Name()])
+		_, err := m.plugins[i].Load(conf.Value(m.plugins[i].ConfigPrefix()))
 		if err != nil {
 			Lynx().GetHelper().Errorf("Exception in initializing %v plugin :", m.plugins[i].Name(), err)
 			panic(err)
@@ -51,15 +55,20 @@ func (m *LynxPluginManager) UnloadPlugins() {
 	}
 }
 
-func (m *LynxPluginManager) LoadSpecificPlugins(name []string, b map[string]config.Value) {
+func (m *LynxPluginManager) LoadSpecificPlugins(name []string, conf config.Config) {
+	if name == nil || len(name) == 0 {
+		return
+	}
+
 	// Load plugins based on weight
 	var plugs []plugin.Plugin
 	for i := 0; i < len(name); i++ {
 		plugs = append(plugs, m.plugMap[name[i]])
 	}
+
 	sort.Sort(ByWeight(plugs))
 	for i := 0; i < len(plugs); i++ {
-		_, err := plugs[i].Load(b[plugs[i].Name()])
+		_, err := plugs[i].Load(conf.Value(plugs[i].ConfigPrefix()))
 		if err != nil {
 			Lynx().GetHelper().Errorf("Exception in initializing %v plugin :", plugs[i].Name(), err)
 			panic(err)
@@ -67,11 +76,11 @@ func (m *LynxPluginManager) LoadSpecificPlugins(name []string, b map[string]conf
 	}
 }
 
-func (m *LynxPluginManager) UnloadSpecificPlugins(plugins []string) {
-	for i := 0; i < len(plugins); i++ {
-		err := m.plugMap[plugins[i]].Unload()
+func (m *LynxPluginManager) UnloadSpecificPlugins(name []string) {
+	for i := 0; i < len(name); i++ {
+		err := m.plugMap[name[i]].Unload()
 		if err != nil {
-			Lynx().GetHelper().Errorf("Exception in uninstalling %v plugin", plugins[i], err)
+			Lynx().GetHelper().Errorf("Exception in uninstalling %v plugin", name[i], err)
 		}
 	}
 }

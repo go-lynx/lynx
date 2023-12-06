@@ -20,7 +20,7 @@ var (
 type Boot struct {
 	wire    wireApp
 	plugins []plugin.Plugin
-	conf    map[string]config.Value
+	conf    config.Config
 }
 
 func init() {

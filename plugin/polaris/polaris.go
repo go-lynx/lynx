@@ -9,7 +9,10 @@ import (
 	"github.com/polarismesh/polaris-go/api"
 )
 
-var name = "polaris"
+var (
+	name         = "polaris"
+	configPrefix = "lynx.polaris"
+)
 
 type PlugPolaris struct {
 	polaris *polaris.Polaris
@@ -39,6 +42,10 @@ func (p *PlugPolaris) Name() string {
 	return name
 }
 
+func (p *PlugPolaris) ConfigPrefix() string {
+	return configPrefix
+}
+
 func (p *PlugPolaris) Load(b config.Value) (plugin.Plugin, error) {
 	err := b.Scan(p.conf)
 	if err != nil {
@@ -61,13 +68,11 @@ func (p *PlugPolaris) Load(b config.Value) (plugin.Plugin, error) {
 	// set polaris plane for lynx
 	app.Lynx().SetControlPlane(p)
 	configuration := app.Lynx().GetBootConfiguration()
-	delete(configuration, name)
-	if len(configuration) > 1 {
-		app.Lynx().PlugManager().LoadSpecificPlugins(
-			app.Lynx().PlugManager().PreparePlug(configuration),
-			configuration,
-		)
-	}
+	plugins := app.Lynx().PlugManager().PreparePlug(configuration)
+	app.Lynx().PlugManager().LoadSpecificPlugins(
+		plugins,
+		configuration,
+	)
 	return p, nil
 }
 
