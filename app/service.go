@@ -59,7 +59,7 @@ func (a *LynxApp) SetControlPlane(plane ControlPlane) {
 	Lynx().controlPlane = plane
 }
 
-func (a *LynxApp) GetBootConfiguration() config.Config {
+func (a *LynxApp) ControlPlaneBootConfiguration() config.Config {
 	if Lynx().ControlPlane() == nil {
 		return config.New()
 	}
@@ -76,5 +76,6 @@ func (a *LynxApp) GetBootConfiguration() config.Config {
 	if err := c.Load(); err != nil {
 		panic(err)
 	}
+	a.setGlobalConfig(c)
 	return c
 }

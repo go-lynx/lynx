@@ -4,6 +4,7 @@ import (
 	"embed"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
+	"github.com/go-lynx/lynx/conf"
 	"io/fs"
 	"os"
 )
@@ -29,7 +30,13 @@ func (a *LynxApp) InitLogger() {
 		log.Fatal(err)
 	}
 
-	if a.GetConfig().GetApplication().GetBanner() {
+	var lynx conf.Lynx
+	err = a.GetGlobalConfig().Scan(&lynx)
+	if err != nil {
+		panic(err)
+	}
+
+	if lynx.GetApplication().GetBanner() {
 		a.GetHelper().Infof("\n" + string(data))
 	}
 }

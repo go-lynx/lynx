@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
@@ -16,10 +17,10 @@ type LynxApp struct {
 	host         string
 	name         string
 	version      string
-	conf         *conf.Lynx
+	globalConf   config.Config
+	tls          *conf.Tls
 	dfLog        *log.Helper
 	logger       log.Logger
-	tls          *conf.Tls
 	controlPlane ControlPlane
 	plugManager  *LynxPluginManager
 }
@@ -41,13 +42,19 @@ func Version() string {
 }
 
 // NewApp create a lynx microservice
-func NewApp(c *conf.Bootstrap, p ...plugin.Plugin) *LynxApp {
+func NewApp(c config.Config, p ...plugin.Plugin) *LynxApp {
 	host, _ := os.Hostname()
+	var bootConf conf.Bootstrap
+	err := c.Scan(&bootConf)
+	if err != nil {
+		return nil
+	}
+
 	var app = &LynxApp{
 		host:        host,
-		name:        c.Lynx.Application.Name,
-		version:     c.Lynx.Application.Version,
-		conf:        c.Lynx,
+		name:        bootConf.Lynx.Application.Name,
+		version:     bootConf.Lynx.Application.Version,
+		globalConf:  c,
 		plugManager: NewLynxPluginManager(p...),
 	}
 	// The lynxApp is in Singleton pattern
@@ -59,6 +66,10 @@ func (a *LynxApp) PlugManager() *LynxPluginManager {
 	return a.plugManager
 }
 
-func (a *LynxApp) GetConfig() *conf.Lynx {
-	return a.conf
+func (a *LynxApp) GetGlobalConfig() config.Config {
+	return a.globalConf
+}
+
+func (a *LynxApp) setGlobalConfig(c config.Config) {
+	a.globalConf = c
 }

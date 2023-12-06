@@ -39,7 +39,7 @@ func (b *Boot) Run() {
 	st := time.Now()
 
 	c := b.loadLocalBootFile()
-	app.NewApp(c, b.plugins...)
+	app.NewApp(b.conf, b.plugins...)
 	app.Lynx().InitLogger()
 
 	app.Lynx().GetHelper().Infof("Lynx application is starting up")
