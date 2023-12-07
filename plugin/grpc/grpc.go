@@ -60,7 +60,7 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 
 	app.Lynx().GetHelper().Infof("Initializing GRPC service")
 
-	var opts = []grpc.ServerOption{
+	opts := []grpc.ServerOption{
 		grpc.Middleware(
 			tracing.Server(tracing.WithTracerName(app.Name())),
 			logging.Server(app.Lynx().GetLogger()),
@@ -86,28 +86,31 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 	if app.Lynx().ControlPlane() != nil {
 		opts = append(opts, grpc.Middleware(app.Lynx().ControlPlane().HttpRateLimit()))
 	}
-
 	if g.conf.Tls {
-		cert, err := tls.X509KeyPair([]byte(app.Lynx().Tls().Crt), []byte(app.Lynx().Tls().Key))
-		if err != nil {
-			return nil, err
-		}
-		certPool := x509.NewCertPool()
-		if !certPool.AppendCertsFromPEM([]byte(app.Lynx().Tls().RootCA)) {
-			return nil, err
-		}
-
-		opts = append(opts, grpc.TLSConfig(&tls.Config{
-			Certificates: []tls.Certificate{cert},
-			ClientCAs:    certPool,
-			ServerName:   app.Name(),
-			ClientAuth:   tls.RequireAndVerifyClientCert,
-		}))
+		opts = append(opts, g.tlsLoad())
 	}
 
 	g.grpc = grpc.NewServer(opts...)
 	app.Lynx().GetHelper().Infof("GRPC service successfully initialized")
 	return g, nil
+}
+
+func (g *ServiceGrpc) tlsLoad() grpc.ServerOption {
+	cert, err := tls.X509KeyPair([]byte(app.Lynx().Tls().GetCrt()), []byte(app.Lynx().Tls().GetKey()))
+	if err != nil {
+		panic(err)
+	}
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM([]byte(app.Lynx().Tls().GetRootCA())) {
+		panic(err)
+	}
+
+	return grpc.TLSConfig(&tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientCAs:    certPool,
+		ServerName:   app.Name(),
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+	})
 }
 
 func (g *ServiceGrpc) Unload() error {
