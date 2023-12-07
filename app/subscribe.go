@@ -99,7 +99,7 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 		panic(err)
 	}
 	certPool := x509.NewCertPool()
-	if !certPool.AppendCertsFromPEM([]byte(t.RootCA)) {
+	if !certPool.AppendCertsFromPEM([]byte(t.GetRootCA())) {
 		panic(err)
 	}
 	return &tls.Config{ServerName: g.name, RootCAs: certPool}
