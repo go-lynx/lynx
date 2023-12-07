@@ -86,7 +86,7 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 	if app.Lynx().ControlPlane() != nil {
 		opts = append(opts, grpc.Middleware(app.Lynx().ControlPlane().HttpRateLimit()))
 	}
-	if g.conf.Tls {
+	if g.conf.GetTls() {
 		opts = append(opts, g.tlsLoad())
 	}
 
