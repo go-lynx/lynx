@@ -30,13 +30,13 @@ func (a *LynxApp) InitLogger() {
 		log.Fatal(err)
 	}
 
-	var lynx conf.Lynx
-	err = a.GetGlobalConfig().Scan(&lynx)
+	var boot conf.Bootstrap
+	err = a.GetGlobalConfig().Scan(&boot)
 	if err != nil {
 		panic(err)
 	}
 
-	if lynx.GetApplication().GetBanner() {
+	if !boot.GetLynx().GetApplication().GetCloseBanner() {
 		a.GetHelper().Infof("\n" + string(data))
 	}
 }
