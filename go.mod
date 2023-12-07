@@ -5,7 +5,7 @@ go 1.20
 require (
 	entgo.io/ent v0.12.4
 	github.com/go-kratos/kratos/contrib/polaris/v2 v2.0.0-20230830131453-6c026bce56a9
-	github.com/go-kratos/kratos/v2 v2.7.1
+	github.com/go-kratos/kratos/v2 v2.7.2
 	github.com/golang-jwt/jwt/v5 v5.0.0
 	github.com/polarismesh/polaris-go v1.3.0
 	github.com/redis/go-redis/v9 v9.2.1
@@ -14,7 +14,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.19.0
 	go.opentelemetry.io/otel/trace v1.19.0
 	golang.org/x/crypto v0.14.0
-	google.golang.org/grpc v1.56.1
+	google.golang.org/grpc v1.56.3
 	google.golang.org/protobuf v1.31.0
 )
 
@@ -48,7 +48,7 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
-	golang.org/x/net v0.11.0 // indirect
+	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
