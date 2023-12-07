@@ -2,13 +2,15 @@ package tracer
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/tracer/conf"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/jaeger"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	traceSdk "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
@@ -57,7 +59,11 @@ func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
 	}
 
 	app.Lynx().GetHelper().Infof("Initializing link monitoring component")
-	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(t.conf.Addr)))
+	exp, err := otlptracegrpc.New(
+		context.Background(),
+		otlptracegrpc.WithEndpoint(fmt.Sprintf("%s:4317", t.conf.Addr)),
+		otlptracegrpc.WithInsecure(),
+	)
 	if err != nil {
 		return nil, err
 	}
