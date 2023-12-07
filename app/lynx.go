@@ -71,5 +71,12 @@ func (a *LynxApp) GetGlobalConfig() config.Config {
 }
 
 func (a *LynxApp) setGlobalConfig(c config.Config) {
+	// Close the last configuration
+	if a.globalConf != nil {
+		err := a.globalConf.Close()
+		if err != nil {
+			a.GetHelper().Error(err.Error())
+		}
+	}
 	a.globalConf = c
 }
