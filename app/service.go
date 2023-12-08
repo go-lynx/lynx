@@ -37,20 +37,6 @@ type Config interface {
 	Config(fileName string, group string) (config.Source, error)
 }
 
-func ServiceRegistry() registry.Registrar {
-	if Lynx().ControlPlane() == nil {
-		return nil
-	}
-	return Lynx().ControlPlane().NewServiceRegistry()
-}
-
-func ServiceDiscovery() registry.Discovery {
-	if Lynx().ControlPlane() == nil {
-		return nil
-	}
-	return Lynx().ControlPlane().NewServiceDiscovery()
-}
-
 type DefaultControlPlane struct {
 }
 
@@ -109,4 +95,12 @@ func (a *LynxApp) ControlPlaneBootConfiguration() config.Config {
 	}
 	a.setGlobalConfig(c)
 	return c
+}
+
+func ServiceRegistry() registry.Registrar {
+	return Lynx().ControlPlane().NewServiceRegistry()
+}
+
+func ServiceDiscovery() registry.Discovery {
+	return Lynx().ControlPlane().NewServiceDiscovery()
 }
