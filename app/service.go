@@ -37,34 +37,34 @@ type Config interface {
 	Config(fileName string, group string) (config.Source, error)
 }
 
-type DefaultControlPlane struct {
+type LocalControlPlane struct {
 }
 
-func (c *DefaultControlPlane) HttpRateLimit() middleware.Middleware {
+func (c *LocalControlPlane) HttpRateLimit() middleware.Middleware {
 	return nil
 }
 
-func (c *DefaultControlPlane) GrpcRateLimit() middleware.Middleware {
+func (c *LocalControlPlane) GrpcRateLimit() middleware.Middleware {
 	return nil
 }
 
-func (c *DefaultControlPlane) NewServiceRegistry() registry.Registrar {
+func (c *LocalControlPlane) NewServiceRegistry() registry.Registrar {
 	return nil
 }
 
-func (c *DefaultControlPlane) NewServiceDiscovery() registry.Discovery {
+func (c *LocalControlPlane) NewServiceDiscovery() registry.Discovery {
 	return nil
 }
 
-func (c *DefaultControlPlane) NewNodeRouter(name string) selector.NodeFilter {
+func (c *LocalControlPlane) NewNodeRouter(name string) selector.NodeFilter {
 	return nil
 }
 
-func (c *DefaultControlPlane) Config(fileName string, group string) (config.Source, error) {
+func (c *LocalControlPlane) Config(fileName string, group string) (config.Source, error) {
 	return nil, nil
 }
 
-func (c *DefaultControlPlane) Namespace() string {
+func (c *LocalControlPlane) Namespace() string {
 	return ""
 }
 
