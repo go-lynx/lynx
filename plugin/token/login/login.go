@@ -4,29 +4,29 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
-	"github.com/go-lynx/lynx/plugin/token/conf"
+	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-lynx/lynx/app"
 )
 
 var (
-	method     string
-	privateKey *ecdsa.PrivateKey
-	publicKey  *ecdsa.PublicKey
+	login *Login
 )
 
 type Login struct {
+	conf       *Jwt
+	privateKey *ecdsa.PrivateKey
+	publicKey  *ecdsa.PublicKey
 }
 
-func (l *Login) Init(base interface{}) error {
-	c, ok := base.(*conf.Jtw)
-	if !ok {
-		return fmt.Errorf("invalid c type, expected *conf.Grpc")
+func (l *Login) Init(b config.Config) error {
+	err := b.Scan(l.conf)
+	if err != nil {
+		return err
 	}
 
-	method = c.LoginMethod
-
-	privateBlock, _ := pem.Decode([]byte(c.LoginPrivateKey))
+	privateBlock, _ := pem.Decode([]byte(l.conf.GetLoginPrivateKey()))
 	if privateBlock == nil {
+		app.Lynx().GetHelper().Error("failed to parse PEM block containing the private key")
 		panic("failed to parse PEM block containing the private key")
 	}
 
@@ -34,13 +34,14 @@ func (l *Login) Init(base interface{}) error {
 	if err != nil {
 		return err
 	}
-	privateKey = prk
+	l.privateKey = prk
 
-	publicBlock, _ := pem.Decode([]byte(c.LoginPublicKey))
+	publicBlock, _ := pem.Decode([]byte(l.conf.GetLoginPublicKey()))
 	if err != nil {
 		return err
 	}
 	if publicBlock == nil {
+		app.Lynx().GetHelper().Error("failed to parse PEM block containing the public key")
 		panic("failed to parse PEM block containing the public key")
 	}
 
@@ -49,22 +50,25 @@ func (l *Login) Init(base interface{}) error {
 		return err
 	}
 	puk := pubKeyInterface.(*ecdsa.PublicKey)
-	publicKey = puk
+	l.publicKey = puk
 	return nil
 }
 
 func NewLogin() *Login {
-	return &Login{}
+	login = &Login{
+		conf: &Jwt{},
+	}
+	return login
 }
 
 func GetMethod() string {
-	return method
+	return login.conf.GetLoginMethod()
 }
 
 func GetPrivateKey() *ecdsa.PrivateKey {
-	return privateKey
+	return login.privateKey
 }
 
 func GetPublicKey() *ecdsa.PublicKey {
-	return publicKey
+	return login.publicKey
 }

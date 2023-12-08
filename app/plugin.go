@@ -6,14 +6,23 @@ import (
 	"sort"
 )
 
-type LynxPluginManager struct {
+type LynxPluginManager interface {
+	LoadPlugins(config.Config)
+	UnloadPlugins()
+	LoadSpecificPlugins([]string, config.Config)
+	UnloadSpecificPlugins([]string)
+	GetPlugin(name string) plugin.Plugin
+	PreparePlug(config config.Config) []string
+}
+
+type DefaultLynxPluginManager struct {
 	plugMap map[string]plugin.Plugin
 	plugins []plugin.Plugin
 	factory *plugin.Factory
 }
 
-func NewLynxPluginManager(p ...plugin.Plugin) *LynxPluginManager {
-	m := &LynxPluginManager{
+func NewDefaultLynxPluginManager(p ...plugin.Plugin) LynxPluginManager {
+	m := &DefaultLynxPluginManager{
 		plugins: make([]plugin.Plugin, 0),
 		factory: plugin.GlobalPluginFactory(),
 		plugMap: make(map[string]plugin.Plugin),
@@ -29,7 +38,7 @@ func NewLynxPluginManager(p ...plugin.Plugin) *LynxPluginManager {
 	return m
 }
 
-func (m *LynxPluginManager) LoadPlugins(conf config.Config) {
+func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
 	if m.plugins == nil || len(m.plugins) == 0 {
 		return
 	}
@@ -45,7 +54,7 @@ func (m *LynxPluginManager) LoadPlugins(conf config.Config) {
 	}
 }
 
-func (m *LynxPluginManager) UnloadPlugins() {
+func (m *DefaultLynxPluginManager) UnloadPlugins() {
 	size := len(m.plugins)
 	for i := 0; i < size; i++ {
 		err := m.plugins[i].Unload()
@@ -55,7 +64,7 @@ func (m *LynxPluginManager) UnloadPlugins() {
 	}
 }
 
-func (m *LynxPluginManager) LoadSpecificPlugins(name []string, conf config.Config) {
+func (m *DefaultLynxPluginManager) LoadSpecificPlugins(name []string, conf config.Config) {
 	if name == nil || len(name) == 0 {
 		return
 	}
@@ -76,7 +85,7 @@ func (m *LynxPluginManager) LoadSpecificPlugins(name []string, conf config.Confi
 	}
 }
 
-func (m *LynxPluginManager) UnloadSpecificPlugins(name []string) {
+func (m *DefaultLynxPluginManager) UnloadSpecificPlugins(name []string) {
 	for i := 0; i < len(name); i++ {
 		err := m.plugMap[name[i]].Unload()
 		if err != nil {
@@ -85,7 +94,7 @@ func (m *LynxPluginManager) UnloadSpecificPlugins(name []string) {
 	}
 }
 
-func (m *LynxPluginManager) GetPlugin(name string) plugin.Plugin {
+func (m *DefaultLynxPluginManager) GetPlugin(name string) plugin.Plugin {
 	return m.plugMap[name]
 }
 

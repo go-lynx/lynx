@@ -7,11 +7,14 @@ import (
 	"github.com/go-lynx/lynx/plugin/token/conf"
 )
 
-var name = "token"
+var (
+	name         = "token"
+	configPrefix = "lynx.token"
+)
 
 type PlugToken struct {
-	conf   *conf.Jtw
-	token  []LoaderToken
+	load   []LoaderToken
+	conf   *conf.Token
 	weight int
 }
 
@@ -24,7 +27,7 @@ func (t *PlugToken) Name() string {
 }
 
 func (t *PlugToken) ConfigPrefix() string {
-	return name
+	return configPrefix
 }
 
 func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
@@ -33,34 +36,26 @@ func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
 		return nil, err
 	}
 
-	app.Lynx().GetHelper().Infof("Initializing service token")
-	source, err := app.Lynx().ControlPlane().Config("token.yaml", "common")
+	app.Lynx().GetHelper().Infof("Initializing service load")
+	source, err := app.Lynx().ControlPlane().Config(t.conf.GetFileName(), t.conf.GetGroup())
 	if err != nil {
 		return nil, err
 	}
 
-	s := config.New(
-		config.WithSource(source),
-	)
-
-	if err := s.Load(); err != nil {
+	c := config.New(config.WithSource(source))
+	if err := c.Load(); err != nil {
 		return nil, err
 	}
 
-	if err := s.Scan(&t.conf); err != nil {
-		return nil, err
-	}
-
-	if t.token != nil && len(t.token) > 0 {
-		for _, l := range t.token {
-			err := l.Init(t.conf)
+	if t.load != nil && len(t.load) > 0 {
+		for _, l := range t.load {
+			err := l.Init(c)
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
-
-	app.Lynx().GetHelper().Infof("Service token successfully initialized")
+	app.Lynx().GetHelper().Infof("Service load successfully initialized")
 	return t, nil
 }
 
@@ -68,18 +63,14 @@ func (t *PlugToken) Unload() error {
 	return nil
 }
 
-func GetName() string {
-	return name
-}
-
 func Token(token ...LoaderToken) plugin.Plugin {
 	return &PlugToken{
 		weight: 0,
-		token:  token,
-		conf:   &conf.Jtw{},
+		load:   token,
+		conf:   &conf.Token{},
 	}
 }
 
 type LoaderToken interface {
-	Init(Token *conf.Jtw) error
+	Init(conf config.Config) error
 }
