@@ -64,6 +64,7 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 		grpc.Middleware(
 			tracing.Server(tracing.WithTracerName(app.Name())),
 			logging.Server(app.Lynx().GetLogger()),
+			app.Lynx().ControlPlane().GrpcRateLimit(),
 			validate.Validator(),
 			// Recovery program after exception
 			recovery.Recovery(
@@ -82,9 +83,6 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 	}
 	if g.conf.Timeout != nil {
 		opts = append(opts, grpc.Timeout(g.conf.Timeout.AsDuration()))
-	}
-	if app.Lynx().ControlPlane() != nil {
-		opts = append(opts, grpc.Middleware(app.Lynx().ControlPlane().HttpRateLimit()))
 	}
 	if g.conf.GetTls() {
 		opts = append(opts, g.tlsLoad())
