@@ -21,14 +21,6 @@ type Plugin interface {
 	Unload() error
 }
 
-type Manger interface {
-	LoadPlugins(config.Config)
-	UnloadPlugins()
-	LoadSpecificPlugins([]string, config.Config)
-	UnloadSpecificPlugins([]string)
-	GetPlugin(string) Plugin
-}
-
 type Factory struct {
 	// registerTable: configPrefix -> pluginNames
 	registerTable map[string][]string
