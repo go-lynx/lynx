@@ -60,9 +60,7 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 
 	var opts = []http.ServerOption{
 		http.Middleware(
-			tracing.Server(
-				tracing.WithTracerName(app.Name()),
-			),
+			tracing.Server(tracing.WithTracerName(app.Name())),
 			logging.Server(app.Lynx().GetLogger()),
 			validate.Validator(),
 			recovery.Recovery(

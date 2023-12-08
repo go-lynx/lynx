@@ -17,9 +17,9 @@ func (a *LynxApp) InitLogger() {
 	a.logger = log.With(log.NewStdLogger(os.Stdout),
 		"ts", log.DefaultTimestamp,
 		"caller", log.DefaultCaller,
-		"service.id", lynxApp.host,
-		"service.name", lynxApp.name,
-		"service.version", lynxApp.version,
+		"service.id", Host(),
+		"service.name", Name(),
+		"service.version", Version(),
 		"trace.id", tracing.TraceID,
 		"span.id", tracing.SpanID,
 	)
@@ -42,9 +42,9 @@ func (a *LynxApp) InitLogger() {
 }
 
 func (a *LynxApp) GetHelper() *log.Helper {
-	return Lynx().dfLog
+	return a.dfLog
 }
 
 func (a *LynxApp) GetLogger() log.Logger {
-	return Lynx().logger
+	return a.logger
 }

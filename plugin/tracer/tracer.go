@@ -3,7 +3,6 @@ package tracer
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
@@ -59,27 +58,32 @@ func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
 	}
 
 	app.Lynx().GetHelper().Infof("Initializing link monitoring component")
+
 	exp, err := otlptracegrpc.New(
 		context.Background(),
-		otlptracegrpc.WithEndpoint(fmt.Sprintf("%s:4317", t.conf.Addr)),
+		otlptracegrpc.WithEndpoint(t.conf.GetAddr()),
 		otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithCompressor("gzip"),
 	)
+
 	if err != nil {
 		return nil, err
 	}
+
 	buf := new(bytes.Buffer)
 	buf.WriteString(app.Name())
 	buf.WriteString("-")
 	buf.WriteString(app.Version())
+
 	tp := traceSdk.NewTracerProvider(
 		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(1.0))),
 		traceSdk.WithBatcher(exp),
 		traceSdk.WithResource(resource.NewSchemaless(
 			semconv.ServiceNameKey.String(buf.String()),
 			attribute.String("exporter", "jaeger"),
-			attribute.Float64("float", 312.23),
 		)),
 	)
+
 	otel.SetTracerProvider(tp)
 	app.Lynx().GetHelper().Infof("Link monitoring component successfully initialized")
 	return t, nil

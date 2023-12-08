@@ -77,7 +77,7 @@ func (r *PlugRedis) Load(b config.Value) (plugin.Plugin, error) {
 }
 
 func (r *PlugRedis) Unload() error {
-	if r.rdb != nil {
+	if r.rdb == nil {
 		return nil
 	}
 	if err := r.rdb.Close(); err != nil {
