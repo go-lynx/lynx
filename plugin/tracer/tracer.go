@@ -71,6 +71,7 @@ func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
 		traceSdk.WithBatcher(exp),
 		traceSdk.WithResource(
 			resource.NewSchemaless(
+				semconv.ServiceInstanceIDKey.String(app.Host()),
 				semconv.ServiceNameKey.String(app.Name()),
 				semconv.ServiceVersionKey.String(app.Version()),
 				semconv.ServiceNamespaceKey.String(app.Lynx().ControlPlane().Namespace()),
