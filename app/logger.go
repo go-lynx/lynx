@@ -32,20 +32,20 @@ func (a *LynxApp) InitLogger() {
 	}
 
 	var boot conf.Bootstrap
-	err = a.GetGlobalConfig().Scan(&boot)
+	err = a.GlobalConfig().Scan(&boot)
 	if err != nil {
 		panic(err)
 	}
 
 	if !boot.GetLynx().GetApplication().GetCloseBanner() {
-		a.GetHelper().Infof("\n" + string(data))
+		a.Helper().Infof("\n" + string(data))
 	}
 }
 
-func (a *LynxApp) GetHelper() *log.Helper {
+func (a *LynxApp) Helper() *log.Helper {
 	return a.dfLog
 }
 
-func (a *LynxApp) GetLogger() log.Logger {
+func (a *LynxApp) Logger() log.Logger {
 	return a.logger
 }

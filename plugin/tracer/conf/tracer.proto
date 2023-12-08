@@ -6,4 +6,5 @@ option go_package = "github.com/go-lynx/lynx/plugin/tracer/conf";
 
 message Tracer {
   string addr = 1;
+  float ratio = 2;
 }

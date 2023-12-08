@@ -54,14 +54,14 @@ func (db *PlugDB) Load(b config.Value) (plugin.Plugin, error) {
 		return nil, err
 	}
 
-	app.Lynx().GetHelper().Infof("Initializing database")
+	app.Lynx().Helper().Infof("Initializing database")
 	drv, err := sql.Open(
 		db.conf.Driver,
 		db.conf.Source,
 	)
 
 	if err != nil {
-		app.Lynx().GetHelper().Errorf("failed opening connection to dataBase: %v", err)
+		app.Lynx().Helper().Errorf("failed opening connection to dataBase: %v", err)
 		panic(err)
 	}
 
@@ -77,7 +77,7 @@ func (db *PlugDB) Load(b config.Value) (plugin.Plugin, error) {
 	}
 
 	db.dri = drv
-	app.Lynx().GetHelper().Infof("Database successfully initialized")
+	app.Lynx().Helper().Infof("Database successfully initialized")
 	return db, nil
 }
 
@@ -86,10 +86,10 @@ func (db *PlugDB) Unload() error {
 		return nil
 	}
 	if err := db.dri.Close(); err != nil {
-		app.Lynx().GetHelper().Error(err)
+		app.Lynx().Helper().Error(err)
 		return err
 	}
-	app.Lynx().GetHelper().Info("message", "Closing the DataBase resources")
+	app.Lynx().Helper().Info("message", "Closing the DataBase resources")
 	return nil
 }
 

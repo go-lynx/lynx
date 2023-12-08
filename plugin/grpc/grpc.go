@@ -58,12 +58,12 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 		return nil, err
 	}
 
-	app.Lynx().GetHelper().Infof("Initializing GRPC service")
+	app.Lynx().Helper().Infof("Initializing GRPC service")
 
 	opts := []grpc.ServerOption{
 		grpc.Middleware(
 			tracing.Server(tracing.WithTracerName(app.Name())),
-			logging.Server(app.Lynx().GetLogger()),
+			logging.Server(app.Lynx().Logger()),
 			app.Lynx().ControlPlane().GrpcRateLimit(),
 			validate.Validator(),
 			// Recovery program after exception
@@ -89,17 +89,17 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 	}
 
 	g.grpc = grpc.NewServer(opts...)
-	app.Lynx().GetHelper().Infof("GRPC service successfully initialized")
+	app.Lynx().Helper().Infof("GRPC service successfully initialized")
 	return g, nil
 }
 
 func (g *ServiceGrpc) tlsLoad() grpc.ServerOption {
-	cert, err := tls.X509KeyPair([]byte(app.Lynx().Tls().GetCrt()), []byte(app.Lynx().Tls().GetKey()))
+	cert, err := tls.X509KeyPair([]byte(app.Lynx().Cert().GetCrt()), []byte(app.Lynx().Cert().GetKey()))
 	if err != nil {
 		panic(err)
 	}
 	certPool := x509.NewCertPool()
-	if !certPool.AppendCertsFromPEM([]byte(app.Lynx().Tls().GetRootCA())) {
+	if !certPool.AppendCertsFromPEM([]byte(app.Lynx().Cert().GetRootCA())) {
 		panic(err)
 	}
 
@@ -116,9 +116,9 @@ func (g *ServiceGrpc) Unload() error {
 		return nil
 	}
 	if err := g.grpc.Stop(nil); err != nil {
-		app.Lynx().GetHelper().Error(err)
+		app.Lynx().Helper().Error(err)
 	}
-	app.Lynx().GetHelper().Info("message", "Closing the GRPC resources")
+	app.Lynx().Helper().Info("message", "Closing the GRPC resources")
 	return nil
 }
 

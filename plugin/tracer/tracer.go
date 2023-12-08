@@ -55,7 +55,7 @@ func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
 		return nil, err
 	}
 
-	app.Lynx().GetHelper().Infof("Initializing link monitoring component")
+	app.Lynx().Helper().Infof("Initializing link monitoring component")
 	exp, err := otlptracegrpc.New(
 		context.Background(),
 		otlptracegrpc.WithEndpoint(t.conf.GetAddr()),
@@ -67,7 +67,7 @@ func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
 	}
 
 	tp := traceSdk.NewTracerProvider(
-		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(1.0))),
+		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(float64(t.conf.GetRatio())))),
 		traceSdk.WithBatcher(exp),
 		traceSdk.WithResource(
 			resource.NewSchemaless(
@@ -79,7 +79,7 @@ func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
 	)
 
 	otel.SetTracerProvider(tp)
-	app.Lynx().GetHelper().Infof("Link monitoring component successfully initialized")
+	app.Lynx().Helper().Infof("Link monitoring component successfully initialized")
 	return t, nil
 }
 

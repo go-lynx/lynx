@@ -10,7 +10,7 @@ import (
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
-	"github.com/go-lynx/lynx/conf"
+	"github.com/go-lynx/lynx/plugin/cert/conf"
 	gGrpc "google.golang.org/grpc"
 )
 
@@ -59,7 +59,7 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 		grpc.WithEndpoint("discovery:///" + g.name),
 		grpc.WithDiscovery(g.dis),
 		grpc.WithMiddleware(
-			logging.Client(Lynx().GetLogger()),
+			logging.Client(Lynx().Logger()),
 			tracing.Client(),
 		),
 		grpc.WithTLSConfig(g.tlsLoad()),
@@ -73,7 +73,7 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 		conn, err = grpc.DialInsecure(context.Background(), opts...)
 	}
 	if err != nil {
-		Lynx().GetHelper().Error(err)
+		Lynx().Helper().Error(err)
 		panic(err)
 	}
 	return conn
@@ -94,7 +94,7 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 	if err := c.Load(); err != nil {
 		panic(err)
 	}
-	var t conf.Tls
+	var t conf.Cert
 	if err := c.Scan(&t); err != nil {
 		panic(err)
 	}

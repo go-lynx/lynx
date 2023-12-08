@@ -23,7 +23,7 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 			if _, exists := m.plugMap[name]; !exists && m.factory.Exists(name) {
 				p, err := m.factory.Create(name)
 				if err != nil {
-					Lynx().GetHelper().Errorf("Plugin factory load error: %v", err)
+					Lynx().Helper().Errorf("Plugin factory load error: %v", err)
 					panic(err)
 				}
 				m.plugins = append(m.plugins, p)

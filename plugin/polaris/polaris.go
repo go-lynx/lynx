@@ -54,7 +54,7 @@ func (p *PlugPolaris) Load(b config.Value) (plugin.Plugin, error) {
 
 	sdk, err := api.InitContextByConfig(api.NewConfiguration())
 	if err != nil {
-		app.Lynx().GetHelper().Error(err)
+		app.Lynx().Helper().Error(err)
 		panic(err)
 	}
 

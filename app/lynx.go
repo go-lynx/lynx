@@ -5,6 +5,7 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
+	cert "github.com/go-lynx/lynx/plugin/cert/conf"
 	"os"
 )
 
@@ -17,7 +18,7 @@ type LynxApp struct {
 	host         string
 	name         string
 	version      string
-	tls          *conf.Tls
+	cert         *cert.Cert
 	dfLog        *log.Helper
 	logger       log.Logger
 	globalConf   config.Config
@@ -67,7 +68,7 @@ func (a *LynxApp) PlugManager() LynxPluginManager {
 	return a.plugManager
 }
 
-func (a *LynxApp) GetGlobalConfig() config.Config {
+func (a *LynxApp) GlobalConfig() config.Config {
 	return a.globalConf
 }
 
@@ -76,7 +77,7 @@ func (a *LynxApp) setGlobalConfig(c config.Config) {
 	if a.globalConf != nil {
 		err := a.globalConf.Close()
 		if err != nil {
-			a.GetHelper().Error(err.Error())
+			a.Helper().Error(err.Error())
 		}
 	}
 	a.globalConf = c
