@@ -51,6 +51,37 @@ func ServiceDiscovery() registry.Discovery {
 	return Lynx().ControlPlane().NewServiceDiscovery()
 }
 
+type DefaultControlPlane struct {
+}
+
+func (c *DefaultControlPlane) HttpRateLimit() middleware.Middleware {
+	return nil
+}
+
+func (c *DefaultControlPlane) GrpcRateLimit() middleware.Middleware {
+	return nil
+}
+
+func (c *DefaultControlPlane) NewServiceRegistry() registry.Registrar {
+	return nil
+}
+
+func (c *DefaultControlPlane) NewServiceDiscovery() registry.Discovery {
+	return nil
+}
+
+func (c *DefaultControlPlane) NewNodeRouter(name string) selector.NodeFilter {
+	return nil
+}
+
+func (c *DefaultControlPlane) Config(fileName string, group string) (config.Source, error) {
+	return nil, nil
+}
+
+func (c *DefaultControlPlane) Namespace() string {
+	return ""
+}
+
 func (a *LynxApp) ControlPlane() ControlPlane {
 	return Lynx().controlPlane
 }

@@ -51,11 +51,12 @@ func NewApp(c config.Config, p ...plugin.Plugin) *LynxApp {
 	}
 
 	var app = &LynxApp{
-		host:        host,
-		name:        bootConf.Lynx.Application.Name,
-		version:     bootConf.Lynx.Application.Version,
-		globalConf:  c,
-		plugManager: NewDefaultLynxPluginManager(p...),
+		host:         host,
+		name:         bootConf.Lynx.Application.Name,
+		version:      bootConf.Lynx.Application.Version,
+		globalConf:   c,
+		plugManager:  NewDefaultLynxPluginManager(p...),
+		controlPlane: &DefaultControlPlane{},
 	}
 	// The lynxApp is in Singleton pattern
 	lynxApp = app

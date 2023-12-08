@@ -62,6 +62,7 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 		http.Middleware(
 			tracing.Server(tracing.WithTracerName(app.Name())),
 			logging.Server(app.Lynx().GetLogger()),
+			app.Lynx().ControlPlane().HttpRateLimit(),
 			validate.Validator(),
 			recovery.Recovery(
 				recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
@@ -81,9 +82,6 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 	}
 	if h.conf.Timeout != nil {
 		opts = append(opts, http.Timeout(h.conf.Timeout.AsDuration()))
-	}
-	if app.Lynx().ControlPlane() != nil {
-		opts = append(opts, http.Middleware(app.Lynx().ControlPlane().HttpRateLimit()))
 	}
 
 	h.http = http.NewServer(opts...)

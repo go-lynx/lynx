@@ -78,10 +78,12 @@ func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
 	tp := traceSdk.NewTracerProvider(
 		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(1.0))),
 		traceSdk.WithBatcher(exp),
-		traceSdk.WithResource(resource.NewSchemaless(
-			semconv.ServiceNameKey.String(buf.String()),
-			attribute.String("exporter", "jaeger"),
-		)),
+		traceSdk.WithResource(
+			resource.NewSchemaless(
+				semconv.ServiceNameKey.String(buf.String()),
+				semconv.ServiceNamespaceKey.String(app.Lynx().ControlPlane().Namespace()),
+				attribute.String("exporter", "jaeger"),
+			)),
 	)
 
 	otel.SetTracerProvider(tp)

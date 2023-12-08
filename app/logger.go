@@ -14,14 +14,15 @@ var configFS embed.FS
 
 func (a *LynxApp) InitLogger() {
 	log.Infof("Lynx Log component loading")
-	a.logger = log.With(log.NewStdLogger(os.Stdout),
+	a.logger = log.With(
+		log.NewStdLogger(os.Stdout),
 		"ts", log.DefaultTimestamp,
 		"caller", log.DefaultCaller,
 		"service.id", Host(),
 		"service.name", Name(),
 		"service.version", Version(),
-		"trace.id", tracing.TraceID,
-		"span.id", tracing.SpanID,
+		"trace.id", tracing.TraceID(),
+		"span.id", tracing.SpanID(),
 	)
 	a.dfLog = log.NewHelper(a.logger)
 	log.Info("Lynx Log component loaded successfully")
