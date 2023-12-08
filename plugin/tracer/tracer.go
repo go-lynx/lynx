@@ -1,14 +1,12 @@
 package tracer
 
 import (
-	"bytes"
 	"context"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/go-lynx/lynx/plugin/tracer/conf"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	traceSdk "go.opentelemetry.io/otel/sdk/trace"
@@ -58,31 +56,24 @@ func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
 	}
 
 	app.Lynx().GetHelper().Infof("Initializing link monitoring component")
-
 	exp, err := otlptracegrpc.New(
 		context.Background(),
 		otlptracegrpc.WithEndpoint(t.conf.GetAddr()),
 		otlptracegrpc.WithInsecure(),
 		otlptracegrpc.WithCompressor("gzip"),
 	)
-
 	if err != nil {
 		return nil, err
 	}
-
-	buf := new(bytes.Buffer)
-	buf.WriteString(app.Name())
-	buf.WriteString("-")
-	buf.WriteString(app.Version())
 
 	tp := traceSdk.NewTracerProvider(
 		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(1.0))),
 		traceSdk.WithBatcher(exp),
 		traceSdk.WithResource(
 			resource.NewSchemaless(
-				semconv.ServiceNameKey.String(buf.String()),
+				semconv.ServiceNameKey.String(app.Name()),
+				semconv.ServiceVersionKey.String(app.Version()),
 				semconv.ServiceNamespaceKey.String(app.Lynx().ControlPlane().Namespace()),
-				attribute.String("exporter", "jaeger"),
 			)),
 	)
 
