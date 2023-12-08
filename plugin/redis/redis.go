@@ -53,7 +53,7 @@ func (r *PlugRedis) Load(b config.Value) (plugin.Plugin, error) {
 		return nil, err
 	}
 
-	app.Lynx().GetHelper().Infof("Initializing Redis")
+	app.Lynx().Helper().Infof("Initializing Redis")
 	r.rdb = redis.NewClient(&redis.Options{
 		Addr:            r.conf.Addr,
 		Password:        r.conf.Password,
@@ -72,7 +72,7 @@ func (r *PlugRedis) Load(b config.Value) (plugin.Plugin, error) {
 	if err != nil {
 		return nil, err
 	}
-	app.Lynx().GetHelper().Infof("Redis successfully initialized")
+	app.Lynx().Helper().Infof("Redis successfully initialized")
 	return r, nil
 }
 
@@ -81,10 +81,10 @@ func (r *PlugRedis) Unload() error {
 		return nil
 	}
 	if err := r.rdb.Close(); err != nil {
-		app.Lynx().GetHelper().Error(err)
+		app.Lynx().Helper().Error(err)
 		return err
 	}
-	app.Lynx().GetHelper().Info("message", "Closing the Redis resources")
+	app.Lynx().Helper().Info("message", "Closing the Redis resources")
 	return nil
 }
 

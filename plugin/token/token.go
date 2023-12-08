@@ -36,7 +36,7 @@ func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
 		return nil, err
 	}
 
-	app.Lynx().GetHelper().Infof("Initializing service load")
+	app.Lynx().Helper().Infof("Initializing service load")
 	source, err := app.Lynx().ControlPlane().Config(t.conf.GetFileName(), t.conf.GetGroup())
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
 			}
 		}
 	}
-	app.Lynx().GetHelper().Infof("Service load successfully initialized")
+	app.Lynx().Helper().Infof("Service load successfully initialized")
 	return t, nil
 }
 

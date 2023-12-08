@@ -26,7 +26,7 @@ func (l *Login) Init(b config.Config) error {
 
 	privateBlock, _ := pem.Decode([]byte(l.conf.GetLoginPrivateKey()))
 	if privateBlock == nil {
-		app.Lynx().GetHelper().Error("failed to parse PEM block containing the private key")
+		app.Lynx().Helper().Error("failed to parse PEM block containing the private key")
 		panic("failed to parse PEM block containing the private key")
 	}
 
@@ -41,7 +41,7 @@ func (l *Login) Init(b config.Config) error {
 		return err
 	}
 	if publicBlock == nil {
-		app.Lynx().GetHelper().Error("failed to parse PEM block containing the public key")
+		app.Lynx().Helper().Error("failed to parse PEM block containing the public key")
 		panic("failed to parse PEM block containing the public key")
 	}
 

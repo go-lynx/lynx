@@ -82,10 +82,10 @@ func (a *LynxApp) ControlPlaneBootConfiguration() config.Config {
 	}
 
 	yaml := Name() + ".yaml"
-	Lynx().GetHelper().Infof("Reading from the configuration center,file:[%v] group:[%v] namespace:[%v]", yaml, Name(), Lynx().ControlPlane().Namespace())
+	Lynx().Helper().Infof("Reading from the configuration center,file:[%v] group:[%v] namespace:[%v]", yaml, Name(), Lynx().ControlPlane().Namespace())
 	s, err := Lynx().ControlPlane().Config(yaml, Name())
 	if err != nil {
-		Lynx().GetHelper().Errorf("Failed to read the configuration file:[%v] group:[%v] namespace:[%v]", yaml, Name(), Lynx().ControlPlane().Namespace())
+		Lynx().Helper().Errorf("Failed to read the configuration file:[%v] group:[%v] namespace:[%v]", yaml, Name(), Lynx().ControlPlane().Namespace())
 		panic(err)
 	}
 

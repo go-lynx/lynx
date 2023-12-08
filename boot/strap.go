@@ -42,24 +42,24 @@ func (b *Boot) Run() {
 	app.NewApp(b.conf, b.plugins...)
 	app.Lynx().InitLogger()
 
-	app.Lynx().GetHelper().Infof("Lynx application is starting up")
+	app.Lynx().Helper().Infof("Lynx application is starting up")
 	defer app.Lynx().PlugManager().UnloadPlugins()
 	app.Lynx().PlugManager().PreparePlug(b.conf)
 
 	// Load the plugin first, then execute the wireApp
 	app.Lynx().PlugManager().LoadPlugins(b.conf)
-	k, err := b.wire(c, app.Lynx().GetLogger())
+	k, err := b.wire(c, app.Lynx().Logger())
 	if err != nil {
-		app.Lynx().GetHelper().Error(err)
+		app.Lynx().Helper().Error(err)
 		panic(err)
 	}
 
 	t := (time.Now().UnixNano() - st.UnixNano()) / 1e6
-	app.Lynx().GetHelper().Infof("Lynx application started successfully，elapsed time：%v ms, port listening initiated.", t)
+	app.Lynx().Helper().Infof("Lynx application started successfully，elapsed time：%v ms, port listening initiated.", t)
 
 	// kratos start and wait for stop signal
 	if err := k.Run(); err != nil {
-		app.Lynx().GetHelper().Error(err)
+		app.Lynx().Helper().Error(err)
 		panic(err)
 	}
 }

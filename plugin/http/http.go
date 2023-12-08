@@ -56,12 +56,12 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 		return nil, err
 	}
 
-	app.Lynx().GetHelper().Infof("Initializing HTTP service")
+	app.Lynx().Helper().Infof("Initializing HTTP service")
 
 	var opts = []http.ServerOption{
 		http.Middleware(
 			tracing.Server(tracing.WithTracerName(app.Name())),
-			logging.Server(app.Lynx().GetLogger()),
+			logging.Server(app.Lynx().Logger()),
 			app.Lynx().ControlPlane().HttpRateLimit(),
 			validate.Validator(),
 			recovery.Recovery(
@@ -85,7 +85,7 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 	}
 
 	h.http = http.NewServer(opts...)
-	app.Lynx().GetHelper().Infof("HTTP service successfully initialized")
+	app.Lynx().Helper().Infof("HTTP service successfully initialized")
 	return h, nil
 }
 
@@ -94,10 +94,10 @@ func (h *ServiceHttp) Unload() error {
 		return nil
 	}
 	if err := h.http.Close(); err != nil {
-		app.Lynx().GetHelper().Error(err)
+		app.Lynx().Helper().Error(err)
 		return err
 	}
-	app.Lynx().GetHelper().Info("message", "Closing the HTTP resources")
+	app.Lynx().Helper().Info("message", "Closing the HTTP resources")
 	return nil
 }
 

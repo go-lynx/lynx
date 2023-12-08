@@ -8,7 +8,7 @@ import (
 
 // NewServiceRegistry PolarisRegistry
 func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
-	app.Lynx().GetHelper().Infof("Service registration in progress")
+	app.Lynx().Helper().Infof("Service registration in progress")
 	r := GetPolaris().Registry(
 		polaris.WithRegistryServiceToken(GetPlugPolaris().conf.Token),
 		polaris.WithRegistryTimeout(GetPlugPolaris().conf.Timeout.AsDuration()),
@@ -20,7 +20,7 @@ func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
 
 // NewServiceDiscovery PolarisDiscovery
 func (p *PlugPolaris) NewServiceDiscovery() registry.Discovery {
-	app.Lynx().GetHelper().Infof("Service discovery in progress")
+	app.Lynx().Helper().Infof("Service discovery in progress")
 	r := GetPolaris().Registry(
 		polaris.WithRegistryServiceToken(GetPlugPolaris().conf.Token),
 		polaris.WithRegistryTimeout(GetPlugPolaris().conf.Timeout.AsDuration()),
