@@ -57,7 +57,7 @@ func NewApp(c config.Config, p ...plugin.Plugin) *LynxApp {
 		version:      bootConf.Lynx.Application.Version,
 		globalConf:   c,
 		plugManager:  NewDefaultLynxPluginManager(p...),
-		controlPlane: &DefaultControlPlane{},
+		controlPlane: &LocalControlPlane{},
 	}
 	// The lynxApp is in Singleton pattern
 	lynxApp = app
