@@ -87,7 +87,7 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 	if Lynx().ControlPlane() == nil {
 		return nil
 	}
-	s, err := Lynx().ControlPlane().Config("tls-root.yaml", g.name)
+	s, err := Lynx().ControlPlane().Config("tls-service.yaml", g.name)
 	c := config.New(
 		config.WithSource(s),
 	)

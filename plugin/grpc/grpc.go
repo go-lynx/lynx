@@ -107,7 +107,7 @@ func (g *ServiceGrpc) tlsLoad() grpc.ServerOption {
 		Certificates: []tls.Certificate{cert},
 		ClientCAs:    certPool,
 		ServerName:   app.Name(),
-		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientAuth:   tls.NoClientCert,
 	})
 }
 
