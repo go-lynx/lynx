@@ -9,5 +9,6 @@ import "google/protobuf/duration.proto";
 message http {
   string network = 1;
   string addr = 2;
-  google.protobuf.Duration timeout = 3;
+  bool tls = 3;
+  google.protobuf.Duration timeout = 4;
 }
