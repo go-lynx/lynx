@@ -18,6 +18,7 @@ type GrpcSubscribe struct {
 	name string
 	dis  registry.Discovery
 	tls  bool
+	rca  string
 }
 
 type Option func(o *GrpcSubscribe)
@@ -37,6 +38,12 @@ func WithDiscovery(dis registry.Discovery) Option {
 func EnableTls() Option {
 	return func(o *GrpcSubscribe) {
 		o.tls = true
+	}
+}
+
+func WithRootCAFileName(rca string) Option {
+	return func(o *GrpcSubscribe) {
+		o.rca = rca
 	}
 }
 
@@ -84,23 +91,35 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 		return nil
 	}
 
-	if Lynx().ControlPlane() == nil {
-		return nil
-	}
-	s, err := Lynx().ControlPlane().Config("tls-service.yaml", g.name)
-	c := config.New(
-		config.WithSource(s),
-	)
-	if err := c.Load(); err != nil {
-		panic(err)
-	}
-	var t conf.Cert
-	if err := c.Scan(&t); err != nil {
-		panic(err)
-	}
 	certPool := x509.NewCertPool()
-	if !certPool.AppendCertsFromPEM([]byte(t.GetRootCA())) {
-		panic(err)
+	var rootCA []byte
+
+	if g.rca != "" {
+		// Obtain the root certificate of the remote file
+		if Lynx().ControlPlane() == nil {
+			return nil
+		}
+		s, err := Lynx().ControlPlane().Config(g.rca, g.name)
+		if err != nil {
+			panic(err)
+		}
+		c := config.New(
+			config.WithSource(s),
+		)
+		if err := c.Load(); err != nil {
+			panic(err)
+		}
+		var t conf.Cert
+		if err := c.Scan(&t); err != nil {
+			panic(err)
+		}
+		rootCA = []byte(t.GetRootCA())
+	} else {
+		rootCA = []byte(Lynx().cert.GetRootCA())
+	}
+	// Use the root certificate of the current application directly
+	if !certPool.AppendCertsFromPEM(rootCA) {
+		panic("Failed to load root certificate")
 	}
 	return &tls.Config{ServerName: g.name, RootCAs: certPool}
 }
