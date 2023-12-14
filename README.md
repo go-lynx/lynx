@@ -28,6 +28,8 @@
 ## Plugin-Driven Modular Design
 
 > Lynx proudly introduces a plugin-driven modular design, enabling the combination of microservice functionality modules through plugins. This unique approach allows for high customizability and adaptability to diverse business needs. Any third-party tool can be effortlessly integrated as a plugin, providing a flexible and extensible platform for developers. Lynx is committed to simplifying the microservices ecosystem, delivering an efficient and user-friendly platform for developers.
+  
+> In future versions, Lynx will develop and integrate more middleware, improving microservice scalability while incorporating more mainstream framework components.
 
 ## Built With
 
