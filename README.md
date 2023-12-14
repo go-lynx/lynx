@@ -16,15 +16,15 @@
 
 ## Key Features
 
-> Lynx comes equipped with a comprehensive suite of essential microservices capabilities, including:
+> Lynx is equipped with a comprehensive set of key microservices capabilities, including:
 
-- **Service Registration & Discovery:** Streamlines the process of locating and invoking services across your architecture, enhancing system interoperability.
-- **Encrypted Intra-Network Communication:** Guarantees the security of your data within your microservices architecture, fostering trust and reliability.
-- **Rate Limiting:** Safeguards against service overloads, ensuring a consistent and high-quality user experience.
-- **Routing:** Facilitates efficient request direction and traffic management within your system, optimizing performance.
-- **Degradation:** Provides graceful failure handling, ensuring service availability and resilience.
-- **Distributed Transactions:** Simplifies the management of transactions across multiple services, promoting data consistency and reliability.
-
+- **Service Registration and Discovery:** Simplifies the process of microservice registration and discovery.
+- **Encrypted Intranet Communication:** Ensures data security within the microservice architecture, guaranteeing trust and reliability.
+- **Rate Limiting:** Prevents microservice overload, ensuring robustness of the microservices and a high-quality user experience.
+- **Routing:** Intelligent routing to specified version of microservices, providing multi-version deployment, blue-green, and canary release capabilities.
+- **Fallback:** Provides graceful fault handling, ensuring service availability and resilience.
+- **Distributed Transactions:** Simplifies transaction management across multiple services, promoting data consistency and reliability.
+  
 ## Plugin-Driven Modular Design
 
 > Lynx proudly introduces a plugin-driven modular design, enabling the combination of microservice functionality modules through plugins. This unique approach allows for high customizability and adaptability to diverse business needs. Any third-party tool can be effortlessly integrated as a plugin, providing a flexible and extensible platform for developers. Lynx is committed to simplifying the microservices ecosystem, delivering an efficient and user-friendly platform for developers.
