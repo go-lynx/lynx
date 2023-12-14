@@ -1,5 +1,5 @@
 ---
-name: "\U0001F9F1 Proposal Request"
+name: "📝 Proposal Request"
 about: Implementation draft of feature.
 title: "[Proposal]"
 labels: proposal

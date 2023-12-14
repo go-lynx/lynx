@@ -1,5 +1,5 @@
 ---
-name: "\U0001F41B Bug Report"
+name: " 🐛 Bug Report"
 about: Report something that's broken. Please ensure your go-lynx version is still supported.
 title: ''
 labels: bug

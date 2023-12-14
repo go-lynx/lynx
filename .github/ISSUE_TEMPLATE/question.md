@@ -1,5 +1,5 @@
 ---
-name: "\U0001F680 Question"
+name: "❓ Question"
 about: Ask a question about go-lynx.
 title: "[Question]"
 labels: question
