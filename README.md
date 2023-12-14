@@ -12,7 +12,7 @@
 
 ## Lynx: The Plug-and-Play Go Microservices Framework
 
-> Lynx is a revolutionary open-source microservices framework, offering a seamless plug-and-play experience for developers. Built on the robust foundations of Polaris and Kratos, Lynx's primary objective is to simplify the microservices development process. It allows developers to focus their efforts on crafting business logic, rather than getting entangled in the complexities of microservice infrastructure.
+> Lynx is a revolutionary open-source microservices framework, offering a seamless plug-and-play experience for developers. Built on the robust foundations of Seata , Polaris and Kratos, Lynx's primary objective is to simplify the microservices development process. It allows developers to focus their efforts on crafting business logic, rather than getting entangled in the complexities of microservice infrastructure.
 
 ## Key Features
 
