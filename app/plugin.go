@@ -56,7 +56,10 @@ func (m *DefaultLynxPluginManager) TopologicalSort(plugins []plugin.Plugin) ([]P
 	graph := make(map[string][]string)
 	for _, p := range plugins {
 		for _, dep := range p.DependsOn() {
-			graph[p.Name()] = append(graph[p.Name()], dep)
+			// If the dependency exists, add it to the graph.
+			if _, ok := nameToPlugin[dep]; ok {
+				graph[p.Name()] = append(graph[p.Name()], dep)
+			}
 		}
 	}
 

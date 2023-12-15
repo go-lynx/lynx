@@ -45,7 +45,7 @@ func TestTopologicalSort(t *testing.T) {
 	pluginB := &MockPlugin{name: "B", depends: []string{"A"}, weight: 1}
 	pluginC := &MockPlugin{name: "C", depends: []string{"B"}, weight: 1}
 	pluginD := &MockPlugin{name: "D", depends: []string{"C", "A", "E"}, weight: 2}
-	pluginE := &MockPlugin{name: "E", depends: nil, weight: 3}
+	pluginE := &MockPlugin{name: "E", depends: []string{"F"}, weight: 3}
 
 	manager.(*DefaultLynxPluginManager).plugins = []plugin.Plugin{pluginA, pluginB, pluginC, pluginD, pluginE}
 
