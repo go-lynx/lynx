@@ -42,6 +42,10 @@ func (p *PlugPolaris) Name() string {
 	return name
 }
 
+func (p *PlugPolaris) DependsOn() []string {
+	return nil
+}
+
 func (p *PlugPolaris) ConfPrefix() string {
 	return confPrefix
 }

@@ -39,6 +39,10 @@ func (r *PlugRedis) Name() string {
 	return name
 }
 
+func (r *PlugRedis) DependsOn() []string {
+	return nil
+}
+
 func (r *PlugRedis) ConfPrefix() string {
 	return confPrefix
 }

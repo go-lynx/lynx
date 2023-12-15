@@ -5,9 +5,18 @@ import (
 )
 
 type Plugin interface {
-	Weight() int
-	Name() string
-	ConfPrefix() string
+	pluginLoader
+	pluginSupport
+}
+
+type pluginLoader interface {
 	Load(config.Value) (Plugin, error)
 	Unload() error
+}
+
+type pluginSupport interface {
+	Name() string
+	Weight() int
+	DependsOn() []string
+	ConfPrefix() string
 }

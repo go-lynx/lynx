@@ -51,6 +51,10 @@ func (ce *PlugCert) Name() string {
 	return name
 }
 
+func (ce *PlugCert) DependsOn() []string {
+	return nil
+}
+
 func (ce *PlugCert) Weight() int {
 	return ce.weight
 }
