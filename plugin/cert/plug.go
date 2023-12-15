@@ -6,7 +6,7 @@ import (
 )
 
 func init() {
-	factory.GlobalPluginFactory().Register(name, configPrefix, func() plugin.Plugin {
+	factory.GlobalPluginFactory().Register(name, confPrefix, func() plugin.Plugin {
 		return Cert()
 	})
 }

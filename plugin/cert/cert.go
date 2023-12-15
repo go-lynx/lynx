@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	name         = "cert"
-	configPrefix = "lynx.application.tls"
+	name       = "cert"
+	confPrefix = "lynx.application.tls"
 )
 
 type PlugCert struct {
@@ -19,6 +19,18 @@ type PlugCert struct {
 	tls    *conf.Tls
 	cert   *conf.Cert
 	weight int
+}
+
+func (ce *PlugCert) Crt() []byte {
+	return []byte(ce.cert.GetCrt())
+}
+
+func (ce *PlugCert) Key() []byte {
+	return []byte(ce.cert.GetKey())
+}
+
+func (ce *PlugCert) RootCA() []byte {
+	return []byte(ce.cert.GetRootCA())
 }
 
 type Option func(ce *PlugCert)
@@ -43,8 +55,8 @@ func (ce *PlugCert) Weight() int {
 	return ce.weight
 }
 
-func (ce *PlugCert) ConfigPrefix() string {
-	return configPrefix
+func (ce *PlugCert) ConfPrefix() string {
+	return confPrefix
 }
 
 func (ce *PlugCert) Load(b config.Value) (plugin.Plugin, error) {
@@ -68,7 +80,7 @@ func (ce *PlugCert) Load(b config.Value) (plugin.Plugin, error) {
 		return nil, err
 	}
 
-	app.Lynx().SetCert(ce.cert)
+	app.Lynx().SetCert(ce)
 	app.Lynx().Helper().Infof("Application Certificate Loaded successfully")
 	return ce, nil
 }

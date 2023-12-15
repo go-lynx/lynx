@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	name         = "http"
-	configPrefix = "lynx.http"
+	name       = "http"
+	confPrefix = "lynx.http"
 )
 
 type ServiceHttp struct {
@@ -44,8 +44,8 @@ func (h *ServiceHttp) Name() string {
 	return name
 }
 
-func (h *ServiceHttp) ConfigPrefix() string {
-	return configPrefix
+func (h *ServiceHttp) ConfPrefix() string {
+	return confPrefix
 }
 
 func (h *ServiceHttp) Weight() int {

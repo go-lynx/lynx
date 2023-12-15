@@ -5,7 +5,6 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
-	cert "github.com/go-lynx/lynx/plugin/cert/conf"
 	"os"
 )
 
@@ -18,12 +17,13 @@ type LynxApp struct {
 	host         string
 	name         string
 	version      string
-	cert         *cert.Cert
-	dfLog        *log.Helper
+	cert         Cert
 	logger       log.Logger
 	globalConf   config.Config
 	controlPlane ControlPlane
 	plugManager  LynxPluginManager
+
+	dfLog *log.Helper
 }
 
 func Lynx() *LynxApp {

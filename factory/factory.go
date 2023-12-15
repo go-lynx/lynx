@@ -29,7 +29,7 @@ func GlobalPluginFactory() PluginFactory {
 }
 
 type Factory struct {
-	// registerTable: configPrefix -> pluginNames
+	// registerTable: confPrefix -> pluginNames
 	registerTable map[string][]string
 	creators      map[string]func() plugin.Plugin
 }

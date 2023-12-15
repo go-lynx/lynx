@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	name         = "grpc"
-	configPrefix = "lynx.grpc"
+	name       = "grpc"
+	confPrefix = "lynx.grpc"
 )
 
 type ServiceGrpc struct {
@@ -48,8 +48,8 @@ func (g *ServiceGrpc) Name() string {
 	return name
 }
 
-func (g *ServiceGrpc) ConfigPrefix() string {
-	return configPrefix
+func (g *ServiceGrpc) ConfPrefix() string {
+	return confPrefix
 }
 
 func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {

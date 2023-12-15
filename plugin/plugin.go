@@ -7,7 +7,7 @@ import (
 type Plugin interface {
 	Weight() int
 	Name() string
-	ConfigPrefix() string
+	ConfPrefix() string
 	Load(config.Value) (Plugin, error)
 	Unload() error
 }
