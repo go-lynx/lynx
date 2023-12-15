@@ -35,17 +35,21 @@ If the maintainer team members have major differences on a requirement, the fina
 -->
 
 ### What problem is the feature used to solve?
+
 <!--
 example:
     We hope to add event interface to go-lynx framework to access middleware such as Kafka and rabbitmq
 -->
 
 ### Requirements description of the feature
+
 <!--
 example:
     The event interface should be added to go-lynx. The interface should contain subscribers and publishers, and the message body should contain key value head
 -->
+
 ### References
+
 <!--
 example:
     - [nats](http://xxxxx)

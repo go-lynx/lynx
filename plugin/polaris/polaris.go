@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	name         = "polaris"
-	configPrefix = "lynx.polaris"
+	name       = "polaris"
+	confPrefix = "lynx.polaris"
 )
 
 type PlugPolaris struct {
@@ -42,8 +42,12 @@ func (p *PlugPolaris) Name() string {
 	return name
 }
 
-func (p *PlugPolaris) ConfigPrefix() string {
-	return configPrefix
+func (p *PlugPolaris) DependsOn() []string {
+	return nil
+}
+
+func (p *PlugPolaris) ConfPrefix() string {
+	return confPrefix
 }
 
 func (p *PlugPolaris) Load(b config.Value) (plugin.Plugin, error) {
@@ -69,7 +73,7 @@ func (p *PlugPolaris) Load(b config.Value) (plugin.Plugin, error) {
 	app.Lynx().SetControlPlane(p)
 	configuration := app.Lynx().ControlPlaneBootConfiguration()
 	plugins := app.Lynx().PlugManager().PreparePlug(configuration)
-	app.Lynx().PlugManager().LoadSpecificPlugins(
+	app.Lynx().PlugManager().LoadPluginsByName(
 		plugins,
 		configuration,
 	)

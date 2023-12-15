@@ -1,9 +1,9 @@
 package seata
 
 import (
-	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/factory"
 )
 
-func Registry(factory plugin.Factory) {
+func Registry(factory factory.Factory) {
 
 }

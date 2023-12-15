@@ -3,11 +3,12 @@ package http
 import (
 	"github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/go-lynx/lynx/app"
+	"github.com/go-lynx/lynx/factory"
 	"github.com/go-lynx/lynx/plugin"
 )
 
 func init() {
-	plugin.GlobalPluginFactory().Register(name, configPrefix, func() plugin.Plugin {
+	factory.GlobalPluginFactory().Register(name, confPrefix, func() plugin.Plugin {
 		return Http()
 	})
 }

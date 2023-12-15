@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	name         = "tracer"
-	configPrefix = "lynx.tracer"
+	name       = "tracer"
+	confPrefix = "lynx.tracer"
 )
 
 type PlugTracer struct {
@@ -41,12 +41,16 @@ func (t *PlugTracer) Weight() int {
 	return t.weight
 }
 
+func (t *PlugTracer) DependsOn() []string {
+	return nil
+}
+
 func (t *PlugTracer) Name() string {
 	return name
 }
 
-func (t *PlugTracer) ConfigPrefix() string {
-	return configPrefix
+func (t *PlugTracer) ConfPrefix() string {
+	return confPrefix
 }
 
 func (t *PlugTracer) Load(b config.Value) (plugin.Plugin, error) {
