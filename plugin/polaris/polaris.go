@@ -73,7 +73,7 @@ func (p *PlugPolaris) Load(b config.Value) (plugin.Plugin, error) {
 	app.Lynx().SetControlPlane(p)
 	configuration := app.Lynx().ControlPlaneBootConfiguration()
 	plugins := app.Lynx().PlugManager().PreparePlug(configuration)
-	app.Lynx().PlugManager().LoadSpecificPlugins(
+	app.Lynx().PlugManager().LoadPluginsByName(
 		plugins,
 		configuration,
 	)
