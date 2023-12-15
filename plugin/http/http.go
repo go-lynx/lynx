@@ -44,6 +44,10 @@ func (h *ServiceHttp) Name() string {
 	return name
 }
 
+func (h *ServiceHttp) DependsOn() []string {
+	return nil
+}
+
 func (h *ServiceHttp) ConfPrefix() string {
 	return confPrefix
 }

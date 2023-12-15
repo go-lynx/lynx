@@ -26,6 +26,10 @@ func (t *PlugToken) Name() string {
 	return name
 }
 
+func (t *PlugToken) DependsOn() []string {
+	return nil
+}
+
 func (t *PlugToken) ConfPrefix() string {
 	return confPrefix
 }

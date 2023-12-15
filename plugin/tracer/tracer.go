@@ -41,6 +41,10 @@ func (t *PlugTracer) Weight() int {
 	return t.weight
 }
 
+func (t *PlugTracer) DependsOn() []string {
+	return nil
+}
+
 func (t *PlugTracer) Name() string {
 	return name
 }

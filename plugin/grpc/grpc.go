@@ -48,6 +48,10 @@ func (g *ServiceGrpc) Name() string {
 	return name
 }
 
+func (g *ServiceGrpc) DependsOn() []string {
+	return nil
+}
+
 func (g *ServiceGrpc) ConfPrefix() string {
 	return confPrefix
 }

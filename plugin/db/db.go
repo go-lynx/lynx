@@ -40,6 +40,10 @@ func (db *PlugDB) Name() string {
 	return name
 }
 
+func (db *PlugDB) DependsOn() []string {
+	return nil
+}
+
 func (db *PlugDB) Weight() int {
 	return db.weight
 }
