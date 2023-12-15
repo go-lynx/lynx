@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	name         = "polaris"
-	configPrefix = "lynx.polaris"
+	name       = "polaris"
+	confPrefix = "lynx.polaris"
 )
 
 type PlugPolaris struct {
@@ -42,8 +42,8 @@ func (p *PlugPolaris) Name() string {
 	return name
 }
 
-func (p *PlugPolaris) ConfigPrefix() string {
-	return configPrefix
+func (p *PlugPolaris) ConfPrefix() string {
+	return confPrefix
 }
 
 func (p *PlugPolaris) Load(b config.Value) (plugin.Plugin, error) {

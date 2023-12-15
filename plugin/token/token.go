@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	name         = "token"
-	configPrefix = "lynx.token"
+	name       = "token"
+	confPrefix = "lynx.token"
 )
 
 type PlugToken struct {
@@ -26,8 +26,8 @@ func (t *PlugToken) Name() string {
 	return name
 }
 
-func (t *PlugToken) ConfigPrefix() string {
-	return configPrefix
+func (t *PlugToken) ConfPrefix() string {
+	return confPrefix
 }
 
 func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {

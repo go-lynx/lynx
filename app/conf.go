@@ -8,13 +8,13 @@ import (
 func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 	table := m.factory.RegisterTable()
 	var plugNames = make([]string, 0)
-	for configPrefix := range table {
-		value := config.Value(configPrefix)
+	for confPrefix := range table {
+		value := config.Value(confPrefix)
 		if value.Load() == nil {
 			continue
 		}
 
-		names := table[configPrefix]
+		names := table[confPrefix]
 		if len(names) == 0 {
 			continue
 		}

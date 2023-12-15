@@ -47,7 +47,7 @@ func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
 	size := len(m.plugins)
 	sort.Sort(ByWeight(m.plugins))
 	for i := 0; i < size; i++ {
-		_, err := m.plugins[i].Load(conf.Value(m.plugins[i].ConfigPrefix()))
+		_, err := m.plugins[i].Load(conf.Value(m.plugins[i].ConfPrefix()))
 		if err != nil {
 			Lynx().Helper().Errorf("Exception in initializing %v plugin :", m.plugins[i].Name(), err)
 			panic(err)
@@ -78,7 +78,7 @@ func (m *DefaultLynxPluginManager) LoadSpecificPlugins(name []string, conf confi
 
 	sort.Sort(ByWeight(plugs))
 	for i := 0; i < len(plugs); i++ {
-		_, err := plugs[i].Load(conf.Value(plugs[i].ConfigPrefix()))
+		_, err := plugs[i].Load(conf.Value(plugs[i].ConfPrefix()))
 		if err != nil {
 			Lynx().Helper().Errorf("Exception in initializing %v plugin :", plugs[i].Name(), err)
 			panic(err)

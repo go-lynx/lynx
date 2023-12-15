@@ -1,13 +1,15 @@
 package app
 
-import (
-	"github.com/go-lynx/lynx/plugin/cert/conf"
-)
+type Cert interface {
+	Crt() []byte
+	Key() []byte
+	RootCA() []byte
+}
 
-func (a *LynxApp) Cert() *conf.Cert {
+func (a *LynxApp) Cert() Cert {
 	return a.cert
 }
 
-func (a *LynxApp) SetCert(cert *conf.Cert) {
+func (a *LynxApp) SetCert(cert Cert) {
 	a.cert = cert
 }
