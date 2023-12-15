@@ -11,8 +11,8 @@ import (
 type LynxPluginManager interface {
 	LoadPlugins(config.Config)
 	UnloadPlugins()
-	LoadSpecificPlugins([]string, config.Config)
-	UnloadSpecificPlugins([]string)
+	LoadPluginsByName([]string, config.Config)
+	UnloadPluginsByName([]string)
 	GetPlugin(name string) plugin.Plugin
 	PreparePlug(config config.Config) []string
 }
@@ -139,7 +139,7 @@ func (m *DefaultLynxPluginManager) UnloadPlugins() {
 	}
 }
 
-func (m *DefaultLynxPluginManager) LoadSpecificPlugins(name []string, conf config.Config) {
+func (m *DefaultLynxPluginManager) LoadPluginsByName(name []string, conf config.Config) {
 	if name == nil || len(name) == 0 {
 		return
 	}
@@ -164,7 +164,7 @@ func (m *DefaultLynxPluginManager) LoadSpecificPlugins(name []string, conf confi
 	}
 }
 
-func (m *DefaultLynxPluginManager) UnloadSpecificPlugins(name []string) {
+func (m *DefaultLynxPluginManager) UnloadPluginsByName(name []string) {
 	for i := 0; i < len(name); i++ {
 		err := m.plugMap[name[i]].Unload()
 		if err != nil {
