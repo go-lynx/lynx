@@ -94,12 +94,12 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 }
 
 func (g *ServiceGrpc) tlsLoad() grpc.ServerOption {
-	cert, err := tls.X509KeyPair([]byte(app.Lynx().Cert().GetCrt()), []byte(app.Lynx().Cert().GetKey()))
+	cert, err := tls.X509KeyPair(app.Lynx().Cert().Crt(), app.Lynx().Cert().Key())
 	if err != nil {
 		panic(err)
 	}
 	certPool := x509.NewCertPool()
-	if !certPool.AppendCertsFromPEM([]byte(app.Lynx().Cert().GetRootCA())) {
+	if !certPool.AppendCertsFromPEM(app.Lynx().Cert().RootCA()) {
 		panic(err)
 	}
 
