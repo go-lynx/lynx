@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/factory"
 	"github.com/go-lynx/lynx/plugin"
@@ -39,17 +40,87 @@ func NewDefaultLynxPluginManager(p ...plugin.Plugin) LynxPluginManager {
 	return m
 }
 
-func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
-	if m.plugins == nil || len(m.plugins) == 0 {
-		return
+type PluginWithLevel struct {
+	plugin.Plugin
+	level int
+}
+
+func (m *DefaultLynxPluginManager) TopologicalSort(plugins []plugin.Plugin) ([]PluginWithLevel, error) {
+	// First, build a map from plugin name to the actual plugin.
+	nameToPlugin := make(map[string]plugin.Plugin)
+	for _, p := range plugins {
+		nameToPlugin[p.Name()] = p
 	}
 
-	size := len(m.plugins)
-	sort.Sort(ByWeight(m.plugins))
-	for i := 0; i < size; i++ {
-		_, err := m.plugins[i].Load(conf.Value(m.plugins[i].ConfPrefix()))
+	// Then, build the adjacency list for the graph.
+	graph := make(map[string][]string)
+	for _, p := range plugins {
+		for _, dep := range p.DependsOn() {
+			graph[p.Name()] = append(graph[p.Name()], dep)
+		}
+	}
+
+	// Perform the topological sort.
+	result := make([]PluginWithLevel, 0, len(plugins))
+	visited := make(map[string]bool)
+	level := make(map[string]int)
+	var visit func(string) error
+	visit = func(name string) error {
+		if !visited[name] {
+			visited[name] = true
+			maxLevel := 0
+			for _, dep := range graph[name] {
+				if err := visit(dep); err != nil {
+					return err
+				}
+				if level[dep] > maxLevel {
+					maxLevel = level[dep]
+				}
+			}
+			level[name] = maxLevel + 1
+			result = append(result, PluginWithLevel{nameToPlugin[name], level[name]})
+		} else if !contains(result, nameToPlugin[name]) {
+			return fmt.Errorf("cyclic dependency involving %s", name)
+		}
+		return nil
+	}
+	for _, p := range plugins {
+		if err := visit(p.Name()); err != nil {
+			return nil, err
+		}
+	}
+
+	// Sort plugins with the same level by weight.
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].level == result[j].level {
+			return result[i].Weight() > result[j].Weight()
+		}
+		return result[i].level < result[j].level
+	})
+
+	return result, nil
+}
+
+func contains(slice []PluginWithLevel, item plugin.Plugin) bool {
+	for _, v := range slice {
+		if v.Plugin == item {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
+	plugins, err := m.TopologicalSort(m.plugins)
+	if err != nil {
+		Lynx().Helper().Errorf("Exception in topological sorting plugins :", err)
+		panic(err)
+	}
+
+	for _, p := range plugins {
+		_, err := p.Plugin.Load(conf.Value(p.Plugin.ConfPrefix()))
 		if err != nil {
-			Lynx().Helper().Errorf("Exception in initializing %v plugin :", m.plugins[i].Name(), err)
+			Lynx().Helper().Errorf("Exception in initializing %v plugin :", p.Plugin.Name(), err)
 			panic(err)
 		}
 	}
@@ -71,16 +142,20 @@ func (m *DefaultLynxPluginManager) LoadSpecificPlugins(name []string, conf confi
 	}
 
 	// Load plugins based on weight
-	var plugs []plugin.Plugin
+	var pluginList []plugin.Plugin
 	for i := 0; i < len(name); i++ {
-		plugs = append(plugs, m.plugMap[name[i]])
+		pluginList = append(pluginList, m.plugMap[name[i]])
+	}
+	plugins, err := m.TopologicalSort(pluginList)
+	if err != nil {
+		Lynx().Helper().Errorf("Exception in topological sorting plugins :", err)
+		panic(err)
 	}
 
-	sort.Sort(ByWeight(plugs))
-	for i := 0; i < len(plugs); i++ {
-		_, err := plugs[i].Load(conf.Value(plugs[i].ConfPrefix()))
+	for i := 0; i < len(plugins); i++ {
+		_, err := pluginList[i].Load(conf.Value(pluginList[i].ConfPrefix()))
 		if err != nil {
-			Lynx().Helper().Errorf("Exception in initializing %v plugin :", plugs[i].Name(), err)
+			Lynx().Helper().Errorf("Exception in initializing %v plugin :", pluginList[i].Name(), err)
 			panic(err)
 		}
 	}
