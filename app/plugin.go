@@ -176,9 +176,3 @@ func (m *DefaultLynxPluginManager) UnloadSpecificPlugins(name []string) {
 func (m *DefaultLynxPluginManager) GetPlugin(name string) plugin.Plugin {
 	return m.plugMap[name]
 }
-
-type ByWeight []plugin.Plugin
-
-func (a ByWeight) Len() int           { return len(a) }
-func (a ByWeight) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByWeight) Less(i, j int) bool { return a[i].Weight() > a[j].Weight() }
