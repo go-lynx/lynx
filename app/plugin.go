@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-lynx/lynx/factory"
 	"github.com/go-lynx/lynx/plugin"
 	"sort"
 )
@@ -18,13 +19,13 @@ type LynxPluginManager interface {
 type DefaultLynxPluginManager struct {
 	plugMap map[string]plugin.Plugin
 	plugins []plugin.Plugin
-	factory *plugin.Factory
+	factory factory.PluginFactory
 }
 
 func NewDefaultLynxPluginManager(p ...plugin.Plugin) LynxPluginManager {
 	m := &DefaultLynxPluginManager{
 		plugins: make([]plugin.Plugin, 0),
-		factory: plugin.GlobalPluginFactory(),
+		factory: factory.GlobalPluginFactory(),
 		plugMap: make(map[string]plugin.Plugin),
 	}
 

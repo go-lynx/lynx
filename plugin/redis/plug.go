@@ -2,12 +2,13 @@ package redis
 
 import (
 	"github.com/go-lynx/lynx/app"
+	"github.com/go-lynx/lynx/factory"
 	"github.com/go-lynx/lynx/plugin"
 	"github.com/redis/go-redis/v9"
 )
 
 func init() {
-	plugin.GlobalPluginFactory().Register(name, configPrefix, func() plugin.Plugin {
+	factory.GlobalPluginFactory().Register(name, configPrefix, func() plugin.Plugin {
 		return Redis()
 	})
 }
