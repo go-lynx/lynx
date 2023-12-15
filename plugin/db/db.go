@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	name         = "db"
-	configPrefix = "lynx.db"
+	name       = "db"
+	confPrefix = "lynx.db"
 )
 
 type PlugDB struct {
@@ -40,12 +40,16 @@ func (db *PlugDB) Name() string {
 	return name
 }
 
+func (db *PlugDB) DependsOn() []string {
+	return nil
+}
+
 func (db *PlugDB) Weight() int {
 	return db.weight
 }
 
-func (db *PlugDB) ConfigPrefix() string {
-	return configPrefix
+func (db *PlugDB) ConfPrefix() string {
+	return confPrefix
 }
 
 func (db *PlugDB) Load(b config.Value) (plugin.Plugin, error) {

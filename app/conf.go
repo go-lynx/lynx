@@ -6,22 +6,22 @@ import (
 
 // PreparePlug Bootstrap plugin loading through remote or local configuration files
 func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
-	table := m.factory.GetRegisterTable()
+	table := m.factory.RegisterTable()
 	var plugNames = make([]string, 0)
-	for configPrefix := range table {
-		value := config.Value(configPrefix)
+	for confPrefix := range table {
+		value := config.Value(confPrefix)
 		if value.Load() == nil {
 			continue
 		}
 
-		names := table[configPrefix]
+		names := table[confPrefix]
 		if len(names) == 0 {
 			continue
 		}
 
 		for _, name := range names {
 			if _, exists := m.plugMap[name]; !exists && m.factory.Exists(name) {
-				p, err := m.factory.Create(name)
+				p, err := m.factory.CreateByName(name)
 				if err != nil {
 					Lynx().Helper().Errorf("Plugin factory load error: %v", err)
 					panic(err)

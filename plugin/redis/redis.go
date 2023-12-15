@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	name         = "redis"
-	configPrefix = "lynx.redis"
+	name       = "redis"
+	confPrefix = "lynx.redis"
 )
 
 type PlugRedis struct {
@@ -39,8 +39,12 @@ func (r *PlugRedis) Name() string {
 	return name
 }
 
-func (r *PlugRedis) ConfigPrefix() string {
-	return configPrefix
+func (r *PlugRedis) DependsOn() []string {
+	return nil
+}
+
+func (r *PlugRedis) ConfPrefix() string {
+	return confPrefix
 }
 
 func (r *PlugRedis) Weight() int {
