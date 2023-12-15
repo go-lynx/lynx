@@ -5,16 +5,16 @@ import (
 )
 
 type Plugin interface {
-	pluginLoader
-	pluginSupport
+	LoaderPlugin
+	SupportPlugin
 }
 
-type pluginLoader interface {
+type LoaderPlugin interface {
 	Load(config.Value) (Plugin, error)
 	Unload() error
 }
 
-type pluginSupport interface {
+type SupportPlugin interface {
 	Name() string
 	Weight() int
 	DependsOn() []string
