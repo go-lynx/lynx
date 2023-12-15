@@ -10,13 +10,17 @@ var (
 )
 
 type PluginFactory interface {
-	CreateByName(pluginName string) (plugin.Plugin, error)
+	PluginDefinitionCreate
 	PluginDefinitionRegistry
+}
+
+type PluginDefinitionCreate interface {
+	CreateByName(pluginName string) (plugin.Plugin, error)
 }
 
 type PluginDefinitionRegistry interface {
 	Register(pluginName string, confPrefix string, creator func() plugin.Plugin)
-	GetRegisterTable() map[string][]string
+	RegisterTable() map[string][]string
 	Exists(pluginName string) bool
 }
 
@@ -52,7 +56,7 @@ func (f *Factory) Register(name string, confPrefix string, creator func() plugin
 	}
 }
 
-func (f *Factory) GetRegisterTable() map[string][]string {
+func (f *Factory) RegisterTable() map[string][]string {
 	return f.registerTable
 }
 

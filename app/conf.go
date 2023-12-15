@@ -6,7 +6,7 @@ import (
 
 // PreparePlug Bootstrap plugin loading through remote or local configuration files
 func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
-	table := m.factory.GetRegisterTable()
+	table := m.factory.RegisterTable()
 	var plugNames = make([]string, 0)
 	for configPrefix := range table {
 		value := config.Value(configPrefix)
