@@ -2,6 +2,7 @@ package boot
 
 import (
 	"flag"
+	"fmt"
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/encoding/json"
@@ -36,14 +37,13 @@ type wireApp func(confServer *conf.Bootstrap, logger log.Logger) (*kratos.App, e
 
 // Run This function is the application startup entry point
 func (b *Boot) Run() {
+	defer b.handlePanic()
 	st := time.Now()
 
 	c := b.loadLocalBootFile()
 	app.NewApp(b.conf, b.plugins...)
 	app.Lynx().InitLogger()
-
 	app.Lynx().Helper().Infof("Lynx application is starting up")
-	defer app.Lynx().PlugManager().UnloadPlugins()
 	app.Lynx().PlugManager().PreparePlug(b.conf)
 
 	// Load the plugin first, then execute the wireApp
@@ -61,6 +61,27 @@ func (b *Boot) Run() {
 	if err := k.Run(); err != nil {
 		app.Lynx().Helper().Error(err)
 		panic(err)
+	}
+}
+
+func (b *Boot) handlePanic() {
+	if r := recover(); r != nil {
+		err, ok := r.(error)
+		if !ok {
+			err = fmt.Errorf("%v", r)
+		}
+
+		// If Lynx helper is initialized, log with it, otherwise use standard log package
+		if helper := app.Lynx().Helper(); helper != nil {
+			helper.Error(err)
+		} else {
+			log.Error(err)
+		}
+	}
+
+	// Unload plugins whether there was a panic or not
+	if app.Lynx() != nil && app.Lynx().PlugManager() != nil {
+		app.Lynx().PlugManager().UnloadPlugins()
 	}
 }
 
