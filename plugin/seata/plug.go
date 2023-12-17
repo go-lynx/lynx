@@ -4,6 +4,6 @@ import (
 	"github.com/go-lynx/lynx/factory"
 )
 
-func Registry(factory factory.Factory) {
+func Registry(factory factory.LynxPluginFactory) {
 
 }
