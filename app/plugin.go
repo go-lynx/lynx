@@ -120,10 +120,11 @@ func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
 		panic(err)
 	}
 
-	for _, p := range plugins {
-		_, err := p.Plugin.Load(conf.Value(p.Plugin.ConfPrefix()))
+	size := len(plugins)
+	for i := 0; i < size; i++ {
+		_, err := plugins[i].Load(conf.Value(plugins[i].ConfPrefix()))
 		if err != nil {
-			Lynx().Helper().Errorf("Exception in initializing %v plugin :", p.Plugin.Name(), err)
+			Lynx().Helper().Errorf("Exception in initializing %v plugin :", m.plugins[i].Name(), err)
 			panic(err)
 		}
 	}
@@ -144,11 +145,12 @@ func (m *DefaultLynxPluginManager) LoadPluginsByName(name []string, conf config.
 		return
 	}
 
-	// Load plugins based on weight
 	var pluginList []plugin.Plugin
 	for i := 0; i < len(name); i++ {
 		pluginList = append(pluginList, m.plugMap[name[i]])
 	}
+
+	// Sort plugins with the same level by weight.
 	plugins, err := m.TopologicalSort(pluginList)
 	if err != nil {
 		Lynx().Helper().Errorf("Exception in topological sorting plugins :", err)
@@ -156,7 +158,7 @@ func (m *DefaultLynxPluginManager) LoadPluginsByName(name []string, conf config.
 	}
 
 	for i := 0; i < len(plugins); i++ {
-		_, err := pluginList[i].Load(conf.Value(pluginList[i].ConfPrefix()))
+		_, err := plugins[i].Load(conf.Value(plugins[i].ConfPrefix()))
 		if err != nil {
 			Lynx().Helper().Errorf("Exception in initializing %v plugin :", pluginList[i].Name(), err)
 			panic(err)
