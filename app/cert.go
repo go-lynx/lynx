@@ -1,9 +1,9 @@
 package app
 
 type Cert interface {
-	Crt() []byte
-	Key() []byte
-	RootCA() []byte
+	GetCrt() []byte
+	GetKey() []byte
+	GetRootCA() []byte
 }
 
 func (a *LynxApp) Cert() Cert {
