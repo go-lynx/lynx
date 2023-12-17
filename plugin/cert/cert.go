@@ -21,15 +21,15 @@ type PlugCert struct {
 	weight int
 }
 
-func (ce *PlugCert) Crt() []byte {
+func (ce *PlugCert) GetCrt() []byte {
 	return []byte(ce.cert.GetCrt())
 }
 
-func (ce *PlugCert) Key() []byte {
+func (ce *PlugCert) GetKey() []byte {
 	return []byte(ce.cert.GetKey())
 }
 
-func (ce *PlugCert) RootCA() []byte {
+func (ce *PlugCert) GetRootCA() []byte {
 	return []byte(ce.cert.GetRootCA())
 }
 

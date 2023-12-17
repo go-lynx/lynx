@@ -115,7 +115,7 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 		}
 		rootCA = []byte(t.GetRootCA())
 	} else {
-		rootCA = Lynx().cert.RootCA()
+		rootCA = Lynx().cert.GetRootCA()
 	}
 	// Use the root certificate of the current application directly
 	if !certPool.AppendCertsFromPEM(rootCA) {
