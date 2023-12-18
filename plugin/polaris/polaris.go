@@ -34,22 +34,6 @@ func Config(c *conf.Polaris) Option {
 	}
 }
 
-func (p *PlugPolaris) Weight() int {
-	return p.weight
-}
-
-func (p *PlugPolaris) Name() string {
-	return name
-}
-
-func (p *PlugPolaris) DependsOn(config.Value) []string {
-	return nil
-}
-
-func (p *PlugPolaris) ConfPrefix() string {
-	return confPrefix
-}
-
 func (p *PlugPolaris) Load(b config.Value) (plugin.Plugin, error) {
 	err := b.Scan(p.conf)
 	if err != nil {

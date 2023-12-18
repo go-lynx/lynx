@@ -18,22 +18,6 @@ type PlugToken struct {
 	weight int
 }
 
-func (t *PlugToken) Weight() int {
-	return t.weight
-}
-
-func (t *PlugToken) Name() string {
-	return name
-}
-
-func (t *PlugToken) DependsOn(config.Value) []string {
-	return nil
-}
-
-func (t *PlugToken) ConfPrefix() string {
-	return confPrefix
-}
-
 func (t *PlugToken) Load(b config.Value) (plugin.Plugin, error) {
 	err := b.Scan(t.conf)
 	if err != nil {
