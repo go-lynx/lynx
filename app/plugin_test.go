@@ -39,7 +39,7 @@ func (m *MockPlugin) Unload() error {
 }
 
 func TestTopologicalSort(t *testing.T) {
-	manager := NewDefaultLynxPluginManager()
+	manager := NewLynxPluginManager()
 
 	pluginA := &MockPlugin{name: "A", depends: []string{}, weight: 1}
 	pluginB := &MockPlugin{name: "B", depends: []string{"A"}, weight: 1}
