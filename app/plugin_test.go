@@ -18,7 +18,7 @@ func (m *MockPlugin) Name() string {
 	return m.name
 }
 
-func (m *MockPlugin) DependsOn() []string {
+func (m *MockPlugin) DependsOn(b config.Value) []string {
 	return m.depends
 }
 
@@ -45,9 +45,15 @@ func TestTopologicalSort(t *testing.T) {
 	pluginB := &MockPlugin{name: "B", depends: []string{"A"}, weight: 1}
 	pluginC := &MockPlugin{name: "C", depends: []string{"B"}, weight: 1}
 	pluginD := &MockPlugin{name: "D", depends: []string{"C", "A", "E"}, weight: 2}
-	pluginE := &MockPlugin{name: "E", depends: []string{"F"}, weight: 3}
+	pluginE := &MockPlugin{name: "E", depends: []string{}, weight: 3}
 
-	manager.(*DefaultLynxPluginManager).plugins = []plugin.Plugin{pluginA, pluginB, pluginC, pluginD, pluginE}
+	manager.(*DefaultLynxPluginManager).plugins = []plugin.Plugin{
+		pluginA,
+		pluginB,
+		pluginC,
+		pluginD,
+		pluginE,
+	}
 
 	result, err := manager.(*DefaultLynxPluginManager).TopologicalSort(manager.(*DefaultLynxPluginManager).plugins)
 	if err != nil {

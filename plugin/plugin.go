@@ -17,6 +17,6 @@ type LoaderPlugin interface {
 type SupportPlugin interface {
 	Name() string
 	Weight() int
-	DependsOn() []string
+	DependsOn(config.Value) []string
 	ConfPrefix() string
 }

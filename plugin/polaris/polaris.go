@@ -42,7 +42,7 @@ func (p *PlugPolaris) Name() string {
 	return name
 }
 
-func (p *PlugPolaris) DependsOn() []string {
+func (p *PlugPolaris) DependsOn(config.Value) []string {
 	return nil
 }
 

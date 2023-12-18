@@ -2,8 +2,6 @@ package http
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
@@ -38,22 +36,6 @@ func Config(c *conf.Http) Option {
 	return func(h *ServiceHttp) {
 		h.conf = c
 	}
-}
-
-func (h *ServiceHttp) Name() string {
-	return name
-}
-
-func (h *ServiceHttp) DependsOn() []string {
-	return nil
-}
-
-func (h *ServiceHttp) ConfPrefix() string {
-	return confPrefix
-}
-
-func (h *ServiceHttp) Weight() int {
-	return h.weight
 }
 
 func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
@@ -96,24 +78,6 @@ func (h *ServiceHttp) Load(b config.Value) (plugin.Plugin, error) {
 	h.http = http.NewServer(opts...)
 	app.Lynx().Helper().Infof("HTTP service successfully initialized")
 	return h, nil
-}
-
-func (h *ServiceHttp) tlsLoad() http.ServerOption {
-	cert, err := tls.X509KeyPair(app.Lynx().Cert().GetCrt(), app.Lynx().Cert().GetKey())
-	if err != nil {
-		panic(err)
-	}
-	certPool := x509.NewCertPool()
-	if !certPool.AppendCertsFromPEM(app.Lynx().Cert().GetRootCA()) {
-		panic(err)
-	}
-
-	return http.TLSConfig(&tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientCAs:    certPool,
-		ServerName:   app.Name(),
-		ClientAuth:   tls.ClientAuthType(h.conf.GetTlsAuthType()),
-	})
 }
 
 func (h *ServiceHttp) Unload() error {
