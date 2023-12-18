@@ -1,4 +1,4 @@
-package app
+package subscribe
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugin/cert/conf"
 	gGrpc "google.golang.org/grpc"
 )
@@ -66,7 +67,7 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 		grpc.WithEndpoint("discovery:///" + g.name),
 		grpc.WithDiscovery(g.dis),
 		grpc.WithMiddleware(
-			logging.Client(Lynx().Logger()),
+			logging.Client(app.Lynx().Logger()),
 			tracing.Client(),
 		),
 		grpc.WithTLSConfig(g.tlsLoad()),
@@ -80,7 +81,7 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 		conn, err = grpc.DialInsecure(context.Background(), opts...)
 	}
 	if err != nil {
-		Lynx().Helper().Error(err)
+		app.Lynx().Helper().Error(err)
 		panic(err)
 	}
 	return conn
@@ -96,10 +97,10 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 
 	if g.rca != "" {
 		// Obtain the root certificate of the remote file
-		if Lynx().ControlPlane() == nil {
+		if app.Lynx().ControlPlane() == nil {
 			return nil
 		}
-		s, err := Lynx().ControlPlane().Config(g.rca, g.name)
+		s, err := app.Lynx().ControlPlane().Config(g.rca, g.name)
 		if err != nil {
 			panic(err)
 		}
@@ -115,7 +116,7 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 		}
 		rootCA = []byte(t.GetRootCA())
 	} else {
-		rootCA = Lynx().cert.GetRootCA()
+		rootCA = app.Lynx().Cert().GetRootCA()
 	}
 	// Use the root certificate of the current application directly
 	if !certPool.AppendCertsFromPEM(rootCA) {
@@ -125,8 +126,8 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 }
 
 func (g *GrpcSubscribe) nodeFilter() selector.NodeFilter {
-	if Lynx().ControlPlane() == nil {
+	if app.Lynx().ControlPlane() == nil {
 		return nil
 	}
-	return Lynx().ControlPlane().NewNodeRouter(g.name)
+	return app.Lynx().ControlPlane().NewNodeRouter(g.name)
 }
