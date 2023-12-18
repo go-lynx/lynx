@@ -40,7 +40,7 @@ func (db *PlugDB) Name() string {
 	return name
 }
 
-func (db *PlugDB) DependsOn() []string {
+func (db *PlugDB) DependsOn(config.Value) []string {
 	return nil
 }
 

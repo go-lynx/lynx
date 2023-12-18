@@ -39,7 +39,7 @@ func (r *PlugRedis) Name() string {
 	return name
 }
 
-func (r *PlugRedis) DependsOn() []string {
+func (r *PlugRedis) DependsOn(config.Value) []string {
 	return nil
 }
 

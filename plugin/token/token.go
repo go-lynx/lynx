@@ -26,7 +26,7 @@ func (t *PlugToken) Name() string {
 	return name
 }
 
-func (t *PlugToken) DependsOn() []string {
+func (t *PlugToken) DependsOn(config.Value) []string {
 	return nil
 }
 

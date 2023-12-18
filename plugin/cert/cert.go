@@ -1,4 +1,4 @@
-package db
+package cert
 
 import (
 	_ "database/sql"
@@ -47,11 +47,15 @@ func Config(tls *conf.Tls) Option {
 	}
 }
 
+func GetName() string {
+	return name
+}
+
 func (ce *PlugCert) Name() string {
 	return name
 }
 
-func (ce *PlugCert) DependsOn() []string {
+func (ce *PlugCert) DependsOn(config.Value) []string {
 	return nil
 }
 
@@ -95,7 +99,7 @@ func (ce *PlugCert) Unload() error {
 
 func Cert(opts ...Option) plugin.Plugin {
 	c := &PlugCert{
-		weight: 2000,
+		weight: 100,
 		tls:    &conf.Tls{},
 		cert:   &conf.Cert{},
 	}

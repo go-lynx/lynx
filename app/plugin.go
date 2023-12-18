@@ -55,10 +55,19 @@ func (m *DefaultLynxPluginManager) TopologicalSort(plugins []plugin.Plugin) ([]P
 	// Then, build the adjacency list for the graph.
 	graph := make(map[string][]string)
 	for _, p := range plugins {
-		for _, dep := range p.DependsOn() {
+		var on []string
+		if Lynx() != nil && Lynx().GlobalConfig() != nil {
+			on = p.DependsOn(Lynx().GlobalConfig().Value(p.ConfPrefix()))
+		} else {
+			on = p.DependsOn(nil)
+		}
+
+		for _, dep := range on {
 			// If the dependency exists, add it to the graph.
 			if _, ok := nameToPlugin[dep]; ok {
 				graph[p.Name()] = append(graph[p.Name()], dep)
+			} else {
+				panic(fmt.Sprintf("Plugin %s depends on unknown plugin %s", p.Name(), dep))
 			}
 		}
 	}
@@ -124,7 +133,7 @@ func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
 	for i := 0; i < size; i++ {
 		_, err := plugins[i].Load(conf.Value(plugins[i].ConfPrefix()))
 		if err != nil {
-			Lynx().Helper().Errorf("Exception in initializing %v plugin :", m.plugins[i].Name(), err)
+			Lynx().Helper().Errorf("Exception in initializing %v plugin :", plugins[i].Name(), err)
 			panic(err)
 		}
 	}
@@ -160,7 +169,7 @@ func (m *DefaultLynxPluginManager) LoadPluginsByName(name []string, conf config.
 	for i := 0; i < len(plugins); i++ {
 		_, err := plugins[i].Load(conf.Value(plugins[i].ConfPrefix()))
 		if err != nil {
-			Lynx().Helper().Errorf("Exception in initializing %v plugin :", pluginList[i].Name(), err)
+			Lynx().Helper().Errorf("Exception in initializing %v plugin :", plugins[i].Name(), err)
 			panic(err)
 		}
 	}

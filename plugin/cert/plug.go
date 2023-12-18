@@ -1,4 +1,4 @@
-package db
+package cert
 
 import (
 	"github.com/go-lynx/lynx/factory"

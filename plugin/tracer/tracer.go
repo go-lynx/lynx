@@ -41,7 +41,7 @@ func (t *PlugTracer) Weight() int {
 	return t.weight
 }
 
-func (t *PlugTracer) DependsOn() []string {
+func (t *PlugTracer) DependsOn(config.Value) []string {
 	return nil
 }
 

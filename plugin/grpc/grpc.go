@@ -2,8 +2,6 @@ package grpc
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
@@ -38,22 +36,6 @@ func Config(c *conf.Grpc) Option {
 	return func(g *ServiceGrpc) {
 		g.conf = c
 	}
-}
-
-func (g *ServiceGrpc) Weight() int {
-	return g.weight
-}
-
-func (g *ServiceGrpc) Name() string {
-	return name
-}
-
-func (g *ServiceGrpc) DependsOn() []string {
-	return nil
-}
-
-func (g *ServiceGrpc) ConfPrefix() string {
-	return confPrefix
 }
 
 func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
@@ -95,24 +77,6 @@ func (g *ServiceGrpc) Load(b config.Value) (plugin.Plugin, error) {
 	g.grpc = grpc.NewServer(opts...)
 	app.Lynx().Helper().Infof("GRPC service successfully initialized")
 	return g, nil
-}
-
-func (g *ServiceGrpc) tlsLoad() grpc.ServerOption {
-	cert, err := tls.X509KeyPair(app.Lynx().Cert().GetCrt(), app.Lynx().Cert().GetKey())
-	if err != nil {
-		panic(err)
-	}
-	certPool := x509.NewCertPool()
-	if !certPool.AppendCertsFromPEM(app.Lynx().Cert().GetRootCA()) {
-		panic(err)
-	}
-
-	return grpc.TLSConfig(&tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientCAs:    certPool,
-		ServerName:   app.Name(),
-		ClientAuth:   tls.ClientAuthType(g.conf.GetTlsAuthType()),
-	})
 }
 
 func (g *ServiceGrpc) Unload() error {
