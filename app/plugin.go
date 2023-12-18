@@ -23,7 +23,7 @@ type DefaultLynxPluginManager struct {
 	factory factory.PluginFactory
 }
 
-func NewDefaultLynxPluginManager(p ...plugin.Plugin) LynxPluginManager {
+func NewLynxPluginManager(p ...plugin.Plugin) LynxPluginManager {
 	m := &DefaultLynxPluginManager{
 		plugins: make([]plugin.Plugin, 0),
 		factory: factory.GlobalPluginFactory(),
