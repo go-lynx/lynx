@@ -35,22 +35,6 @@ func Config(c *conf.Redis) Option {
 	}
 }
 
-func (r *PlugRedis) Name() string {
-	return name
-}
-
-func (r *PlugRedis) DependsOn(config.Value) []string {
-	return nil
-}
-
-func (r *PlugRedis) ConfPrefix() string {
-	return confPrefix
-}
-
-func (r *PlugRedis) Weight() int {
-	return r.weight
-}
-
 func (r *PlugRedis) Load(b config.Value) (plugin.Plugin, error) {
 	err := b.Scan(r.conf)
 	if err != nil {

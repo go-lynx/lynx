@@ -47,26 +47,6 @@ func Config(tls *conf.Tls) Option {
 	}
 }
 
-func GetName() string {
-	return name
-}
-
-func (ce *PlugCert) Name() string {
-	return name
-}
-
-func (ce *PlugCert) DependsOn(config.Value) []string {
-	return nil
-}
-
-func (ce *PlugCert) Weight() int {
-	return ce.weight
-}
-
-func (ce *PlugCert) ConfPrefix() string {
-	return confPrefix
-}
-
 func (ce *PlugCert) Load(b config.Value) (plugin.Plugin, error) {
 	err := b.Scan(ce.tls)
 	if err != nil {

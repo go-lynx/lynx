@@ -36,22 +36,6 @@ func Config(c *conf.Db) Option {
 	}
 }
 
-func (db *PlugDB) Name() string {
-	return name
-}
-
-func (db *PlugDB) DependsOn(config.Value) []string {
-	return nil
-}
-
-func (db *PlugDB) Weight() int {
-	return db.weight
-}
-
-func (db *PlugDB) ConfPrefix() string {
-	return confPrefix
-}
-
 func (db *PlugDB) Load(b config.Value) (plugin.Plugin, error) {
 	err := b.Scan(db.conf)
 	if err != nil {
