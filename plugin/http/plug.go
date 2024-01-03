@@ -13,6 +13,6 @@ func init() {
 	})
 }
 
-func GetHTTP() *http.Server {
+func GetServer() *http.Server {
 	return app.Lynx().PlugManager().GetPlugin(name).(*ServiceHttp).http
 }
