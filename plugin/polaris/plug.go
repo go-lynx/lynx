@@ -17,6 +17,6 @@ func GetPolaris() *polaris.Polaris {
 	return app.Lynx().PlugManager().GetPlugin(name).(*PlugPolaris).polaris
 }
 
-func GetPlugPolaris() *PlugPolaris {
+func GetPlugin() *PlugPolaris {
 	return app.Lynx().PlugManager().GetPlugin(name).(*PlugPolaris)
 }

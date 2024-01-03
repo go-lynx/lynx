@@ -10,10 +10,10 @@ import (
 func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
 	app.Lynx().Helper().Infof("Service registration in progress")
 	r := GetPolaris().Registry(
-		polaris.WithRegistryServiceToken(GetPlugPolaris().conf.Token),
-		polaris.WithRegistryTimeout(GetPlugPolaris().conf.Timeout.AsDuration()),
-		polaris.WithRegistryTTL(int(GetPlugPolaris().conf.Ttl)),
-		polaris.WithRegistryWeight(int(GetPlugPolaris().conf.Weight)),
+		polaris.WithRegistryServiceToken(GetPlugin().conf.Token),
+		polaris.WithRegistryTimeout(GetPlugin().conf.Timeout.AsDuration()),
+		polaris.WithRegistryTTL(int(GetPlugin().conf.Ttl)),
+		polaris.WithRegistryWeight(int(GetPlugin().conf.Weight)),
 	)
 	return r
 }
@@ -22,10 +22,10 @@ func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
 func (p *PlugPolaris) NewServiceDiscovery() registry.Discovery {
 	app.Lynx().Helper().Infof("Service discovery in progress")
 	r := GetPolaris().Registry(
-		polaris.WithRegistryServiceToken(GetPlugPolaris().conf.Token),
-		polaris.WithRegistryTimeout(GetPlugPolaris().conf.Timeout.AsDuration()),
-		polaris.WithRegistryTTL(int(GetPlugPolaris().conf.Ttl)),
-		polaris.WithRegistryWeight(int(GetPlugPolaris().conf.Weight)),
+		polaris.WithRegistryServiceToken(GetPlugin().conf.Token),
+		polaris.WithRegistryTimeout(GetPlugin().conf.Timeout.AsDuration()),
+		polaris.WithRegistryTTL(int(GetPlugin().conf.Ttl)),
+		polaris.WithRegistryWeight(int(GetPlugin().conf.Weight)),
 	)
 	return r
 }
