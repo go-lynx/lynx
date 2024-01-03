@@ -13,6 +13,6 @@ func init() {
 	})
 }
 
-func GetGRPC() *grpc.Server {
+func GetServer() *grpc.Server {
 	return app.Lynx().PlugManager().GetPlugin(name).(*ServiceGrpc).grpc
 }
