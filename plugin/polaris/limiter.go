@@ -10,7 +10,7 @@ func (p *PlugPolaris) HttpRateLimit() middleware.Middleware {
 	app.Lynx().Helper().Infof("Synchronizing [HTTP] rate limit policy")
 	return polaris.Ratelimit(GetPolaris().Limiter(
 		polaris.WithLimiterService(app.Name()),
-		polaris.WithLimiterNamespace(GetPlugPolaris().conf.Namespace),
+		polaris.WithLimiterNamespace(GetPlugin().conf.Namespace),
 	))
 }
 
@@ -18,6 +18,6 @@ func (p *PlugPolaris) GrpcRateLimit() middleware.Middleware {
 	app.Lynx().Helper().Infof("Synchronizing [GRPC] rate limit policy")
 	return polaris.Ratelimit(GetPolaris().Limiter(
 		polaris.WithLimiterService(app.Name()),
-		polaris.WithLimiterNamespace(GetPlugPolaris().conf.Namespace),
+		polaris.WithLimiterNamespace(GetPlugin().conf.Namespace),
 	))
 }
