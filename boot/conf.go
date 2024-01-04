@@ -4,11 +4,10 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/config/file"
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-lynx/lynx/conf"
 )
 
 // loadLocalBootFile Boot configuration file for service startup loaded from local
-func (b *Boot) loadLocalBootFile() *conf.Bootstrap {
+func (b *Boot) loadLocalBootFile() {
 	log.Info("Lynx reading local bootstrap configuration file/folder:" + flagConf)
 	c := config.New(
 		config.WithSource(
@@ -16,10 +15,6 @@ func (b *Boot) loadLocalBootFile() *conf.Bootstrap {
 		),
 	)
 	if err := c.Load(); err != nil {
-		panic(err)
-	}
-	var bootstrap conf.Bootstrap
-	if err := c.Scan(&bootstrap); err != nil {
 		panic(err)
 	}
 	// local file close
@@ -30,5 +25,4 @@ func (b *Boot) loadLocalBootFile() *conf.Bootstrap {
 		}
 	}(c)
 	b.conf = c
-	return &bootstrap
 }

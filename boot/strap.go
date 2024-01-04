@@ -8,7 +8,6 @@ import (
 	"github.com/go-kratos/kratos/v2/encoding/json"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/app"
-	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
 	"google.golang.org/protobuf/encoding/protojson"
 	"time"
@@ -33,14 +32,14 @@ func init() {
 	}
 }
 
-type wireApp func(confServer *conf.Bootstrap, logger log.Logger) (*kratos.App, error)
+type wireApp func(logger log.Logger) (*kratos.App, error)
 
 // Run This function is the application startup entry point
 func (b *Boot) Run() {
 	defer b.handlePanic()
 	st := time.Now()
 
-	c := b.loadLocalBootFile()
+	b.loadLocalBootFile()
 	app.NewApp(b.conf, b.plugins...)
 	app.Lynx().InitLogger()
 	app.Lynx().Helper().Infof("Lynx application is starting up")
@@ -48,7 +47,7 @@ func (b *Boot) Run() {
 
 	// Load the plugin first, then execute the wireApp
 	app.Lynx().PlugManager().LoadPlugins(b.conf)
-	k, err := b.wire(c, app.Lynx().Logger())
+	k, err := b.wire(app.Lynx().Logger())
 	if err != nil {
 		app.Lynx().Helper().Error(err)
 		panic(err)
