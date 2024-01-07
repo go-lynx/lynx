@@ -11,10 +11,11 @@ import (
 )
 
 type GrpcSubscribe struct {
-	name string
-	dis  registry.Discovery
-	tls  bool
-	rca  string
+	name  string
+	dis   registry.Discovery
+	tls   bool
+	rca   string
+	group string
 }
 
 type Option func(o *GrpcSubscribe)
@@ -40,6 +41,12 @@ func EnableTls() Option {
 func WithRootCAFileName(rca string) Option {
 	return func(o *GrpcSubscribe) {
 		o.rca = rca
+	}
+}
+
+func WithRootCAFileGroup(group string) Option {
+	return func(o *GrpcSubscribe) {
+		o.group = group
 	}
 }
 
