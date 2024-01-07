@@ -2,7 +2,6 @@ package tx
 
 import (
 	"context"
-	"github.com/go-lynx/lynx/app"
 )
 
 type Transaction interface {
@@ -45,9 +44,7 @@ func (l *LynxTransactionManager) WithTx(ctx context.Context, fn func() error) er
 }
 
 func WithTx(ctx context.Context, fn func() error) error {
-	l := &LynxTransactionManager{
-		tx: app.Lynx().TxManager(),
-	}
+	l := &LynxTransactionManager{}
 	err := l.WithTx(ctx, fn)
 	if err != nil {
 		return err
