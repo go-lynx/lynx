@@ -37,7 +37,7 @@ func (s *SeataClient) Load(b config.Value) (plugin.Plugin, error) {
 	if err != nil {
 		return nil, err
 	}
-	app.Lynx().Helper().Infof("Initializing Seata service")
+	app.Lynx().Helper().Infof("Initializing Seata")
 	if s.conf.GetEnabled() {
 		client.InitPath(s.conf.GetConfigPath())
 	}
