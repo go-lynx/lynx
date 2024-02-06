@@ -4,10 +4,7 @@ package lynx.protobuf.plugin.seata;
 
 option go_package = "github.com/go-lynx/lynx/plugin/seata/conf";
 
-import "google/protobuf/duration.proto";
-
 message Seata {
-  string addr = 1;
-  string token = 2;
-  google.protobuf.Duration dial_timeout = 3;
+  bool enabled = 1;
+  string config_path = 2;
 }
