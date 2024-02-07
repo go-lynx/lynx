@@ -47,7 +47,7 @@ func TestTopologicalSort(t *testing.T) {
 	pluginD := &MockPlugin{name: "D", depends: []string{"C", "A", "E"}, weight: 2}
 	pluginE := &MockPlugin{name: "E", depends: []string{}, weight: 3}
 
-	manager.(*DefaultLynxPluginManager).plugins = []plugin.Plugin{
+	manager.(*DefaultLynxPluginManager).pluginList = []plugin.Plugin{
 		pluginA,
 		pluginB,
 		pluginC,
@@ -55,7 +55,7 @@ func TestTopologicalSort(t *testing.T) {
 		pluginE,
 	}
 
-	result, err := manager.(*DefaultLynxPluginManager).TopologicalSort(manager.(*DefaultLynxPluginManager).plugins)
+	result, err := manager.(*DefaultLynxPluginManager).TopologicalSort(manager.(*DefaultLynxPluginManager).pluginList)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}

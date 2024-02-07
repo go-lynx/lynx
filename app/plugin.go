@@ -18,23 +18,23 @@ type LynxPluginManager interface {
 }
 
 type DefaultLynxPluginManager struct {
-	plugMap map[string]plugin.Plugin
-	plugins []plugin.Plugin
-	factory factory.PluginFactory
+	pluginMap  map[string]plugin.Plugin
+	pluginList []plugin.Plugin
+	factory    factory.PluginFactory
 }
 
 func NewLynxPluginManager(p ...plugin.Plugin) LynxPluginManager {
 	m := &DefaultLynxPluginManager{
-		plugins: make([]plugin.Plugin, 0),
-		factory: factory.GlobalPluginFactory(),
-		plugMap: make(map[string]plugin.Plugin),
+		pluginList: make([]plugin.Plugin, 0),
+		factory:    factory.GlobalPluginFactory(),
+		pluginMap:  make(map[string]plugin.Plugin),
 	}
 
-	// Manually set plugins
+	// Manually set pluginList
 	if p != nil && len(p) > 1 {
-		m.plugins = append(m.plugins, p...)
+		m.pluginList = append(m.pluginList, p...)
 		for i := 0; i < len(p); i++ {
-			m.plugMap[p[i].Name()] = p[i]
+			m.pluginMap[p[i].Name()] = p[i]
 		}
 	}
 	return m
@@ -102,7 +102,7 @@ func (m *DefaultLynxPluginManager) TopologicalSort(plugins []plugin.Plugin) ([]P
 		}
 	}
 
-	// Sort plugins with the same level by weight.
+	// Sort pluginList with the same level by weight.
 	sort.SliceStable(result, func(i, j int) bool {
 		if result[i].level == result[j].level {
 			return result[i].Weight() > result[j].Weight()
@@ -123,9 +123,9 @@ func contains(slice []PluginWithLevel, item plugin.Plugin) bool {
 }
 
 func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
-	plugins, err := m.TopologicalSort(m.plugins)
+	plugins, err := m.TopologicalSort(m.pluginList)
 	if err != nil {
-		Lynx().Helper().Errorf("Exception in topological sorting plugins :", err)
+		Lynx().Helper().Errorf("Exception in topological sorting pluginList :", err)
 		panic(err)
 	}
 
@@ -140,11 +140,11 @@ func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
 }
 
 func (m *DefaultLynxPluginManager) UnloadPlugins() {
-	size := len(m.plugins)
+	size := len(m.pluginList)
 	for i := 0; i < size; i++ {
-		err := m.plugins[i].Unload()
+		err := m.pluginList[i].Unload()
 		if err != nil {
-			Lynx().Helper().Errorf("Exception in uninstalling %v plugin", m.plugins[i].Name(), err)
+			Lynx().Helper().Errorf("Exception in uninstalling %v plugin", m.pluginList[i].Name(), err)
 		}
 	}
 }
@@ -156,13 +156,13 @@ func (m *DefaultLynxPluginManager) LoadPluginsByName(name []string, conf config.
 
 	var pluginList []plugin.Plugin
 	for i := 0; i < len(name); i++ {
-		pluginList = append(pluginList, m.plugMap[name[i]])
+		pluginList = append(pluginList, m.pluginMap[name[i]])
 	}
 
-	// Sort plugins with the same level by weight.
+	// Sort pluginList with the same level by weight.
 	plugins, err := m.TopologicalSort(pluginList)
 	if err != nil {
-		Lynx().Helper().Errorf("Exception in topological sorting plugins :", err)
+		Lynx().Helper().Errorf("Exception in topological sorting pluginList :", err)
 		panic(err)
 	}
 
@@ -177,7 +177,7 @@ func (m *DefaultLynxPluginManager) LoadPluginsByName(name []string, conf config.
 
 func (m *DefaultLynxPluginManager) UnloadPluginsByName(name []string) {
 	for i := 0; i < len(name); i++ {
-		err := m.plugMap[name[i]].Unload()
+		err := m.pluginMap[name[i]].Unload()
 		if err != nil {
 			Lynx().Helper().Errorf("Exception in uninstalling %v plugin", name[i], err)
 		}
@@ -185,5 +185,5 @@ func (m *DefaultLynxPluginManager) UnloadPluginsByName(name []string) {
 }
 
 func (m *DefaultLynxPluginManager) GetPlugin(name string) plugin.Plugin {
-	return m.plugMap[name]
+	return m.pluginMap[name]
 }
