@@ -3,7 +3,6 @@ package app
 import (
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-lynx/lynx/app/tx"
 	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugin"
 	"os"
@@ -23,7 +22,6 @@ type LynxApp struct {
 	globalConf   config.Config
 	controlPlane ControlPlane
 	plugManager  LynxPluginManager
-	txManager    tx.TransactionManager
 
 	dfLog *log.Helper
 }
@@ -59,7 +57,6 @@ func NewApp(c config.Config, p ...plugin.Plugin) *LynxApp {
 		version:      bootConf.Lynx.Application.Version,
 		globalConf:   c,
 		plugManager:  NewLynxPluginManager(p...),
-		txManager:    tx.NewLynxTransactionManager(),
 		controlPlane: &LocalControlPlane{},
 	}
 	// The lynxApp is in Singleton pattern
@@ -84,8 +81,4 @@ func (a *LynxApp) setGlobalConfig(c config.Config) {
 		}
 	}
 	a.globalConf = c
-}
-
-func (a *LynxApp) TxManager() tx.TransactionManager {
-	return a.txManager
 }
