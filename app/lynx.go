@@ -14,14 +14,14 @@ var (
 )
 
 type LynxApp struct {
-	host         string
-	name         string
-	version      string
-	cert         Cert
-	logger       log.Logger
-	globalConf   config.Config
-	controlPlane ControlPlane
-	plugManager  LynxPluginManager
+	host          string
+	name          string
+	version       string
+	cert          Cert
+	logger        log.Logger
+	globalConf    config.Config
+	controlPlane  ControlPlane
+	pluginManager LynxPluginManager
 
 	dfLog *log.Helper
 }
@@ -52,12 +52,12 @@ func NewApp(c config.Config, p ...plugin.Plugin) *LynxApp {
 	}
 
 	var app = &LynxApp{
-		host:         host,
-		name:         bootConf.Lynx.Application.Name,
-		version:      bootConf.Lynx.Application.Version,
-		globalConf:   c,
-		plugManager:  NewLynxPluginManager(p...),
-		controlPlane: &LocalControlPlane{},
+		host:          host,
+		name:          bootConf.Lynx.Application.Name,
+		version:       bootConf.Lynx.Application.Version,
+		globalConf:    c,
+		pluginManager: NewLynxPluginManager(p...),
+		controlPlane:  &LocalControlPlane{},
 	}
 	// The lynxApp is in Singleton pattern
 	lynxApp = app
@@ -65,7 +65,7 @@ func NewApp(c config.Config, p ...plugin.Plugin) *LynxApp {
 }
 
 func (a *LynxApp) PlugManager() LynxPluginManager {
-	return a.plugManager
+	return a.pluginManager
 }
 
 func (a *LynxApp) GlobalConfig() config.Config {
