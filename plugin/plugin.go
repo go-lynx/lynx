@@ -5,13 +5,9 @@ import (
 )
 
 type Plugin interface {
-	LoaderPlugin
-	SupportPlugin
-}
-
-type LoaderPlugin interface {
 	Load(config.Value) (Plugin, error)
 	Unload() error
+	SupportPlugin
 }
 
 type SupportPlugin interface {
