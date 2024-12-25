@@ -26,11 +26,14 @@ type LynxApp struct {
 	dfLog *log.Helper
 }
 
+// Lynx function returns a global LynxApp instance
 func Lynx() *LynxApp {
 	return lynxApp
 }
 
+// Host Retrieves the host name of the current application instance
 func Host() string {
+	// Returns the host name stored in the lynxApp instance
 	return lynxApp.host
 }
 
