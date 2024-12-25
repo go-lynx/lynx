@@ -24,3 +24,33 @@ func NewKratos(logger log.Logger, gs *grpc.Server, hs *http.Server, r registry.R
 		kratos.Registrar(r),
 	)
 }
+
+// NewGrpcKratos Start kratos application
+func NewGrpcKratos(logger log.Logger, gs *grpc.Server, r registry.Registrar) *kratos.App {
+	return kratos.New(
+		kratos.ID(app.Host()),
+		kratos.Name(app.Name()),
+		kratos.Version(app.Version()),
+		kratos.Metadata(map[string]string{}),
+		kratos.Logger(logger),
+		kratos.Server(
+			gs,
+		),
+		kratos.Registrar(r),
+	)
+}
+
+// NewHttpKratos Start kratos application
+func NewHttpKratos(logger log.Logger, hs *http.Server, r registry.Registrar) *kratos.App {
+	return kratos.New(
+		kratos.ID(app.Host()),
+		kratos.Name(app.Name()),
+		kratos.Version(app.Version()),
+		kratos.Metadata(map[string]string{}),
+		kratos.Logger(logger),
+		kratos.Server(
+			hs,
+		),
+		kratos.Registrar(r),
+	)
+}
