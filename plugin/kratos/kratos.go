@@ -9,18 +9,26 @@ import (
 	"github.com/go-lynx/lynx/app"
 )
 
-// NewKratos Start kratos application
+// NewKratos 函数用于创建一个新的 Kratos 应用实例
 func NewKratos(logger log.Logger, gs *grpc.Server, hs *http.Server, r registry.Registrar) *kratos.App {
+	// 使用 kratos.New 函数创建一个新的 Kratos 应用实例
 	return kratos.New(
+		// 设置应用实例的 ID 为当前应用的主机名
 		kratos.ID(app.Host()),
+		// 设置应用实例的名称为当前应用的名称
 		kratos.Name(app.Name()),
+		// 设置应用实例的版本为当前应用的版本
 		kratos.Version(app.Version()),
+		// 设置应用实例的元数据为空
 		kratos.Metadata(map[string]string{}),
+		// 设置应用实例的日志记录器为传入的 logger
 		kratos.Logger(logger),
+		// 设置应用实例的服务器为传入的 grpc 服务器和 http 服务器
 		kratos.Server(
 			gs,
 			hs,
 		),
+		// 设置应用实例的注册器为传入的注册器
 		kratos.Registrar(r),
 	)
 }
