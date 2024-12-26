@@ -33,32 +33,46 @@ func NewKratos(logger log.Logger, gs *grpc.Server, hs *http.Server, r registry.R
 	)
 }
 
-// NewGrpcKratos Start kratos application
+// NewGrpcKratos 函数用于创建一个新的 Kratos 应用实例，该实例使用 gRPC 作为传输协议
 func NewGrpcKratos(logger log.Logger, gs *grpc.Server, r registry.Registrar) *kratos.App {
 	return kratos.New(
+		// 设置应用实例的 ID 为当前应用的主机名
 		kratos.ID(app.Host()),
+		// 设置应用实例的名称为当前应用的名称
 		kratos.Name(app.Name()),
+		// 设置应用实例的版本为当前应用的版本
 		kratos.Version(app.Version()),
+		// 设置应用实例的元数据为空
 		kratos.Metadata(map[string]string{}),
+		// 设置应用实例的日志记录器为传入的 logger
 		kratos.Logger(logger),
+		// 设置应用实例的服务器为传入的 grpc 服务器
 		kratos.Server(
 			gs,
 		),
+		// 设置应用实例的注册器为传入的注册器
 		kratos.Registrar(r),
 	)
 }
 
-// NewHttpKratos Start kratos application
+// NewHttpKratos 函数用于创建一个新的 Kratos 应用实例，该实例使用 HTTP 作为传输协议
 func NewHttpKratos(logger log.Logger, hs *http.Server, r registry.Registrar) *kratos.App {
 	return kratos.New(
+		// 设置应用实例的 ID 为当前应用的主机名
 		kratos.ID(app.Host()),
+		// 设置应用实例的名称为当前应用的名称
 		kratos.Name(app.Name()),
+		// 设置应用实例的版本为当前应用的版本
 		kratos.Version(app.Version()),
+		// 设置应用实例的元数据为空
 		kratos.Metadata(map[string]string{}),
+		// 设置应用实例的日志记录器为传入的 logger
 		kratos.Logger(logger),
+		// 设置应用实例的服务器为传入的 http 服务器
 		kratos.Server(
 			hs,
 		),
+		// 设置应用实例的注册器为传入的注册器
 		kratos.Registrar(r),
 	)
 }

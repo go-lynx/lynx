@@ -45,25 +45,41 @@ func Version() string {
 	return lynxApp.version
 }
 
-// NewApp create a lynx microservice
+// NewApp 函数用于创建一个新的 Lynx 应用实例
 func NewApp(c config.Config, p ...plugin.Plugin) *LynxApp {
+	// 获取当前主机名
 	host, _ := os.Hostname()
+
+	// 定义一个 Bootstrap 配置对象，用于存储应用的启动配置
 	var bootConf conf.Bootstrap
+
+	// 从全局配置对象 c 中扫描并解析出 Bootstrap 配置到 bootConf 中
 	err := c.Scan(&bootConf)
+	// 如果发生错误，返回 nil
 	if err != nil {
 		return nil
 	}
 
+	// 创建一个新的 LynxApp 实例
 	var app = &LynxApp{
-		host:          host,
-		name:          bootConf.Lynx.Application.Name,
-		version:       bootConf.Lynx.Application.Version,
-		globalConf:    c,
+		// 设置主机名为当前主机名
+		host: host,
+		// 设置应用名为 Bootstrap 配置中的应用名
+		name: bootConf.Lynx.Application.Name,
+		// 设置应用版本为 Bootstrap 配置中的应用版本
+		version: bootConf.Lynx.Application.Version,
+		// 设置全局配置对象
+		globalConf: c,
+		// 创建一个新的 LynxPluginManager 实例，并传入插件列表
 		pluginManager: NewLynxPluginManager(p...),
-		controlPlane:  &LocalControlPlane{},
+		// 设置控制平面为本地控制平面实例
+		controlPlane: &LocalControlPlane{},
 	}
-	// The lynxApp is in Singleton pattern
+
+	// 将新创建的 LynxApp 实例设置为全局单例
 	lynxApp = app
+
+	// 返回新创建的 LynxApp 实例
 	return app
 }
 
