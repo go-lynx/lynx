@@ -1,3 +1,6 @@
+// Package app provides core functionality for plugin management in the Lynx framework.
+// It includes interfaces and implementations for managing plugin lifecycle,
+// dependencies, and configuration.
 package app
 
 import (
@@ -5,185 +8,304 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/factory"
 	"github.com/go-lynx/lynx/plugins"
-	"sort"
 )
 
+// LynxPluginManager defines the interface for managing Lynx plugins.
+// It provides methods for loading, unloading, and managing plugin lifecycle.
 type LynxPluginManager interface {
+	// LoadPlugins loads and initializes all registered plugins using the provided configuration.
+	// This method should be called during application startup.
 	LoadPlugins(config.Config)
+
+	// UnloadPlugins gracefully unloads all registered plugins.
+	// This method should be called during application shutdown.
 	UnloadPlugins()
+
+	// LoadPluginsByName loads specific plugins by their names.
+	// Parameters:
+	//   - names: List of plugin names to load
+	//   - conf: Configuration to use for plugin initialization
 	LoadPluginsByName([]string, config.Config)
+
+	// UnloadPluginsByName unloads specific plugins by their names.
+	// This allows for selective plugin unloading without affecting others.
 	UnloadPluginsByName([]string)
+
+	// GetPlugin retrieves a plugin instance by its name.
+	// Returns nil if the plugin is not found.
 	GetPlugin(name string) plugins.Plugin
+
+	// PreparePlug prepares plugins for loading and returns the names of successfully prepared plugins.
+	// This method is called before actual plugin loading to ensure all prerequisites are met.
 	PreparePlug(config config.Config) []string
 }
 
+// DefaultLynxPluginManager is the default implementation of LynxPluginManager.
+// It manages plugin lifecycle and dependencies using a topological sorting approach.
 type DefaultLynxPluginManager struct {
-	pluginMap  map[string]plugins.Plugin
+	// pluginMap stores plugins indexed by their names for quick lookup
+	pluginMap map[string]plugins.Plugin
+	// pluginList maintains the ordered list of plugins
 	pluginList []plugins.Plugin
-	factory    factory.PluginFactory
+	// factory is used to create plugin instances
+	factory factory.PluginFactory
 }
 
-func NewLynxPluginManager(p ...plugins.Plugin) LynxPluginManager {
+// NewLynxPluginManager creates a new instance of the default plugin manager.
+// Parameters:
+//   - plugins: Optional list of plugins to initialize with
+//
+// Returns:
+//   - LynxPluginManager: Initialized plugin manager instance
+func NewLynxPluginManager(pluginList ...plugins.Plugin) LynxPluginManager {
 	m := &DefaultLynxPluginManager{
 		pluginList: make([]plugins.Plugin, 0),
-		factory:    factory.GlobalPluginFactory(),
 		pluginMap:  make(map[string]plugins.Plugin),
+		factory:    factory.GlobalPluginFactory(),
 	}
 
-	// Manually set pluginList
-	if p != nil && len(p) > 1 {
-		m.pluginList = append(m.pluginList, p...)
-		for i := 0; i < len(p); i++ {
-			m.pluginMap[p[i].Name()] = p[i]
+	// Initialize plugin map and list if pluginList are provided
+	if pluginList != nil && len(pluginList) > 0 {
+		m.pluginList = append(m.pluginList, pluginList...)
+		for _, p := range pluginList {
+			if p != nil {
+				m.pluginMap[p.Name()] = p
+			}
 		}
 	}
 	return m
 }
 
+// PluginWithLevel represents a plugin with its dependency level in the topology.
+// Used internally for dependency sorting and plugin initialization order.
 type PluginWithLevel struct {
+	// Plugin is the actual plugin instance
 	plugins.Plugin
+	// level represents the dependency depth (higher means more dependencies)
 	level int
 }
 
-func (m *DefaultLynxPluginManager) TopologicalSort(plugins []plugins.Plugin) ([]PluginWithLevel, error) {
-	// First, build a map from plugin name to the actual plugin.
+// TopologicalSort performs a topological sort on plugins based on their dependencies.
+// This ensures plugins are loaded in the correct order, respecting their dependencies.
+//
+// Parameters:
+//   - plugins: List of plugins to sort
+//
+// Returns:
+//   - []PluginWithLevel: Sorted list of plugins with their dependency levels
+//   - error: Any error that occurred during sorting
+func (m *DefaultLynxPluginManager) TopologicalSort(pluginList []plugins.Plugin) ([]PluginWithLevel, error) {
+	// Build a map from plugin name to the actual plugin instance
 	nameToPlugin := make(map[string]plugins.Plugin)
-	for _, p := range plugins {
+	for _, p := range pluginList {
+		if p == nil {
+			continue
+		}
 		nameToPlugin[p.Name()] = p
 	}
 
-	// Then, build the adjacency list for the graph.
+	// Build the dependency graph as an adjacency list
 	graph := make(map[string][]string)
-	for _, p := range plugins {
-		var on []string
-		if Lynx() != nil && Lynx().GlobalConfig() != nil {
-			on = p.DependsOn(Lynx().GlobalConfig().Value(p.ConfPrefix()))
-		} else {
-			on = p.DependsOn(nil)
+	for _, p := range pluginList {
+		if p == nil {
+			continue
 		}
 
-		for _, dep := range on {
-			// If the dependency exists, add it to the graph.
-			if _, ok := nameToPlugin[dep]; ok {
-				graph[p.Name()] = append(graph[p.Name()], dep)
+		// Get plugin dependencies based on configuration
+		var dependencies []string
+		if app := Lynx(); app != nil {
+			if conf := app.GetGlobalConfig(); conf != nil {
+				dependencies = p.GetDependencies(conf.Value(p.ConfPrefix()))
 			} else {
-				panic(fmt.Sprintf("Plugin %s depends on unknown plugin %s", p.Name(), dep))
+				dependencies = p.DependsOn(nil)
 			}
+		} else {
+			dependencies = p.DependsOn(nil)
+		}
+
+		// Validate and add dependencies to the graph
+		for _, dep := range dependencies {
+			if _, exists := nameToPlugin[dep]; !exists {
+				return nil, fmt.Errorf("plugin %s depends on unknown plugin %s", p.Name(), dep)
+			}
+			graph[p.Name()] = append(graph[p.Name()], dep)
 		}
 	}
 
-	// Perform the topological sort.
-	result := make([]PluginWithLevel, 0, len(plugins))
+	// Perform topological sort using depth-first search
+	result := make([]PluginWithLevel, 0, len(pluginList))
 	visited := make(map[string]bool)
 	level := make(map[string]int)
+
 	var visit func(string) error
 	visit = func(name string) error {
-		if !visited[name] {
-			visited[name] = true
-			maxLevel := 0
-			for _, dep := range graph[name] {
-				if err := visit(dep); err != nil {
-					return err
-				}
-				if level[dep] > maxLevel {
-					maxLevel = level[dep]
-				}
+		if visited[name] {
+			if !contains(result, nameToPlugin[name]) {
+				return fmt.Errorf("cyclic dependency detected involving plugin %s", name)
 			}
-			level[name] = maxLevel + 1
-			result = append(result, PluginWithLevel{nameToPlugin[name], level[name]})
-		} else if !contains(result, nameToPlugin[name]) {
-			return fmt.Errorf("cyclic dependency involving %s", name)
+			return nil
 		}
+
+		visited[name] = true
+		maxLevel := 0
+
+		// Visit all dependencies first
+		for _, dep := range graph[name] {
+			if err := visit(dep); err != nil {
+				return fmt.Errorf("failed to visit dependency %s: %w", dep, err)
+			}
+			if level[dep] > maxLevel {
+				maxLevel = level[dep]
+			}
+		}
+
+		// Set the level and add to result
+		level[name] = maxLevel + 1
+		result = append(result, PluginWithLevel{nameToPlugin[name], level[name]})
 		return nil
 	}
-	for _, p := range plugins {
+
+	// Visit all pluginList to build the sorted list
+	for _, p := range pluginList {
+		if p == nil {
+			continue
+		}
 		if err := visit(p.Name()); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to sort pluginList: %w", err)
 		}
 	}
-
-	// Sort pluginList with the same level by weight.
-	sort.SliceStable(result, func(i, j int) bool {
-		if result[i].level == result[j].level {
-			return result[i].Weight() > result[j].Weight()
-		}
-		return result[i].level < result[j].level
-	})
-
 	return result, nil
 }
 
-func contains(slice []PluginWithLevel, item plugins.Plugin) bool {
+// contains checks if a plugin exists in the sorted result list.
+// Used internally by TopologicalSort to detect cyclic dependencies.
+func contains(slice []PluginWithLevel, plugin plugins.Plugin) bool {
+	if plugin == nil {
+		return false
+	}
 	for _, v := range slice {
-		if v.Plugin == item {
+		if v.Plugin == plugin {
 			return true
 		}
 	}
 	return false
 }
 
+// LoadPlugins loads all registered plugins in dependency order.
+// It performs topological sorting before loading to ensure correct initialization order.
 func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
-	plugins, err := m.TopologicalSort(m.pluginList)
-	if err != nil {
-		Lynx().Helper().Errorf("Exception in topological sorting pluginList :", err)
-		panic(err)
-	}
-
-	size := len(plugins)
-	for i := 0; i < size; i++ {
-		_, err := plugins[i].Load(conf.Value(plugins[i].ConfPrefix()))
-		if err != nil {
-			Lynx().Helper().Errorf("Exception in initializing %v plugin :", plugins[i].Name(), err)
-			panic(err)
-		}
-	}
-}
-
-func (m *DefaultLynxPluginManager) UnloadPlugins() {
-	size := len(m.pluginList)
-	for i := 0; i < size; i++ {
-		err := m.pluginList[i].Unload()
-		if err != nil {
-			Lynx().Helper().Errorf("Exception in uninstalling %v plugin", m.pluginList[i].Name(), err)
-		}
-	}
-}
-
-func (m *DefaultLynxPluginManager) LoadPluginsByName(name []string, conf config.Config) {
-	if name == nil || len(name) == 0 {
+	if m == nil || len(m.pluginList) == 0 {
 		return
 	}
 
-	var pluginList []plugins.Plugin
-	for i := 0; i < len(name); i++ {
-		pluginList = append(pluginList, m.pluginMap[name[i]])
-	}
-
-	// Sort pluginList with the same level by weight.
-	plugins, err := m.TopologicalSort(pluginList)
+	// Sort plugins by dependencies
+	sortedPlugins, err := m.TopologicalSort(m.pluginList)
 	if err != nil {
-		Lynx().Helper().Errorf("Exception in topological sorting pluginList :", err)
-		panic(err)
+		if app := Lynx(); app != nil {
+			app.logHelper.Errorf("Failed to sort plugins: %v", err)
+		}
+		return
 	}
 
-	for i := 0; i < len(plugins); i++ {
-		_, err := plugins[i].Load(conf.Value(plugins[i].ConfPrefix()))
-		if err != nil {
-			Lynx().Helper().Errorf("Exception in initializing %v plugin :", plugins[i].Name(), err)
-			panic(err)
+	// Load plugins in sorted order
+	for _, plugin := range sortedPlugins {
+		if plugin.Plugin == nil {
+			continue
+		}
+		if err := plugin.Start(); err != nil {
+			if app := Lynx(); app != nil {
+				app.logHelper.Errorf("Failed to start plugin %s: %v", plugin.Name(), err)
+			}
+			return
 		}
 	}
 }
 
-func (m *DefaultLynxPluginManager) UnloadPluginsByName(name []string) {
-	for i := 0; i < len(name); i++ {
-		err := m.pluginMap[name[i]].Unload()
-		if err != nil {
-			Lynx().Helper().Errorf("Exception in uninstalling %v plugin", name[i], err)
+// UnloadPlugins safely unloads all registered plugins.
+// It handles errors during unloading without interrupting the unload process.
+func (m *DefaultLynxPluginManager) UnloadPlugins() {
+	if m == nil || len(m.pluginList) == 0 {
+		return
+	}
+
+	for _, plugin := range m.pluginList {
+		if plugin == nil {
+			continue
+		}
+		if err := plugin.Stop(); err != nil {
+			if app := Lynx(); app != nil {
+				app.logHelper.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
+			}
 		}
 	}
 }
 
+// LoadPluginsByName loads specific plugins by their names.
+// Parameters:
+//   - names: List of plugin names to load
+//   - conf: Configuration to use for loading
+func (m *DefaultLynxPluginManager) LoadPluginsByName(names []string, conf config.Config) {
+	if m == nil || len(names) == 0 || conf == nil {
+		return
+	}
+
+	// Collect plugins to load
+	var pluginsToLoad []plugins.Plugin
+	for _, name := range names {
+		if plugin, exists := m.pluginMap[name]; exists && plugin != nil {
+			pluginsToLoad = append(pluginsToLoad, plugin)
+		}
+	}
+
+	if len(pluginsToLoad) == 0 {
+		return
+	}
+
+	// Sort and load plugins
+	sortedPlugins, err := m.TopologicalSort(pluginsToLoad)
+	if err != nil {
+		if app := Lynx(); app != nil {
+			app.logHelper.Errorf("Failed to sort plugins for loading: %v", err)
+		}
+		return
+	}
+
+	for _, plugin := range sortedPlugins {
+		if plugin.Plugin == nil {
+			continue
+		}
+		if err := plugin.Start(); err != nil {
+			if app := Lynx(); app != nil {
+				app.logHelper.Errorf("Failed to load plugin %s: %v", plugin.Name(), err)
+			}
+			return
+		}
+	}
+}
+
+// UnloadPluginsByName safely unloads specific plugins by their names.
+// It handles errors during unloading without interrupting the unload process.
+func (m *DefaultLynxPluginManager) UnloadPluginsByName(names []string) {
+	if m == nil || len(names) == 0 {
+		return
+	}
+
+	for _, name := range names {
+		if plugin, exists := m.pluginMap[name]; exists && plugin != nil {
+			if err := plugin.Stop(); err != nil {
+				if app := Lynx(); app != nil {
+					app.logHelper.Errorf("Failed to unload plugin %s: %v", name, err)
+				}
+			}
+		}
+	}
+}
+
+// GetPlugin retrieves a plugin instance by its name.
+// Returns nil if the plugin manager is nil, the name is empty, or the plugin doesn't exist.
 func (m *DefaultLynxPluginManager) GetPlugin(name string) plugins.Plugin {
+	if m == nil || name == "" {
+		return nil
+	}
 	return m.pluginMap[name]
 }

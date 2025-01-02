@@ -1,100 +1,127 @@
+// Package factory provides functionality for creating and managing plugins in the Lynx framework.
 package factory
 
 import (
-	"errors"
+	"fmt"
+
 	"github.com/go-lynx/lynx/plugins"
 )
 
+// Global factory instance
 var (
 	globalFactory = newPluginFactory()
 )
 
-// PluginFactory combines the responsibilities of creating and managing plugins.
+// PluginFactory defines the complete interface for plugin management,
+// combining both creation and registry capabilities.
 type PluginFactory interface {
 	PluginCreator
 	PluginRegistry
 }
 
-// PluginCreator provides a method for creating plugins by name.
+// PluginCreator defines the interface for creating plugin instances.
 type PluginCreator interface {
-	CreateByName(pluginName string) (plugins.Plugin, error)
+	// CreatePlugin instantiates a new plugin instance by its name.
+	// Returns an error if the plugin cannot be created.
+	CreatePlugin(name string) (plugins.Plugin, error)
 }
 
-// PluginRegistry provides methods for registering, checking existence, and removing plugins.
+// PluginRegistry defines the interface for managing plugin registrations.
 type PluginRegistry interface {
-	Register(pluginName string, confPrefix string, creator func() plugins.Plugin)
-	GetRegisterTable() map[string][]string
-	Exists(pluginName string) bool
-	Remove(pluginName string)
+	// RegisterPlugin adds a new plugin to the registry with its configuration prefix
+	// and creation function.
+	RegisterPlugin(name string, configPrefix string, creator func() plugins.Plugin)
+
+	// UnregisterPlugin removes a plugin from the registry.
+	UnregisterPlugin(name string)
+
+	// GetPluginRegistry returns the mapping of configuration prefixes to plugin names.
+	GetPluginRegistry() map[string][]string
+
+	// HasPlugin checks if a plugin is registered with the given name.
+	HasPlugin(name string) bool
 }
 
-// GlobalPluginFactory returns a global instance of PluginFactory.
+// GlobalPluginFactory returns the singleton instance of the plugin factory.
 func GlobalPluginFactory() PluginFactory {
 	return globalFactory
 }
 
-// LynxPluginFactory is an implementation of PluginFactory.
+// LynxPluginFactory implements the PluginFactory interface.
 type LynxPluginFactory struct {
-	// registerTable maps configuration prefixes to plugin names.
-	registerTable map[string][]string
-	// creators stores the creator functions for each plugin.
-	creators map[string]func() plugins.Plugin
+	// configToPlugins maps configuration prefixes to their associated plugin names.
+	// Example: "http" -> ["http_server", "http_client"]
+	configToPlugins map[string][]string
+
+	// pluginCreators stores the creation functions for each plugin.
+	// Maps plugin names to their respective creation functions.
+	pluginCreators map[string]func() plugins.Plugin
 }
 
-// newPluginFactory creates a new instance of LynxPluginFactory.
+// newPluginFactory initializes a new instance of LynxPluginFactory.
 func newPluginFactory() *LynxPluginFactory {
 	return &LynxPluginFactory{
-		registerTable: make(map[string][]string),
-		creators:      make(map[string]func() plugins.Plugin),
+		configToPlugins: make(map[string][]string),
+		pluginCreators:  make(map[string]func() plugins.Plugin),
 	}
 }
 
-// Register adds a new plugin to the factory.
-func (f *LynxPluginFactory) Register(name string, confPrefix string, creator func() plugins.Plugin) {
-	if _, exists := f.creators[name]; exists {
-		panic(errors.New("plugin with the same name already exists pluginName:" + name))
+// RegisterPlugin registers a new plugin with its configuration prefix and creation function.
+// Panics if a plugin with the same name is already registered.
+func (f *LynxPluginFactory) RegisterPlugin(name string, configPrefix string, creator func() plugins.Plugin) {
+	if _, exists := f.pluginCreators[name]; exists {
+		panic(fmt.Errorf("plugin already registered: %s", name))
 	}
-	f.creators[name] = creator
-	pluginNames, exists := f.registerTable[confPrefix]
-	if !exists {
-		f.registerTable[confPrefix] = []string{name}
+
+	f.pluginCreators[name] = creator
+
+	pluginList := f.configToPlugins[configPrefix]
+	if pluginList == nil {
+		f.configToPlugins[configPrefix] = []string{name}
 	} else {
-		f.registerTable[confPrefix] = append(pluginNames, name)
+		f.configToPlugins[configPrefix] = append(pluginList, name)
 	}
 }
 
-// Remove deletes a plugin from the factory.
-func (f *LynxPluginFactory) Remove(name string) {
-	delete(f.creators, name)
-	for confPrefix, pluginNames := range f.registerTable {
-		for i, pluginName := range pluginNames {
-			if pluginName == name {
-				f.registerTable[confPrefix] = append(pluginNames[:i], pluginNames[i+1:]...)
+// UnregisterPlugin removes a plugin from both the creator map and configuration mapping.
+func (f *LynxPluginFactory) UnregisterPlugin(name string) {
+	// Remove from creator map
+	delete(f.pluginCreators, name)
+
+	// Remove from configuration mapping
+	for prefix, pluginList := range f.configToPlugins {
+		for i, plugin := range pluginList {
+			if plugin == name {
+				// Remove the plugin from the slice
+				f.configToPlugins[prefix] = append(pluginList[:i], pluginList[i+1:]...)
+
+				// If no pluginList left for this prefix, remove the prefix entry
+				if len(f.configToPlugins[prefix]) == 0 {
+					delete(f.configToPlugins, prefix)
+				}
 				break
 			}
 		}
 	}
-	if len(f.registerTable[name]) == 0 {
-		delete(f.registerTable, name)
-	}
 }
 
-// GetRegisterTable returns a map of all registered plugins and their corresponding configuration prefixes.
-func (f *LynxPluginFactory) GetRegisterTable() map[string][]string {
-	return f.registerTable
+// GetPluginRegistry returns the current mapping of configuration prefixes to plugin names.
+func (f *LynxPluginFactory) GetPluginRegistry() map[string][]string {
+	return f.configToPlugins
 }
 
-// CreateByName creates a new plugin instance given its name.
-func (f *LynxPluginFactory) CreateByName(name string) (plugins.Plugin, error) {
-	creator, exists := f.creators[name]
+// CreatePlugin creates a new instance of a plugin by its name.
+// Returns an error if the plugin is not registered.
+func (f *LynxPluginFactory) CreatePlugin(name string) (plugins.Plugin, error) {
+	creator, exists := f.pluginCreators[name]
 	if !exists {
-		return nil, errors.New("invalid plugin name")
+		return nil, fmt.Errorf("plugin not found: %s", name)
 	}
 	return creator(), nil
 }
 
-// Exists checks if a plugin is registered in the factory.
-func (f *LynxPluginFactory) Exists(name string) bool {
-	_, exists := f.creators[name]
+// HasPlugin checks if a plugin is registered in the factory.
+func (f *LynxPluginFactory) HasPlugin(name string) bool {
+	_, exists := f.pluginCreators[name]
 	return exists
 }

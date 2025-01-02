@@ -1,52 +1,108 @@
 package app
 
 import (
+	"fmt"
+
 	"github.com/go-kratos/kratos/v2/config"
 )
 
-// PreparePlug Bootstrap plugin loading through remote or local configuration files
+// PreparePlug bootstraps plugin loading through remote or local configuration files.
+// It handles the initialization and registration of plugins based on configuration.
+// Returns a list of successfully prepared plugin names.
 func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
-	// 获取所有已注册插件的配置前缀列表
-	table := m.factory.GetRegisterTable()
-	// 初始化一个字符串切片，用于存储将要加载的插件名称
-	var plugNames = make([]string, 0)
+	if config == nil {
+		Lynx().logHelper.Error("Configuration is nil")
+		return nil
+	}
 
-	// 遍历配置前缀列表
-	for confPrefix := range table {
-		// 尝试从配置中获取对应前缀的值
+	// Get the registration table containing all registered plugin configuration prefixes
+	table := m.factory.GetPluginRegistry()
+	if len(table) == 0 {
+		Lynx().logHelper.Warn("No plugins registered in factory")
+		return nil
+	}
+
+	// Initialize slice to store names of plugins to be loaded
+	plugNames := make([]string, 0, len(table))
+
+	// Iterate through configuration prefixes
+	for confPrefix, names := range table {
+		if confPrefix == "" {
+			Lynx().logHelper.Warnf("Empty configuration prefix found, skipping")
+			continue
+		}
+
+		// Attempt to get configuration value for current prefix
 		value := config.Value(confPrefix)
-		// 如果获取失败（即配置中不存在该前缀），则跳过当前循环
-		if value.Load() == nil {
+		if value == nil {
+			Lynx().logHelper.Debugf("No configuration found for prefix: %s", confPrefix)
 			continue
 		}
 
-		// 获取与当前配置前缀关联的插件名称列表
-		names := table[confPrefix]
-		// 如果名称列表为空，则跳过当前循环
+		if loaded := value.Load(); loaded == nil {
+			Lynx().logHelper.Debugf("Configuration value is nil for prefix: %s", confPrefix)
+			continue
+		}
+
+		// Skip if no plugin names associated with prefix
 		if len(names) == 0 {
+			Lynx().logHelper.Debugf("No plugins associated with prefix: %s", confPrefix)
 			continue
 		}
 
-		// 遍历名称列表
+		// Process each plugin name
 		for _, name := range names {
-			// 检查插件是否已经存在于插件管理器中
-			if _, exists := m.pluginMap[name]; !exists && m.factory.Exists(name) {
-				// 如果插件不存在，则尝试从工厂中创建该插件
-				p, err := m.factory.CreateByName(name)
-				// 如果创建过程中发生错误，记录错误并抛出 panic
-				if err != nil {
-					Lynx().Helper().Errorf("Plugin factory load error: %v", err)
-					panic(err)
-				}
-				// 将新创建的插件添加到插件管理器的插件列表中
-				m.pluginList = append(m.pluginList, p)
-				// 将新创建的插件添加到插件管理器的插件映射中
-				m.pluginMap[p.Name()] = p
-				// 将新创建的插件名称添加到将要加载的插件名称列表中
-				plugNames = append(plugNames, name)
+			if name == "" {
+				Lynx().logHelper.Warn("Empty plugin name found, skipping")
+				continue
 			}
+
+			// Check if plugin already exists and can be created
+			if err := m.preparePlugin(name); err != nil {
+				Lynx().logHelper.Errorf("Failed to prepare plugin %s: %v", name, err)
+				continue
+			}
+
+			plugNames = append(plugNames, name)
 		}
 	}
-	// 返回将要加载的插件名称列表
+
+	if len(plugNames) == 0 {
+		Lynx().logHelper.Warn("No plugins were prepared")
+	} else {
+		Lynx().logHelper.Infof("Successfully prepared %d plugins", len(plugNames))
+	}
+
 	return plugNames
+}
+
+// preparePlugin handles the preparation of a single plugin.
+// It checks existence, creates the plugin, and adds it to the manager.
+// Returns error if any step fails.
+func (m *DefaultLynxPluginManager) preparePlugin(name string) error {
+	// Check if plugin is already loaded
+	if _, exists := m.pluginMap[name]; exists {
+		return fmt.Errorf("plugin %s is already loaded", name)
+	}
+
+	// Verify plugin exists in factory
+	if !m.factory.HasPlugin(name) {
+		return fmt.Errorf("plugin %s does not exist in factory", name)
+	}
+
+	// Create plugin instance
+	p, err := m.factory.CreatePlugin(name)
+	if err != nil {
+		return fmt.Errorf("failed to create plugin %s: %v", name, err)
+	}
+
+	if p == nil {
+		return fmt.Errorf("created plugin %s is nil", name)
+	}
+
+	// Add plugin to manager's tracking structures
+	m.pluginList = append(m.pluginList, p)
+	m.pluginMap[p.Name()] = p
+
+	return nil
 }

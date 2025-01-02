@@ -1,6 +1,9 @@
+// Package kratos provides integration with the Kratos framework
 package kratos
 
 import (
+	"fmt"
+
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/registry"
@@ -9,70 +12,89 @@ import (
 	"github.com/go-lynx/lynx/app"
 )
 
-// NewKratos 函数用于创建一个新的 Kratos 应用实例
-func NewKratos(logger log.Logger, gs *grpc.Server, hs *http.Server, r registry.Registrar) *kratos.App {
-	// 使用 kratos.New 函数创建一个新的 Kratos 应用实例
-	return kratos.New(
-		// 设置应用实例的 ID 为当前应用的主机名
-		kratos.ID(app.Host()),
-		// 设置应用实例的名称为当前应用的名称
-		kratos.Name(app.Name()),
-		// 设置应用实例的版本为当前应用的版本
-		kratos.Version(app.Version()),
-		// 设置应用实例的元数据为空
-		kratos.Metadata(map[string]string{}),
-		// 设置应用实例的日志记录器为传入的 logger
-		kratos.Logger(logger),
-		// 设置应用实例的服务器为传入的 grpc 服务器和 http 服务器
-		kratos.Server(
-			gs,
-			hs,
-		),
-		// 设置应用实例的注册器为传入的注册器
-		kratos.Registrar(r),
-	)
+// ServerType represents the type of server to be created
+type ServerType int
+
+const (
+	// BothServers indicates both HTTP and gRPC servers should be created
+	BothServers ServerType = iota
+	// GRPCServer indicates only gRPC server should be created
+	GRPCServer
+	// HTTPServer indicates only HTTP server should be created
+	HTTPServer
+)
+
+// Options holds the configuration for creating a Kratos application
+type Options struct {
+	// Logger for the application
+	Logger log.Logger
+	// GRPCServer instance
+	GRPCServer *grpc.Server
+	// HTTPServer instance
+	HTTPServer *http.Server
+	// Registrar for service registration
+	Registrar registry.Registrar
+	// ServerType specifies which servers to create
+	Type ServerType
 }
 
-// NewGrpcKratos 函数用于创建一个新的 Kratos 应用实例，该实例使用 gRPC 作为传输协议
-func NewGrpcKratos(logger log.Logger, gs *grpc.Server, r registry.Registrar) *kratos.App {
-	return kratos.New(
-		// 设置应用实例的 ID 为当前应用的主机名
-		kratos.ID(app.Host()),
-		// 设置应用实例的名称为当前应用的名称
-		kratos.Name(app.Name()),
-		// 设置应用实例的版本为当前应用的版本
-		kratos.Version(app.Version()),
-		// 设置应用实例的元数据为空
-		kratos.Metadata(map[string]string{}),
-		// 设置应用实例的日志记录器为传入的 logger
-		kratos.Logger(logger),
-		// 设置应用实例的服务器为传入的 grpc 服务器
-		kratos.Server(
-			gs,
-		),
-		// 设置应用实例的注册器为传入的注册器
-		kratos.Registrar(r),
-	)
-}
+// NewKratos creates a new Kratos application with the specified options.
+// It supports creating applications with HTTP server, gRPC server, or both.
+//
+// Parameters:
+//   - opts: Options struct containing all necessary configuration
+//
+// Returns:
+//   - *kratos.App: The created Kratos application
+//   - error: Any error that occurred during creation
+func NewKratos(opts Options) (*kratos.App, error) {
+	// Validate required parameters
+	if opts.Logger == nil {
+		return nil, fmt.Errorf("logger is required")
+	}
 
-// NewHttpKratos 函数用于创建一个新的 Kratos 应用实例，该实例使用 HTTP 作为传输协议
-func NewHttpKratos(logger log.Logger, hs *http.Server, r registry.Registrar) *kratos.App {
-	return kratos.New(
-		// 设置应用实例的 ID 为当前应用的主机名
+	if opts.Registrar == nil {
+		return nil, fmt.Errorf("registrar is required")
+	}
+
+	// Validate server configuration based on ServerType
+	switch opts.Type {
+	case BothServers:
+		if opts.GRPCServer == nil || opts.HTTPServer == nil {
+			return nil, fmt.Errorf("both GRPC and HTTP servers are required for BothServers type")
+		}
+	case GRPCServer:
+		if opts.GRPCServer == nil {
+			return nil, fmt.Errorf("GRPC server is required for GRPCServer type")
+		}
+	case HTTPServer:
+		if opts.HTTPServer == nil {
+			return nil, fmt.Errorf("HTTP server is required for HTTPServer type")
+		}
+	default:
+		return nil, fmt.Errorf("invalid server type: %d", opts.Type)
+	}
+
+	// Prepare base options for Kratos application
+	kratosOpts := []kratos.Option{
 		kratos.ID(app.Host()),
-		// 设置应用实例的名称为当前应用的名称
 		kratos.Name(app.Name()),
-		// 设置应用实例的版本为当前应用的版本
 		kratos.Version(app.Version()),
-		// 设置应用实例的元数据为空
 		kratos.Metadata(map[string]string{}),
-		// 设置应用实例的日志记录器为传入的 logger
-		kratos.Logger(logger),
-		// 设置应用实例的服务器为传入的 http 服务器
-		kratos.Server(
-			hs,
-		),
-		// 设置应用实例的注册器为传入的注册器
-		kratos.Registrar(r),
-	)
+		kratos.Logger(opts.Logger),
+		kratos.Registrar(opts.Registrar),
+	}
+
+	// Add servers based on ServerType
+	switch opts.Type {
+	case BothServers:
+		kratosOpts = append(kratosOpts, kratos.Server(opts.GRPCServer, opts.HTTPServer))
+	case GRPCServer:
+		kratosOpts = append(kratosOpts, kratos.Server(opts.GRPCServer))
+	case HTTPServer:
+		kratosOpts = append(kratosOpts, kratos.Server(opts.HTTPServer))
+	}
+
+	// Create and return the Kratos application
+	return kratos.New(kratosOpts...), nil
 }
