@@ -2,7 +2,7 @@ package factory
 
 import (
 	"errors"
-	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugins"
 )
 
 var (
@@ -17,12 +17,12 @@ type PluginFactory interface {
 
 // PluginCreator provides a method for creating plugins by name.
 type PluginCreator interface {
-	CreateByName(pluginName string) (plugin.Plugin, error)
+	CreateByName(pluginName string) (plugins.Plugin, error)
 }
 
 // PluginRegistry provides methods for registering, checking existence, and removing plugins.
 type PluginRegistry interface {
-	Register(pluginName string, confPrefix string, creator func() plugin.Plugin)
+	Register(pluginName string, confPrefix string, creator func() plugins.Plugin)
 	GetRegisterTable() map[string][]string
 	Exists(pluginName string) bool
 	Remove(pluginName string)
@@ -38,19 +38,19 @@ type LynxPluginFactory struct {
 	// registerTable maps configuration prefixes to plugin names.
 	registerTable map[string][]string
 	// creators stores the creator functions for each plugin.
-	creators map[string]func() plugin.Plugin
+	creators map[string]func() plugins.Plugin
 }
 
 // newPluginFactory creates a new instance of LynxPluginFactory.
 func newPluginFactory() *LynxPluginFactory {
 	return &LynxPluginFactory{
 		registerTable: make(map[string][]string),
-		creators:      make(map[string]func() plugin.Plugin),
+		creators:      make(map[string]func() plugins.Plugin),
 	}
 }
 
 // Register adds a new plugin to the factory.
-func (f *LynxPluginFactory) Register(name string, confPrefix string, creator func() plugin.Plugin) {
+func (f *LynxPluginFactory) Register(name string, confPrefix string, creator func() plugins.Plugin) {
 	if _, exists := f.creators[name]; exists {
 		panic(errors.New("plugin with the same name already exists pluginName:" + name))
 	}
@@ -85,7 +85,7 @@ func (f *LynxPluginFactory) GetRegisterTable() map[string][]string {
 }
 
 // CreateByName creates a new plugin instance given its name.
-func (f *LynxPluginFactory) CreateByName(name string) (plugin.Plugin, error) {
+func (f *LynxPluginFactory) CreateByName(name string) (plugins.Plugin, error) {
 	creator, exists := f.creators[name]
 	if !exists {
 		return nil, errors.New("invalid plugin name")

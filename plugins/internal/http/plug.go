@@ -1,0 +1,18 @@
+package http
+
+import (
+	"github.com/go-kratos/kratos/v2/transport/http"
+	"github.com/go-lynx/lynx/app"
+	"github.com/go-lynx/lynx/factory"
+	"github.com/go-lynx/lynx/plugins"
+)
+
+func init() {
+	factory.GlobalPluginFactory().Register(pluginName, confPrefix, func() plugins.Plugin {
+		return NewServiceHttp()
+	})
+}
+
+func GetServer() *http.Server {
+	return app.Lynx().PlugManager().GetPlugin(pluginName).(*ServiceHttp).server
+}

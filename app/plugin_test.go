@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 	"github.com/go-kratos/kratos/v2/config"
-	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugins"
 	"testing"
 )
 
@@ -30,7 +30,7 @@ func (m *MockPlugin) ConfPrefix() string {
 	return m.confPrefix
 }
 
-func (m *MockPlugin) Load(c config.Value) (plugin.Plugin, error) {
+func (m *MockPlugin) Load(c config.Value) (plugins.Plugin, error) {
 	return m, nil
 }
 
@@ -47,7 +47,7 @@ func TestTopologicalSort(t *testing.T) {
 	pluginD := &MockPlugin{name: "D", depends: []string{"C", "A", "E"}, weight: 2}
 	pluginE := &MockPlugin{name: "E", depends: []string{}, weight: 3}
 
-	manager.(*DefaultLynxPluginManager).pluginList = []plugin.Plugin{
+	manager.(*DefaultLynxPluginManager).pluginList = []plugins.Plugin{
 		pluginA,
 		pluginB,
 		pluginC,

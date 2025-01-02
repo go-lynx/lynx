@@ -5,7 +5,7 @@ import (
 	"crypto/x509"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
-	"github.com/go-lynx/lynx/plugin/cert/conf"
+	"github.com/go-lynx/lynx/plugins/internal/cert/conf"
 )
 
 func (g *GrpcSubscribe) tlsLoad() *tls.Config {

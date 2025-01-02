@@ -4,7 +4,7 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/conf"
-	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugins"
 	"os"
 )
 
@@ -46,7 +46,7 @@ func Version() string {
 }
 
 // NewApp 函数用于创建一个新的 Lynx 应用实例
-func NewApp(c config.Config, p ...plugin.Plugin) *LynxApp {
+func NewApp(c config.Config, p ...plugins.Plugin) *LynxApp {
 	// 获取当前主机名
 	host, _ := os.Hostname()
 
