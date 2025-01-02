@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/factory"
-	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugins"
 	"sort"
 )
 
@@ -13,21 +13,21 @@ type LynxPluginManager interface {
 	UnloadPlugins()
 	LoadPluginsByName([]string, config.Config)
 	UnloadPluginsByName([]string)
-	GetPlugin(name string) plugin.Plugin
+	GetPlugin(name string) plugins.Plugin
 	PreparePlug(config config.Config) []string
 }
 
 type DefaultLynxPluginManager struct {
-	pluginMap  map[string]plugin.Plugin
-	pluginList []plugin.Plugin
+	pluginMap  map[string]plugins.Plugin
+	pluginList []plugins.Plugin
 	factory    factory.PluginFactory
 }
 
-func NewLynxPluginManager(p ...plugin.Plugin) LynxPluginManager {
+func NewLynxPluginManager(p ...plugins.Plugin) LynxPluginManager {
 	m := &DefaultLynxPluginManager{
-		pluginList: make([]plugin.Plugin, 0),
+		pluginList: make([]plugins.Plugin, 0),
 		factory:    factory.GlobalPluginFactory(),
-		pluginMap:  make(map[string]plugin.Plugin),
+		pluginMap:  make(map[string]plugins.Plugin),
 	}
 
 	// Manually set pluginList
@@ -41,13 +41,13 @@ func NewLynxPluginManager(p ...plugin.Plugin) LynxPluginManager {
 }
 
 type PluginWithLevel struct {
-	plugin.Plugin
+	plugins.Plugin
 	level int
 }
 
-func (m *DefaultLynxPluginManager) TopologicalSort(plugins []plugin.Plugin) ([]PluginWithLevel, error) {
+func (m *DefaultLynxPluginManager) TopologicalSort(plugins []plugins.Plugin) ([]PluginWithLevel, error) {
 	// First, build a map from plugin name to the actual plugin.
-	nameToPlugin := make(map[string]plugin.Plugin)
+	nameToPlugin := make(map[string]plugins.Plugin)
 	for _, p := range plugins {
 		nameToPlugin[p.Name()] = p
 	}
@@ -113,7 +113,7 @@ func (m *DefaultLynxPluginManager) TopologicalSort(plugins []plugin.Plugin) ([]P
 	return result, nil
 }
 
-func contains(slice []PluginWithLevel, item plugin.Plugin) bool {
+func contains(slice []PluginWithLevel, item plugins.Plugin) bool {
 	for _, v := range slice {
 		if v.Plugin == item {
 			return true
@@ -154,7 +154,7 @@ func (m *DefaultLynxPluginManager) LoadPluginsByName(name []string, conf config.
 		return
 	}
 
-	var pluginList []plugin.Plugin
+	var pluginList []plugins.Plugin
 	for i := 0; i < len(name); i++ {
 		pluginList = append(pluginList, m.pluginMap[name[i]])
 	}
@@ -184,6 +184,6 @@ func (m *DefaultLynxPluginManager) UnloadPluginsByName(name []string) {
 	}
 }
 
-func (m *DefaultLynxPluginManager) GetPlugin(name string) plugin.Plugin {
+func (m *DefaultLynxPluginManager) GetPlugin(name string) plugins.Plugin {
 	return m.pluginMap[name]
 }

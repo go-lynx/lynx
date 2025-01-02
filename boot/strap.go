@@ -8,7 +8,7 @@ import (
 	"github.com/go-kratos/kratos/v2/encoding/json"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/app"
-	"github.com/go-lynx/lynx/plugin"
+	"github.com/go-lynx/lynx/plugins"
 	"google.golang.org/protobuf/encoding/protojson"
 	"time"
 )
@@ -19,7 +19,7 @@ var (
 
 type Boot struct {
 	wire    wireApp
-	plugins []plugin.Plugin
+	plugins []plugins.Plugin
 	conf    config.Config
 }
 
@@ -101,7 +101,7 @@ func (b *Boot) handlePanic() {
 }
 
 // LynxApplication Create a Lynx microservice bootstrap program
-func LynxApplication(wire wireApp, p ...plugin.Plugin) *Boot {
+func LynxApplication(wire wireApp, p ...plugins.Plugin) *Boot {
 	return &Boot{
 		wire:    wire,
 		plugins: p,
