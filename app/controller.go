@@ -1,12 +1,17 @@
+// Package app provides core application functionality for the Lynx framework
 package app
 
 import (
+	"fmt"
+
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
 )
 
+// ControlPlane defines the interface for managing core application services
+// including rate limiting, service discovery, routing, and configuration
 type ControlPlane interface {
 	Base
 	Limiter
@@ -15,104 +20,170 @@ type ControlPlane interface {
 	Config
 }
 
+// Base provides basic application information
 type Base interface {
+	// Namespace returns the current application namespace
 	Namespace() string
 }
 
+// Limiter provides rate limiting functionality for HTTP and gRPC services
 type Limiter interface {
-	HttpRateLimit() middleware.Middleware
-	GrpcRateLimit() middleware.Middleware
+	// HTTPRateLimit returns middleware for HTTP rate limiting
+	HTTPRateLimit() middleware.Middleware
+	// GRPCRateLimit returns middleware for gRPC rate limiting
+	GRPCRateLimit() middleware.Middleware
 }
 
+// Registry provides service registration and discovery functionality
 type Registry interface {
+	// NewServiceRegistry creates a new service registrar
 	NewServiceRegistry() registry.Registrar
+	// NewServiceDiscovery creates a new service discovery client
 	NewServiceDiscovery() registry.Discovery
 }
 
+// Router provides service routing functionality
 type Router interface {
-	NewNodeRouter(name string) selector.NodeFilter
+	// NewNodeRouter creates a new node filter for the specified service
+	NewNodeRouter(serviceName string) selector.NodeFilter
 }
 
+// Config provides configuration management functionality
 type Config interface {
+	// Config retrieves configuration from a source using the specified file and group
 	Config(fileName string, group string) (config.Source, error)
 }
 
+// LocalControlPlane provides a basic implementation of the ControlPlane interface
+// for local development and testing purposes
 type LocalControlPlane struct {
 }
 
-func (c *LocalControlPlane) HttpRateLimit() middleware.Middleware {
+// HTTPRateLimit implements the Limiter interface for HTTP rate limiting
+func (c *LocalControlPlane) HTTPRateLimit() middleware.Middleware {
 	return nil
 }
 
-func (c *LocalControlPlane) GrpcRateLimit() middleware.Middleware {
+// GRPCRateLimit implements the Limiter interface for gRPC rate limiting
+func (c *LocalControlPlane) GRPCRateLimit() middleware.Middleware {
 	return nil
 }
 
+// NewServiceRegistry implements the Registry interface for service registration
 func (c *LocalControlPlane) NewServiceRegistry() registry.Registrar {
 	return nil
 }
 
+// NewServiceDiscovery implements the Registry interface for service discovery
 func (c *LocalControlPlane) NewServiceDiscovery() registry.Discovery {
 	return nil
 }
 
-func (c *LocalControlPlane) NewNodeRouter(name string) selector.NodeFilter {
+// NewNodeRouter implements the Router interface for service routing
+func (c *LocalControlPlane) NewNodeRouter(serviceName string) selector.NodeFilter {
 	return nil
 }
 
+// Config implements the Config interface for configuration management
 func (c *LocalControlPlane) Config(fileName string, group string) (config.Source, error) {
 	return nil, nil
 }
 
+// Namespace implements the Base interface for namespace management
 func (c *LocalControlPlane) Namespace() string {
 	return ""
 }
 
-func (a *LynxApp) ControlPlane() ControlPlane {
+// GetControlPlane returns the current control plane instance
+func (a *LynxApp) GetControlPlane() ControlPlane {
+	if a == nil {
+		return nil
+	}
 	return Lynx().controlPlane
 }
 
-func (a *LynxApp) SetControlPlane(plane ControlPlane) {
+// SetControlPlane sets the control plane instance for the application
+func (a *LynxApp) SetControlPlane(plane ControlPlane) error {
+	if a == nil {
+		return fmt.Errorf("lynx app instance is nil")
+	}
+	if plane == nil {
+		return fmt.Errorf("control plane instance cannot be nil")
+	}
 	Lynx().controlPlane = plane
+	return nil
 }
 
-func (a *LynxApp) ControlPlaneBootConfiguration() config.Config {
-	// 检查控制平面是否已初始化，如果没有，则创建一个新的配置对象
-	if Lynx().ControlPlane() == nil {
-		return config.New()
+// InitControlPlaneConfig initializes the control plane configuration
+// It loads the configuration from the specified source and sets up the global configuration
+func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
+	if a == nil {
+		return nil, fmt.Errorf("lynx app instance is nil")
 	}
 
-	// 默认情况下，加载应用程序名称 + .yaml 格式的文件
-	yaml := Name() + ".yaml"
+	// Create new configuration if control plane is not initialized
+	if a.GetControlPlane() == nil {
+		cfg := config.New()
+		if cfg == nil {
+			return nil, fmt.Errorf("failed to create new configuration")
+		}
+		return cfg, nil
+	}
 
-	// 记录日志，指示正在从配置中心读取文件，包括文件名、组名和命名空间
-	Lynx().Helper().Infof("Reading from the configuration center,file:[%v] group:[%v] namespace:[%v]", yaml, Name(), Lynx().ControlPlane().Namespace())
+	// Default configuration file name based on application name
+	configFileName := fmt.Sprintf("%s.yaml", GetName())
+	namespace := a.GetControlPlane().Namespace()
 
-	// 尝试从控制平面获取配置源，文件名是 yaml，组名是应用程序名称
-	s, err := Lynx().ControlPlane().Config(yaml, Name())
-	// 如果获取配置源时发生错误，记录错误并抛出 panic
+	// Log configuration loading attempt
+	a.logHelper.Infof("Loading configuration - File: [%s] Group: [%s] Namespace: [%s]",
+		configFileName, GetName(), namespace)
+
+	// Get configuration source from control plane
+	configSource, err := a.GetControlPlane().Config(configFileName, GetName())
 	if err != nil {
-		Lynx().Helper().Errorf("Failed to read the configuration file:[%v] group:[%v] namespace:[%v]", yaml, Name(), Lynx().ControlPlane().Namespace())
-		panic(err)
+		a.logHelper.Errorf("Failed to load configuration - File: [%s] Group: [%s] Namespace: [%s] Error: %v",
+			configFileName, GetName(), namespace, err)
+		return nil, fmt.Errorf("failed to load configuration source: %w", err)
 	}
 
-	// 创建一个新的配置对象，使用获取到的配置源
-	c := config.New(config.WithSource(s))
-	// 加载配置，如果加载过程中发生错误，抛出 panic
-	if err := c.Load(); err != nil {
-		panic(err)
+	// Create and load configuration
+	cfg := config.New(config.WithSource(configSource))
+	if cfg == nil {
+		return nil, fmt.Errorf("failed to create configuration with source")
 	}
 
-	// 将全局配置设置为加载的配置
-	a.setGlobalConfig(c)
-	// 返回加载的配置对象
-	return c
+	if err := cfg.Load(); err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Set global configuration
+	if err := a.SetGlobalConfig(cfg); err != nil {
+		return nil, fmt.Errorf("failed to set global configuration: %w", err)
+	}
+
+	return cfg, nil
 }
 
-func ServiceRegistry() registry.Registrar {
-	return Lynx().ControlPlane().NewServiceRegistry()
+// GetServiceRegistry returns a new service registry instance
+func GetServiceRegistry() (registry.Registrar, error) {
+	if Lynx() == nil || Lynx().GetControlPlane() == nil {
+		return nil, fmt.Errorf("control plane not initialized")
+	}
+	reg := Lynx().GetControlPlane().NewServiceRegistry()
+	if reg == nil {
+		return nil, fmt.Errorf("failed to create service registry")
+	}
+	return reg, nil
 }
 
-func ServiceDiscovery() registry.Discovery {
-	return Lynx().ControlPlane().NewServiceDiscovery()
+// GetServiceDiscovery returns a new service discovery instance
+func GetServiceDiscovery() (registry.Discovery, error) {
+	if Lynx() == nil || Lynx().GetControlPlane() == nil {
+		return nil, fmt.Errorf("control plane not initialized")
+	}
+	disc := Lynx().GetControlPlane().NewServiceDiscovery()
+	if disc == nil {
+		return nil, fmt.Errorf("failed to create service discovery")
+	}
+	return disc, nil
 }

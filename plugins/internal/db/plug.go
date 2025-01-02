@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	factory.GlobalPluginFactory().Register(name, confPrefix, func() plugins.Plugin {
+	factory.GlobalPluginFactory().RegisterPlugin(name, confPrefix, func() plugins.Plugin {
 		return Db()
 	})
 }

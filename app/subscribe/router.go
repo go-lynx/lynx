@@ -6,8 +6,8 @@ import (
 )
 
 func (g *GrpcSubscribe) nodeFilter() selector.NodeFilter {
-	if app.Lynx().ControlPlane() == nil {
+	if app.Lynx().GetControlPlane() == nil {
 		return nil
 	}
-	return app.Lynx().ControlPlane().NewNodeRouter(g.name)
+	return app.Lynx().GetControlPlane().NewNodeRouter(g.name)
 }

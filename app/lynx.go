@@ -1,103 +1,175 @@
+// Package app provides core application functionality for the Lynx framework
 package app
 
 import (
+	"fmt"
+	"os"
+	"sync"
+
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugins"
-	"os"
 )
 
 var (
-	// The lynxApp is in Singleton pattern
-	lynxApp *LynxApp
+	// lynxApp is the singleton instance of the Lynx application
+	lynxApp  *LynxApp
+	initOnce sync.Once
 )
 
+// LynxApp represents the main application instance
 type LynxApp struct {
 	host          string
 	name          string
 	version       string
 	cert          Cert
 	logger        log.Logger
+	logHelper     log.Helper
 	globalConf    config.Config
 	controlPlane  ControlPlane
 	pluginManager LynxPluginManager
-
-	dfLog *log.Helper
 }
 
-// Lynx function returns a global LynxApp instance
+// Lynx returns the global LynxApp instance.
+// It ensures thread-safe access to the singleton instance.
 func Lynx() *LynxApp {
 	return lynxApp
 }
 
-// Host Retrieves the host name of the current application instance
-func Host() string {
-	// Returns the host name stored in the lynxApp instance
+// GetHost retrieves the hostname of the current application instance.
+// Returns an empty string if the application is not initialized.
+func GetHost() string {
+	if lynxApp == nil {
+		return ""
+	}
 	return lynxApp.host
 }
 
-func Name() string {
+// GetName retrieves the application name.
+// Returns an empty string if the application is not initialized.
+func GetName() string {
+	if lynxApp == nil {
+		return ""
+	}
 	return lynxApp.name
 }
 
-func Version() string {
+// GetVersion retrieves the application version.
+// Returns an empty string if the application is not initialized.
+func GetVersion() string {
+	if lynxApp == nil {
+		return ""
+	}
 	return lynxApp.version
 }
 
-// NewApp 函数用于创建一个新的 Lynx 应用实例
-func NewApp(c config.Config, p ...plugins.Plugin) *LynxApp {
-	// 获取当前主机名
-	host, _ := os.Hostname()
+// NewApp creates a new Lynx application instance with the provided configuration and plugins.
+// It initializes the application with system hostname and bootstrap configuration.
+//
+// Parameters:
+//   - cfg: Configuration instance
+//   - plugins: Optional list of plugins to initialize with
+//
+// Returns:
+//   - *LynxApp: Initialized application instance
+//   - error: Any error that occurred during initialization
+func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration cannot be nil")
+	}
 
-	// 定义一个 Bootstrap 配置对象，用于存储应用的启动配置
-	var bootConf conf.Bootstrap
+	var app *LynxApp
+	var err error
 
-	// 从全局配置对象 c 中扫描并解析出 Bootstrap 配置到 bootConf 中
-	err := c.Scan(&bootConf)
-	// 如果发生错误，返回 nil
+	initOnce.Do(func() {
+		app, err = initializeApp(cfg, plugins...)
+	})
+
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to initialize application: %w", err)
 	}
 
-	// 创建一个新的 LynxApp 实例
-	var app = &LynxApp{
-		// 设置主机名为当前主机名
-		host: host,
-		// 设置应用名为 Bootstrap 配置中的应用名
-		name: bootConf.Lynx.Application.Name,
-		// 设置应用版本为 Bootstrap 配置中的应用版本
-		version: bootConf.Lynx.Application.Version,
-		// 设置全局配置对象
-		globalConf: c,
-		// 创建一个新的 LynxPluginManager 实例，并传入插件列表
-		pluginManager: NewLynxPluginManager(p...),
-		// 设置控制平面为本地控制平面实例
-		controlPlane: &LocalControlPlane{},
-	}
-
-	// 将新创建的 LynxApp 实例设置为全局单例
-	lynxApp = app
-
-	// 返回新创建的 LynxApp 实例
-	return app
+	return app, nil
 }
 
-func (a *LynxApp) PlugManager() LynxPluginManager {
+// initializeApp handles the actual initialization of the LynxApp instance.
+func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
+	// Get system hostname
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get hostname: %w", err)
+	}
+
+	// Parse bootstrap configuration
+	var bootConfig conf.Bootstrap
+	if err := cfg.Scan(&bootConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse bootstrap configuration: %w", err)
+	}
+
+	// Validate bootstrap configuration
+	if bootConfig.Lynx == nil || bootConfig.Lynx.Application == nil {
+		return nil, fmt.Errorf("invalid bootstrap configuration: missing required fields")
+	}
+
+	// Create new application instance
+	app := &LynxApp{
+		host:          hostname,
+		name:          bootConfig.Lynx.Application.Name,
+		version:       bootConfig.Lynx.Application.Version,
+		globalConf:    cfg,
+		pluginManager: NewLynxPluginManager(plugins...),
+		controlPlane:  &LocalControlPlane{},
+	}
+
+	// Validate required fields
+	if app.name == "" {
+		return nil, fmt.Errorf("application name cannot be empty")
+	}
+
+	// Set global singleton instance
+	lynxApp = app
+
+	return app, nil
+}
+
+// GetPluginManager returns the plugin manager instance.
+// Returns nil if the application is not initialized.
+func (a *LynxApp) GetPluginManager() LynxPluginManager {
+	if a == nil {
+		return nil
+	}
 	return a.pluginManager
 }
 
-func (a *LynxApp) GlobalConfig() config.Config {
+// GetGlobalConfig returns the global configuration instance.
+// Returns nil if the application is not initialized.
+func (a *LynxApp) GetGlobalConfig() config.Config {
+	if a == nil {
+		return nil
+	}
 	return a.globalConf
 }
 
-func (a *LynxApp) setGlobalConfig(c config.Config) {
-	// Close the last configuration
+// SetGlobalConfig updates the global configuration instance.
+// It properly closes the existing configuration before updating.
+func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
+	if a == nil {
+		return fmt.Errorf("application instance is nil")
+	}
+
+	if cfg == nil {
+		return fmt.Errorf("new configuration cannot be nil")
+	}
+
+	// Close existing configuration if present
 	if a.globalConf != nil {
-		err := a.globalConf.Close()
-		if err != nil {
-			a.Helper().Error(err.Error())
+		if err := a.globalConf.Close(); err != nil {
+			a.logHelper.Errorf("Failed to close existing configuration: %v", err)
+			return err
 		}
 	}
-	a.globalConf = c
+
+	a.globalConf = cfg
+	return nil
 }

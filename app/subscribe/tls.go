@@ -18,14 +18,14 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 
 	if g.rca != "" {
 		// Obtain the root certificate of the remote file
-		if app.Lynx().ControlPlane() == nil {
+		if app.Lynx().GetControlPlane() == nil {
 			return nil
 		}
 		// if group is empty, use the name as the group name.
 		if g.group == "" {
 			g.group = g.name
 		}
-		s, err := app.Lynx().ControlPlane().Config(g.rca, g.group)
+		s, err := app.Lynx().GetControlPlane().Config(g.rca, g.group)
 		if err != nil {
 			panic(err)
 		}

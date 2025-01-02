@@ -69,7 +69,7 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 		grpc.WithEndpoint("discovery:///" + g.name),
 		grpc.WithDiscovery(g.dis),
 		grpc.WithMiddleware(
-			logging.Client(app.Lynx().Logger()),
+			logging.Client(app.Lynx().GetLogger()),
 			tracing.Client(),
 		),
 		grpc.WithTLSConfig(g.tlsLoad()),
@@ -83,7 +83,7 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 		conn, err = grpc.DialInsecure(context.Background(), opts...)
 	}
 	if err != nil {
-		app.Lynx().Helper().Error(err)
+		app.Lynx().GetLogHelper().Error(err)
 		panic(err)
 	}
 	return conn

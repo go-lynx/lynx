@@ -1,66 +1,108 @@
+// Package app provides core application functionality for the Lynx framework
 package app
 
 import (
 	"embed"
+	"fmt"
+	"io/fs"
+	"os"
+
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-lynx/lynx/conf"
-	"io/fs"
-	"os"
 )
 
+// Embedded banner file for application startup
+//
 //go:embed banner.txt
-var configFS embed.FS
+var bannerFS embed.FS
 
-func (a *LynxApp) InitLogger() {
-	// 打印日志，指示 Lynx 日志组件正在加载
-	log.Infof("Lynx Log component loading")
+// InitLogger initializes the application's logging system.
+// It sets up the main logger with standard output and configures various logging fields
+// such as timestamps, caller information, service details, and tracing IDs.
+func (a *LynxApp) InitLogger() error {
+	if a == nil {
+		return fmt.Errorf("lynx app instance is nil")
+	}
 
-	// 初始化日志记录器，使用标准输出作为日志输出，添加默认的时间戳、调用者信息、服务 ID、服务名称、服务版本、跟踪 ID 和跨度 ID
-	a.logger = log.With(
+	// Log the initialization of the logging component
+	log.Info("Initializing Lynx logging component")
+
+	// Initialize the main logger with standard output and default fields
+	logger := log.With(
 		log.NewStdLogger(os.Stdout),
-		"ts", log.DefaultTimestamp,
+		"timestamp", log.DefaultTimestamp,
 		"caller", log.DefaultCaller,
-		"service.id", Host(),
-		"service.name", Name(),
-		"service.version", Version(),
+		"service.id", GetHost(),
+		"service.name", GetName(),
+		"service.version", GetVersion(),
 		"trace.id", tracing.TraceID(),
 		"span.id", tracing.SpanID(),
 	)
 
-	// 初始化日志助手，用于更方便地记录日志
-	a.dfLog = log.NewHelper(a.logger)
-
-	// 打印日志，指示 Lynx 日志组件加载成功
-	log.Info("Lynx Log component loaded successfully")
-
-	// 从嵌入的文件系统中读取 banner.txt 文件内容
-	data, err := fs.ReadFile(configFS, "banner.txt")
-	// 如果读取文件时发生错误，记录错误并使用 log.Fatal 终止程序
-	if err != nil {
-		log.Fatal(err)
+	if logger == nil {
+		return fmt.Errorf("failed to create logger")
 	}
 
-	// 初始化一个 Bootstrap 结构体，用于存储应用程序的配置信息
-	var boot conf.Bootstrap
-	// 从全局配置中扫描并填充 Bootstrap 结构体
-	err = a.GlobalConfig().Scan(&boot)
-	// 如果扫描过程中发生错误，抛出 panic
-	if err != nil {
-		panic(err)
+	// Create a helper for more convenient logging
+	helper := log.NewHelper(logger)
+	if helper == nil {
+		return fmt.Errorf("failed to create logger helper")
 	}
 
-	// 如果应用程序配置中的 close_banner 字段为 false，则打印横幅信息
-	if !boot.GetLynx().GetApplication().GetCloseBanner() {
-		// 使用日志助手打印横幅信息
-		a.Helper().Infof("\n" + string(data))
+	// Store logger instances
+	a.logger = logger
+	a.logHelper = *helper
+
+	// Log successful initialization
+	helper.Info("Lynx logging component initialized successfully")
+
+	// Initialize and display the application banner
+	if err := a.initBanner(); err != nil {
+		helper.Warnf("Failed to initialize banner: %v", err)
+		// Continue execution as banner display is not critical
 	}
+
+	return nil
 }
 
-func (a *LynxApp) Helper() *log.Helper {
-	return a.dfLog
+// initBanner handles the initialization and display of the application banner.
+// It reads the banner from the embedded filesystem and displays it based on configuration.
+func (a *LynxApp) initBanner() error {
+	// Read banner content from embedded filesystem
+	bannerData, err := fs.ReadFile(bannerFS, "banner.txt")
+	if err != nil {
+		return fmt.Errorf("failed to read banner: %v", err)
+	}
+
+	// Read application configuration
+	var bootConfig conf.Bootstrap
+	if err := a.GetGlobalConfig().Scan(&bootConfig); err != nil {
+		return fmt.Errorf("failed to read configuration: %v", err)
+	}
+
+	// Check if banner display is enabled
+	if bootConfig.GetLynx() == nil ||
+		bootConfig.GetLynx().GetApplication() == nil {
+		return fmt.Errorf("invalid configuration structure")
+	}
+
+	// Display banner if not disabled in configuration
+	if !bootConfig.GetLynx().GetApplication().GetCloseBanner() {
+		a.logHelper.Infof("\n%s", bannerData)
+	}
+
+	return nil
 }
 
-func (a *LynxApp) Logger() log.Logger {
+// GetLogHelper returns the application's log helper instance.
+// This helper provides convenient methods for logging at different levels.
+func (a *LynxApp) GetLogHelper() *log.Helper {
+	return &a.logHelper
+}
+
+// GetLogger returns the application's main logger instance.
+// This logger provides the core logging functionality.
+func (a *LynxApp) GetLogger() log.Logger {
 	return a.logger
 }
