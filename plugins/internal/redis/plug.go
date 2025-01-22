@@ -8,11 +8,11 @@ import (
 )
 
 func init() {
-	factory.GlobalPluginFactory().RegisterPlugin(name, confPrefix, func() plugins.Plugin {
-		return Redis()
+	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
+		return NewRedisClient()
 	})
 }
 
 func GetRedis() *redis.Client {
-	return app.Lynx().GetPluginManager().GetPlugin(name).(*PlugRedis).rdb
+	return app.Lynx().GetPluginManager().GetPlugin(pluginName).(*PlugRedis).rdb
 }
