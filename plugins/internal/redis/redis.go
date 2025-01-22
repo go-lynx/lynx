@@ -24,8 +24,8 @@ type PlugRedis struct {
 	rdb  *redis.Client
 }
 
-// NewRedis creates a new Redis plugin instance
-func NewRedis() *PlugRedis {
+// NewRedisClient creates a new Redis plugin instance
+func NewRedisClient() *PlugRedis {
 	return &PlugRedis{
 		BasePlugin: plugins.NewBasePlugin(
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
