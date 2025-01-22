@@ -16,7 +16,7 @@ import (
 // Plugin metadata
 const (
 	pluginName        = "http.server"
-	pluginVersion     = "v1.0.0"
+	pluginVersion     = "v2.0.0"
 	pluginDescription = "HTTP server plugin for Lynx framework"
 	confPrefix        = "lynx.http"
 )
