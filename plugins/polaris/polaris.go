@@ -5,7 +5,7 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/internal/polaris/conf"
+	"github.com/go-lynx/lynx/plugins/polaris/conf"
 	"github.com/polarismesh/polaris-go/api"
 )
 

@@ -86,15 +86,22 @@ type PluginWithLevel struct {
 	level int
 }
 
-// TopologicalSort performs a topological sort on plugins based on their dependencies.
-// This ensures plugins are loaded in the correct order, respecting their dependencies.
+// TopologicalSort performs a topological sort on the plugin list based on their dependencies.
+// It returns a sorted list of plugins with their dependency levels, where plugins at the same
+// level can be initialized in parallel.
+//
+// The function uses a depth-first search algorithm to:
+// 1. Build a dependency graph
+// 2. Detect cyclic dependencies
+// 3. Assign dependency levels to plugins
+// 4. Sort plugins based on their dependency order
 //
 // Parameters:
-//   - plugins: List of plugins to sort
+//   - pluginList: List of plugins to be sorted
 //
 // Returns:
 //   - []PluginWithLevel: Sorted list of plugins with their dependency levels
-//   - error: Any error that occurred during sorting
+//   - error: Error if cyclic dependency is detected or if a required plugin is missing
 func (m *DefaultLynxPluginManager) TopologicalSort(pluginList []plugins.Plugin) ([]PluginWithLevel, error) {
 	// Build a map from plugin name to the actual plugin instance
 	nameToPlugin := make(map[string]plugins.Plugin)
@@ -112,24 +119,37 @@ func (m *DefaultLynxPluginManager) TopologicalSort(pluginList []plugins.Plugin) 
 			continue
 		}
 
-		// Get plugin dependencies based on configuration
-		var dependencies []string
-		if app := Lynx(); app != nil {
-			if conf := app.GetGlobalConfig(); conf != nil {
-				dependencies = p.GetDependencies(conf.Value(p.ConfPrefix()))
-			} else {
-				dependencies = p.DependsOn(nil)
-			}
-		} else {
-			dependencies = p.DependsOn(nil)
+		// Check if plugin implements DependencyAware interface
+		depAware, ok := p.(plugins.DependencyAware)
+		if !ok {
+			// Plugin doesn't implement DependencyAware, treat it as having no dependencies
+			continue
+		}
+
+		// Get plugin dependencies using DependencyAware interface
+		dependencies := depAware.GetDependencies()
+		if dependencies == nil {
+			continue
 		}
 
 		// Validate and add dependencies to the graph
 		for _, dep := range dependencies {
-			if _, exists := nameToPlugin[dep]; !exists {
-				return nil, fmt.Errorf("plugin %s depends on unknown plugin %s", p.Name(), dep)
+			// Validate dependency object
+			if dep.ID == "" {
+				return nil, fmt.Errorf("plugin %s has an invalid dependency with empty ID", p.Name())
 			}
-			graph[p.Name()] = append(graph[p.Name()], dep)
+
+			// Check if dependency exists
+			if _, exists := nameToPlugin[dep.ID]; !exists {
+				if dep.Required {
+					return nil, fmt.Errorf("plugin %s requires missing plugin %s", p.Name(), dep.ID)
+				}
+				// Skip optional dependencies that are not available
+				continue
+			}
+
+			// Add to dependency graph
+			graph[p.Name()] = append(graph[p.Name()], dep.ID)
 		}
 	}
 
@@ -137,17 +157,23 @@ func (m *DefaultLynxPluginManager) TopologicalSort(pluginList []plugins.Plugin) 
 	result := make([]PluginWithLevel, 0, len(pluginList))
 	visited := make(map[string]bool)
 	level := make(map[string]int)
+	inProgress := make(map[string]bool) // Track nodes being visited in current DFS path
 
 	var visit func(string) error
 	visit = func(name string) error {
+		// Check for cyclic dependencies
+		if inProgress[name] {
+			return fmt.Errorf("cyclic dependency detected involving plugin %s", name)
+		}
+
+		// Skip if already fully visited
 		if visited[name] {
-			if !contains(result, nameToPlugin[name]) {
-				return fmt.Errorf("cyclic dependency detected involving plugin %s", name)
-			}
 			return nil
 		}
 
-		visited[name] = true
+		inProgress[name] = true
+		defer func() { inProgress[name] = false }()
+
 		maxLevel := 0
 
 		// Visit all dependencies first
@@ -163,18 +189,21 @@ func (m *DefaultLynxPluginManager) TopologicalSort(pluginList []plugins.Plugin) 
 		// Set the level and add to result
 		level[name] = maxLevel + 1
 		result = append(result, PluginWithLevel{nameToPlugin[name], level[name]})
+		visited[name] = true
+
 		return nil
 	}
 
-	// Visit all pluginList to build the sorted list
+	// Visit all plugins to build the sorted list
 	for _, p := range pluginList {
 		if p == nil {
 			continue
 		}
 		if err := visit(p.Name()); err != nil {
-			return nil, fmt.Errorf("failed to sort pluginList: %w", err)
+			return nil, fmt.Errorf("failed to sort plugins: %w", err)
 		}
 	}
+
 	return result, nil
 }
 

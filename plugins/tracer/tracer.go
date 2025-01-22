@@ -5,7 +5,7 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/internal/tracer/conf"
+	"github.com/go-lynx/lynx/plugins/tracer/conf"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"

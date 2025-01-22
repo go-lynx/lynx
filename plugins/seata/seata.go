@@ -4,7 +4,7 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/internal/seata/conf"
+	"github.com/go-lynx/lynx/plugins/seata/conf"
 	"github.com/seata/seata-go/pkg/client"
 )
 
