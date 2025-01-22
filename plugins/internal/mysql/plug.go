@@ -1,12 +1,18 @@
-package cert
+package mysql
 
 import (
+	"entgo.io/ent/dialect/sql"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/factory"
 	"github.com/go-lynx/lynx/plugins"
 )
 
 func init() {
 	factory.GlobalPluginFactory().RegisterPlugin(name, confPrefix, func() plugins.Plugin {
-		return Cert()
+		return Db()
 	})
+}
+
+func GetDriver() *sql.Driver {
+	return app.Lynx().GetPluginManager().GetPlugin(name).(*PlugDB).dri
 }

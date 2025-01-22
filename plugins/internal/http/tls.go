@@ -20,7 +20,7 @@ func (h *ServiceHttp) tlsLoad() http.ServerOption {
 	return http.TLSConfig(&tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
 		ClientCAs:    certPool,
-		ServerName:   app.Name(),
+		ServerName:   app.GetName(),
 		ClientAuth:   tls.ClientAuthType(h.conf.GetTlsAuthType()),
 	})
 }

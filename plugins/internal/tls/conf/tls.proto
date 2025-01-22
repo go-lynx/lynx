@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package lynx.protobuf.plugin.cert;
+package lynx.protobuf.plugin.tls;
 
-option go_package = "github.com/go-lynx/lynx/plugin/cert/conf";
+option go_package = "github.com/go-lynx/plugin-tls/conf;conf";
 
 message Tls {
   string file_name = 1;
