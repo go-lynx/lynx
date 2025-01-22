@@ -8,7 +8,6 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/types/known/durationpb"
-	"time"
 )
 
 const (
@@ -77,7 +76,10 @@ func (r *PlugRedis) StartupTasks() error {
 		ConnMaxIdleTime: r.conf.ConnMaxIdleTime.AsDuration(),
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		r.conf.ConnMaxIdleTime.AsDuration(),
+	)
 	defer cancel()
 
 	_, err := r.rdb.Ping(ctx).Result()
