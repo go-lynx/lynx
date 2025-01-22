@@ -79,6 +79,7 @@ const (
 type Plugin interface {
 	Metadata
 	Lifecycle
+	DependencyAware
 }
 
 // Metadata defines methods for retrieving plugin metadata
