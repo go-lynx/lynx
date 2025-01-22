@@ -45,7 +45,7 @@ type PluginRegistry interface {
 // GlobalPluginFactory returns the singleton instance of the plugin factory.
 func GlobalPluginFactory() PluginFactory {
 	if globalFactory == nil {
-		globalFactory = newPluginFactory()
+		globalFactory = newDefaultPluginFactory()
 	}
 	return globalFactory
 }
@@ -61,8 +61,8 @@ type LynxPluginFactory struct {
 	pluginCreators map[string]func() plugins.Plugin
 }
 
-// newPluginFactory initializes a new instance of LynxPluginFactory.
-func newPluginFactory() *LynxPluginFactory {
+// newDefaultPluginFactory initializes a new instance of LynxPluginFactory.
+func newDefaultPluginFactory() *LynxPluginFactory {
 	return &LynxPluginFactory{
 		configToPlugins: make(map[string][]string),
 		pluginCreators:  make(map[string]func() plugins.Plugin),

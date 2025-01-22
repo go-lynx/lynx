@@ -96,27 +96,13 @@ func (h *ServiceHttp) StartupTasks() error {
 
 // CleanupTasks implements custom cleanup logic for HTTP plugin
 func (h *ServiceHttp) CleanupTasks() error {
-	if h.server != nil {
-		h.EmitEvent(plugins.PluginEvent{
-			Type:     plugins.EventPluginStopping,
-			Priority: plugins.PriorityHigh,
-			Source:   "Stop",
-			Category: "lifecycle",
-		})
-
-		if err := h.server.Stop(context.Background()); err != nil {
-			return plugins.NewPluginError(h.ID(), "Stop", "Failed to stop HTTP server", err)
-		}
-
-		h.EmitEvent(plugins.PluginEvent{
-			Type:     plugins.EventPluginStopped,
-			Priority: plugins.PriorityNormal,
-			Source:   "Stop",
-			Category: "lifecycle",
-		})
+	if h.server == nil {
+		return nil
 	}
-
-	return h.BasePlugin.Stop()
+	if err := h.server.Stop(context.Background()); err != nil {
+		return plugins.NewPluginError(h.ID(), "Stop", "Failed to stop HTTP server", err)
+	}
+	return nil
 }
 
 // Configure updates the HTTP server configuration

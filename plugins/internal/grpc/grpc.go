@@ -20,13 +20,13 @@ import (
 const (
 	// pluginName is the unique identifier for the gRPC server plugin
 	pluginName = "server.server"
-	
+
 	// pluginVersion indicates the current version of the plugin
 	pluginVersion = "v2.0.0"
-	
+
 	// pluginDescription provides a brief description of the plugin's functionality
 	pluginDescription = "GRPC server plugin for Lynx framework"
-	
+
 	// confPrefix is the configuration prefix used for loading gRPC settings
 	confPrefix = "lynx.server"
 )
@@ -118,10 +118,9 @@ func (g *ServiceGrpc) CleanupTasks() error {
 	if g.server == nil {
 		return nil
 	}
-	if err := g.server.Stop(nil); err != nil {
-		app.Lynx().GetLogHelper().Error(err)
+	if err := g.server.Stop(context.Background()); err != nil {
+		return plugins.NewPluginError(g.ID(), "Stop", "Failed to stop HTTP server", err)
 	}
-	app.Lynx().GetLogHelper().Info("message", "Closing the GRPC resources")
 	return nil
 }
 
