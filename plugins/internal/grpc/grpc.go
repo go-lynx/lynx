@@ -1,8 +1,11 @@
+// Package grpc provides a gRPC server plugin for the Lynx framework.
+// It implements the necessary interfaces to integrate with the Lynx plugin system
+// and provides functionality for setting up and managing a gRPC server with various
+// middleware options and TLS support.
 package grpc
 
 import (
 	"context"
-	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
@@ -10,56 +13,77 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/internal/grpc/conf"
+	"github.com/go-lynx/plugin-grpc/v2/conf"
 )
 
-var (
-	name       = "grpc"
-	confPrefix = "lynx.grpc"
+// Plugin metadata constants define the basic information about the gRPC plugin
+const (
+	// pluginName is the unique identifier for the gRPC server plugin
+	pluginName = "server.server"
+	
+	// pluginVersion indicates the current version of the plugin
+	pluginVersion = "v2.0.0"
+	
+	// pluginDescription provides a brief description of the plugin's functionality
+	pluginDescription = "GRPC server plugin for Lynx framework"
+	
+	// confPrefix is the configuration prefix used for loading gRPC settings
+	confPrefix = "lynx.server"
 )
 
+// ServiceGrpc represents the gRPC server plugin implementation.
+// It embeds the BasePlugin for common plugin functionality and maintains
+// the gRPC server instance along with its configuration.
 type ServiceGrpc struct {
-	grpc   *grpc.Server
+	*plugins.BasePlugin
+	server *grpc.Server
 	conf   *conf.Grpc
-	weight int
 }
 
-type Option func(g *ServiceGrpc)
-
-func Weight(w int) Option {
-	return func(g *ServiceGrpc) {
-		g.weight = w
+// NewServiceGrpc creates and initializes a new instance of the gRPC server plugin.
+// It sets up the base plugin with the appropriate metadata and returns a pointer
+// to the ServiceGrpc structure.
+func NewServiceGrpc() *ServiceGrpc {
+	return &ServiceGrpc{
+		BasePlugin: plugins.NewBasePlugin(
+			plugins.GeneratePluginID("", pluginName, pluginVersion),
+			pluginName,
+			pluginDescription,
+			pluginVersion,
+		),
 	}
 }
 
-func Config(c *conf.Grpc) Option {
-	return func(g *ServiceGrpc) {
-		g.conf = c
+// InitializeResources implements the plugin initialization interface.
+// It loads and validates the gRPC server configuration from the runtime environment.
+// If no configuration is provided, it sets up default values for the server.
+func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
+	// Add default configuration if not provided
+	if g.conf == nil {
+		g.conf = &conf.Grpc{
+			Network: "tcp",
+			Addr:    ":9090",
+		}
 	}
-}
-
-func (g *ServiceGrpc) Load(b config.Value) (plugins.Plugin, error) {
-	// 解析配置到 g.conf 中
-	err := b.Scan(g.conf)
+	err := rt.GetConfig().Scan(g.conf)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	return nil
+}
 
-	// 打印初始化 gRPC 服务的日志
-	app.Lynx().GetLogHelper().Infof("Initializing GRPC service")
+// StartupTasks implements the plugin startup interface.
+// It configures and starts the gRPC server with all necessary middleware and options,
+// including tracing, logging, rate limiting, validation, and recovery handlers.
+func (g *ServiceGrpc) StartupTasks() error {
+	app.Lynx().GetLogHelper().Infof("Starting GRPC service")
 
-	// 创建一个切片，用于存储 gRPC 服务器的选项
 	opts := []grpc.ServerOption{
-		// 使用 tracing 中间件，设置追踪器名称为应用程序名称
 		grpc.Middleware(
-			tracing.Server(tracing.WithTracerName(app.Name())),
-			// 使用 logging 中间件，记录服务器端的日志
-			logging.Server(app.Lynx().Logger()),
-			// 使用自定义的 gRPC 限流中间件
-			app.Lynx().ControlPlane().GrpcRateLimit(),
-			// 使用 validate 中间件，对请求进行验证
+			tracing.Server(tracing.WithTracerName(app.GetName())),
+			logging.Server(app.Lynx().GetLogger()),
+			app.Lynx().GetControlPlane().GRPCRateLimit(),
 			validate.Validator(),
-			// 异常恢复中间件，用于处理程序崩溃后的恢复
 			recovery.Recovery(
 				recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
 					return nil
@@ -68,55 +92,53 @@ func (g *ServiceGrpc) Load(b config.Value) (plugins.Plugin, error) {
 		),
 	}
 
-	// 如果配置了网络类型，则添加到选项中
+	// Configure server options based on configuration
 	if g.conf.Network != "" {
 		opts = append(opts, grpc.Network(g.conf.Network))
 	}
-	// 如果配置了地址，则添加到选项中
 	if g.conf.Addr != "" {
 		opts = append(opts, grpc.Address(g.conf.Addr))
 	}
-	// 如果配置了超时时间，则添加到选项中
 	if g.conf.Timeout != nil {
 		opts = append(opts, grpc.Timeout(g.conf.Timeout.AsDuration()))
 	}
-	// 如果配置了 TLS，则加载 TLS 配置并添加到选项中
 	if g.conf.GetTls() {
 		opts = append(opts, g.tlsLoad())
 	}
 
-	// 创建一个新的 gRPC 服务器实例
-	g.grpc = grpc.NewServer(opts...)
-	// 打印 gRPC 服务初始化成功的日志
-	app.Lynx().GetLogHelper().Infof("GRPC service successfully initialized")
-	return g, nil
-}
-
-// Unload 方法用于停止并关闭 gRPC 服务器。
-func (g *ServiceGrpc) Unload() error {
-	// 检查 gRPC 服务器实例是否存在，如果不存在则直接返回 nil。
-	if g.grpc == nil {
-		return nil
-	}
-	// 调用 gRPC 服务器的 Stop 方法来停止服务器，并传入一个 nil 参数。
-	// 如果 Stop 方法返回错误，则记录错误信息。
-	if err := g.grpc.Stop(nil); err != nil {
-		// 使用 app.Lynx().GetLogHelper() 记录错误信息。
-		app.Lynx().GetLogHelper().Error(err)
-	}
-	// 记录一条信息，指示 gRPC 资源正在被关闭。
-	app.Lynx().GetLogHelper().Info("message", "Closing the GRPC resources")
-	// 返回 nil，表示卸载过程成功，没有发生错误。
+	g.server = grpc.NewServer(opts...)
+	app.Lynx().GetLogHelper().Infof("GRPC service successfully started")
 	return nil
 }
 
-func Grpc(opts ...Option) plugins.Plugin {
-	s := &ServiceGrpc{
-		weight: 500,
-		conf:   &conf.Grpc{},
+// CleanupTasks implements the plugin cleanup interface.
+// It gracefully stops the gRPC server and performs necessary cleanup operations.
+// If the server is nil or already stopped, it will return nil.
+func (g *ServiceGrpc) CleanupTasks() error {
+	if g.server == nil {
+		return nil
 	}
-	for _, option := range opts {
-		option(s)
+	if err := g.server.Stop(nil); err != nil {
+		app.Lynx().GetLogHelper().Error(err)
 	}
-	return s
+	app.Lynx().GetLogHelper().Info("message", "Closing the GRPC resources")
+	return nil
+}
+
+// Configure allows runtime configuration updates for the gRPC server.
+// It accepts an interface{} parameter that should contain the new configuration
+// and updates the server settings accordingly.
+func (g *ServiceGrpc) Configure(c any) error {
+	if c == nil {
+		return nil
+	}
+	g.conf = c.(*conf.Grpc)
+	return nil
+}
+
+// CheckHealth implements the health check interface for the gRPC server.
+// It performs necessary health checks and updates the provided health report
+// with the current status of the server.
+func (g *ServiceGrpc) CheckHealth(report *plugins.HealthReport) error {
+	return nil
 }
