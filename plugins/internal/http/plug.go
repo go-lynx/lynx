@@ -14,5 +14,5 @@ func init() {
 }
 
 func GetServer() *http.Server {
-	return app.Lynx().PlugManager().GetPlugin(pluginName).(*ServiceHttp).server
+	return app.Lynx().GetPluginManager().GetPlugin(pluginName).(*ServiceHttp).server
 }

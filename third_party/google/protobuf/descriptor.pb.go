@@ -1447,7 +1447,7 @@ type FileOptions struct {
 	// Sets the objective c class prefix which is prepended to all objective c
 	// generated classes from this .proto. There is no default.
 	ObjcClassPrefix *string `protobuf:"bytes,36,opt,name=objc_class_prefix,json=objcClassPrefix" json:"objc_class_prefix,omitempty"`
-	// Namespace for generated classes; defaults to the package.
+	// GetNamespace for generated classes; defaults to the package.
 	CsharpNamespace *string `protobuf:"bytes,37,opt,name=csharp_namespace,json=csharpNamespace" json:"csharp_namespace,omitempty"`
 	// By default Swift generators will take the proto package and CamelCase it
 	// replacing '.' with underscore and use that to prefix the types/symbols

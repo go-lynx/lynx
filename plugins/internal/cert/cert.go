@@ -52,9 +52,9 @@ func (ce *PlugCert) Load(b config.Value) (plugins.Plugin, error) {
 	if err != nil {
 		return nil, err
 	}
-	app.Lynx().Helper().Infof("Application Certificate Loading")
+	app.Lynx().GetLogHelper().Infof("Application Certificate Loading")
 
-	source, err := app.Lynx().ControlPlane().Config(ce.tls.GetFileName(), ce.tls.GetGroup())
+	source, err := app.Lynx().GetControlPlane().GetConfig(ce.tls.GetFileName(), ce.tls.GetGroup())
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (ce *PlugCert) Load(b config.Value) (plugins.Plugin, error) {
 	}
 
 	app.Lynx().SetCert(ce)
-	app.Lynx().Helper().Infof("Application Certificate Loaded successfully")
+	app.Lynx().GetLogHelper().Infof("Application Certificate Loaded successfully")
 	return ce, nil
 }
 

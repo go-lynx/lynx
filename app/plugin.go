@@ -5,6 +5,7 @@ package app
 
 import (
 	"fmt"
+
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/factory"
 	"github.com/go-lynx/lynx/plugins"
@@ -194,6 +195,9 @@ func contains(slice []PluginWithLevel, plugin plugins.Plugin) bool {
 // LoadPlugins loads all registered plugins in dependency order.
 // It performs topological sorting before loading to ensure correct initialization order.
 func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
+	// Prepare plugins
+	m.PreparePlug(conf)
+
 	if m == nil || len(m.pluginList) == 0 {
 		return
 	}

@@ -13,84 +13,89 @@ import (
 // ControlPlane defines the interface for managing core application services
 // including rate limiting, service discovery, routing, and configuration
 type ControlPlane interface {
-	Base
-	Limiter
-	Registry
-	Router
-	Config
+	// SystemCore provides basic application information.
+	SystemCore
+	// RateLimiter provides rate limiting functionality for HTTP and gRPC services.
+	RateLimiter
+	// ServiceRegistry provides service registration and discovery functionality.
+	ServiceRegistry
+	// RouteManager provides service routing functionality.
+	RouteManager
+	// ConfigManager provides configuration management functionality.
+	ConfigManager
 }
 
-// Base provides basic application information
-type Base interface {
-	// Namespace returns the current application namespace
-	Namespace() string
+// SystemCore provides basic application information
+type SystemCore interface {
+	// GetNamespace returns the current application control plane namespace
+	GetNamespace() string
 }
 
-// Limiter provides rate limiting functionality for HTTP and gRPC services
-type Limiter interface {
+// RateLimiter provides rate limiting functionality for HTTP and gRPC services
+type RateLimiter interface {
 	// HTTPRateLimit returns middleware for HTTP rate limiting
 	HTTPRateLimit() middleware.Middleware
 	// GRPCRateLimit returns middleware for gRPC rate limiting
 	GRPCRateLimit() middleware.Middleware
 }
 
-// Registry provides service registration and discovery functionality
-type Registry interface {
+// ServiceRegistry provides service registration and discovery functionality
+type ServiceRegistry interface {
 	// NewServiceRegistry creates a new service registrar
 	NewServiceRegistry() registry.Registrar
 	// NewServiceDiscovery creates a new service discovery client
 	NewServiceDiscovery() registry.Discovery
 }
 
-// Router provides service routing functionality
-type Router interface {
+// RouteManager provides service routing functionality
+type RouteManager interface {
 	// NewNodeRouter creates a new node filter for the specified service
 	NewNodeRouter(serviceName string) selector.NodeFilter
 }
 
-// Config provides configuration management functionality
-type Config interface {
-	// Config retrieves configuration from a source using the specified file and group
-	Config(fileName string, group string) (config.Source, error)
+// ConfigManager provides configuration management functionality
+type ConfigManager interface {
+	// GetConfig retrieves configuration from a source using the specified file and group
+	GetConfig(fileName string, group string) (config.Source, error)
 }
 
-// LocalControlPlane provides a basic implementation of the ControlPlane interface
+// DefaultControlPlane provides a basic implementation of the ControlPlane interface
 // for local development and testing purposes
-type LocalControlPlane struct {
+type DefaultControlPlane struct {
 }
 
-// HTTPRateLimit implements the Limiter interface for HTTP rate limiting
-func (c *LocalControlPlane) HTTPRateLimit() middleware.Middleware {
+// HTTPRateLimit implements the RateLimiter interface for HTTP rate limiting
+func (c *DefaultControlPlane) HTTPRateLimit() middleware.Middleware {
 	return nil
 }
 
-// GRPCRateLimit implements the Limiter interface for gRPC rate limiting
-func (c *LocalControlPlane) GRPCRateLimit() middleware.Middleware {
+// GRPCRateLimit implements the RateLimiter interface for gRPC rate limiting
+func (c *DefaultControlPlane) GRPCRateLimit() middleware.Middleware {
 	return nil
 }
 
-// NewServiceRegistry implements the Registry interface for service registration
-func (c *LocalControlPlane) NewServiceRegistry() registry.Registrar {
+// NewServiceRegistry implements the ServiceRegistry interface for service registration
+func (c *DefaultControlPlane) NewServiceRegistry() registry.Registrar {
 	return nil
 }
 
-// NewServiceDiscovery implements the Registry interface for service discovery
-func (c *LocalControlPlane) NewServiceDiscovery() registry.Discovery {
+// NewServiceDiscovery implements the ServiceRegistry interface for service discovery
+func (c *DefaultControlPlane) NewServiceDiscovery() registry.Discovery {
 	return nil
 }
 
-// NewNodeRouter implements the Router interface for service routing
-func (c *LocalControlPlane) NewNodeRouter(serviceName string) selector.NodeFilter {
+// NewNodeRouter implements the RouteManager interface for service routing
+func (c *DefaultControlPlane) NewNodeRouter(serviceName string) selector.NodeFilter {
 	return nil
 }
 
-// Config implements the Config interface for configuration management
-func (c *LocalControlPlane) Config(fileName string, group string) (config.Source, error) {
+// GetConfig implements the ConfigManager interface for configuration management
+func (c *DefaultControlPlane) GetConfig(fileName string, group string) (config.Source, error) {
 	return nil, nil
 }
 
-// Namespace implements the Base interface for namespace management
-func (c *LocalControlPlane) Namespace() string {
+// GetNamespace implements the SystemCore interface for namespace management
+func (c *DefaultControlPlane) GetNamespace() string {
 	return ""
 }
 
@@ -132,16 +137,16 @@ func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
 
 	// Default configuration file name based on application name
 	configFileName := fmt.Sprintf("%s.yaml", GetName())
-	namespace := a.GetControlPlane().Namespace()
+	namespace := a.GetControlPlane().GetNamespace()
 
 	// Log configuration loading attempt
-	a.logHelper.Infof("Loading configuration - File: [%s] Group: [%s] Namespace: [%s]",
+	a.logHelper.Infof("Loading configuration - File: [%s] Group: [%s] GetNamespace: [%s]",
 		configFileName, GetName(), namespace)
 
 	// Get configuration source from control plane
-	configSource, err := a.GetControlPlane().Config(configFileName, GetName())
+	configSource, err := a.GetControlPlane().GetConfig(configFileName, GetName())
 	if err != nil {
-		a.logHelper.Errorf("Failed to load configuration - File: [%s] Group: [%s] Namespace: [%s] Error: %v",
+		a.logHelper.Errorf("Failed to load configuration - File: [%s] Group: [%s] GetNamespace: [%s] Error: %v",
 			configFileName, GetName(), namespace, err)
 		return nil, fmt.Errorf("failed to load configuration source: %w", err)
 	}
@@ -152,6 +157,7 @@ func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
 		return nil, fmt.Errorf("failed to create configuration with source")
 	}
 
+	// Load configuration
 	if err := cfg.Load(); err != nil {
 		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}

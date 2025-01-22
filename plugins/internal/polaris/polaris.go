@@ -43,47 +43,45 @@ func (p *PlugPolaris) Load(b config.Value) (plugins.Plugin, error) {
 	}
 
 	// 使用 Lynx 应用的 Helper 记录 Polaris 插件初始化的信息。
-	app.Lynx().Helper().Infof("Initializing Polaris plugin")
+	app.Lynx().GetLogHelper().Infof("Initializing Polaris plugin")
 
 	// 初始化 Polaris SDK 上下文。
 	sdk, err := api.InitContextByConfig(api.NewConfiguration())
 	// 如果初始化失败，记录错误信息并抛出 panic。
 	if err != nil {
-		app.Lynx().Helper().Error(err)
+		app.Lynx().GetLogHelper().Error(err)
 		panic(err)
 	}
 
 	// 创建一个新的 Polaris 实例，使用之前初始化的 SDK 和配置。
 	polar := polaris.New(
 		sdk,
-		polaris.WithService(app.Name()),
+		polaris.WithService(app.GetName()),
 		polaris.WithNamespace(p.conf.Namespace),
 	)
 	// 将 Polaris 实例保存到 p.polaris 中。
 	p.polaris = &polar
 
 	// 设置 Polaris 控制平面为 Lynx 应用的控制平面。
-	app.Lynx().SetControlPlane(p)
+	err = app.Lynx().SetControlPlane(p)
+	if err != nil {
+		app.Lynx().GetLogHelper().Error(err)
+		return nil, err
+	}
+
 	// 获取 Lynx 应用的控制平面启动配置。
-	configuration := app.Lynx().ControlPlaneBootConfiguration()
-	// 准备要加载的插件列表。
-	plugins := app.Lynx().PlugManager().PreparePlug(configuration)
+	cfg, err := app.Lynx().InitControlPlaneConfig()
+	if err != nil {
+		app.Lynx().GetLogHelper().Error(err)
+		return nil, err
+	}
+
 	// 加载插件列表中的插件。
-	app.Lynx().PlugManager().LoadPluginsByName(
-		plugins,
-		configuration,
-	)
+	app.Lynx().GetPluginManager().LoadPlugins(cfg)
 	// 返回 Polaris 插件实例和 nil 错误，表示加载成功。
 	return p, nil
 }
 
 func (p *PlugPolaris) Unload() error {
 	return nil
-}
-
-func Polaris() plugins.Plugin {
-	return &PlugPolaris{
-		weight: 999999,
-		conf:   &conf.Polaris{},
-	}
 }

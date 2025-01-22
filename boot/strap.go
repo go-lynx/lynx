@@ -85,7 +85,7 @@ func (b *Boot) Run() error {
 		return fmt.Errorf("plugin manager is nil")
 	}
 
-	pluginManager.PreparePlug(b.conf)
+	// load plugins
 	pluginManager.LoadPlugins(b.conf)
 
 	// Initialize Kratos application

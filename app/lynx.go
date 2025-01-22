@@ -18,16 +18,44 @@ var (
 	initOnce sync.Once
 )
 
-// LynxApp represents the main application instance
+// LynxApp represents the main application instance.
+// It serves as the central coordinator for all application components,
+// managing configuration, logging, plugins, and the control plane.
 type LynxApp struct {
-	host          string
-	name          string
-	version       string
-	cert          Cert
-	logger        log.Logger
-	logHelper     log.Helper
-	globalConf    config.Config
-	controlPlane  ControlPlane
+	// host represents the application's host address.
+	// Used for network communication and service registration.
+	host string
+
+	// name is the unique identifier of the application.
+	// Used for service discovery and logging.
+	name string
+
+	// version represents the application's version number.
+	// Used for compatibility checks and deployment management.
+	version string
+
+	// cert holds the SSL/TLS certificate configuration.
+	// Used for secure communication channels.
+	cert Cert
+
+	// logger is the primary logging interface.
+	// Provides structured logging capabilities for the application.
+	logger log.Logger
+
+	// logHelper is a convenience wrapper around logger.
+	// Provides simplified logging methods with predefined fields.
+	logHelper log.Helper
+
+	// globalConf holds the application's global configuration.
+	// Contains settings that apply across all components.
+	globalConf config.Config
+
+	// controlPlane manages the application's control interface.
+	// Handles dynamic configuration updates and system monitoring.
+	controlPlane ControlPlane
+
+	// pluginManager handles plugin lifecycle and dependencies.
+	// Responsible for loading, unloading, and coordinating plugins.
 	pluginManager LynxPluginManager
 }
 
@@ -119,7 +147,7 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 		version:       bootConfig.Lynx.Application.Version,
 		globalConf:    cfg,
 		pluginManager: NewLynxPluginManager(plugins...),
-		controlPlane:  &LocalControlPlane{},
+		controlPlane:  &DefaultControlPlane{},
 	}
 
 	// Validate required fields

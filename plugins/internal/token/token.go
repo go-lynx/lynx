@@ -28,7 +28,7 @@ func (t *PlugToken) Load(b config.Value) (plugins.Plugin, error) {
 	}
 
 	// 使用 Lynx 应用的 Helper 记录 Token 插件初始化的信息
-	app.Lynx().Helper().Infof("Initializing service load")
+	app.Lynx().GetLogHelper().Infof("Initializing service load")
 	// 从 Lynx 应用的控制平面获取配置源，使用配置中的文件名和组名
 	source, err := app.Lynx().ControlPlane().Config(t.conf.GetFileName(), t.conf.GetGroup())
 	// 如果发生错误，返回 nil 和错误信息
@@ -55,7 +55,7 @@ func (t *PlugToken) Load(b config.Value) (plugins.Plugin, error) {
 		}
 	}
 	// 使用 Lynx 应用的 Helper 记录 Token 服务初始化成功的信息
-	app.Lynx().Helper().Infof("Service load successfully initialized")
+	app.Lynx().GetLogHelper().Infof("Service load successfully initialized")
 	// 返回 Token 插件实例和 nil 错误，表示加载成功
 	return t, nil
 }

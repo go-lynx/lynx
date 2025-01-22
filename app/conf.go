@@ -33,14 +33,14 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 		}
 
 		// Attempt to get configuration value for current prefix
-		value := config.Value(confPrefix)
-		if value == nil {
+		cfg := config.Value(confPrefix)
+		if cfg == nil {
 			Lynx().logHelper.Debugf("No configuration found for prefix: %s", confPrefix)
 			continue
 		}
 
-		if loaded := value.Load(); loaded == nil {
-			Lynx().logHelper.Debugf("Configuration value is nil for prefix: %s", confPrefix)
+		if loaded := cfg.Load(); loaded == nil {
+			Lynx().logHelper.Debugf("Configuration cfg is nil for prefix: %s", confPrefix)
 			continue
 		}
 

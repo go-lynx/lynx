@@ -10,6 +10,8 @@ import (
 	"google.golang.org/protobuf/runtime/protoimpl"
 )
 
+// Response represents a standardized HTTP response structure.
+// It includes a status code, message, and optional data payload.
 type Response struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -20,6 +22,8 @@ type Response struct {
 	Data    interface{} `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
 }
 
+// ResponseEncoder encodes the response data into a standardized JSON format.
+// It wraps the data in a Response struct with a 200 status code and "success" message.
 func ResponseEncoder(w http.ResponseWriter, r *http.Request, data interface{}) error {
 	res := &Response{
 		Code:    200,
@@ -37,6 +41,8 @@ func ResponseEncoder(w http.ResponseWriter, r *http.Request, data interface{}) e
 	return nil
 }
 
+// ResponsePack returns a middleware that adds trace ID and content type headers to the response.
+// It extracts the trace ID from the context and sets it in the response header as "T-Id".
 func ResponsePack() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {

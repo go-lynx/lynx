@@ -14,5 +14,5 @@ func init() {
 }
 
 func GetServer() *grpc.Server {
-	return app.Lynx().PlugManager().GetPlugin(name).(*ServiceGrpc).grpc
+	return app.Lynx().GetPluginManager().GetPlugin(name).(*ServiceGrpc).grpc
 }

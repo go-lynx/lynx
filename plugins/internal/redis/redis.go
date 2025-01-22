@@ -44,7 +44,7 @@ func (r *PlugRedis) Load(b config.Value) (plugins.Plugin, error) {
 	}
 
 	// 使用 Lynx 应用的 Helper 记录 Redis 插件初始化的信息。
-	app.Lynx().Helper().Infof("Initializing Redis")
+	app.Lynx().GetLogHelper().Infof("Initializing Redis")
 
 	// 创建一个新的 Redis 客户端实例，使用之前解析的配置。
 	r.rdb = redis.NewClient(&redis.Options{
@@ -82,7 +82,7 @@ func (r *PlugRedis) Load(b config.Value) (plugins.Plugin, error) {
 	}
 
 	// 使用 Lynx 应用的 Helper 记录 Redis 服务初始化成功的信息。
-	app.Lynx().Helper().Infof("Redis successfully initialized")
+	app.Lynx().GetLogHelper().Infof("Redis successfully initialized")
 
 	// 返回 Redis 插件实例和 nil 错误，表示加载成功。
 	return r, nil
@@ -97,12 +97,12 @@ func (r *PlugRedis) Unload() error {
 	// 调用 Redis 客户端的 Close 方法来关闭连接，并传入一个 nil 参数
 	// 如果 Close 方法返回错误，则记录错误信息
 	if err := r.rdb.Close(); err != nil {
-		// 使用 app.Lynx().Helper() 记录错误信息
-		app.Lynx().Helper().Error(err)
+		// 使用 app.Lynx().GetLogHelper() 记录错误信息
+		app.Lynx().GetLogHelper().Error(err)
 		return err
 	}
 	// 记录一条信息，指示 Redis 资源正在被关闭
-	app.Lynx().Helper().Info("message", "Closing the Redis resources")
+	app.Lynx().GetLogHelper().Info("message", "Closing the Redis resources")
 	// 返回 nil，表示卸载过程成功，没有发生错误
 	return nil
 }
