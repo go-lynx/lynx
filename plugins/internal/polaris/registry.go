@@ -6,38 +6,38 @@ import (
 	"github.com/go-lynx/lynx/app"
 )
 
-// NewServiceRegistry 方法用于创建一个新的 Polaris 服务注册器
+// NewServiceRegistry method is used to create a new Polaris service registrar
 func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
-	// 使用 Lynx 应用的 Helper 记录服务注册正在进行的信息
-	app.Lynx().Helper().Infof("Service registration in progress")
-	// 调用 GetPolaris() 函数获取 Polaris 实例，并使用 WithRegistryServiceToken 方法设置服务令牌
+	// Use the Lynx application's Helper to record information about the service registration in progress
+	app.Lynx().GetLogHelper().Infof("Service registration in progress")
+	// Call the GetPolaris() function to obtain a Polaris instance and use the WithRegistryServiceToken method to set the service token
 	r := GetPolaris().Registry(
 		polaris.WithRegistryServiceToken(GetPlugin().conf.Token),
-		// 使用 WithRegistryTimeout 方法设置注册超时时间
+		// Use the WithRegistryTimeout method to set the registration timeout time
 		polaris.WithRegistryTimeout(GetPlugin().conf.Timeout.AsDuration()),
-		// 使用 WithRegistryTTL 方法设置注册 TTL
+		// Use the WithRegistryTTL method to set the registration TTL
 		polaris.WithRegistryTTL(int(GetPlugin().conf.Ttl)),
-		// 使用 WithRegistryWeight 方法设置注册权重
+		// Use the WithRegistryWeight method to set the registration weight
 		polaris.WithRegistryWeight(int(GetPlugin().conf.Weight)),
 	)
-	// 返回创建的服务注册器实例
+	// Return the created service registrar instance
 	return r
 }
 
-// NewServiceDiscovery 方法用于创建一个新的 Polaris 服务发现器
+// NewServiceDiscovery method is used to create a new Polaris service discoverer
 func (p *PlugPolaris) NewServiceDiscovery() registry.Discovery {
-	// 使用 Lynx 应用的 Helper 记录服务发现正在进行的信息
-	app.Lynx().Helper().Infof("Service discovery in progress")
-	// 调用 GetPolaris() 函数获取 Polaris 实例，并使用 WithRegistryServiceToken 方法设置服务令牌
+	// Use the Lynx application's Helper to record information about the service discovery in progress
+	app.Lynx().GetLogHelper().Infof("Service discovery in progress")
+	// Call the GetPolaris() function to obtain a Polaris instance and use the WithRegistryServiceToken method to set the service token
 	r := GetPolaris().Registry(
 		polaris.WithRegistryServiceToken(GetPlugin().conf.Token),
-		// 使用 WithRegistryTimeout 方法设置注册超时时间
+		// Use the WithRegistryTimeout method to set the registration timeout time
 		polaris.WithRegistryTimeout(GetPlugin().conf.Timeout.AsDuration()),
-		// 使用 WithRegistryTTL 方法设置注册 TTL
+		// Use the WithRegistryTTL method to set the registration TTL
 		polaris.WithRegistryTTL(int(GetPlugin().conf.Ttl)),
-		// 使用 WithRegistryWeight 方法设置注册权重
+		// Use the WithRegistryWeight method to set the registration weight
 		polaris.WithRegistryWeight(int(GetPlugin().conf.Weight)),
 	)
-	// 返回创建的服务发现器实例
+	// Return the created service discoverer instance
 	return r
 }

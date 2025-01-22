@@ -77,9 +77,9 @@ func NewKratos(opts Options) (*kratos.App, error) {
 
 	// Prepare base options for Kratos application
 	kratosOpts := []kratos.Option{
-		kratos.ID(app.Host()),
-		kratos.Name(app.Name()),
-		kratos.Version(app.Version()),
+		kratos.ID(app.GetHost()),
+		kratos.Name(app.GetName()),
+		kratos.Version(app.GetVersion()),
 		kratos.Metadata(map[string]string{}),
 		kratos.Logger(opts.Logger),
 		kratos.Registrar(opts.Registrar),

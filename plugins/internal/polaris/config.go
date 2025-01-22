@@ -5,13 +5,15 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 )
 
-// Config 方法用于从 Polaris 配置中心获取配置
-func (p *PlugPolaris) Config(fileName string, group string) (config.Source, error) {
-	// 调用 GetPolaris() 函数获取 Polaris 实例，并使用 WithConfigFile 方法设置配置文件信息
-	return GetPolaris().Config(polaris.WithConfigFile(polaris.File{
-		// 设置配置文件的名称
-		Name: fileName,
-		// 设置配置文件的组名
-		Group: group,
-	}))
+// GetConfig method is used to obtain configuration from the Polaris configuration center
+func (p *PlugPolaris) GetConfig(fileName string, group string) (config.Source, error) {
+	// Call the GetPolaris() function to obtain a Polaris instance and use the WithConfigFile method to set the configuration file information
+	return GetPolaris().Config(
+		polaris.WithConfigFile(
+			polaris.File{
+				// Set the name of the configuration file
+				Name: fileName,
+				// Set the group name of the configuration file
+				Group: group,
+			}))
 }

@@ -14,9 +14,9 @@ func init() {
 }
 
 func GetPolaris() *polaris.Polaris {
-	return app.Lynx().PlugManager().GetPlugin(name).(*PlugPolaris).polaris
+	return app.Lynx().GetPluginManager().GetPlugin(name).(*PlugPolaris).polaris
 }
 
 func GetPlugin() *PlugPolaris {
-	return app.Lynx().PlugManager().GetPlugin(name).(*PlugPolaris)
+	return app.Lynx().GetPluginManager().GetPlugin(name).(*PlugPolaris)
 }

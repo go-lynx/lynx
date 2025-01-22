@@ -46,7 +46,7 @@ func (t *PlugTracer) Load(b config.Value) (plugins.Plugin, error) {
 	}
 
 	// 使用 Lynx 应用的 Helper 记录日志，指示正在初始化链路监控组件
-	app.Lynx().Helper().Infof("Initializing link monitoring component")
+	app.Lynx().GetLogHelper().Infof("Initializing link monitoring component")
 
 	// 创建一个新的 ot-lp 跟踪导出器，用于将跟踪数据发送到指定的端点
 	exp, err := otlptracegrpc.New(
@@ -87,7 +87,7 @@ func (t *PlugTracer) Load(b config.Value) (plugins.Plugin, error) {
 	otel.SetTracerProvider(tp)
 
 	// 使用 Lynx 应用的 Helper 记录日志，指示链路监控组件初始化成功
-	app.Lynx().Helper().Infof("Link monitoring component successfully initialized")
+	app.Lynx().GetLogHelper().Infof("Link monitoring component successfully initialized")
 
 	// 返回加载的插件实例和 nil 错误，表示加载成功
 	return t, nil

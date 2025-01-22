@@ -1,5 +1,5 @@
 package polaris
 
-func (p *PlugPolaris) Namespace() string {
+func (p *PlugPolaris) GetNamespace() string {
 	return GetPlugin().conf.GetNamespace()
 }

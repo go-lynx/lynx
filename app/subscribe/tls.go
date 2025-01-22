@@ -25,7 +25,7 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 		if g.group == "" {
 			g.group = g.name
 		}
-		s, err := app.Lynx().GetControlPlane().Config(g.rca, g.group)
+		s, err := app.Lynx().GetControlPlane().GetConfig(g.rca, g.group)
 		if err != nil {
 			panic(err)
 		}

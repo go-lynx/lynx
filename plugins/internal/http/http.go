@@ -58,13 +58,13 @@ func (h *ServiceHttp) InitializeResources(rt plugins.Runtime) error {
 
 // StartupTasks implements custom startup logic for HTTP plugin
 func (h *ServiceHttp) StartupTasks() error {
-	app.Lynx().Helper().Infof("Starting HTTP service")
+	app.Lynx().GetLogHelper().Infof("Starting HTTP service")
 
 	opts := []http.ServerOption{
 		http.Middleware(
-			tracing.Server(tracing.WithTracerName(app.Name())),
-			logging.Server(app.Lynx().Logger()),
-			app.Lynx().ControlPlane().HttpRateLimit(),
+			tracing.Server(tracing.WithTracerName(app.GetName())),
+			logging.Server(app.Lynx().GetLogger()),
+			app.Lynx().GetControlPlane().HTTPRateLimit(),
 			validate.Validator(),
 			recovery.Recovery(
 				recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
@@ -90,7 +90,7 @@ func (h *ServiceHttp) StartupTasks() error {
 	}
 
 	h.server = http.NewServer(opts...)
-	app.Lynx().Helper().Infof("HTTP service successfully started")
+	app.Lynx().GetLogHelper().Infof("HTTP service successfully started")
 	return nil
 }
 

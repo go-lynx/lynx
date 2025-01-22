@@ -46,7 +46,7 @@ func (g *ServiceGrpc) Load(b config.Value) (plugins.Plugin, error) {
 	}
 
 	// 打印初始化 gRPC 服务的日志
-	app.Lynx().Helper().Infof("Initializing GRPC service")
+	app.Lynx().GetLogHelper().Infof("Initializing GRPC service")
 
 	// 创建一个切片，用于存储 gRPC 服务器的选项
 	opts := []grpc.ServerOption{
@@ -88,7 +88,7 @@ func (g *ServiceGrpc) Load(b config.Value) (plugins.Plugin, error) {
 	// 创建一个新的 gRPC 服务器实例
 	g.grpc = grpc.NewServer(opts...)
 	// 打印 gRPC 服务初始化成功的日志
-	app.Lynx().Helper().Infof("GRPC service successfully initialized")
+	app.Lynx().GetLogHelper().Infof("GRPC service successfully initialized")
 	return g, nil
 }
 
@@ -101,11 +101,11 @@ func (g *ServiceGrpc) Unload() error {
 	// 调用 gRPC 服务器的 Stop 方法来停止服务器，并传入一个 nil 参数。
 	// 如果 Stop 方法返回错误，则记录错误信息。
 	if err := g.grpc.Stop(nil); err != nil {
-		// 使用 app.Lynx().Helper() 记录错误信息。
-		app.Lynx().Helper().Error(err)
+		// 使用 app.Lynx().GetLogHelper() 记录错误信息。
+		app.Lynx().GetLogHelper().Error(err)
 	}
 	// 记录一条信息，指示 gRPC 资源正在被关闭。
-	app.Lynx().Helper().Info("message", "Closing the GRPC resources")
+	app.Lynx().GetLogHelper().Info("message", "Closing the GRPC resources")
 	// 返回 nil，表示卸载过程成功，没有发生错误。
 	return nil
 }

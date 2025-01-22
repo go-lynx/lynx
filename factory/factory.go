@@ -9,7 +9,7 @@ import (
 
 // Global factory instance
 var (
-	globalFactory = newPluginFactory()
+	globalFactory *LynxPluginFactory
 )
 
 // PluginFactory defines the complete interface for plugin management,
@@ -44,6 +44,9 @@ type PluginRegistry interface {
 
 // GlobalPluginFactory returns the singleton instance of the plugin factory.
 func GlobalPluginFactory() PluginFactory {
+	if globalFactory == nil {
+		globalFactory = newPluginFactory()
+	}
 	return globalFactory
 }
 

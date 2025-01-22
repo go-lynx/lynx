@@ -41,14 +41,14 @@ func (s *SeataClient) Load(b config.Value) (plugins.Plugin, error) {
 		return nil, err
 	}
 	// 使用 Lynx 应用的 Helper 记录 Seata 插件初始化的信息
-	app.Lynx().Helper().Infof("Initializing Seata")
+	app.Lynx().GetLogHelper().Infof("Initializing Seata")
 	// 如果 Seata 插件已启用，则初始化 Seata 客户端
 	if s.conf.GetEnabled() {
 		// 调用 client.InitPath 方法初始化 Seata 客户端，使用配置中的路径
 		client.InitPath(s.conf.GetConfigPath())
 	}
 	// 使用 Lynx 应用的 Helper 记录 Seata 服务初始化成功的信息
-	app.Lynx().Helper().Infof("Seata successfully initialized")
+	app.Lynx().GetLogHelper().Infof("Seata successfully initialized")
 	// 返回 Seata 插件实例和 nil 错误，表示加载成功
 	return s, nil
 }

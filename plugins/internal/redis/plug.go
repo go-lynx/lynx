@@ -14,5 +14,5 @@ func init() {
 }
 
 func GetRedis() *redis.Client {
-	return app.Lynx().PlugManager().GetPlugin(name).(*PlugRedis).rdb
+	return app.Lynx().GetPluginManager().GetPlugin(name).(*PlugRedis).rdb
 }
