@@ -1,4 +1,4 @@
-package sign
+package jwt
 
 import (
 	"fmt"
@@ -10,7 +10,6 @@ type LoginClaims struct {
 	Id       int64
 	Nickname string
 	Avatar   string
-	Num      string
 	jwt.RegisteredClaims
 }
 

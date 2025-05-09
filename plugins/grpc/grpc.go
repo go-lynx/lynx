@@ -19,7 +19,7 @@ import (
 // Plugin metadata constants define the basic information about the gRPC plugin
 const (
 	// pluginName is the unique identifier for the gRPC server plugin
-	pluginName = "server.server"
+	pluginName = "grpc.server"
 
 	// pluginVersion indicates the current version of the plugin
 	pluginVersion = "v2.0.0"
@@ -28,7 +28,7 @@ const (
 	pluginDescription = "GRPC server plugin for Lynx framework"
 
 	// confPrefix is the configuration prefix used for loading gRPC settings
-	confPrefix = "lynx.server"
+	confPrefix = "lynx.grpc"
 )
 
 // ServiceGrpc represents the gRPC server plugin implementation.

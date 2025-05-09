@@ -15,9 +15,16 @@ import (
 
 // Plugin metadata
 const (
+	// pluginName is the unique identifier for the HTTP server plugin
 	pluginName        = "http.server"
+
+	// pluginVersion indicates the current version of the plugin
 	pluginVersion     = "v2.0.0"
+
+	// pluginDescription provides a brief description of the plugin's functionality
 	pluginDescription = "HTTP server plugin for Lynx framework"
+
+	// confPrefix is the configuration prefix used for loading HTTP server settings
 	confPrefix        = "lynx.http"
 )
 

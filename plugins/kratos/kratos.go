@@ -77,21 +77,30 @@ func NewKratos(opts Options) (*kratos.App, error) {
 
 	// Prepare base options for Kratos application
 	kratosOpts := []kratos.Option{
+		// Set the application ID to the host name
 		kratos.ID(app.GetHost()),
+		// Set the application name
 		kratos.Name(app.GetName()),
+		// Set the application version
 		kratos.Version(app.GetVersion()),
+		// Set the application metadata
 		kratos.Metadata(map[string]string{}),
+		// Set the application logger
 		kratos.Logger(opts.Logger),
+		// Set the application registrar
 		kratos.Registrar(opts.Registrar),
 	}
 
 	// Add servers based on ServerType
 	switch opts.Type {
 	case BothServers:
+		// Add both GRPC and HTTP servers
 		kratosOpts = append(kratosOpts, kratos.Server(opts.GRPCServer, opts.HTTPServer))
 	case GRPCServer:
+		// Add only the GRPC server
 		kratosOpts = append(kratosOpts, kratos.Server(opts.GRPCServer))
 	case HTTPServer:
+		// Add only the HTTP server
 		kratosOpts = append(kratosOpts, kratos.Server(opts.HTTPServer))
 	}
 

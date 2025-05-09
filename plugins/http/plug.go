@@ -13,6 +13,16 @@ func init() {
 	})
 }
 
-func GetServer() *http.Server {
+// GetHttpServer retrieves the HTTP server instance from the plugin manager.
+// This function provides access to the underlying HTTP server for other
+// parts of the application that need to register handlers or access
+// server functionality.
+//
+// Returns:
+//   - *http.Server: The configured HTTP server instance
+//
+// Note: This function will panic if the plugin is not properly initialized
+// or if the plugin manager cannot find the HTTP plugin.
+func GetHttpServer() *http.Server {
 	return app.Lynx().GetPluginManager().GetPlugin(pluginName).(*ServiceHttp).server
 }

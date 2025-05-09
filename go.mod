@@ -1,20 +1,17 @@
 module github.com/go-lynx/lynx
 
-go 1.23.0
+go 1.24.3
 
 require (
-	entgo.io/ent v0.14.1
-	github.com/go-kratos/kratos/contrib/polaris/v2 v2.0.0-20241219093211-5087366d2f90
-	github.com/go-kratos/kratos/v2 v2.8.3
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/go-kratos/kratos/v2 v2.8.4
+	github.com/go-lynx/lynx/plugins/tls v0.0.0-00010101000000-000000000000
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/polarismesh/polaris-go v1.3.0
-	github.com/redis/go-redis/v9 v9.7.0
 	github.com/seata/seata-go v1.2.0
 	go.opentelemetry.io/otel v1.33.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.33.0
 	go.opentelemetry.io/otel/sdk v1.33.0
-	go.opentelemetry.io/otel/trace v1.33.0
-	golang.org/x/crypto v0.30.0
+	golang.org/x/crypto v0.37.0
 	google.golang.org/grpc v1.68.1
 	google.golang.org/protobuf v1.35.2
 )
@@ -35,12 +32,12 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/creasty/defaults v1.5.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dlclark/regexp2 v1.7.0 // indirect
 	github.com/dsnet/compress v0.0.1 // indirect
 	github.com/dubbogo/gost v1.12.6-0.20220824084206-300e27e9e524 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
+	github.com/go-kratos/kratos/contrib/polaris/v2 v2.0.0-20250429074618-c82f7957223f // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
@@ -92,14 +89,15 @@ require (
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.33.0 // indirect
 	go.opentelemetry.io/otel/metric v1.33.0 // indirect
+	go.opentelemetry.io/otel/trace v1.33.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.4.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
-	golang.org/x/net v0.32.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/net v0.39.0 // indirect
+	golang.org/x/sync v0.13.0 // indirect
+	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241209162323-e6fa225c2576 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241209162323-e6fa225c2576 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
@@ -107,3 +105,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	vimagination.zapto.org/byteio v0.0.0-20200222190125-d27cba0f0b10 // indirect
 )
+
+replace github.com/go-lynx/lynx/plugins/tls => ./plugins/tls

@@ -1,4 +1,4 @@
-package sign
+package jwt
 
 import (
 	"crypto/ecdsa"
