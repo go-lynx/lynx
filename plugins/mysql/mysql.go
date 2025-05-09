@@ -11,26 +11,35 @@ import (
 	"time"
 )
 
-var (
-	name       = "db"
-	confPrefix = "lynx.db"
+// Plugin metadata
+const (
+	pluginName        = "mysql.client"
+	pluginVersion     = "v2.0.0"
+	pluginDescription = "Mysql client plugin for Lynx framework"
+	confPrefix        = "lynx.mysql"
 )
 
 type PlugDB struct {
-	dri    *sql.Driver
-	conf   *conf.Db
-	weight int
+	*plugins.BasePlugin
+	dri  *sql.Driver
+	conf *conf.Mysql
 }
 
 type Option func(db *PlugDB)
 
-func Weight(w int) Option {
-	return func(db *PlugDB) {
-		db.weight = w
+// NewServiceHttp creates a new HTTP plugin instance
+func NewMysqlHttp() *ServiceHttp {
+	return &ServiceHttp{
+		BasePlugin: plugins.NewBasePlugin(
+			plugins.GeneratePluginID("", pluginName, pluginVersion),
+			pluginName,
+			pluginDescription,
+			pluginVersion,
+		),
 	}
 }
 
-func Config(c *conf.Db) Option {
+func Config(c *conf.Mysql) Option {
 	return func(db *PlugDB) {
 		db.conf = c
 	}
@@ -79,15 +88,4 @@ func (db *PlugDB) Unload() error {
 	}
 	app.Lynx().GetLogHelper().Info("message", "Closing the DataBase resources")
 	return nil
-}
-
-func Db(opts ...Option) plugins.Plugin {
-	db := &PlugDB{
-		weight: 1000,
-		conf:   &conf.Db{},
-	}
-	for _, opt := range opts {
-		opt(db)
-	}
-	return db
 }

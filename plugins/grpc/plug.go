@@ -17,7 +17,7 @@ func init() {
 	})
 }
 
-// GetServer retrieves the gRPC server instance from the plugin manager.
+// GetGrpcServer retrieves the gRPC server instance from the plugin manager.
 // This function provides access to the underlying gRPC server for other
 // parts of the application that need to register services or access
 // server functionality.
@@ -27,6 +27,6 @@ func init() {
 //
 // Note: This function will panic if the plugin is not properly initialized
 // or if the plugin manager cannot find the gRPC plugin.
-func GetServer() *grpc.Server {
+func GetGrpcServer() *grpc.Server {
 	return app.Lynx().GetPluginManager().GetPlugin(pluginName).(*ServiceGrpc).server
 }

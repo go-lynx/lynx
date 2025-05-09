@@ -8,11 +8,11 @@ import (
 )
 
 func init() {
-	factory.GlobalPluginFactory().RegisterPlugin(name, confPrefix, func() plugins.Plugin {
+	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
 		return Db()
 	})
 }
 
 func GetDriver() *sql.Driver {
-	return app.Lynx().GetPluginManager().GetPlugin(name).(*PlugDB).dri
+	return app.Lynx().GetPluginManager().GetPlugin(pluginName).(*PlugDB).dri
 }

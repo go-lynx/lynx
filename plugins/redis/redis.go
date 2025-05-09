@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	pluginName        = "redis"
+	pluginName        = "redis.client"
 	pluginVersion     = "v2.0.0"
 	pluginDescription = "Redis plugin for Lynx framework"
 	confPrefix        = "lynx.redis"
