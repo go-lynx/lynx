@@ -6,7 +6,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
-	"github.com/go-lynx/lynx/app"
+	"github.com/go-lynx/lynx/app/log"
 	gGrpc "google.golang.org/grpc"
 )
 
@@ -90,8 +90,8 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 		grpc.WithEndpoint("discovery:///" + g.svcName), // 设置服务发现的端点
 		grpc.WithDiscovery(g.discovery),                // 设置服务发现实例
 		grpc.WithMiddleware(
-			logging.Client(app.Lynx().GetLogger()), // 添加日志中间件
-			tracing.Client(),                       // 添加链路追踪中间件
+			logging.Client(log.Logger), // 添加日志中间件
+			tracing.Client(),           // 添加链路追踪中间件
 		),
 		grpc.WithTLSConfig(g.tlsLoad()),     // 设置 TLS 配置
 		grpc.WithNodeFilter(g.nodeFilter()), // 设置节点过滤器
@@ -107,7 +107,7 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 	}
 	if err != nil {
 		// 记录错误日志并抛出异常
-		app.Lynx().GetLogHelper().Error(err)
+		log.Error(err)
 		panic(err)
 	}
 	return conn

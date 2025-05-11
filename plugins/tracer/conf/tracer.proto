@@ -4,7 +4,12 @@ package lynx.protobuf.plugin.tracer;
 
 option go_package = "github.com/go-lynx/lynx/plugin/tracer/conf";
 
+// Tracer 定义了链路跟踪插件的配置信息。
 message Tracer {
+  // addr 表示跟踪数据导出的目标端点地址。
+  // 通常是 OpenTelemetry Collector 等跟踪数据收集器的地址，格式为 "host:port"。
   string addr = 1;
+  // ratio 表示跟踪采样率，取值范围为 0.0 到 1.0。
+  // 0.0 表示不采样，1.0 表示对所有请求进行采样，其他值表示按比例采样。
   float ratio = 2;
 }

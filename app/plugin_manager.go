@@ -7,9 +7,10 @@ package app
 
 import (
 	"fmt"
+	factory2 "github.com/go-lynx/lynx/app/factory"
+	"github.com/go-lynx/lynx/app/log"
 
 	"github.com/go-kratos/kratos/v2/config"
-	"github.com/go-lynx/lynx/factory"
 	"github.com/go-lynx/lynx/plugins"
 )
 
@@ -71,7 +72,7 @@ type DefaultLynxPluginManager struct {
 	pluginList []plugins.Plugin
 	// factory is used to create plugin instances
 	// factory 用于创建插件实例。
-	factory factory.PluginFactory
+	factory factory2.PluginFactory
 }
 
 // NewLynxPluginManager creates a new instance of the default plugin manager.
@@ -87,7 +88,7 @@ func NewLynxPluginManager(pluginList ...plugins.Plugin) LynxPluginManager {
 	m := &DefaultLynxPluginManager{
 		pluginList: make([]plugins.Plugin, 0),
 		pluginMap:  make(map[string]plugins.Plugin),
-		factory:    factory.GlobalPluginFactory(),
+		factory:    factory2.GlobalPluginFactory(),
 	}
 
 	// Initialize plugin map and list if pluginList are provided
@@ -303,7 +304,7 @@ func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
 	if err != nil {
 		// 如果获取 Lynx 应用实例不为 nil，记录排序失败的错误日志
 		if app := Lynx(); app != nil {
-			app.logHelper.Errorf("Failed to sort plugins: %v", err)
+			log.Errorf("Failed to sort plugins: %v", err)
 		}
 		return
 	}
@@ -315,10 +316,20 @@ func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
 		if plugin.Plugin == nil {
 			continue
 		}
-		// 启动插件，如果启动失败，记录错误日志并返回
-		if err := plugin.Start(); err != nil {
+
+		// 初始化插件配置
+		runtime := &RuntimePlugin{}
+		if err := plugin.Initialize(plugin, runtime); err != nil {
 			if app := Lynx(); app != nil {
-				app.logHelper.Errorf("Failed to start plugin %s: %v", plugin.Name(), err)
+				log.Errorf("Failed to initialize plugin %s: %v", plugin.Name(), err)
+			}
+			return
+		}
+
+		// 启动插件，如果启动失败，记录错误日志并返回
+		if err := plugin.Start(plugin); err != nil {
+			if app := Lynx(); app != nil {
+				log.Errorf("Failed to start plugin %s: %v", plugin.Name(), err)
 			}
 			return
 		}
@@ -342,9 +353,9 @@ func (m *DefaultLynxPluginManager) UnloadPlugins() {
 			continue
 		}
 		// 停止插件，如果停止失败，记录错误日志
-		if err := plugin.Stop(); err != nil {
+		if err := plugin.Stop(plugin); err != nil {
 			if app := Lynx(); app != nil {
-				app.logHelper.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
+				log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
 			}
 		}
 	}
@@ -384,7 +395,7 @@ func (m *DefaultLynxPluginManager) LoadPluginsByName(names []string, conf config
 	if err != nil {
 		// 如果获取 Lynx 应用实例不为 nil，记录排序失败的错误日志
 		if app := Lynx(); app != nil {
-			app.logHelper.Errorf("Failed to sort plugins for loading: %v", err)
+			log.Errorf("Failed to sort plugins for loading: %v", err)
 		}
 		return
 	}
@@ -395,10 +406,20 @@ func (m *DefaultLynxPluginManager) LoadPluginsByName(names []string, conf config
 		if plugin.Plugin == nil {
 			continue
 		}
-		// 启动插件，如果启动失败，记录错误日志并返回
-		if err := plugin.Start(); err != nil {
+
+		// 初始化插件配置
+		runtime := &RuntimePlugin{}
+		if err := plugin.Initialize(plugin, runtime); err != nil {
 			if app := Lynx(); app != nil {
-				app.logHelper.Errorf("Failed to load plugin %s: %v", plugin.Name(), err)
+				log.Errorf("Failed to initialize plugin %s: %v", plugin.Name(), err)
+			}
+			return
+		}
+
+		// 启动插件，如果启动失败，记录错误日志并返回
+		if err := plugin.Start(plugin); err != nil {
+			if app := Lynx(); app != nil {
+				log.Errorf("Failed to load plugin %s: %v", plugin.Name(), err)
 			}
 			return
 		}
@@ -420,9 +441,9 @@ func (m *DefaultLynxPluginManager) UnloadPluginsByName(names []string) {
 		// 如果插件存在且不为 nil，尝试卸载
 		if plugin, exists := m.pluginMap[name]; exists && plugin != nil {
 			// 停止插件，如果停止失败，记录错误日志
-			if err := plugin.Stop(); err != nil {
+			if err := plugin.Stop(plugin); err != nil {
 				if app := Lynx(); app != nil {
-					app.logHelper.Errorf("Failed to unload plugin %s: %v", name, err)
+					log.Errorf("Failed to unload plugin %s: %v", name, err)
 				}
 			}
 		}

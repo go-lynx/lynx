@@ -3,12 +3,13 @@ package boot
 import (
 	"flag"
 	"fmt"
+	"github.com/go-lynx/lynx/app/log"
 	"time"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/encoding/json"
-	"github.com/go-kratos/kratos/v2/log"
+	kratoslog "github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugins"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -44,7 +45,7 @@ func init() {
 }
 
 // wireApp 是一个函数类型，用于初始化并返回一个 Kratos 应用程序实例
-type wireApp func(logger log.Logger) (*kratos.App, error)
+type wireApp func(logger kratoslog.Logger) (*kratos.App, error)
 
 // Run 启动 Lynx 应用程序并管理其生命周期
 func (b *Boot) Run() error {
@@ -74,18 +75,12 @@ func (b *Boot) Run() error {
 	}
 
 	// 初始化日志记录器
-	if err := lynxApp.InitLogger(); err != nil {
+	if err := log.InitLogger(app.GetName(), app.GetHost(), app.GetVersion(), b.conf); err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 
-	// 获取日志助手
-	helper := lynxApp.GetLogHelper()
-	if helper == nil {
-		return fmt.Errorf("log helper is nil")
-	}
-
 	// 记录应用启动信息
-	helper.Info("Lynx application is starting up")
+	log.Info("lynx application is starting up")
 
 	// 获取插件管理器
 	pluginManager := lynxApp.GetPluginManager()
@@ -97,19 +92,19 @@ func (b *Boot) Run() error {
 	pluginManager.LoadPlugins(b.conf)
 
 	// 初始化 Kratos 应用程序
-	kratosApp, err := b.wire(lynxApp.GetLogger())
+	kratosApp, err := b.wire(log.Logger)
 	if err != nil {
-		helper.Error(err)
+		log.Error(err)
 		return fmt.Errorf("failed to initialize Kratos application: %w", err)
 	}
 
 	// 计算应用启动耗时
 	elapsedMs := time.Since(startTime).Milliseconds()
-	helper.Infof("Lynx application started successfully, elapsed time: %d ms, port listening initiated", elapsedMs)
+	log.Infof("lynx application started successfully, elapsed time: %d ms, port listening initiated", elapsedMs)
 
 	// 运行 Kratos 应用程序
 	if err := kratosApp.Run(); err != nil {
-		helper.Error(err)
+		log.Error(err)
 		return fmt.Errorf("failed to run Kratos application: %w", err)
 	}
 
@@ -130,19 +125,9 @@ func (b *Boot) handlePanic() {
 		default:
 			err = fmt.Errorf("%v", r)
 		}
+		log.Error(err)
 
-		// 使用合适的日志记录器记录错误信息
 		lynxApp := app.Lynx()
-		if lynxApp != nil {
-			if helper := lynxApp.GetLogHelper(); helper != nil {
-				helper.Error(err)
-			} else {
-				log.Error(err)
-			}
-		} else {
-			log.Error(err)
-		}
-
 		// 确保插件被卸载
 		if lynxApp != nil && lynxApp.GetPluginManager() != nil {
 			lynxApp.GetPluginManager().UnloadPlugins()

@@ -3,12 +3,12 @@ package app
 
 import (
 	"fmt"
+	"github.com/go-lynx/lynx/app/conf"
+	"github.com/go-lynx/lynx/app/log"
 	"os"
 	"sync"
 
 	"github.com/go-kratos/kratos/v2/config"
-	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/plugins"
 )
 
@@ -51,18 +51,6 @@ type LynxApp struct {
 	// cert 保存 SSL/TLS 证书配置。
 	// 用于安全通信通道。
 	cert Cert
-
-	// logger is the primary logging interface.
-	// Provides structured logging capabilities for the application.
-	// logger 是主要的日志记录接口。
-	// 为应用程序提供结构化日志记录功能。
-	logger log.Logger
-
-	// logHelper is a convenience wrapper around logger.
-	// Provides simplified logging methods with predefined fields.
-	// logHelper 是 logger 的便捷包装器。
-	// 提供带有预定义字段的简化日志记录方法。
-	logHelper log.Helper
 
 	// globalConf holds the application's global configuration.
 	// Contains settings that apply across all components.
@@ -258,7 +246,7 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 	if a.globalConf != nil {
 		if err := a.globalConf.Close(); err != nil {
 			// 记录关闭现有配置失败的错误信息
-			a.logHelper.Errorf("Failed to close existing configuration: %v", err)
+			log.Errorf("Failed to close existing configuration: %v", err)
 			return err
 		}
 	}

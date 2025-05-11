@@ -25,7 +25,7 @@ func (b *Boot) LoadLocalBootstrapConfig() error {
 	}
 
 	// 记录尝试加载配置的日志
-	log.Infof("Loading local bootstrap configuration from: %s", flagConf)
+	log.Infof("loading local bootstrap configuration from: %s", flagConf)
 
 	// 从本地文件创建配置源
 	source := file.NewSource(flagConf)
@@ -75,7 +75,7 @@ func (b *Boot) setupConfigCleanup(cfg config.Config) error {
 		// 关闭配置资源
 		if err := cfg.Close(); err != nil {
 			// 记录关闭配置失败的日志
-			log.Errorf("Failed to close configuration: %v", err)
+			log.Errorf("failed to close configuration: %v", err)
 		}
 	}
 
