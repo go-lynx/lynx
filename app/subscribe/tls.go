@@ -5,7 +5,7 @@ import (
 	"crypto/x509"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
-	"github.com/go-lynx/lynx/plugins/tls/conf"
+	"github.com/go-lynx/lynx/app/tls/conf"
 )
 
 // tlsLoad 方法用于加载 TLS 配置。如果未启用 TLS，则返回 nil。

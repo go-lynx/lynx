@@ -3,6 +3,7 @@ package app
 
 import (
 	"fmt"
+	"github.com/go-lynx/lynx/app/log"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware"
@@ -174,14 +175,14 @@ func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
 
 	// Log configuration loading attempt
 	// 记录配置加载尝试信息。
-	a.logHelper.Infof("Loading configuration - File: [%s] Group: [%s] GetNamespace: [%s]",
+	log.Infof("Loading configuration - File: [%s] Group: [%s] GetNamespace: [%s]",
 		configFileName, GetName(), namespace)
 
 	// Get configuration source from control plane
 	// 从控制平面获取配置源。
 	configSource, err := a.GetControlPlane().GetConfig(configFileName, GetName())
 	if err != nil {
-		a.logHelper.Errorf("Failed to load configuration - File: [%s] Group: [%s] GetNamespace: [%s] Error: %v",
+		log.Errorf("Failed to load configuration - File: [%s] Group: [%s] GetNamespace: [%s] Error: %v",
 			configFileName, GetName(), namespace, err)
 		return nil, fmt.Errorf("failed to load configuration source: %w", err)
 	}

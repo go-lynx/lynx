@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package lynx.protobuf.app.conf;
+
+option go_package = "github.com/go-lynx/lynx/conf";
+
+// Bootstrap 消息表示应用程序的启动配置信息。
+message Bootstrap {
+  // lynx 字段包含 Lynx 框架相关的配置信息。
+  Lynx lynx = 1;
+}
+
+// Lynx 消息封装了 Lynx 框架的应用程序配置。
+message Lynx {
+  // application 字段包含应用程序自身的配置信息。
+  Application application = 1;
+}
+
+// Application 消息包含应用程序的基本配置信息。
+message Application {
+  // name 字段表示应用程序的名称。
+  string name = 1;
+  // version 字段表示应用程序的版本号。
+  string version = 2;
+  // close_banner 字段用于控制是否关闭应用程序启动时显示的横幅信息。
+  bool close_banner = 3;
+}

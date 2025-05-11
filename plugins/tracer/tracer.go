@@ -2,8 +2,8 @@ package tracer
 
 import (
 	"context"
-	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
+	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/tracer/conf"
 	"go.opentelemetry.io/otel"
@@ -13,40 +13,61 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
-var (
-	name       = "tracer"
+// Plugin metadata
+// 插件元数据，定义插件的基本信息
+const (
+	// pluginName 是 HTTP 服务器插件的唯一标识符，用于在插件系统中识别该插件。
+	pluginName = "tracer.server"
+
+	// pluginVersion 表示 HTTP 服务器插件的当前版本。
+	pluginVersion = "v2.0.0"
+
+	// pluginDescription 简要描述了 HTTP 服务器插件的功能。
+	pluginDescription = "tracer server plugin for lynx framework"
+
+	// confPrefix 是加载 HTTP 服务器配置时使用的配置前缀。
 	confPrefix = "lynx.tracer"
 )
 
+// PlugTracer 实现了 Lynx 框架的 Tracer 插件功能。
+// 它嵌入了 plugins.BasePlugin 以继承通用的插件功能，并维护 Tracer 链路追踪的配置和实例。
 type PlugTracer struct {
-	conf   *conf.Tracer
-	weight int
+	// 嵌入基础插件，继承插件的通用属性和方法
+	*plugins.BasePlugin
+	// HTTP 服务器的配置信息
+	conf *conf.Tracer
 }
 
-type Option func(t *PlugTracer)
-
-func Weight(w int) Option {
-	return func(t *PlugTracer) {
-		t.weight = w
+// NewPlugTracer 创建一个新的 Tracer 服务器插件实例。
+// 该函数初始化插件的基础信息，并返回一个指向 Tracer 结构体的指针。
+func NewPlugTracer() *PlugTracer {
+	return &PlugTracer{
+		BasePlugin: plugins.NewBasePlugin(
+			// 生成插件的唯一 ID
+			plugins.GeneratePluginID("", pluginName, pluginVersion),
+			// 插件名称
+			pluginName,
+			// 插件描述
+			pluginDescription,
+			// 插件版本
+			pluginVersion,
+			// 配置前缀
+			confPrefix,
+		),
 	}
 }
 
-func Config(c *conf.Tracer) Option {
-	return func(t *PlugTracer) {
-		t.conf = c
-	}
-}
-
-func (t *PlugTracer) Load(b config.Value) (plugins.Plugin, error) {
-	// 从配置值中扫描并填充 PlugTracer 结构体的 conf 字段
-	err := b.Scan(t.conf)
-	// 如果扫描过程中发生错误，返回 nil 和错误信息
+func (t *PlugTracer) InitializeResources(rt plugins.Runtime) error {
+	err := rt.GetConfig().Scan(t.conf)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	return nil
+}
 
+func (t *PlugTracer) StartupTasks() error {
 	// 使用 Lynx 应用的 Helper 记录日志，指示正在初始化链路监控组件
-	app.Lynx().GetLogHelper().Infof("Initializing link monitoring component")
+	log.Infof("Initializing link monitoring component")
 
 	// 创建一个新的 ot-lp 跟踪导出器，用于将跟踪数据发送到指定的端点
 	exp, err := otlptracegrpc.New(
@@ -60,7 +81,7 @@ func (t *PlugTracer) Load(b config.Value) (plugins.Plugin, error) {
 	)
 	// 如果创建导出器时发生错误，返回 nil 和错误信息
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// 创建一个新的跟踪提供者，用于生成和处理跟踪数据
@@ -73,13 +94,13 @@ func (t *PlugTracer) Load(b config.Value) (plugins.Plugin, error) {
 		traceSdk.WithResource(
 			resource.NewSchemaless(
 				// 服务实例 ID，使用主机名
-				semconv.ServiceInstanceIDKey.String(app.Host()),
+				semconv.ServiceInstanceIDKey.String(app.GetHost()),
 				// 服务名称
-				semconv.ServiceNameKey.String(app.Name()),
+				semconv.ServiceNameKey.String(app.GetName()),
 				// 服务版本
-				semconv.ServiceVersionKey.String(app.Version()),
+				semconv.ServiceVersionKey.String(app.GetVersion()),
 				// 服务命名空间，使用 Lynx 控制平面的命名空间
-				semconv.ServiceNamespaceKey.String(app.Lynx().ControlPlane().Namespace()),
+				semconv.ServiceNamespaceKey.String(app.Lynx().GetControlPlane().GetNamespace()),
 			)),
 	)
 
@@ -87,23 +108,6 @@ func (t *PlugTracer) Load(b config.Value) (plugins.Plugin, error) {
 	otel.SetTracerProvider(tp)
 
 	// 使用 Lynx 应用的 Helper 记录日志，指示链路监控组件初始化成功
-	app.Lynx().GetLogHelper().Infof("Link monitoring component successfully initialized")
-
-	// 返回加载的插件实例和 nil 错误，表示加载成功
-	return t, nil
-}
-
-func (t *PlugTracer) Unload() error {
+	log.Infof("link monitoring component successfully initialized")
 	return nil
-}
-
-func Tracer(opts ...Option) plugins.Plugin {
-	t := &PlugTracer{
-		weight: 700,
-		conf:   &conf.Tracer{},
-	}
-	for _, opt := range opts {
-		opt(t)
-	}
-	return t
 }

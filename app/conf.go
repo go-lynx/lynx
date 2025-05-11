@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"github.com/go-lynx/lynx/app/log"
 
 	"github.com/go-kratos/kratos/v2/config"
 )
@@ -12,7 +13,7 @@ import (
 func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 	// 检查配置是否为 nil，如果为 nil 则记录错误日志并返回 nil
 	if config == nil {
-		Lynx().logHelper.Error("Configuration is nil")
+		log.Error("Configuration is nil")
 		return nil
 	}
 
@@ -20,7 +21,7 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 	table := m.factory.GetPluginRegistry()
 	// 检查注册表是否为空，如果为空则记录警告日志并返回 nil
 	if len(table) == 0 {
-		Lynx().logHelper.Warn("No plugins registered in factory")
+		log.Warn("No plugins registered in factory")
 		return nil
 	}
 
@@ -31,7 +32,7 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 	for confPrefix, names := range table {
 		// 检查配置前缀是否为空，如果为空则记录警告日志并跳过当前循环
 		if confPrefix == "" {
-			Lynx().logHelper.Warnf("Empty configuration prefix found, skipping")
+			log.Warnf("Empty configuration prefix found, skipping")
 			continue
 		}
 
@@ -39,19 +40,19 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 		cfg := config.Value(confPrefix)
 		// 检查配置值是否为 nil，如果为 nil 则记录调试日志并跳过当前循环
 		if cfg == nil {
-			Lynx().logHelper.Debugf("No configuration found for prefix: %s", confPrefix)
+			log.Debugf("No configuration found for prefix: %s", confPrefix)
 			continue
 		}
 
 		// 加载配置值，如果加载结果为 nil 则记录调试日志并跳过当前循环
 		if loaded := cfg.Load(); loaded == nil {
-			Lynx().logHelper.Debugf("Configuration cfg is nil for prefix: %s", confPrefix)
+			log.Debugf("Configuration cfg is nil for prefix: %s", confPrefix)
 			continue
 		}
 
 		// 检查是否有与前缀关联的插件名称，如果没有则记录调试日志并跳过当前循环
 		if len(names) == 0 {
-			Lynx().logHelper.Debugf("No plugins associated with prefix: %s", confPrefix)
+			log.Debugf("No plugins associated with prefix: %s", confPrefix)
 			continue
 		}
 
@@ -59,13 +60,13 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 		for _, name := range names {
 			// 检查插件名称是否为空，如果为空则记录警告日志并跳过当前循环
 			if name == "" {
-				Lynx().logHelper.Warn("Empty plugin name found, skipping")
+				log.Warn("Empty plugin name found, skipping")
 				continue
 			}
 
 			// 检查插件是否已存在且能否创建，如果出现错误则记录错误日志并跳过当前循环
 			if err := m.preparePlugin(name); err != nil {
-				Lynx().logHelper.Errorf("Failed to prepare plugin %s: %v", name, err)
+				log.Errorf("Failed to prepare plugin %s: %v", name, err)
 				continue
 			}
 
@@ -76,9 +77,9 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 
 	// 检查是否有成功准备的插件，如果没有则记录警告日志，否则记录成功信息
 	if len(plugNames) == 0 {
-		Lynx().logHelper.Warn("No plugins were prepared")
+		log.Warn("No plugins were prepared")
 	} else {
-		Lynx().logHelper.Infof("Successfully prepared %d plugins", len(plugNames))
+		log.Infof("successfully prepared %d plugins", len(plugNames))
 	}
 
 	return plugNames
