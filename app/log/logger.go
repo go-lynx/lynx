@@ -2,12 +2,15 @@
 package log
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	kconf "github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app/conf"
 	"io/fs"
 	"os"
+	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -50,7 +53,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// 初始化主日志记录器，将日志输出到标准输出，并设置默认日志字段
 	logger := log.With(
 		zeroLogLogger{zeroLogger},
-		"caller", log.Caller(5), // 记录日志调用者信息
+		"caller", Caller(5), // 记录日志调用者信息
 		"service.id", host, // 记录服务 ID，由 GetHost 函数提供
 		"service.name", name, // 记录服务名称，由 GetName 函数提供
 		"service.version", version, // 记录服务版本，由 GetVersion 函数提供
@@ -89,6 +92,33 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	helper.Info("lynx application logging component initialized successfully")
 
 	return nil
+}
+
+// Caller returns a Valuer that returns a pkg/file:line description of the caller.
+func Caller(depth int) log.Valuer {
+	return func(context.Context) any {
+		_, file, line, _ := runtime.Caller(depth)
+		return trimFilePath(file, 3) + ":" + strconv.Itoa(line)
+	}
+}
+
+func trimFilePath(file string, depth int) string {
+	// 记录斜杠位置
+	var slashPos []int
+	for i := len(file) - 1; i >= 0; i-- {
+		if file[i] == '/' {
+			slashPos = append(slashPos, i)
+			if len(slashPos) == depth {
+				break
+			}
+		}
+	}
+	if len(slashPos) == 0 {
+		return file // 没有斜杠，直接返回文件名
+	}
+	// 从最后第 depth 个 / 开始截取
+	start := slashPos[len(slashPos)-1] + 1
+	return file[start:]
 }
 
 // initBanner handles the initialization and display of the application banner.
