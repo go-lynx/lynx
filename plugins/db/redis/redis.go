@@ -102,7 +102,7 @@ func (r *PlugRedis) StartupTasks() error {
 	})
 
 	// 记录 Redis 客户端启动成功日志
-	log.Infof("redis client successfully Started")
+	log.Infof("redis client successfully started")
 	return nil
 }
 
