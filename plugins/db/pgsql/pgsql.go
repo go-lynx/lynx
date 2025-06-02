@@ -79,7 +79,7 @@ func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
 // 返回错误信息，如果连接或健康检查失败则返回相应错误
 func (p *DBPgsqlClient) StartupTasks() error {
 	// 记录数据库初始化日志
-	log.Infof("Initializing database")
+	log.Infof("initializing database")
 	// 打开数据库连接
 	drv, err := sql.Open(
 		p.conf.Driver,
