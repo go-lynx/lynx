@@ -62,7 +62,7 @@ func (t *TxSeataClient) InitializeResources(rt plugins.Runtime) error {
 
 func (t *TxSeataClient) StartupTasks() error {
 	// 使用 Lynx 应用的 Helper 记录 Seata 插件初始化的信息
-	log.Infof("Initializing Seata")
+	log.Infof("Initializing seata")
 	// 如果 Seata 插件已启用，则初始化 Seata 客户端
 	if t.conf.GetEnabled() {
 		// 调用 client.InitPath 方法初始化 Seata 客户端，使用配置中的路径

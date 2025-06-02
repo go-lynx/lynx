@@ -12,17 +12,17 @@ var (
 	// 为应用程序提供结构化日志记录功能。
 	Logger log.Logger
 
-	// LogHelper logHelper is a convenience wrapper around logger.
+	// LHelper logHelper is a convenience wrapper around logger.
 	// Provides simplified logging methods with predefined fields.
 	// logHelper 是 logger 的便捷包装器。
 	// 提供带有预定义字段的简化日志记录方法。
-	LogHelper log.Helper
+	LHelper log.Helper
 )
 
 // helper 函数用于获取应用程序的日志辅助器实例。
 // 该辅助器提供了简化的日志记录方法。
 func helper() *log.Helper {
-	return &LogHelper
+	return &LHelper
 }
 
 // Debug 使用日志辅助器记录调试级别的日志信息。

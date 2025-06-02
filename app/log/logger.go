@@ -38,7 +38,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 
 	// Log the initialization of the logging component
 	// 记录日志组件初始化开始的信息
-	log.Info("Initializing Lynx logging component")
+	log.Info("initializing Lynx logging component")
 
 	// 启用控制台彩色输出
 	output := zerolog.ConsoleWriter{
@@ -77,7 +77,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// Store logger instances
 	// 将日志记录器和日志辅助对象存储到 LynxApp 实例中
 	Logger = logger
-	LogHelper = *helper
+	LHelper = *helper
 
 	// Initialize and display the application banner
 	// 初始化并显示应用启动横幅

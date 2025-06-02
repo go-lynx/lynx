@@ -2,11 +2,10 @@
 package kratos
 
 import (
-	"fmt"
 	"github.com/go-kratos/kratos/v2/transport"
+	"github.com/go-lynx/lynx/app/log"
 
 	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-kratos/kratos/v2/transport/http"
@@ -16,9 +15,6 @@ import (
 // Options holds the configuration for creating a Kratos application
 // Options 结构体用于存储创建 Kratos 应用所需的配置信息
 type Options struct {
-	// Logger for the application
-	// 应用程序使用的日志记录器
-	Logger log.Logger
 	// GRPCServer instance
 	// gRPC 服务器实例
 	GRPCServer *grpc.Server
@@ -50,12 +46,6 @@ type Options struct {
 //   - *kratos.App: 创建好的 Kratos 应用程序实例
 //   - error: 创建过程中发生的任何错误
 func NewKratos(opts Options) (*kratos.App, error) {
-	// Validate required parameters
-	// 验证必需的参数
-	if opts.Logger == nil {
-		return nil, fmt.Errorf("logger is required")
-	}
-
 	// Prepare base options for Kratos application
 	// 为 Kratos 应用程序准备基础选项
 	kratosOpts := []kratos.Option{
@@ -73,7 +63,7 @@ func NewKratos(opts Options) (*kratos.App, error) {
 		kratos.Metadata(map[string]string{}),
 		// Set the application logger
 		// 设置应用程序日志记录器
-		kratos.Logger(opts.Logger),
+		kratos.Logger(log.Logger),
 		// Set the application registrar
 		// 设置应用程序注册器
 		kratos.Registrar(opts.Registrar),
@@ -141,14 +131,12 @@ func NewKratos(opts Options) (*kratos.App, error) {
 // 返回值:
 //   - Options: 包含所有传入配置信息的 Options 结构体实例。
 func ProvideKratosOptions(
-	logger log.Logger,
 	grpcServer *grpc.Server,
 	httpServer *http.Server,
 	registrar registry.Registrar,
 ) Options {
 	// 返回一个初始化后的 Options 结构体实例，将传入的参数赋值给对应的字段
 	return Options{
-		Logger:     logger,
 		GRPCServer: grpcServer,
 		HTTPServer: httpServer,
 		Registrar:  registrar,

@@ -66,7 +66,7 @@ func (p *PlugPolaris) InitializeResources(rt plugins.Runtime) error {
 // 该函数会配置并启动 HTTP 服务器，添加必要的中间件和配置选项。
 func (p *PlugPolaris) StartupTasks() error {
 	// 使用 Lynx 应用的 Helper 记录 Polaris 插件初始化的信息。
-	log.Infof("Initializing Polaris plugin")
+	log.Infof("Initializing polaris plugin")
 
 	// 初始化 Polaris SDK 上下文。
 	sdk, err := api.InitContextByConfig(api.NewConfiguration())

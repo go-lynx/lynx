@@ -100,7 +100,19 @@ func (b *Boot) Run() error {
 
 	// 计算应用启动耗时
 	elapsedMs := time.Since(startTime).Milliseconds()
-	log.Infof("lynx application started successfully, elapsed time: %d ms, port listening initiated", elapsedMs)
+	var elapsedDisplay string
+	switch {
+	case elapsedMs < 1000:
+		// 小于1秒，显示毫秒
+		elapsedDisplay = fmt.Sprintf("%d ms", elapsedMs)
+	case elapsedMs < 60_000:
+		// 小于1分钟，显示秒（保留两位小数）
+		elapsedDisplay = fmt.Sprintf("%.2f s", float64(elapsedMs)/1000)
+	default:
+		// 1分钟以上，显示分钟（保留两位小数）
+		elapsedDisplay = fmt.Sprintf("%.2f m", float64(elapsedMs)/1000/60)
+	}
+	log.Infof("lynx application started successfully, elapsed time: %s, port listening initiated", elapsedDisplay)
 
 	// 运行 Kratos 应用程序
 	if err := kratosApp.Run(); err != nil {
