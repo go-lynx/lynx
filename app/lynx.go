@@ -52,6 +52,9 @@ type LynxApp struct {
 	// 用于安全通信通道。
 	cert Cert
 
+	// 引导配置文件
+	bootConfig *conf.Bootstrap
+
 	// globalConf holds the application's global configuration.
 	// Contains settings that apply across all components.
 	// globalConf 保存应用程序的全局配置。
@@ -168,15 +171,15 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 
 	// Parse bootstrap configuration
 	// 解析引导配置
-	var bootConfig conf.Bootstrap
-	// 将配置信息扫描到 bootConfig 结构体中，如果失败则返回错误信息
-	if err := cfg.Scan(&bootConfig); err != nil {
+	var bConf conf.Bootstrap
+	// 将配置信息扫描到 bConf 结构体中，如果失败则返回错误信息
+	if err := cfg.Scan(&bConf); err != nil {
 		return nil, fmt.Errorf("failed to parse bootstrap configuration: %w", err)
 	}
 
 	// Validate bootstrap configuration
 	// 验证引导配置
-	if bootConfig.Lynx == nil || bootConfig.Lynx.Application == nil {
+	if bConf.Lynx == nil || bConf.Lynx.Application == nil {
 		return nil, fmt.Errorf("invalid bootstrap configuration: missing required fields")
 	}
 
@@ -184,8 +187,9 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 	// 创建新的应用程序实例
 	app := &LynxApp{
 		host:          hostname,
-		name:          bootConfig.Lynx.Application.Name,
-		version:       bootConfig.Lynx.Application.Version,
+		name:          bConf.Lynx.Application.Name,
+		version:       bConf.Lynx.Application.Version,
+		bootConfig:    &bConf,
 		globalConf:    cfg,
 		pluginManager: NewLynxPluginManager(plugins...),
 		controlPlane:  &DefaultControlPlane{},

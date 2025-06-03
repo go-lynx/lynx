@@ -68,7 +68,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 
 	// Create a helper for more convenient logging
 	// 创建一个日志辅助对象，方便进行日志记录操作
-	helper := log.NewHelper(logger)
+	helper := log.NewHelper(log.With(logger, "layer", "ent"))
 	// 检查日志辅助对象是否创建失败，如果为 nil 则返回错误
 	if helper == nil {
 		return fmt.Errorf("failed to create logger helper")
