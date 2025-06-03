@@ -3,6 +3,7 @@ package http
 
 import (
 	"context"
+	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
@@ -12,6 +13,7 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/plugins/service/http/v2/conf"
+	nhttp "net/http"
 )
 
 // Plugin metadata
@@ -87,28 +89,46 @@ func (h *ServiceHttp) StartupTasks() error {
 	// 记录 HTTP 服务启动日志
 	log.Infof("starting http service")
 
+	var middlewares []middleware.Middleware
+
+	// 添加基础中间件
+	middlewares = append(middlewares,
+		// 配置链路追踪中间件，设置追踪器名称为应用名称
+		tracing.Server(tracing.WithTracerName(app.GetName())),
+		// 配置日志中间件，使用 Lynx 框架的日志记录器
+		logging.Server(log.Logger),
+		// 配置参数验证中间件
+		validate.Validator(),
+		// 配置恢复中间件，处理请求处理过程中的 panic
+		recovery.Recovery(
+			recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
+				return nil
+			}),
+		),
+		// 配置响应包装中间件
+		ResponsePack(),
+	)
+
+	// 配置限流中间件，使用 Lynx 框架控制平面的 HTTP 限流策略
+	// 如果有限流中间件，则追加进去
+	if rl := app.Lynx().GetControlPlane().HTTPRateLimit(); rl != nil {
+		middlewares = append(middlewares, rl)
+	}
+	hMiddlewares := http.Middleware(middlewares...)
+
 	// 定义 HTTP 服务器的选项列表
 	opts := []http.ServerOption{
-		http.Middleware(
-			// 配置链路追踪中间件，设置追踪器名称为应用名称
-			tracing.Server(tracing.WithTracerName(app.GetName())),
-			// 配置日志中间件，使用 Lynx 框架的日志记录器
-			logging.Server(log.Logger),
-			// 配置限流中间件，使用 Lynx 框架控制平面的 HTTP 限流策略
-			app.Lynx().GetControlPlane().HTTPRateLimit(),
-			// 配置参数验证中间件，注意：该方法已弃用
-			validate.Validator(),
-			// 配置恢复中间件，处理请求处理过程中的 panic
-			recovery.Recovery(
-				recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
-					return nil
-				}),
-			),
-			// 配置响应包装中间件
-			ResponsePack(),
-		),
+		hMiddlewares,
+		// 404 格式化
+		http.NotFoundHandler(nhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(nhttp.StatusNotFound)
+			_, _ = w.Write([]byte(`{"code": 404, "message": "404 not found"}`))
+			log.Warnf("404 not found path %s", r.URL.Path)
+		})),
 		// 配置响应编码器
 		http.ResponseEncoder(ResponseEncoder),
+		http.ErrorEncoder(EncodeErrorFunc),
 	}
 
 	// 根据配置信息添加额外的服务器选项

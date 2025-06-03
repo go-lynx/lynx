@@ -1,18 +1,19 @@
 package boot
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"github.com/go-kratos/kratos/v2/encoding/json"
 	"github.com/go-lynx/lynx/app/log"
+	"google.golang.org/protobuf/encoding/protojson"
 	"time"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
-	"github.com/go-kratos/kratos/v2/encoding/json"
 	kratoslog "github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugins"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // flagConf 存储从命令行参数中获取的配置文件路径
@@ -34,14 +35,6 @@ func init() {
 	// 从命令行参数中获取配置文件路径，默认值为 "../../configs"
 	flag.StringVar(&flagConf, "conf", "../../configs", "config path, eg: -conf config.yaml")
 	flag.Parse()
-
-	// 配置 protocol buffers 的 JSON 序列化选项
-	// EmitUnpopulated: 序列化时包含未设置的字段
-	// UseProtoNames: 使用 proto 文件中定义的字段名
-	json.MarshalOptions = protojson.MarshalOptions{
-		EmitUnpopulated: true,
-		UseProtoNames:   true,
-	}
 }
 
 // wireApp 是一个函数类型，用于初始化并返回一个 Kratos 应用程序实例
@@ -96,6 +89,18 @@ func (b *Boot) Run() error {
 	if err != nil {
 		log.Error(err)
 		return fmt.Errorf("failed to initialize Kratos application: %w", err)
+	}
+
+	// 配置 protocol buffers 的 JSON 序列化选项
+	jsonEmit, jsonConfErr := lynxApp.GetGlobalConfig().Value("lynx.http.response.json.emitUnpopulated").Bool()
+	if jsonConfErr != nil && errors.As(config.ErrNotFound, &jsonConfErr) {
+		jsonEmit = false
+	}
+	// EmitUnpopulated: 序列化时包含未设置的字段
+	// UseProtoNames: 使用 proto 文件中定义的字段名
+	json.MarshalOptions = protojson.MarshalOptions{
+		EmitUnpopulated: jsonEmit,
+		UseProtoNames:   true,
 	}
 
 	// 计算应用启动耗时

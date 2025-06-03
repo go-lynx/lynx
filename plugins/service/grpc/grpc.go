@@ -6,6 +6,7 @@ package grpc
 
 import (
 	"context"
+	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
@@ -109,25 +110,33 @@ func (g *ServiceGrpc) StartupTasks() error {
 	// 记录 gRPC 服务启动日志
 	log.Infof("starting grpc service")
 
+	var middlewares []middleware.Middleware
+
+	// 添加基础中间件
+	middlewares = append(middlewares,
+		// 配置链路追踪中间件，设置追踪器名称为应用名称
+		tracing.Server(tracing.WithTracerName(app.GetName())),
+		// 配置日志中间件，使用 Lynx 框架的日志记录器
+		logging.Server(log.Logger),
+		// 配置参数验证中间件，注意：该方法已弃用
+		validate.Validator(),
+		// 配置恢复中间件，处理请求处理过程中的 panic
+		recovery.Recovery(
+			recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
+				return nil
+			}),
+		),
+	)
+	// 配置限流中间件，使用 Lynx 框架控制平面的 HTTP 限流策略
+	// 如果有限流中间件，则追加进去
+	if rl := app.Lynx().GetControlPlane().GRPCRateLimit(); rl != nil {
+		middlewares = append(middlewares, rl)
+	}
+	gMiddlewares := grpc.Middleware(middlewares...)
+
 	// 定义 gRPC 服务器的选项列表
 	opts := []grpc.ServerOption{
-		// 配置 gRPC 服务器的中间件
-		grpc.Middleware(
-			// 配置链路追踪中间件，设置追踪器名称为应用名称
-			tracing.Server(tracing.WithTracerName(app.GetName())),
-			// 配置日志中间件，使用 Lynx 框架的日志记录器
-			logging.Server(log.Logger),
-			// 配置限流中间件，使用 Lynx 框架控制平面的 gRPC 限流策略
-			app.Lynx().GetControlPlane().GRPCRateLimit(),
-			// 配置参数验证中间件，注意：该方法已弃用
-			validate.Validator(),
-			// 配置恢复中间件，处理请求处理过程中的 panic
-			recovery.Recovery(
-				recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
-					return nil
-				}),
-			),
-		),
+		gMiddlewares,
 	}
 
 	// Configure server options based on configuration

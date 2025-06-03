@@ -2,13 +2,11 @@
 package http
 
 import (
-	"context"
-	"encoding/json"
-	"github.com/go-kratos/kratos/v2/middleware"
-	"github.com/go-kratos/kratos/v2/transport"
+	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/transport/http"
-	"go.opentelemetry.io/otel/trace"
+	"github.com/go-lynx/lynx/app/log"
 	"google.golang.org/protobuf/runtime/protoimpl"
+	nhttp "net/http"
 )
 
 // Response 表示标准化的 HTTP 响应结构。
@@ -42,14 +40,14 @@ func ResponseEncoder(w http.ResponseWriter, r *http.Request, data interface{}) e
 		Message: "success",
 		Data:    data,
 	}
-	// 将响应结构体序列化为 JSON 字节切片
-	msRes, err := json.Marshal(res)
+	codec, _ := http.CodecForRequest(r, "Accept")
+	body, err := codec.Marshal(res)
 	if err != nil {
-		// 序列化失败，返回错误
+		w.WriteHeader(nhttp.StatusInternalServerError)
 		return err
 	}
 	// 将 JSON 数据写入 HTTP 响应
-	_, err = w.Write(msRes)
+	_, err = w.Write(body)
 	if err != nil {
 		// 写入失败，返回错误
 		return err
@@ -57,23 +55,24 @@ func ResponseEncoder(w http.ResponseWriter, r *http.Request, data interface{}) e
 	return nil
 }
 
-// ResponsePack 返回一个中间件，用于向响应添加跟踪 ID 和内容类型头。
-// 它从上下文提取跟踪 ID，并将其作为 "TraceID" 设置到响应头中。
-func ResponsePack() middleware.Middleware {
-	return func(handler middleware.Handler) middleware.Handler {
-		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
-			// 尝试从上下文获取服务器传输信息
-			if tr, ok := transport.FromServerContext(ctx); ok {
-				defer func() {
-					// 将上下文的跟踪 ID、跨度 ID 添加到响应头
-					tr.ReplyHeader().Set("TraceID", trace.SpanContextFromContext(ctx).TraceID().String())
-					tr.ReplyHeader().Set("SpanID", trace.SpanContextFromContext(ctx).SpanID().String())
-					// 设置响应的内容类型为 JSON
-					tr.ReplyHeader().Set("Content-Type", "application/json")
-				}()
-			}
-			// 调用下一个处理函数
-			return handler(ctx, req)
-		}
+func EncodeErrorFunc(w http.ResponseWriter, r *http.Request, err error) {
+	// 拿到error并转换成kratos Error实体
+	se := errors.FromError(err)
+	res := &Response{
+		Code:    int(se.Code),
+		Message: se.Message,
+	}
+	codec, _ := http.CodecForRequest(r, "Accept")
+	body, err := codec.Marshal(res)
+	if err != nil {
+		w.WriteHeader(nhttp.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	// 设置HTTP Status Code
+	w.WriteHeader(nhttp.StatusInternalServerError)
+	_, wErr := w.Write(body)
+	if wErr != nil {
+		log.Error("write error", wErr)
 	}
 }
