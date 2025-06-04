@@ -120,7 +120,7 @@ const file_polaris_proto_rawDesc = "" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x16\n" +
 	"\x06weight\x18\x04 \x01(\x05R\x06weight\x12\x10\n" +
 	"\x03ttl\x18\x05 \x01(\x05R\x03ttl\x123\n" +
-	"\atimeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\atimeoutB-Z+github.com/go-lynx/lynx/plugin/polaris/confb\x06proto3"
+	"\atimeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\atimeoutB1Z/github.com/go-lynx/plugins/polaris/v2/conf;confb\x06proto3"
 
 var (
 	file_polaris_proto_rawDescOnce sync.Once

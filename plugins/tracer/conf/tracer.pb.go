@@ -24,12 +24,14 @@ const (
 // Tracer 定义了链路跟踪插件的配置信息。
 type Tracer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// enable 表示是否启用链路跟踪功能,开启则会在日志中打印
+	Enable bool `protobuf:"varint,1,opt,name=enable,proto3" json:"enable,omitempty"`
 	// addr 表示跟踪数据导出的目标端点地址。
 	// 通常是 OpenTelemetry Collector 等跟踪数据收集器的地址，格式为 "host:port"。
-	Addr string `protobuf:"bytes,1,opt,name=addr,proto3" json:"addr,omitempty"`
+	Addr string `protobuf:"bytes,2,opt,name=addr,proto3" json:"addr,omitempty"`
 	// ratio 表示跟踪采样率，取值范围为 0.0 到 1.0。
 	// 0.0 表示不采样，1.0 表示对所有请求进行采样，其他值表示按比例采样。
-	Ratio         float32 `protobuf:"fixed32,2,opt,name=ratio,proto3" json:"ratio,omitempty"`
+	Ratio         float32 `protobuf:"fixed32,3,opt,name=ratio,proto3" json:"ratio,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -64,6 +66,13 @@ func (*Tracer) Descriptor() ([]byte, []int) {
 	return file_tracer_proto_rawDescGZIP(), []int{0}
 }
 
+func (x *Tracer) GetEnable() bool {
+	if x != nil {
+		return x.Enable
+	}
+	return false
+}
+
 func (x *Tracer) GetAddr() string {
 	if x != nil {
 		return x.Addr
@@ -82,10 +91,11 @@ var File_tracer_proto protoreflect.FileDescriptor
 
 const file_tracer_proto_rawDesc = "" +
 	"\n" +
-	"\ftracer.proto\x12\x1blynx.protobuf.plugin.tracer\"2\n" +
-	"\x06Tracer\x12\x12\n" +
-	"\x04addr\x18\x01 \x01(\tR\x04addr\x12\x14\n" +
-	"\x05ratio\x18\x02 \x01(\x02R\x05ratioB,Z*github.com/go-lynx/lynx/plugin/tracer/confb\x06proto3"
+	"\ftracer.proto\x12\x1blynx.protobuf.plugin.tracer\"J\n" +
+	"\x06Tracer\x12\x16\n" +
+	"\x06enable\x18\x01 \x01(\bR\x06enable\x12\x12\n" +
+	"\x04addr\x18\x02 \x01(\tR\x04addr\x12\x14\n" +
+	"\x05ratio\x18\x03 \x01(\x02R\x05ratioB0Z.github.com/go-lynx/plugins/tracer/v2/conf;confb\x06proto3"
 
 var (
 	file_tracer_proto_rawDescOnce sync.Once

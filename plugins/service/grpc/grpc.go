@@ -123,6 +123,7 @@ func (g *ServiceGrpc) StartupTasks() error {
 		// 配置恢复中间件，处理请求处理过程中的 panic
 		recovery.Recovery(
 			recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
+				log.ErrorCtx(ctx, err)
 				return nil
 			}),
 		),

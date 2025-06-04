@@ -66,30 +66,30 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		return fmt.Errorf("failed to create logger")
 	}
 
-	// Create a helper for more convenient logging
+	// Create a lHelper for more convenient logging
 	// 创建一个日志辅助对象，方便进行日志记录操作
-	helper := log.NewHelper(log.With(logger, "layer", "ent"))
+	lHelper := log.NewHelper(logger)
 	// 检查日志辅助对象是否创建失败，如果为 nil 则返回错误
-	if helper == nil {
-		return fmt.Errorf("failed to create logger helper")
+	if lHelper == nil {
+		return fmt.Errorf("failed to create logger lHelper")
 	}
 
 	// Store logger instances
 	// 将日志记录器和日志辅助对象存储到 LynxApp 实例中
 	Logger = logger
-	LHelper = *helper
+	LHelper = *lHelper
 
 	// Initialize and display the application banner
 	// 初始化并显示应用启动横幅
 	if err := initBanner(cfg); err != nil {
 		// 若横幅初始化失败，记录警告信息，但不影响程序继续执行
-		helper.Warnf("failed to initialize banner: %v", err)
+		lHelper.Warnf("failed to initialize banner: %v", err)
 		// Continue execution as banner display is not critical
 	}
 
 	// Log successful initialization
 	// 记录日志组件初始化成功的信息
-	helper.Info("lynx application logging component initialized successfully")
+	lHelper.Info("lynx application logging component initialized successfully")
 
 	return nil
 }

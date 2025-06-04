@@ -65,6 +65,7 @@ func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
 			MinConn:     10,
 			MaxConn:     20,
 			MaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
+			MaxLifeTime: &durationpb.Duration{Seconds: 300, Nanos: 0},
 		}
 	}
 	// 从运行时配置中扫描并加载 PgSQL 配置
@@ -99,6 +100,8 @@ func (p *DBPgsqlClient) StartupTasks() error {
 	drv.DB().SetMaxOpenConns(int(p.conf.MaxConn))
 	// 设置连接的最大空闲时间
 	drv.DB().SetConnMaxIdleTime(p.conf.MaxIdleTime.AsDuration())
+	// 设置连接的最大生命周期
+	drv.DB().SetConnMaxLifetime(p.conf.MaxLifeTime.AsDuration())
 
 	// 将数据库驱动赋值给实例
 	p.dri = drv
