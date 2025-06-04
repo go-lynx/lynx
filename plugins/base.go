@@ -33,6 +33,9 @@ type BasePlugin struct {
 	// 配置信息
 	config map[string]any // Plugin-specific configuration // 插件专用的配置
 
+	// 权重配置，越大越靠前加载
+	weight int // Plugin weight for prioritization // 插件的权重，用于优先级排序
+
 	// Dependency management
 	// 依赖管理
 	dependencies []Dependency        // List of plugin dependencies // 插件依赖列表
@@ -43,7 +46,7 @@ type BasePlugin struct {
 // This is the recommended way to initialize a new plugin implementation.
 // NewBasePlugin 使用提供的元数据创建一个新的 BasePlugin 实例。
 // 这是初始化新插件实现的推荐方式。
-func NewBasePlugin(id, name, description, version, confPrefix string) *BasePlugin {
+func NewBasePlugin(id, name, description, version, confPrefix string, weight int) *BasePlugin {
 	return &BasePlugin{
 		id:           id,
 		name:         name,
@@ -54,6 +57,7 @@ func NewBasePlugin(id, name, description, version, confPrefix string) *BasePlugi
 		eventFilters: make([]EventFilter, 0),
 		config:       make(map[string]any),
 		dependencies: make([]Dependency, 0),
+		weight:       weight,
 		capabilities: []UpgradeCapability{UpgradeNone},
 	}
 }
@@ -233,6 +237,11 @@ func (p *BasePlugin) ID() string {
 // 此名称用于显示和日志记录目的。
 func (p *BasePlugin) Name() string {
 	return p.name
+}
+
+// Weight 权重获取
+func (p *BasePlugin) Weight() int {
+	return p.weight
 }
 
 // Description returns a detailed description of the plugin's functionality.

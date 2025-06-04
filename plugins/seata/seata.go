@@ -45,6 +45,8 @@ func NewSeataClient() *TxSeataClient {
 			pluginVersion,
 			// 配置前缀
 			confPrefix,
+			// 权重
+			90,
 		),
 	}
 }

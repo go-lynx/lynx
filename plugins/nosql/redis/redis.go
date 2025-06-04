@@ -47,6 +47,8 @@ func NewRedisClient() *PlugRedis {
 			pluginVersion,
 			// 配置前缀
 			confPrefix,
+			// 权重
+			100,
 		),
 		conf: &conf.Redis{},
 	}
