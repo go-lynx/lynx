@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/plugins/db/redis/v2/conf"
+	"github.com/go-lynx/plugins/nosql/redis/v2/conf"
 
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -138,7 +138,7 @@ func (r *PlugRedis) Configure(c any) error {
 // 对 Redis 服务器进行必要的健康检查，并更新提供的健康报告
 // 参数 report 为健康报告指针，用于记录健康检查结果
 // 返回错误信息，如果健康检查失败则返回相应错误
-func (r *PlugRedis) CheckHealth(report *plugins.HealthReport) error {
+func (r *PlugRedis) CheckHealth() error {
 	// 创建带超时的上下文
 	ctx, cancel := context.WithTimeout(
 		context.Background(),

@@ -187,6 +187,6 @@ func (h *ServiceHttp) Configure(c any) error {
 
 // CheckHealth 对 HTTP 服务器进行健康检查。
 // 该函数目前直接返回 nil，表示服务器健康，可根据实际需求添加检查逻辑。
-func (h *ServiceHttp) CheckHealth(report *plugins.HealthReport) error {
+func (h *ServiceHttp) CheckHealth() error {
 	return nil
 }

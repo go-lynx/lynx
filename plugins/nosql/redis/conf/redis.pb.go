@@ -179,7 +179,7 @@ const file_redis_proto_rawDesc = "" +
 	"\fdial_timeout\x18\t \x01(\v2\x19.google.protobuf.DurationR\vdialTimeout\x12<\n" +
 	"\fread_timeout\x18\n" +
 	" \x01(\v2\x19.google.protobuf.DurationR\vreadTimeout\x12>\n" +
-	"\rwrite_timeout\x18\v \x01(\v2\x19.google.protobuf.DurationR\fwriteTimeoutB2Z0github.com/go-lynx/plugins/db/redis/v2/conf;confb\x06proto3"
+	"\rwrite_timeout\x18\v \x01(\v2\x19.google.protobuf.DurationR\fwriteTimeoutB5Z3github.com/go-lynx/plugins/nosql/redis/v2/conf;confb\x06proto3"
 
 var (
 	file_redis_proto_rawDescOnce sync.Once

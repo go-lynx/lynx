@@ -143,7 +143,7 @@ func (p *DBPgsqlClient) Configure(c any) error {
 
 // CheckHealth 对 HTTP 服务器进行健康检查。
 // 该函数目前直接返回 nil，表示服务器健康，可根据实际需求添加检查逻辑。
-func (p *DBPgsqlClient) CheckHealth(report *plugins.HealthReport) error {
+func (p *DBPgsqlClient) CheckHealth() error {
 	// 创建一个带超时的上下文
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

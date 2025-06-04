@@ -204,6 +204,6 @@ func (g *ServiceGrpc) Configure(c any) error {
 // with the current status of the server.
 // CheckHealth 实现了 gRPC 服务器的健康检查接口。
 // 它执行必要的健康检查，并使用服务器的当前状态更新提供的健康报告。
-func (g *ServiceGrpc) CheckHealth(report *plugins.HealthReport) error {
+func (g *ServiceGrpc) CheckHealth() error {
 	return nil
 }
