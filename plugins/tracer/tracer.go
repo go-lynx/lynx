@@ -106,6 +106,8 @@ func (t *PlugTracer) StartupTasks() error {
 				semconv.ServiceNamespaceKey.String(app.Lynx().GetControlPlane().GetNamespace()),
 			)))
 
+	// 如果配置中指定了地址，则设置导出器
+	// 否则，不设置导出器
 	if t.conf.GetAddr() != "None" {
 		// 设置导出器，用于将跟踪数据发送到收集器
 		tracerProviderOptions = append(tracerProviderOptions, traceSdk.WithBatcher(exp))
