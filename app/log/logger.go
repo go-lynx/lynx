@@ -45,6 +45,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		Out:        os.Stdout,
 		TimeFormat: time.RFC3339Nano,
 	}
+	zerolog.TimeFieldFormat = time.RFC3339Nano
 
 	// 用 zeroLogger 初始化底层日志器
 	zeroLogger := zerolog.New(output).With().Timestamp().Logger()
@@ -126,12 +127,23 @@ func trimFilePath(file string, depth int) string {
 // 从嵌入的文件系统中读取横幅内容，并根据配置决定是否显示横幅。
 // 返回一个错误对象，如果初始化过程中出现错误则返回相应错误，否则返回 nil。
 func initBanner(cfg kconf.Config) error {
-	// Read banner content from embedded filesystem
-	// 从嵌入的文件系统中读取横幅文件内容
-	bannerData, err := fs.ReadFile(bannerFS, "banner.txt")
-	// 若读取失败，返回错误信息
-	if err != nil {
-		return fmt.Errorf("failed to read banner: %v", err)
+	// 尝试读取本地 configs/banner.txt 文件
+	localBannerPath := "configs/banner.txt"
+	var bannerData []byte
+	var err error
+
+	if _, statErr := os.Stat(localBannerPath); statErr == nil {
+		// 本地文件存在，读取本地 banner
+		bannerData, err = os.ReadFile(localBannerPath)
+		if err != nil {
+			return fmt.Errorf("failed to read local banner: %v", err)
+		}
+	} else {
+		// 本地文件不存在，回退读取嵌入式 banner
+		bannerData, err = fs.ReadFile(bannerFS, "banner.txt")
+		if err != nil {
+			return fmt.Errorf("failed to read embedded banner: %v", err)
+		}
 	}
 
 	// Read application configuration

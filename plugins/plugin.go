@@ -189,6 +189,7 @@ type LifecycleSteps interface {
 	InitializeResources(rt Runtime) error
 	StartupTasks() error
 	CleanupTasks() error
+	CheckHealth() error
 }
 
 // ResourceManager provides access to shared plugin resources

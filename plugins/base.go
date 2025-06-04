@@ -140,6 +140,11 @@ func (p *BasePlugin) Start(plugin Plugin) error {
 		Category: "lifecycle",
 	})
 
+	// 就绪后检查健康状态
+	err := plugin.CheckHealth()
+	if err != nil {
+		panic(err)
+	}
 	return nil
 }
 
@@ -378,7 +383,7 @@ func (p *BasePlugin) GetHealth() HealthReport {
 
 	// Perform health check for active plugin
 	// 为活动插件执行健康检查
-	if err := p.CheckHealth(&report); err != nil {
+	if err := p.CheckHealth(); err != nil {
 		report.Status = "unhealthy"
 		report.Message = err.Error()
 		// Emit event indicating health check failed
@@ -664,7 +669,7 @@ func (p *BasePlugin) EventMatchesFilter(event PluginEvent, filter EventFilter) b
 // This is called during health status reporting.
 // CheckHealth 执行实际的健康检查操作。
 // 此方法在健康状态报告期间被调用。
-func (p *BasePlugin) CheckHealth(report *HealthReport) error {
+func (p *BasePlugin) CheckHealth() error {
 	// Implementation-specific health checks
 	// 特定于实现的健康检查
 	return nil
