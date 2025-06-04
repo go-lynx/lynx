@@ -64,9 +64,8 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 				continue
 			}
 
-			// 检查插件是否已存在且能否创建，如果出现错误则记录错误日志并跳过当前循环
+			// 检查插件是否已存在且能否创建
 			if err := m.preparePlugin(name); err != nil {
-				log.Errorf("Failed to prepare plugin %s: %v", name, err)
 				continue
 			}
 
@@ -76,9 +75,7 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 	}
 
 	// 检查是否有成功准备的插件，如果没有则记录警告日志，否则记录成功信息
-	if len(plugNames) == 0 {
-		log.Warn("No plugins were prepared")
-	} else {
+	if len(plugNames) != 0 {
 		log.Infof("successfully prepared %d plugins", len(plugNames))
 	}
 

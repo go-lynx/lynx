@@ -9,6 +9,7 @@ import (
 	"fmt"
 	factory2 "github.com/go-lynx/lynx/app/factory"
 	"github.com/go-lynx/lynx/app/log"
+	"sort"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/plugins"
@@ -206,7 +207,7 @@ func (m *DefaultLynxPluginManager) TopologicalSort(pluginList []plugins.Plugin) 
 
 	// Perform topological sort using depth-first search
 	// 使用深度优先搜索进行拓扑排序
-	result := make([]PluginWithLevel, 0, len(pluginList))
+	tempResult := make(map[int][]PluginWithLevel) // Intermediate result grouped by level
 	visited := make(map[string]bool)
 	level := make(map[string]int)
 	inProgress := make(map[string]bool) // Track nodes being visited in current DFS path
@@ -242,17 +243,18 @@ func (m *DefaultLynxPluginManager) TopologicalSort(pluginList []plugins.Plugin) 
 			}
 		}
 
-		// Set the level and add to result
-		// 设置级别并添加到结果列表中
+		// Set the level and group by level for later sorting
+		// 设置级别并按级别分组以供后续排序
+		plugin := nameToPlugin[name]
 		level[name] = maxLevel + 1
-		result = append(result, PluginWithLevel{nameToPlugin[name], level[name]})
+		tempResult[level[name]] = append(tempResult[level[name]], PluginWithLevel{Plugin: plugin, level: level[name]})
 		visited[name] = true
 
 		return nil
 	}
 
-	// Visit all plugins to build the sorted list
-	// 访问所有插件以构建排序后的列表
+	// Visit all plugins to build the level-sorted list
+	// 访问所有插件以构建按级别排序的列表
 	for _, p := range pluginList {
 		if p == nil {
 			continue
@@ -262,7 +264,26 @@ func (m *DefaultLynxPluginManager) TopologicalSort(pluginList []plugins.Plugin) 
 		}
 	}
 
-	return result, nil
+	// Flatten and sort each level group by descending weight
+	// 将每个级别的分组按权重降序排序并扁平化结果
+	finalResult := make([]PluginWithLevel, 0, len(pluginList))
+	levels := make([]int, 0, len(tempResult))
+	for lvl := range tempResult {
+		levels = append(levels, lvl)
+	}
+	sort.Ints(levels)
+
+	for _, lvl := range levels {
+		pluginsAtLevel := tempResult[lvl]
+		sort.SliceStable(pluginsAtLevel, func(i, j int) bool {
+			pi := pluginsAtLevel[i].Plugin.Weight()
+			pj := pluginsAtLevel[j].Plugin.Weight()
+			return pi > pj // Higher weight comes first
+		})
+		finalResult = append(finalResult, pluginsAtLevel...)
+	}
+
+	return finalResult, nil
 }
 
 // contains checks if a plugin exists in the sorted result list.
@@ -318,20 +339,22 @@ func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
 		}
 
 		// 初始化插件配置
-		runtime := &RuntimePlugin{}
-		if err := plugin.Initialize(plugin, runtime); err != nil {
-			if app := Lynx(); app != nil {
-				log.Errorf("Failed to initialize plugin %s: %v", plugin.Name(), err)
+		if plugin.Status(plugin) == plugins.StatusInactive {
+			runtime := &RuntimePlugin{}
+			if err := plugin.Initialize(plugin, runtime); err != nil {
+				if app := Lynx(); app != nil {
+					log.Errorf("Failed to initialize plugin %s: %v", plugin.Name(), err)
+				}
+				return
 			}
-			return
-		}
 
-		// 启动插件，如果启动失败，记录错误日志并返回
-		if err := plugin.Start(plugin); err != nil {
-			if app := Lynx(); app != nil {
-				log.Errorf("Failed to start plugin %s: %v", plugin.Name(), err)
+			// 启动插件，如果启动失败，记录错误日志并返回
+			if err := plugin.Start(plugin); err != nil {
+				if app := Lynx(); app != nil {
+					log.Errorf("Failed to start plugin %s: %v", plugin.Name(), err)
+				}
+				return
 			}
-			return
 		}
 	}
 }

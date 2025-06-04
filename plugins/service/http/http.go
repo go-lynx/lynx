@@ -58,6 +58,8 @@ func NewServiceHttp() *ServiceHttp {
 			pluginVersion,
 			// 配置前缀
 			confPrefix,
+			// 权重
+			10,
 		),
 		conf: &conf.Http{},
 	}

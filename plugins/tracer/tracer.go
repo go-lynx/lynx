@@ -53,6 +53,8 @@ func NewPlugTracer() *PlugTracer {
 			pluginVersion,
 			// 配置前缀
 			confPrefix,
+			// 权重
+			9999,
 		),
 		conf: &conf.Tracer{},
 	}
@@ -74,21 +76,6 @@ func (t *PlugTracer) StartupTasks() error {
 	// 使用 Lynx 应用的 Helper 记录日志，指示正在初始化链路监控组件
 	log.Infof("Initializing link monitoring component")
 
-	// 创建一个新的 ot-lp 跟踪导出器，用于将跟踪数据发送到指定的端点
-	exp, err := otlptracegrpc.New(
-		context.Background(),
-		// 设置导出器的端点地址
-		otlptracegrpc.WithEndpoint(t.conf.GetAddr()),
-		// 禁用 TLS 加密，使用不安全的连接
-		otlptracegrpc.WithInsecure(),
-		// 使用 gzip 压缩算法来压缩跟踪数据
-		otlptracegrpc.WithCompressor("gzip"),
-	)
-	// 如果创建导出器时发生错误，返回 nil 和错误信息
-	if err != nil {
-		return err
-	}
-
 	var tracerProviderOptions []traceSdk.TracerProviderOption
 
 	tracerProviderOptions = append(tracerProviderOptions, // 设置采样器，根据配置中的比率进行采样
@@ -109,6 +96,20 @@ func (t *PlugTracer) StartupTasks() error {
 	// 如果配置中指定了地址，则设置导出器
 	// 否则，不设置导出器
 	if t.conf.GetAddr() != "None" {
+		// 创建一个新的 ot-lp 跟踪导出器，用于将跟踪数据发送到指定的端点
+		exp, err := otlptracegrpc.New(
+			context.Background(),
+			// 设置导出器的端点地址
+			otlptracegrpc.WithEndpoint(t.conf.GetAddr()),
+			// 禁用 TLS 加密，使用不安全的连接
+			otlptracegrpc.WithInsecure(),
+			// 使用 gzip 压缩算法来压缩跟踪数据
+			otlptracegrpc.WithCompressor("gzip"),
+		)
+		// 如果创建导出器时发生错误，返回 nil 和错误信息
+		if err != nil {
+			return err
+		}
 		// 设置导出器，用于将跟踪数据发送到收集器
 		tracerProviderOptions = append(tracerProviderOptions, traceSdk.WithBatcher(exp))
 	}

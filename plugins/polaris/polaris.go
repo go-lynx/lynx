@@ -5,8 +5,9 @@ import (
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/polaris/conf"
+	"github.com/go-lynx/plugins/polaris/v2/conf"
 	"github.com/polarismesh/polaris-go/api"
+	"math"
 )
 
 // Plugin metadata
@@ -46,7 +47,10 @@ func NewPolarisControlPlane() *PlugPolaris {
 			pluginVersion,
 			// 配置前缀
 			confPrefix,
+			// 权重
+			math.MaxInt,
 		),
+		conf: &conf.Polaris{},
 	}
 }
 
@@ -54,7 +58,7 @@ func NewPolarisControlPlane() *PlugPolaris {
 // 该函数会加载并验证 Polaris 配置，如果配置未提供，则使用默认配置。
 func (p *PlugPolaris) InitializeResources(rt plugins.Runtime) error {
 	// 从配置值 b 中扫描并解析 Polaris 插件的配置到 p.conf 中。
-	err := rt.GetConfig().Scan(p.conf)
+	err := rt.GetConfig().Value(confPrefix).Scan(p.conf)
 	// 如果发生错误，返回 nil 和错误信息。
 	if err != nil {
 		return err

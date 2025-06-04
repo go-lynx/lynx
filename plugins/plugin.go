@@ -147,6 +147,9 @@ type Metadata interface {
 	// Version 返回插件的语义化版本。
 	// 应遵循语义化版本格式（MAJOR.MINOR.PATCH）。
 	Version() string
+
+	// Weight 权重获取
+	Weight() int
 }
 
 // Lifecycle defines the basic lifecycle methods for a plugin
