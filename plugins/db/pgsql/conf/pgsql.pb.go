@@ -38,9 +38,12 @@ type Pgsql struct {
 	// The maximum number of connections to maintain in the connection pool.
 	// 连接池中需要维持的最大连接数。
 	MaxConn int32 `protobuf:"varint,4,opt,name=max_conn,json=maxConn,proto3" json:"max_conn,omitempty"`
+	// The maximum lifetime for a connection in the connection pool.
+	// 连接池中连接的最大生命时间，超过该时间的连接可能会被关闭。
+	MaxLifeTime *durationpb.Duration `protobuf:"bytes,5,opt,name=max_life_time,json=maxLifeTime,proto3" json:"max_life_time,omitempty"`
 	// The maximum idle time for a connection in the connection pool.
 	// 连接池中连接的最大空闲时间，超过该时间的连接可能会被关闭。
-	MaxIdleTime   *durationpb.Duration `protobuf:"bytes,5,opt,name=max_idle_time,json=maxIdleTime,proto3" json:"max_idle_time,omitempty"`
+	MaxIdleTime   *durationpb.Duration `protobuf:"bytes,6,opt,name=max_idle_time,json=maxIdleTime,proto3" json:"max_idle_time,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -103,6 +106,13 @@ func (x *Pgsql) GetMaxConn() int32 {
 	return 0
 }
 
+func (x *Pgsql) GetMaxLifeTime() *durationpb.Duration {
+	if x != nil {
+		return x.MaxLifeTime
+	}
+	return nil
+}
+
 func (x *Pgsql) GetMaxIdleTime() *durationpb.Duration {
 	if x != nil {
 		return x.MaxIdleTime
@@ -114,13 +124,14 @@ var File_pgsql_proto protoreflect.FileDescriptor
 
 const file_pgsql_proto_rawDesc = "" +
 	"\n" +
-	"\vpgsql.proto\x12\x17lynx.protobuf.plugin.db\x1a\x1egoogle/protobuf/duration.proto\"\xac\x01\n" +
+	"\vpgsql.proto\x12\x17lynx.protobuf.plugin.db\x1a\x1egoogle/protobuf/duration.proto\"\xeb\x01\n" +
 	"\x05pgsql\x12\x16\n" +
 	"\x06driver\x18\x01 \x01(\tR\x06driver\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12\x19\n" +
 	"\bmin_conn\x18\x03 \x01(\x05R\aminConn\x12\x19\n" +
 	"\bmax_conn\x18\x04 \x01(\x05R\amaxConn\x12=\n" +
-	"\rmax_idle_time\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\vmaxIdleTimeB(Z&github.com/go-lynx/lynx/plugin/db/confb\x06proto3"
+	"\rmax_life_time\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\vmaxLifeTime\x12=\n" +
+	"\rmax_idle_time\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\vmaxIdleTimeB2Z0github.com/go-lynx/plugins/db/pgsql/v2/conf;confb\x06proto3"
 
 var (
 	file_pgsql_proto_rawDescOnce sync.Once
@@ -140,12 +151,13 @@ var file_pgsql_proto_goTypes = []any{
 	(*durationpb.Duration)(nil), // 1: google.protobuf.Duration
 }
 var file_pgsql_proto_depIdxs = []int32{
-	1, // 0: lynx.protobuf.plugin.db.pgsql.max_idle_time:type_name -> google.protobuf.Duration
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	1, // 0: lynx.protobuf.plugin.db.pgsql.max_life_time:type_name -> google.protobuf.Duration
+	1, // 1: lynx.protobuf.plugin.db.pgsql.max_idle_time:type_name -> google.protobuf.Duration
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_pgsql_proto_init() }

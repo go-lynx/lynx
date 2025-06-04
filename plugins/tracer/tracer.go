@@ -5,7 +5,7 @@ import (
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/tracer/conf"
+	"github.com/go-lynx/plugins/tracer/v2/conf"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -54,11 +54,12 @@ func NewPlugTracer() *PlugTracer {
 			// 配置前缀
 			confPrefix,
 		),
+		conf: &conf.Tracer{},
 	}
 }
 
 func (t *PlugTracer) InitializeResources(rt plugins.Runtime) error {
-	err := rt.GetConfig().Scan(t.conf)
+	err := rt.GetConfig().Value(confPrefix).Scan(t.conf)
 	if err != nil {
 		return err
 	}
@@ -66,6 +67,10 @@ func (t *PlugTracer) InitializeResources(rt plugins.Runtime) error {
 }
 
 func (t *PlugTracer) StartupTasks() error {
+	if !t.conf.Enable {
+		return nil
+	}
+
 	// 使用 Lynx 应用的 Helper 记录日志，指示正在初始化链路监控组件
 	log.Infof("Initializing link monitoring component")
 
@@ -84,12 +89,10 @@ func (t *PlugTracer) StartupTasks() error {
 		return err
 	}
 
-	// 创建一个新的跟踪提供者，用于生成和处理跟踪数据
-	tp := traceSdk.NewTracerProvider(
-		// 设置采样器，根据配置中的比率进行采样
+	var tracerProviderOptions []traceSdk.TracerProviderOption
+
+	tracerProviderOptions = append(tracerProviderOptions, // 设置采样器，根据配置中的比率进行采样
 		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(float64(t.conf.GetRatio())))),
-		// 设置导出器，用于将跟踪数据发送到收集器
-		traceSdk.WithBatcher(exp),
 		// 设置资源信息，包括服务实例 ID、服务名称、服务版本和服务命名空间
 		traceSdk.WithResource(
 			resource.NewSchemaless(
@@ -101,8 +104,15 @@ func (t *PlugTracer) StartupTasks() error {
 				semconv.ServiceVersionKey.String(app.GetVersion()),
 				// 服务命名空间，使用 Lynx 控制平面的命名空间
 				semconv.ServiceNamespaceKey.String(app.Lynx().GetControlPlane().GetNamespace()),
-			)),
-	)
+			)))
+
+	if t.conf.GetAddr() != "None" {
+		// 设置导出器，用于将跟踪数据发送到收集器
+		tracerProviderOptions = append(tracerProviderOptions, traceSdk.WithBatcher(exp))
+	}
+
+	// 创建一个新的跟踪提供者，用于生成和处理跟踪数据
+	tp := traceSdk.NewTracerProvider(tracerProviderOptions...)
 
 	// 设置全局跟踪提供者，用于后续的跟踪数据生成和处理
 	otel.SetTracerProvider(tp)

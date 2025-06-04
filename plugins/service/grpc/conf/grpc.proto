@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package lynx.protobuf.plugin.grpc;
 
-option go_package = "github.com/go-lynx/lynx/plugin/grpc/conf";
+option go_package = "github.com/go-lynx/plugins/service/grpc/v2/conf;conf";
 
 import "google/protobuf/duration.proto";
 
