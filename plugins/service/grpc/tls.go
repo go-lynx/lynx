@@ -3,6 +3,7 @@ package grpc
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/app"
 )
@@ -36,24 +37,25 @@ func (g *ServiceGrpc) tlsLoad() grpc.ServerOption {
 	// app.Lynx().Cert().GetCrt() 返回证书文件的路径。
 	// app.Lynx().Cert().GetKey() returns the path to the private key file.
 	// app.Lynx().Cert().GetKey() 返回私钥文件的路径。
-	tlsCert, err := tls.X509KeyPair(app.Lynx().Cert().GetCrt(), app.Lynx().Cert().GetKey())
-	if err != nil {
-		// If there is an error loading the certificate and key pair, panic with the error.
-		// 如果加载证书和私钥对时出错，则使用该错误触发 panic。
-		panic(err)
+	// Get the certificate provider
+	certProvider := app.Lynx().Certificate()
+	if certProvider == nil {
+		panic("certificate provider not configured")
 	}
 
-	// Create a new certificate pool to hold trusted root CA certificates.
-	// 创建一个新的证书池，用于存放受信任的根 CA 证书。
+	// Load certificate and private key
+	tlsCert, err := tls.X509KeyPair(certProvider.GetCertificate(), certProvider.GetPrivateKey())
+	if err != nil {
+		// If there is an error loading the certificate and key pair, panic with the error
+		panic(fmt.Errorf("failed to load X509 key pair: %v", err))
+	}
+
+	// Create a new certificate pool to hold trusted root CA certificates
 	certPool := x509.NewCertPool()
-	// Attempt to add the root CA certificate (in PEM format) to the certificate pool.
-	// 尝试将根 CA 证书（PEM 格式）添加到证书池中。
-	// app.Lynx().Cert().GetRootCA() returns the PEM-encoded root CA certificate.
-	// app.Lynx().Cert().GetRootCA() 返回 PEM 编码的根 CA 证书。
-	if !certPool.AppendCertsFromPEM(app.Lynx().Cert().GetRootCA()) {
-		// If adding the root CA certificate fails, panic with the error.
-		// 如果添加根 CA 证书失败，则使用该错误触发 panic。
-		panic(err)
+
+	// Attempt to add the root CA certificate (in PEM format) to the certificate pool
+	if !certPool.AppendCertsFromPEM(certProvider.GetRootCACertificate()) {
+		panic("failed to append root CA certificate to pool")
 	}
 
 	// Configure the TLS settings for the gRPC server.

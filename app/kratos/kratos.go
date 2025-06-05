@@ -2,6 +2,8 @@
 package kratos
 
 import (
+	"fmt"
+
 	"github.com/go-kratos/kratos/v2/transport"
 	"github.com/go-lynx/lynx/app/log"
 
@@ -46,26 +48,33 @@ type Options struct {
 //   - *kratos.App: 创建好的 Kratos 应用程序实例
 //   - error: 创建过程中发生的任何错误
 func NewKratos(opts Options) (*kratos.App, error) {
+	// Validate required fields
+	if app.GetHost() == "" {
+		return nil, fmt.Errorf("host cannot be empty")
+	}
+	if app.GetName() == "" {
+		return nil, fmt.Errorf("service name cannot be empty")
+	}
+	if log.Logger == nil {
+		return nil, fmt.Errorf("logger cannot be nil")
+	}
+
 	// Prepare base options for Kratos application
-	// 为 Kratos 应用程序准备基础选项
 	kratosOpts := []kratos.Option{
 		// Set the application ID to the host name
-		// 将应用程序 ID 设置为主机名
 		kratos.ID(app.GetHost()),
 		// Set the application name
-		// 设置应用程序名称
 		kratos.Name(app.GetName()),
 		// Set the application version
-		// 设置应用程序版本
 		kratos.Version(app.GetVersion()),
-		// Set the application metadata
-		// 设置应用程序元数据
-		kratos.Metadata(map[string]string{}),
+		// Set the application metadata with basic info
+		kratos.Metadata(map[string]string{
+			"host":    app.GetHost(),
+			"version": app.GetVersion(),
+		}),
 		// Set the application logger
-		// 设置应用程序日志记录器
 		kratos.Logger(log.Logger),
 		// Set the application registrar
-		// 设置应用程序注册器
 		kratos.Registrar(opts.Registrar),
 	}
 
