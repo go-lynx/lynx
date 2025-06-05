@@ -1,4 +1,4 @@
-module github.com/go-lynx/plugins/polaris/v2
+module github.com/go-lynx/plugins/polaris
 
 go 1.24.3
 
