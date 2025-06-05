@@ -3,12 +3,13 @@ package mysql
 import (
 	"context"
 	_ "database/sql"
+	"time"
+
 	"entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/plugins/db/mysql/v2/conf"
 	"google.golang.org/protobuf/types/known/durationpb"
-	"time"
 )
 
 // Plugin metadata
@@ -52,7 +53,6 @@ func NewMysqlClient() *DBMysqlClient {
 			// 权重
 			101,
 		),
-		conf: &conf.Mysql{},
 	}
 }
 
@@ -60,21 +60,45 @@ func NewMysqlClient() *DBMysqlClient {
 // 参数 rt 为运行时环境
 // 返回错误信息，如果配置加载失败则返回相应错误
 func (m *DBMysqlClient) InitializeResources(rt plugins.Runtime) error {
-	if m.conf == nil {
-		m.conf = &conf.Mysql{
-			Driver:      "mysql",
-			Source:      "root:123456@tcp(127.0.0.1:3306)/db_name?charset=utf8mb4&parseTime=True&loc=Local",
-			MinConn:     10,
-			MaxConn:     20,
-			MaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
-			MaxLifeTime: &durationpb.Duration{Seconds: 300, Nanos: 0},
-		}
-	}
+	// 初始化一个空的配置结构
+	m.conf = &conf.Mysql{}
+
 	// 从运行时配置中扫描并加载 MySQL 配置
 	err := rt.GetConfig().Value(confPrefix).Scan(m.conf)
 	if err != nil {
 		return err
 	}
+
+	// 设置默认配置
+	defaultConf := &conf.Mysql{
+		Driver:      "mysql",
+		Source:      "root:123456@tcp(127.0.0.1:3306)/db_name?charset=utf8mb4&parseTime=True&loc=Local",
+		MinConn:     10,
+		MaxConn:     20,
+		MaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
+		MaxLifeTime: &durationpb.Duration{Seconds: 300, Nanos: 0},
+	}
+
+	// 对未设置的字段使用默认值
+	if m.conf.Driver == "" {
+		m.conf.Driver = defaultConf.Driver
+	}
+	if m.conf.Source == "" {
+		m.conf.Source = defaultConf.Source
+	}
+	if m.conf.MinConn == 0 {
+		m.conf.MinConn = defaultConf.MinConn
+	}
+	if m.conf.MaxConn == 0 {
+		m.conf.MaxConn = defaultConf.MaxConn
+	}
+	if m.conf.MaxIdleTime == nil {
+		m.conf.MaxIdleTime = defaultConf.MaxIdleTime
+	}
+	if m.conf.MaxLifeTime == nil {
+		m.conf.MaxLifeTime = defaultConf.MaxLifeTime
+	}
+
 	return nil
 }
 

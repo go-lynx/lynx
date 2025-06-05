@@ -6,6 +6,7 @@ package grpc
 
 import (
 	"context"
+
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/plugins/service/grpc/v2/conf"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Plugin metadata constants define the basic information about the gRPC plugin
@@ -84,21 +86,40 @@ func NewServiceGrpc() *ServiceGrpc {
 // 它从运行时环境中加载并验证 gRPC 服务器配置。
 // 如果未提供配置，则为服务器设置默认值。
 func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
-	// Add default configuration if not provided
-	// 如果未提供配置，则添加默认配置
-	if g.conf == nil {
-		g.conf = &conf.Grpc{
-			// 默认网络协议为 TCP
-			Network: "tcp",
-			// 默认监听地址为 :9090
-			Addr: ":9090",
-		}
-	}
+	// 初始化一个空的配置结构
+	g.conf = &conf.Grpc{}
+
 	// 从运行时配置中扫描并加载 gRPC 配置
 	err := rt.GetConfig().Value(confPrefix).Scan(g.conf)
 	if err != nil {
 		return err
 	}
+
+	// 设置默认配置
+	defaultConf := &conf.Grpc{
+		// 默认网络协议为 TCP
+		Network: "tcp",
+		// 默认监听地址为 :9090
+		Addr: ":9090",
+		// 默认不启用 TLS
+		Tls: false,
+		// 默认不进行客户端认证
+		TlsAuthType: 0,
+		// 默认超时时间为 10 秒
+		Timeout: &durationpb.Duration{Seconds: 10, Nanos: 0},
+	}
+
+	// 对未设置的字段使用默认值
+	if g.conf.Network == "" {
+		g.conf.Network = defaultConf.Network
+	}
+	if g.conf.Addr == "" {
+		g.conf.Addr = defaultConf.Addr
+	}
+	if g.conf.Timeout == nil {
+		g.conf.Timeout = defaultConf.Timeout
+	}
+
 	return nil
 }
 

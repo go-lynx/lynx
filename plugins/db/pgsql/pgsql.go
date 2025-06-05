@@ -1,4 +1,4 @@
-package mysql
+package pgsql
 
 import (
 	"context"
@@ -41,7 +41,6 @@ func NewPgsqlClient() *DBPgsqlClient {
 		BasePlugin: plugins.NewBasePlugin(
 			// 生成插件 ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
-			// 插件名称
 			pluginName,
 			// 插件描述
 			pluginDescription,
@@ -52,7 +51,6 @@ func NewPgsqlClient() *DBPgsqlClient {
 			// 权重
 			101,
 		),
-		conf: &conf.Pgsql{},
 	}
 }
 
@@ -60,21 +58,45 @@ func NewPgsqlClient() *DBPgsqlClient {
 // 参数 rt 为运行时环境
 // 返回错误信息，如果配置加载失败则返回相应错误
 func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
-	if p.conf == nil {
-		p.conf = &conf.Pgsql{
-			Driver:      "pgsql",
-			Source:      "host=localhost port=5432 user=postgres password=postgres dbname=postgres sslmode=disable",
-			MinConn:     10,
-			MaxConn:     20,
-			MaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
-			MaxLifeTime: &durationpb.Duration{Seconds: 300, Nanos: 0},
-		}
-	}
+	// 初始化一个空的配置结构
+	p.conf = &conf.Pgsql{}
+
 	// 从运行时配置中扫描并加载 PgSQL 配置
 	err := rt.GetConfig().Value(confPrefix).Scan(p.conf)
 	if err != nil {
 		return err
 	}
+
+	// 设置默认配置
+	defaultConf := &conf.Pgsql{
+		Driver:      "pgsql",
+		Source:      "host=localhost port=5432 user=postgres password=postgres dbname=postgres sslmode=disable",
+		MinConn:     10,
+		MaxConn:     20,
+		MaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
+		MaxLifeTime: &durationpb.Duration{Seconds: 300, Nanos: 0},
+	}
+
+	// 对未设置的字段使用默认值
+	if p.conf.Driver == "" {
+		p.conf.Driver = defaultConf.Driver
+	}
+	if p.conf.Source == "" {
+		p.conf.Source = defaultConf.Source
+	}
+	if p.conf.MinConn == 0 {
+		p.conf.MinConn = defaultConf.MinConn
+	}
+	if p.conf.MaxConn == 0 {
+		p.conf.MaxConn = defaultConf.MaxConn
+	}
+	if p.conf.MaxIdleTime == nil {
+		p.conf.MaxIdleTime = defaultConf.MaxIdleTime
+	}
+	if p.conf.MaxLifeTime == nil {
+		p.conf.MaxLifeTime = defaultConf.MaxLifeTime
+	}
+
 	return nil
 }
 
