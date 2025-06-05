@@ -14,6 +14,6 @@ func init() {
 	// 第三个参数是一个匿名函数，该函数返回一个实现了 plugins.Plugin 接口的实例。
 	// 通过调用 NewSeataClient 函数创建一个新的 Seata 客户端插件实例并返回。
 	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
-		return NewSeataClient()
+		return NewTxSeataClient()
 	})
 }

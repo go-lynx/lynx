@@ -30,9 +30,9 @@ type TxSeataClient struct {
 	conf *conf.Seata
 }
 
-// NewSeataClient 创建一个新的 HTTP 服务器插件实例。
+// NewTxSeataClient 创建一个新的 HTTP 服务器插件实例。
 // 该函数初始化插件的基础信息，并返回一个指向 ServiceHttp 结构体的指针。
-func NewSeataClient() *TxSeataClient {
+func NewTxSeataClient() *TxSeataClient {
 	return &TxSeataClient{
 		BasePlugin: plugins.NewBasePlugin(
 			// 生成插件的唯一 ID
@@ -53,12 +53,26 @@ func NewSeataClient() *TxSeataClient {
 
 // InitializeResources 方法用于加载并初始化 Seata 插件
 func (t *TxSeataClient) InitializeResources(rt plugins.Runtime) error {
-	// 从配置值 b 中扫描并解析 Seata 插件的配置到 t.conf 中
-	err := rt.GetConfig().Scan(t.conf)
-	// 如果发生错误，返回 nil 和错误信息
+	// 初始化一个空的配置结构
+	t.conf = &conf.Seata{}
+
+	// 从运行时配置中扫描并加载 Seata 配置
+	err := rt.GetConfig().Value(confPrefix).Scan(t.conf)
 	if err != nil {
 		return err
 	}
+
+	// 设置默认配置
+	defaultConf := &conf.Seata{
+		// 默认配置文件路径为 ./conf/seata.yml
+		ConfigFilePath: "./conf/seata.yml",
+	}
+
+	// 对未设置的字段使用默认值
+	if t.conf.ConfigFilePath == "" {
+		t.conf.ConfigFilePath = defaultConf.ConfigFilePath
+	}
+
 	return nil
 }
 
