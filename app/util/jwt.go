@@ -2,6 +2,7 @@ package util
 
 import (
 	"crypto/ecdsa"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 

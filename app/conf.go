@@ -87,7 +87,7 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 // 如果任何步骤失败，则返回错误。
 func (m *DefaultLynxPluginManager) preparePlugin(name string) error {
 	// 检查插件是否已经加载，如果已加载则返回错误信息
-	if _, exists := m.pluginMap[name]; exists {
+	if _, exists := m.pluginMap.Load(name); exists {
 		return fmt.Errorf("plugin %s is already loaded", name)
 	}
 
@@ -108,8 +108,10 @@ func (m *DefaultLynxPluginManager) preparePlugin(name string) error {
 	}
 
 	// 将插件添加到管理器的跟踪结构中
+	m.mu.Lock()
 	m.pluginList = append(m.pluginList, p)
-	m.pluginMap[p.Name()] = p
+	m.mu.Unlock()
+	m.pluginMap.Store(p.Name(), p)
 
 	return nil
 }

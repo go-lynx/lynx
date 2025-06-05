@@ -9,11 +9,6 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-var (
-	name       = "tls-loader"
-	confPrefix = "lynx.application.tls"
-)
-
 // LoaderTls represents the TLS certificate loader plugin
 type LoaderTls struct {
 	*plugins.BasePlugin
@@ -22,18 +17,18 @@ type LoaderTls struct {
 	weight int
 }
 
-// GetCrt returns the certificate content
-func (t *LoaderTls) GetCrt() []byte {
+// GetCertificate returns the TLS/SSL certificate in PEM format
+func (t *LoaderTls) GetCertificate() []byte {
 	return []byte(t.cert.GetCrt())
 }
 
-// GetKey returns the private key content
-func (t *LoaderTls) GetKey() []byte {
+// GetPrivateKey returns the private key in PEM format
+func (t *LoaderTls) GetPrivateKey() []byte {
 	return []byte(t.cert.GetKey())
 }
 
-// GetRootCA returns the root CA content
-func (t *LoaderTls) GetRootCA() []byte {
+// GetRootCACertificate returns the root CA certificate in PEM format
+func (t *LoaderTls) GetRootCACertificate() []byte {
 	return []byte(t.cert.GetRootCA())
 }
 
@@ -89,14 +84,14 @@ func (t *LoaderTls) StartupTasks() error {
 		return err
 	}
 
-	app.Lynx().SetCert(t)
+	app.Lynx().SetCertificateProvider(t)
 	log.Infof("TLS Certificate Loaded successfully")
 	return nil
 }
 
 // CleanupTasks implements custom cleanup logic for TLS loader plugin
 func (t *LoaderTls) CleanupTasks() error {
-	app.Lynx().SetCert(nil)
+	app.Lynx().SetCertificateProvider(nil)
 	return nil
 }
 

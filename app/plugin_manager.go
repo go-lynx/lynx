@@ -6,12 +6,11 @@
 package app
 
 import (
-	"fmt"
-	factory2 "github.com/go-lynx/lynx/app/factory"
-	"github.com/go-lynx/lynx/app/log"
-	"sort"
+	"sync"
 
 	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-lynx/lynx/app/factory"
+	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 )
 
@@ -67,13 +66,16 @@ type LynxPluginManager interface {
 type DefaultLynxPluginManager struct {
 	// pluginMap stores plugins indexed by their names for quick lookup
 	// pluginMap 以插件名称为键存储插件实例，便于快速查找。
-	pluginMap map[string]plugins.Plugin
+	pluginMap sync.Map
 	// pluginList maintains the ordered list of plugins
 	// pluginList 维护一个有序的插件列表。
 	pluginList []plugins.Plugin
+	// mu protects the pluginList
+	// mu 保护 pluginList
+	mu sync.RWMutex
 	// factory is used to create plugin instances
 	// factory 用于创建插件实例。
-	factory factory2.PluginFactory
+	factory factory.PluginFactory
 }
 
 // NewLynxPluginManager creates a new instance of the default plugin manager.
@@ -86,222 +88,34 @@ type DefaultLynxPluginManager struct {
 //   - LynxPluginManager: Initialized plugin manager instance
 //   - LynxPluginManager: 初始化后的插件管理器实例
 func NewLynxPluginManager(pluginList ...plugins.Plugin) LynxPluginManager {
-	m := &DefaultLynxPluginManager{
+	// 创建默认插件管理器实例
+	manager := &DefaultLynxPluginManager{
 		pluginList: make([]plugins.Plugin, 0),
-		pluginMap:  make(map[string]plugins.Plugin),
-		factory:    factory2.GlobalPluginFactory(),
+		factory:    factory.GlobalPluginFactory(),
 	}
 
-	// Initialize plugin map and list if pluginList are provided
-	// 如果提供了插件列表，则初始化 pluginMap 和 pluginList
-	if pluginList != nil && len(pluginList) > 0 {
-		m.pluginList = append(m.pluginList, pluginList...)
-		for _, p := range pluginList {
-			if p != nil {
-				m.pluginMap[p.Name()] = p
-			}
+	// 如果提供了初始插件列表，注册这些插件
+	for _, plugin := range pluginList {
+		if plugin == nil {
+			continue
 		}
+		// 将插件添加到映射和列表中
+		manager.pluginMap.Store(plugin.Name(), plugin)
+		manager.mu.Lock()
+		manager.pluginList = append(manager.pluginList, plugin)
+		manager.mu.Unlock()
 	}
-	return m
+	return manager
 }
 
-// PluginWithLevel represents a plugin with its dependency level in the topology.
-// PluginWithLevel 表示一个带有拓扑依赖级别的插件。
-// Used internally for dependency sorting and plugin initialization order.
-// 内部用于依赖排序和插件初始化顺序。
-type PluginWithLevel struct {
-	// Plugin is the actual plugin instance
-	// Plugin 是实际的插件实例。
-	plugins.Plugin
-	// level represents the dependency depth (higher means more dependencies)
-	// level 表示依赖深度（值越高意味着依赖越多）。
-	level int
-}
-
-// TopologicalSort performs a topological sort on the plugin list based on their dependencies.
-// TopologicalSort 根据插件的依赖关系对插件列表进行拓扑排序。
-// It returns a sorted list of plugins with their dependency levels, where plugins at the same
-// level can be initialized in parallel.
-// 它返回一个按依赖级别排序的插件列表，同一级别的插件可以并行初始化。
-//
-// The function uses a depth-first search algorithm to:
-// 该函数使用深度优先搜索算法来：
-// 1. Build a dependency graph
-// 1. 构建依赖图
-// 2. Detect cyclic dependencies
-// 2. 检测循环依赖
-// 3. Assign dependency levels to plugins
-// 3. 为插件分配依赖级别
-// 4. Sort plugins based on their dependency order
-// 4. 根据插件的依赖顺序进行排序
-//
-// Parameters:
-//   - pluginList: List of plugins to be sorted
-//   - pluginList: 要排序的插件列表
-//
-// Returns:
-//   - []PluginWithLevel: Sorted list of plugins with their dependency levels
-//   - []PluginWithLevel: 按依赖级别排序的插件列表
-//   - error: Error if cyclic dependency is detected or if a required plugin is missing
-//   - error: 如果检测到循环依赖或缺少必需的插件，则返回错误
-func (m *DefaultLynxPluginManager) TopologicalSort(pluginList []plugins.Plugin) ([]PluginWithLevel, error) {
-	// Build a map from plugin name to the actual plugin instance
-	// 构建一个从插件名称到实际插件实例的映射
-	nameToPlugin := make(map[string]plugins.Plugin)
-	for _, p := range pluginList {
-		if p == nil {
-			continue
-		}
-		nameToPlugin[p.Name()] = p
-	}
-
-	// Build the dependency graph as an adjacency list
-	// 以邻接表的形式构建依赖图
-	graph := make(map[string][]string)
-	for _, p := range pluginList {
-		if p == nil {
-			continue
-		}
-
-		// Check if plugin implements DependencyAware interface
-		// 检查插件是否实现了 DependencyAware 接口
-		depAware, ok := p.(plugins.DependencyAware)
-		if !ok {
-			// Plugin doesn't implement DependencyAware, treat it as having no dependencies
-			// 插件未实现 DependencyAware 接口，将其视为没有依赖
-			continue
-		}
-
-		// Get plugin dependencies using DependencyAware interface
-		// 使用 DependencyAware 接口获取插件的依赖
-		dependencies := depAware.GetDependencies()
-		if dependencies == nil {
-			continue
-		}
-
-		// Validate and add dependencies to the graph
-		// 验证依赖并将其添加到图中
-		for _, dep := range dependencies {
-			// Validate dependency object
-			// 验证依赖对象
-			if dep.ID == "" {
-				return nil, fmt.Errorf("plugin %s has an invalid dependency with empty ID", p.Name())
-			}
-
-			// Check if dependency exists
-			// 检查依赖是否存在
-			if _, exists := nameToPlugin[dep.ID]; !exists {
-				if dep.Required {
-					return nil, fmt.Errorf("plugin %s requires missing plugin %s", p.Name(), dep.ID)
-				}
-				// Skip optional dependencies that are not available
-				// 跳过不可用的可选依赖
-				continue
-			}
-
-			// Add to dependency graph
-			// 添加到依赖图中
-			graph[p.Name()] = append(graph[p.Name()], dep.ID)
-		}
-	}
-
-	// Perform topological sort using depth-first search
-	// 使用深度优先搜索进行拓扑排序
-	tempResult := make(map[int][]PluginWithLevel) // Intermediate result grouped by level
-	visited := make(map[string]bool)
-	level := make(map[string]int)
-	inProgress := make(map[string]bool) // Track nodes being visited in current DFS path
-	// 跟踪当前深度优先搜索路径中正在访问的节点
-
-	var visit func(string) error
-	visit = func(name string) error {
-		// Check for cyclic dependencies
-		// 检查是否存在循环依赖
-		if inProgress[name] {
-			return fmt.Errorf("cyclic dependency detected involving plugin %s", name)
-		}
-
-		// Skip if already fully visited
-		// 如果已经完全访问过，则跳过
-		if visited[name] {
-			return nil
-		}
-
-		inProgress[name] = true
-		defer func() { inProgress[name] = false }()
-
-		maxLevel := 0
-
-		// Visit all dependencies first
-		// 先访问所有依赖
-		for _, dep := range graph[name] {
-			if err := visit(dep); err != nil {
-				return fmt.Errorf("failed to visit dependency %s: %w", dep, err)
-			}
-			if level[dep] > maxLevel {
-				maxLevel = level[dep]
-			}
-		}
-
-		// Set the level and group by level for later sorting
-		// 设置级别并按级别分组以供后续排序
-		plugin := nameToPlugin[name]
-		level[name] = maxLevel + 1
-		tempResult[level[name]] = append(tempResult[level[name]], PluginWithLevel{Plugin: plugin, level: level[name]})
-		visited[name] = true
-
-		return nil
-	}
-
-	// Visit all plugins to build the level-sorted list
-	// 访问所有插件以构建按级别排序的列表
-	for _, p := range pluginList {
-		if p == nil {
-			continue
-		}
-		if err := visit(p.Name()); err != nil {
-			return nil, fmt.Errorf("failed to sort plugins: %w", err)
-		}
-	}
-
-	// Flatten and sort each level group by descending weight
-	// 将每个级别的分组按权重降序排序并扁平化结果
-	finalResult := make([]PluginWithLevel, 0, len(pluginList))
-	levels := make([]int, 0, len(tempResult))
-	for lvl := range tempResult {
-		levels = append(levels, lvl)
-	}
-	sort.Ints(levels)
-
-	for _, lvl := range levels {
-		pluginsAtLevel := tempResult[lvl]
-		sort.SliceStable(pluginsAtLevel, func(i, j int) bool {
-			pi := pluginsAtLevel[i].Plugin.Weight()
-			pj := pluginsAtLevel[j].Plugin.Weight()
-			return pi > pj // Higher weight comes first
-		})
-		finalResult = append(finalResult, pluginsAtLevel...)
-	}
-
-	return finalResult, nil
-}
-
-// contains checks if a plugin exists in the sorted result list.
-// contains 检查一个插件是否存在于排序后的结果列表中。
-// Used internally by TopologicalSort to detect cyclic dependencies.
-// 供 TopologicalSort 内部用于检测循环依赖。
-func contains(slice []PluginWithLevel, plugin plugins.Plugin) bool {
-	// 如果插件实例为 nil，直接返回 false
-	if plugin == nil {
-		return false
-	}
-	// 遍历切片，检查每个元素的插件实例是否与目标插件相同
-	for _, v := range slice {
-		if v.Plugin == plugin {
+// containsName checks if a name exists in the string slice.
+// containsName 检查一个名称是否存在于字符串切片中。
+func containsName(slice []string, name string) bool {
+	for _, item := range slice {
+		if item == name {
 			return true
 		}
 	}
-	// 未找到匹配的插件，返回 false
 	return false
 }
 
@@ -402,8 +216,10 @@ func (m *DefaultLynxPluginManager) LoadPluginsByName(names []string, conf config
 	var pluginsToLoad []plugins.Plugin
 	for _, name := range names {
 		// 如果插件存在且不为 nil，添加到待加载列表
-		if plugin, exists := m.pluginMap[name]; exists && plugin != nil {
-			pluginsToLoad = append(pluginsToLoad, plugin)
+		if pluginObj, ok := m.pluginMap.Load(name); ok {
+			if plugin, ok := pluginObj.(plugins.Plugin); ok && plugin != nil {
+				pluginsToLoad = append(pluginsToLoad, plugin)
+			}
 		}
 	}
 
@@ -462,15 +278,32 @@ func (m *DefaultLynxPluginManager) UnloadPluginsByName(names []string) {
 	// 遍历名称列表，卸载对应的插件
 	for _, name := range names {
 		// 如果插件存在且不为 nil，尝试卸载
-		if plugin, exists := m.pluginMap[name]; exists && plugin != nil {
-			// 停止插件，如果停止失败，记录错误日志
-			if err := plugin.Stop(plugin); err != nil {
-				if app := Lynx(); app != nil {
-					log.Errorf("Failed to unload plugin %s: %v", name, err)
+		if pluginObj, ok := m.pluginMap.Load(name); ok {
+			if plugin, ok := pluginObj.(plugins.Plugin); ok && plugin != nil {
+				// 停止插件，如果停止失败，记录错误日志
+				if err := plugin.Stop(plugin); err != nil {
+					if app := Lynx(); app != nil {
+						log.Errorf("Failed to unload plugin %s: %v", name, err)
+					}
 				}
+				// 从 map 中删除插件
+				m.pluginMap.Delete(name)
 			}
 		}
 	}
+
+	// 更新 pluginList
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	// 创建新的插件列表，不包含已卸载的插件
+	newList := make([]plugins.Plugin, 0, len(m.pluginList))
+	for _, p := range m.pluginList {
+		if !containsName(names, p.Name()) {
+			newList = append(newList, p)
+		}
+	}
+	m.pluginList = newList
 }
 
 // GetPlugin retrieves a plugin instance by its name.
@@ -483,5 +316,8 @@ func (m *DefaultLynxPluginManager) GetPlugin(name string) plugins.Plugin {
 		return nil
 	}
 	// 从插件映射中获取插件实例
-	return m.pluginMap[name]
+	if plugin, ok := m.pluginMap.Load(name); ok {
+		return plugin.(plugins.Plugin)
+	}
+	return nil
 }
