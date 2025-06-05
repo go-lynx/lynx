@@ -3,9 +3,12 @@ module github.com/go-lynx/plugins/nosql/redis/v2
 go 1.24.3
 
 require (
-	github.com/go-kratos/kratos/v2 v2.8.4
+	github.com/go-kratos/kratos/v2 v2.8.4 // indirect
 	github.com/go-lynx/lynx v0.0.0
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/redis/go-redis/v9 v9.8.0
+	github.com/rs/zerolog v1.34.0 // indirect
 	google.golang.org/protobuf v1.35.2
 )
 
