@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package lynx.protobuf.plugin.polaris;
 
-option go_package = "github.com/go-lynx/plugins/polaris/v2/conf;conf";
+option go_package = "github.com/go-lynx/lynx/plugins/polaris/v2/conf;conf";
 
 import "google/protobuf/duration.proto";
 

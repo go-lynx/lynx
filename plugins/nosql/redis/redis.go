@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/plugins/nosql/redis/v2/conf"
+	"github.com/go-lynx/lynx/plugins/nosql/redis/v2/conf"
 
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/types/known/durationpb"

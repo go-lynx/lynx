@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package lynx.protobuf.plugin.tracer;
 
-option go_package = "github.com/go-lynx/plugins/tracer/v2/conf;conf";
+option go_package = "github.com/go-lynx/lynx/plugins/tracer/v2/conf;conf";
 
 // Tracer 定义了链路跟踪插件的配置信息。
 message Tracer {
