@@ -88,3 +88,11 @@ func TestJwtTokenSigning(t *testing.T) {
 		panic(err)
 	}
 }
+
+// LoginClaims represents the claims in a JWT token for user login
+// LoginClaims 表示用户登录的 JWT 令牌中的声明信息
+type LoginClaims struct {
+	CustomClaims
+	Id       int64  `json:"id"`
+	Nickname string `json:"nickname"`
+}

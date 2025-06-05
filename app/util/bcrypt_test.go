@@ -10,7 +10,7 @@ func TestBcrypt(t *testing.T) {
 	// 定义明文密码
 	plaintext := "123"
 	// 调用 HashEncryption 函数对明文密码进行加密
-	encryption, err := HashEncryption(plaintext)
+	encryption, err := HashEncryption(plaintext, 10)
 	// 检查加密过程中是否出现错误
 	if err != nil {
 		// 若出现错误，使用 panic 终止程序并输出错误信息
