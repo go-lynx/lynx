@@ -59,7 +59,7 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 	} else {
 		// Use the root certificate of the current application directly
 		// 若未指定根 CA 证书的名称，则直接使用当前应用的根证书
-		rootCA = app.Lynx().Cert().GetRootCA()
+		rootCA = app.Lynx().Certificate().GetRootCACertificate()
 	}
 	// 将根证书添加到证书池中，如果添加失败则触发 panic
 	if !certPool.AppendCertsFromPEM(rootCA) {

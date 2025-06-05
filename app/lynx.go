@@ -46,11 +46,11 @@ type LynxApp struct {
 	// 用于兼容性检查和部署管理。
 	version string
 
-	// cert holds the SSL/TLS certificate configuration.
-	// Used for secure communication channels.
-	// cert 保存 SSL/TLS 证书配置。
-	// 用于安全通信通道。
-	cert Cert
+	// certificateProvider manages the application's TLS/SSL certificates.
+	// Used for secure communication and TLS configuration.
+	// certificateProvider 管理应用程序的 TLS/SSL 证书。
+	// 用于安全通信和 TLS 配置。
+	cert CertificateProvider
 
 	// 引导配置文件
 	bootConfig *conf.Bootstrap
