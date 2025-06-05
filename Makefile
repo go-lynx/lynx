@@ -25,12 +25,55 @@ init:
 
 
 .PHONY: config
-# generate server  config
+# generate config
 config:
 	for PROTO_FILE in $$(find . -name '*.proto'); do \
 		DIR=$$(dirname "$$PROTO_FILE"); \
 		protoc --proto_path="$$DIR" -I ./third_party -I ./boot -I ./app --go_out=paths=source_relative:"$$DIR" "$$PROTO_FILE"; \
 	done
+
+MODULES_VERSION ?=
+MODULES ?=
+
+.PHONY: tag
+# tag modules with version
+tag:
+	@if [ -z "$(MODULES_VERSION)" ]; then \
+		echo "❌ MODULES_VERSION is required. Usage: make tag MODULES_VERSION=v2.0.0 MODULES=\"plugins/xxx plugins/yyy\""; \
+		exit 1; \
+	fi
+	@if [ -z "$(MODULES)" ]; then \
+		echo "❌ MODULES is required. Usage: make tag MODULES_VERSION=v2.0.0 MODULES=\"plugins/xxx plugins/yyy\""; \
+		exit 1; \
+	fi
+	@echo "Tagging modules with version $(MODULES_VERSION)..."
+	@for module in $(MODULES); do \
+		TAG="$$module/$(MODULES_VERSION)"; \
+		echo "Creating tag $$TAG"; \
+		git tag $$TAG || { echo "Failed to tag $$TAG"; exit 1; }; \
+	done
+
+.PHONY: push-tags
+# push tags to origin
+push-tags:
+	@if [ -z "$(MODULES_VERSION)" ]; then \
+		echo "❌ MODULES_VERSION is required. Usage: make push-tags MODULES_VERSION=v2.0.0 MODULES=\"plugins/xxx plugins/yyy\""; \
+		exit 1; \
+	fi
+	@if [ -z "$(MODULES)" ]; then \
+		echo "❌ MODULES is required. Usage: make push-tags MODULES_VERSION=v2.0.0 MODULES=\"plugins/xxx plugins/yyy\""; \
+		exit 1; \
+	fi
+	@echo "Pushing tags to origin..."
+	@for module in $(MODULES); do \
+		TAG="$$module/$(MODULES_VERSION)"; \
+		echo "Pushing tag $$TAG"; \
+		git push origin $$TAG || { echo "Failed to push $$TAG"; exit 1; }; \
+	done
+
+.PHONY: release
+# release modules with version
+release: tag push-tags
 
 # show help
 help:
