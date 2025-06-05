@@ -3,7 +3,7 @@ module github.com/go-lynx/plugins/mq/kafka/v2
 go 1.24.3
 
 require (
-	github.com/go-lynx/lynx v1.0.0
+	github.com/go-lynx/lynx v1.2.1
 	github.com/twmb/franz-go v1.15.3
 	google.golang.org/protobuf v1.35.2
 )
@@ -34,5 +34,3 @@ require (
 	google.golang.org/grpc v1.68.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/go-lynx/lynx => ../../../

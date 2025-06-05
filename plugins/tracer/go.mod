@@ -3,7 +3,7 @@ module github.com/go-lynx/plugins/tracer/v2
 go 1.24.3
 
 require (
-	github.com/go-lynx/lynx v0.0.0
+	github.com/go-lynx/lynx v1.2.1
 	go.opentelemetry.io/otel v1.36.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.36.0
 	go.opentelemetry.io/otel/sdk v1.36.0
@@ -38,5 +38,3 @@ require (
 	google.golang.org/grpc v1.72.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/go-lynx/lynx => ../../

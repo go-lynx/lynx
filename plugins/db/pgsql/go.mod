@@ -4,11 +4,9 @@ go 1.24.3
 
 require (
 	entgo.io/ent v0.14.4
-	github.com/go-lynx/lynx v0.0.0
+	github.com/go-lynx/lynx v1.2.1
 	google.golang.org/protobuf v1.35.2
 )
-
-replace github.com/go-lynx/lynx => ../../../
 
 require (
 	dario.cat/mergo v1.0.0 // indirect

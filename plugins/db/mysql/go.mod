@@ -4,7 +4,7 @@ go 1.24.3
 
 require (
 	entgo.io/ent v0.14.4
-	github.com/go-lynx/lynx v0.0.0
+	github.com/go-lynx/lynx v1.2.1
 	google.golang.org/protobuf v1.35.2
 )
 
@@ -30,5 +30,3 @@ require (
 	google.golang.org/grpc v1.68.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/go-lynx/lynx => ../../../
