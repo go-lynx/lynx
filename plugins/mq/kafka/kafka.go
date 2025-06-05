@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/plugins/mq/kafka/v2/conf"
+	"github.com/go-lynx/lynx/plugins/mq/kafka/v2/conf"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl"
 	"github.com/twmb/franz-go/pkg/sasl/plain"

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package lynx.protobuf.plugin.seata;
 
-option go_package = "github.com/go-lynx/plugins/seata/v2/conf;conf";
+option go_package = "github.com/go-lynx/lynx/plugins/seata/v2/conf;conf";
 
 // Seata 消息定义了 Seata 插件的配置信息。
 message Seata {

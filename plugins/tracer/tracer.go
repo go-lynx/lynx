@@ -5,7 +5,7 @@ import (
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/plugins/tracer/v2/conf"
+	"github.com/go-lynx/lynx/plugins/tracer/v2/conf"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"

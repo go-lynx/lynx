@@ -16,7 +16,7 @@ import (
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/plugins/service/grpc/v2/conf"
+	"github.com/go-lynx/lynx/plugins/service/grpc/v2/conf"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
