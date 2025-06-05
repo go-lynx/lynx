@@ -5,7 +5,7 @@ go 1.24.3
 require (
 	github.com/go-kratos/kratos/contrib/polaris/v2 v2.0.0-20250429074618-c82f7957223f
 	github.com/go-kratos/kratos/v2 v2.8.4
-	github.com/go-lynx/lynx v0.0.0
+	github.com/go-lynx/lynx v1.2.1
 	github.com/polarismesh/polaris-go v1.3.0
 	google.golang.org/protobuf v1.35.2
 )
@@ -52,5 +52,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/go-lynx/lynx => ../../

@@ -4,12 +4,10 @@ go 1.24.3
 
 require (
 	github.com/go-kratos/kratos/v2 v2.8.4
-	github.com/go-lynx/lynx v0.0.0
+	github.com/go-lynx/lynx v1.2.1
 	go.opentelemetry.io/otel/trace v1.33.0
 	google.golang.org/protobuf v1.35.2
 )
-
-replace github.com/go-lynx/lynx => ../../../
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
