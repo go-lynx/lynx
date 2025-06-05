@@ -3,6 +3,8 @@ package http
 
 import (
 	"context"
+	nhttp "net/http"
+
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
@@ -13,7 +15,7 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/plugins/service/http/v2/conf"
-	nhttp "net/http"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Plugin metadata
@@ -68,20 +70,36 @@ func NewServiceHttp() *ServiceHttp {
 // InitializeResources 实现了 HTTP 插件的自定义初始化逻辑。
 // 该函数会加载并验证 HTTP 服务器的配置，如果配置未提供，则使用默认配置。
 func (h *ServiceHttp) InitializeResources(rt plugins.Runtime) error {
-	// 如果未提供配置，则添加默认配置
-	if h.conf == nil {
-		h.conf = &conf.Http{
-			// 默认网络协议为 TCP
-			Network: "tcp",
-			// 默认监听地址为 :8080
-			Addr: ":8080",
-		}
-	}
+	// 初始化一个空的配置结构
+	h.conf = &conf.Http{}
+
 	// 从运行时配置中扫描并加载 HTTP 配置
 	err := rt.GetConfig().Value(confPrefix).Scan(h.conf)
 	if err != nil {
 		return err
 	}
+
+	// 设置默认配置
+	defaultConf := &conf.Http{
+		// 默认网络协议为 TCP
+		Network: "tcp",
+		// 默认监听地址为 :8080
+		Addr: ":8080",
+		// 默认超时时间为 10 秒
+		Timeout: &durationpb.Duration{Seconds: 10, Nanos: 0},
+	}
+
+	// 对未设置的字段使用默认值
+	if h.conf.Network == "" {
+		h.conf.Network = defaultConf.Network
+	}
+	if h.conf.Addr == "" {
+		h.conf.Addr = defaultConf.Addr
+	}
+	if h.conf.Timeout == nil {
+		h.conf.Timeout = defaultConf.Timeout
+	}
+
 	return nil
 }
 

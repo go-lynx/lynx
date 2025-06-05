@@ -50,7 +50,6 @@ func NewRedisClient() *PlugRedis {
 			// 权重
 			100,
 		),
-		conf: &conf.Redis{},
 	}
 }
 
@@ -59,27 +58,59 @@ func NewRedisClient() *PlugRedis {
 // 参数 rt 为运行时环境
 // 返回错误信息，如果配置加载失败则返回相应错误
 func (r *PlugRedis) InitializeResources(rt plugins.Runtime) error {
-	// 若未提供配置，添加默认配置
-	if r.conf == nil {
-		r.conf = &conf.Redis{
-			Network:         "tcp",
-			Addr:            "localhost:6379",
-			Password:        "",
-			Db:              0,
-			MinIdleConns:    10,
-			MaxIdleConns:    20,
-			MaxActiveConns:  20,
-			DialTimeout:     &durationpb.Duration{Seconds: 10, Nanos: 0},
-			ReadTimeout:     &durationpb.Duration{Seconds: 10, Nanos: 0},
-			WriteTimeout:    &durationpb.Duration{Seconds: 10, Nanos: 0},
-			ConnMaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
-		}
-	}
+	// 初始化一个空的配置结构
+	r.conf = &conf.Redis{}
+
 	// 从运行时配置中扫描并加载 Redis 配置
 	err := rt.GetConfig().Value(confPrefix).Scan(r.conf)
 	if err != nil {
 		return err
 	}
+
+	// 设置默认配置
+	defaultConf := &conf.Redis{
+		Network:         "tcp",
+		Addr:            "localhost:6379",
+		Password:        "",
+		Db:              0,
+		MinIdleConns:    10,
+		MaxIdleConns:    20,
+		MaxActiveConns:  20,
+		DialTimeout:     &durationpb.Duration{Seconds: 10, Nanos: 0},
+		ReadTimeout:     &durationpb.Duration{Seconds: 10, Nanos: 0},
+		WriteTimeout:    &durationpb.Duration{Seconds: 10, Nanos: 0},
+		ConnMaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
+	}
+
+	// 对未设置的字段使用默认值
+	if r.conf.Network == "" {
+		r.conf.Network = defaultConf.Network
+	}
+	if r.conf.Addr == "" {
+		r.conf.Addr = defaultConf.Addr
+	}
+	if r.conf.MinIdleConns == 0 {
+		r.conf.MinIdleConns = defaultConf.MinIdleConns
+	}
+	if r.conf.MaxIdleConns == 0 {
+		r.conf.MaxIdleConns = defaultConf.MaxIdleConns
+	}
+	if r.conf.MaxActiveConns == 0 {
+		r.conf.MaxActiveConns = defaultConf.MaxActiveConns
+	}
+	if r.conf.DialTimeout == nil {
+		r.conf.DialTimeout = defaultConf.DialTimeout
+	}
+	if r.conf.ReadTimeout == nil {
+		r.conf.ReadTimeout = defaultConf.ReadTimeout
+	}
+	if r.conf.WriteTimeout == nil {
+		r.conf.WriteTimeout = defaultConf.WriteTimeout
+	}
+	if r.conf.ConnMaxIdleTime == nil {
+		r.conf.ConnMaxIdleTime = defaultConf.ConnMaxIdleTime
+	}
+
 	return nil
 }
 

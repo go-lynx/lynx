@@ -61,10 +61,33 @@ func NewPlugTracer() *PlugTracer {
 }
 
 func (t *PlugTracer) InitializeResources(rt plugins.Runtime) error {
+	// 初始化一个空的配置结构
+	t.conf = &conf.Tracer{}
+
+	// 从运行时配置中扫描并加载 Tracer 配置
 	err := rt.GetConfig().Value(confPrefix).Scan(t.conf)
 	if err != nil {
 		return err
 	}
+
+	// 设置默认配置
+	defaultConf := &conf.Tracer{
+		// 默认不启用链路跟踪
+		Enable: false,
+		// 默认导出地址为 localhost:4317
+		Addr: "localhost:4317",
+		// 默认采样率为 1.0，即全量采样
+		Ratio: 1.0,
+	}
+
+	// 对未设置的字段使用默认值
+	if t.conf.Addr == "" {
+		t.conf.Addr = defaultConf.Addr
+	}
+	if t.conf.Ratio == 0 {
+		t.conf.Ratio = defaultConf.Ratio
+	}
+
 	return nil
 }
 
