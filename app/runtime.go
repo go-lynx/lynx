@@ -58,11 +58,6 @@ func NewRuntimePlugin() *RuntimePlugin {
 	}
 }
 
-// RegisterResource registers a resource to be shared with other plugins
-// Returns error if registration fails
-// RegisterResource 注册一个资源，以便与其他插件共享。
-// 如果注册失败，则返回错误。
-
 // GetResource retrieves a shared plugin resource by name
 // Returns the resource and any error encountered
 // GetResource 根据名称获取插件共享资源。
@@ -85,7 +80,7 @@ func (r *RuntimePlugin) RegisterResource(name string, resource any) error {
 	if resource == nil {
 		return fmt.Errorf("resource cannot be nil")
 	}
-	
+
 	// Store the resource using sync.Map
 	r.resources.Store(name, resource)
 	return nil
@@ -197,8 +192,8 @@ func (r *RuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugins.Pl
 	defer r.mu.RUnlock()
 
 	// If no filter criteria are set, return all events
-	if len(filter.Types) == 0 && len(filter.Categories) == 0 && 
-		len(filter.PluginIDs) == 0 && len(filter.Priorities) == 0 && 
+	if len(filter.Types) == 0 && len(filter.Categories) == 0 &&
+		len(filter.PluginIDs) == 0 && len(filter.Priorities) == 0 &&
 		filter.FromTime == 0 && filter.ToTime == 0 {
 		result := make([]plugins.PluginEvent, len(r.eventHistory))
 		copy(result, r.eventHistory)
