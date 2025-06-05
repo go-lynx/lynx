@@ -1,4 +1,4 @@
-module github.com/go-lynx/plugins/service/grpc
+module github.com/go-lynx/plugins/service/grpc/v2
 
 go 1.24.3
 
