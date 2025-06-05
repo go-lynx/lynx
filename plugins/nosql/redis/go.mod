@@ -1,4 +1,4 @@
-module github.com/go-lynx/plugins/nosql/redis
+module github.com/go-lynx/plugins/nosql/redis/v2
 
 go 1.24.3
 

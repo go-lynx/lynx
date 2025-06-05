@@ -1,4 +1,4 @@
-module github.com/go-lynx/plugins/service/http
+module github.com/go-lynx/plugins/service/http/v2
 
 go 1.24.3
 
