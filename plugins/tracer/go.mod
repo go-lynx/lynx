@@ -1,4 +1,4 @@
-module github.com/go-lynx/plugins/tracer/v2
+module github.com/go-lynx/plugins/tracer
 
 go 1.24.3
 

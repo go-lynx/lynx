@@ -1,4 +1,4 @@
-module github.com/go-lynx/plugins/mq/kafka/v2
+module github.com/go-lynx/plugins/mq/kafka
 
 go 1.24.3
 
