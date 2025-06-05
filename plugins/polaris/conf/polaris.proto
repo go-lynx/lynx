@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.polaris;
+
+option go_package = "github.com/go-lynx/plugins/polaris/v2/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Polaris 消息定义了 Polaris 服务的配置信息。
+// Polaris 是一个云原生服务发现和治理中心，此消息用于配置与 Polaris 交互所需的参数。
+message Polaris {
+  // namespace 表示 Polaris 中的命名空间。
+  // 命名空间用于隔离不同环境或业务的服务和配置，每个服务和配置都属于一个特定的命名空间。
+  string namespace = 1;
+  // token 是用于访问 Polaris 服务的认证令牌。
+  // 该令牌用于验证客户端的身份，确保只有授权的客户端可以访问 Polaris 的服务和配置。
+  string token = 2;
+  // weight 表示服务实例的权重。
+  // 在负载均衡时，权重会影响流量分配的比例，权重越高，分配到的流量可能越多。
+  int32 weight = 4;
+  // ttl 是服务实例的生存时间（Time To Live），单位为秒。
+  // Polaris 会根据该值定期检查服务实例的健康状态，若超过该时间未收到心跳，实例可能会被标记为不健康。
+  int32 ttl = 5;
+  // timeout 是与 Polaris 服务交互时的超时时间。
+  // 当发起请求到 Polaris 服务后，如果在该时间内未收到响应，则认为请求超时。
+  google.protobuf.Duration timeout = 6;
+}

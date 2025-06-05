@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.db;
+
+option go_package = "github.com/go-lynx/lynx/log/conf";
+
+// Defines a message type for log system configuration.
+// 定义一个用于日志系统配置的消息类型。
+message log {
+  // The log level: debug, info, warn, error, etc.
+  // 日志级别：debug、info、warn、error 等。
+  string level = 1;
+
+  // The file path where logs should be written.
+  // 日志输出的文件路径。
+  string file_path = 2;
+
+  // Whether to also output logs to the console.
+  // 是否同时输出日志到控制台。
+  bool console_output = 3;
+
+  // The maximum size of a single log file before rotation.
+  // 单个日志文件的最大大小，超过该大小将触发轮转。
+  int32 max_size_mb = 4;
+
+  // The maximum number of backup log files to keep.
+  // 最多保留的旧日志文件数。
+  int32 max_backups = 5;
+
+  // The maximum number of days to retain old log files.
+  // 日志文件最多保留的天数。
+  int32 max_age_days = 6;
+
+  // Whether to compress rotated log files.
+  // 是否压缩轮转后的日志文件。
+  bool compress = 7;
+}
+

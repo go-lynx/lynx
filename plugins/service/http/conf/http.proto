@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.http;
+
+option go_package = "github.com/go-lynx/plugins/service/http/v2/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Http defines the configuration for the HTTP server plugin
+// Http 定义了 HTTP 服务器插件的配置信息。
+message http {
+  // Network specifies the network type (e.g., "tcp", "unix")
+  // Network 指定网络类型（例如 "tcp"、"unix"）。
+  string network = 1;
+
+  // Addr specifies the address to listen on (e.g., ":8080", "localhost:8080")
+  // Addr 指定 HTTP 服务器监听的地址（例如 ":8080"、"localhost:8080"）。
+  string addr = 2;
+
+  // Tls indicates whether TLS/HTTPS is enabled
+  // Tls 指示是否启用 TLS/HTTPS 加密。
+  bool tls = 3;
+
+  // TlsAuthType specifies the TLS authentication type:
+  // 0: No client auth
+  // 1: Request client cert
+  // 2: Require client cert
+  // 3: Verify client cert
+  // 4: Verify client cert if given
+  // TlsAuthType 指定 TLS 客户端认证类型，具体含义如下：
+  // 0: 不进行客户端认证
+  // 1: 请求客户端证书，但不强制要求
+  // 2: 强制要求客户端提供证书
+  // 3: 验证客户端证书
+  // 4: 若客户端提供证书，则进行验证
+  int32 tls_auth_type = 4;
+
+  // Timeout specifies the maximum duration for handling HTTP requests
+  // Timeout 指定处理 HTTP 请求的最大时长。
+  google.protobuf.Duration timeout = 5;
+}
