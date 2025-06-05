@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.db;
+
+option go_package = "github.com/go-lynx/plugins/db/mysql/v2/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Defines a message type for MySQL configuration.
+// 定义一个用于 MySQL 数据库配置的消息类型。
+message mysql {
+  // The driver name for the MySQL database.
+  // MySQL 数据库的驱动名称。
+  string driver = 1;
+  // The data source name (DSN) for the MySQL database.
+  // MySQL 数据库的数据源名称（DSN），用于连接数据库。
+  string source = 2;
+  // The minimum number of connections to maintain in the connection pool.
+  // 连接池中需要维持的最小连接数。
+  int32 min_conn = 3;
+  // The maximum number of connections to maintain in the connection pool.
+  // 连接池中需要维持的最大连接数。
+  int32 max_conn = 4;
+  // The maximum lifetime for a connection in the connection pool.
+  // 连接池中连接的最大生命时间，超过该时间的连接可能会被关闭。
+  google.protobuf.Duration max_life_time = 5;
+  // The maximum idle time for a connection in the connection pool.
+  // 连接池中连接的最大空闲时间，超过该时间的连接可能会被关闭。
+  google.protobuf.Duration max_idle_time = 6;
+}

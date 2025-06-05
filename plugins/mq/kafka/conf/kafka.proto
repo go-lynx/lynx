@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.kafka;
+
+option go_package = "github.com/go-lynx/plugins/mq/kafka/v2/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Kafka 消息定义了 Kafka 客户端的配置信息
+message Kafka {
+  // brokers 表示 Kafka 集群的地址列表
+  repeated string brokers = 1;
+  
+  // producer 生产者配置
+  Producer producer = 2;
+  
+  // consumer 消费者配置
+  Consumer consumer = 3;
+  
+  // 通用配置
+  // sasl 认证配置
+  SASL sasl = 4;
+  // tls 配置
+  bool tls = 5;
+  // 连接超时时间
+  google.protobuf.Duration dial_timeout = 6;
+}
+
+// Producer 生产者配置
+message Producer {
+  // 是否启用生产者
+  bool enabled = 1;
+  // 是否需要等待所有副本确认
+  bool required_acks = 2;
+  // 最大重试次数
+  int32 max_retries = 3;
+  // 重试间隔
+  google.protobuf.Duration retry_backoff = 4;
+  // 批量发送大小
+  int32 batch_size = 5;
+  // 批量发送等待时间
+  google.protobuf.Duration batch_timeout = 6;
+  // 压缩类型：none, gzip, snappy, lz4, zstd
+  string compression = 7;
+}
+
+// Consumer 消费者配置
+message Consumer {
+  // 是否启用消费者
+  bool enabled = 1;
+  // 消费组 ID
+  string group_id = 2;
+  // 自动提交间隔
+  google.protobuf.Duration auto_commit_interval = 3;
+  // 是否自动提交
+  bool auto_commit = 4;
+  // 消费起始位置：latest, earliest
+  string start_offset = 5;
+  // 最大处理并发数
+  int32 max_concurrency = 6;
+  // 最小批量大小
+  int32 min_batch_size = 7;
+  // 最大批量大小
+  int32 max_batch_size = 8;
+  // 最大等待时间
+  google.protobuf.Duration max_wait_time = 9;
+  // 重平衡超时时间
+  google.protobuf.Duration rebalance_timeout = 10;
+}
+
+// SASL 认证配置
+message SASL {
+  // 是否启用 SASL
+  bool enabled = 1;
+  // 认证机制：PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
+  string mechanism = 2;
+  // 用户名
+  string username = 3;
+  // 密码
+  string password = 4;
+}

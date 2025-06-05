@@ -1,52 +1,117 @@
 package app
 
 import (
+	"fmt"
+	"github.com/go-lynx/lynx/app/log"
+
 	"github.com/go-kratos/kratos/v2/config"
 )
 
-// PreparePlug Bootstrap plugin loading through remote or local configuration files
+// PreparePlug 方法通过远程或本地配置文件引导插件加载。
+// 它基于配置处理插件的初始化和注册操作。
+// 返回一个成功准备好的插件名称列表。
 func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
-	// 获取所有已注册插件的配置前缀列表
-	table := m.factory.GetRegisterTable()
-	// 初始化一个字符串切片，用于存储将要加载的插件名称
-	var plugNames = make([]string, 0)
+	// 检查配置是否为 nil，如果为 nil 则记录错误日志并返回 nil
+	if config == nil {
+		log.Error("Configuration is nil")
+		return nil
+	}
 
-	// 遍历配置前缀列表
-	for confPrefix := range table {
-		// 尝试从配置中获取对应前缀的值
-		value := config.Value(confPrefix)
-		// 如果获取失败（即配置中不存在该前缀），则跳过当前循环
-		if value.Load() == nil {
+	// 获取包含所有已注册插件配置前缀的注册表
+	table := m.factory.GetPluginRegistry()
+	// 检查注册表是否为空，如果为空则记录警告日志并返回 nil
+	if len(table) == 0 {
+		log.Warn("No plugins registered in factory")
+		return nil
+	}
+
+	// 初始化一个切片，用于存储待加载的插件名称，预分配容量为注册表的长度
+	plugNames := make([]string, 0, len(table))
+
+	// 遍历配置前缀
+	for confPrefix, names := range table {
+		// 检查配置前缀是否为空，如果为空则记录警告日志并跳过当前循环
+		if confPrefix == "" {
+			log.Warnf("Empty configuration prefix found, skipping")
 			continue
 		}
 
-		// 获取与当前配置前缀关联的插件名称列表
-		names := table[confPrefix]
-		// 如果名称列表为空，则跳过当前循环
+		// 尝试获取当前前缀对应的配置值
+		cfg := config.Value(confPrefix)
+		// 检查配置值是否为 nil，如果为 nil 则记录调试日志并跳过当前循环
+		if cfg == nil {
+			log.Debugf("No configuration found for prefix: %s", confPrefix)
+			continue
+		}
+
+		// 加载配置值，如果加载结果为 nil 则记录调试日志并跳过当前循环
+		if loaded := cfg.Load(); loaded == nil {
+			log.Debugf("Configuration cfg is nil for prefix: %s", confPrefix)
+			continue
+		}
+
+		// 检查是否有与前缀关联的插件名称，如果没有则记录调试日志并跳过当前循环
 		if len(names) == 0 {
+			log.Debugf("No plugins associated with prefix: %s", confPrefix)
 			continue
 		}
 
-		// 遍历名称列表
+		// 处理每个插件名称
 		for _, name := range names {
-			// 检查插件是否已经存在于插件管理器中
-			if _, exists := m.pluginMap[name]; !exists && m.factory.Exists(name) {
-				// 如果插件不存在，则尝试从工厂中创建该插件
-				p, err := m.factory.CreateByName(name)
-				// 如果创建过程中发生错误，记录错误并抛出 panic
-				if err != nil {
-					Lynx().Helper().Errorf("Plugin factory load error: %v", err)
-					panic(err)
-				}
-				// 将新创建的插件添加到插件管理器的插件列表中
-				m.pluginList = append(m.pluginList, p)
-				// 将新创建的插件添加到插件管理器的插件映射中
-				m.pluginMap[p.Name()] = p
-				// 将新创建的插件名称添加到将要加载的插件名称列表中
-				plugNames = append(plugNames, name)
+			// 检查插件名称是否为空，如果为空则记录警告日志并跳过当前循环
+			if name == "" {
+				log.Warn("Empty plugin name found, skipping")
+				continue
 			}
+
+			// 检查插件是否已存在且能否创建
+			if err := m.preparePlugin(name); err != nil {
+				continue
+			}
+
+			// 将成功准备的插件名称添加到切片中
+			plugNames = append(plugNames, name)
 		}
 	}
-	// 返回将要加载的插件名称列表
+
+	// 检查是否有成功准备的插件，如果没有则记录警告日志，否则记录成功信息
+	if len(plugNames) != 0 {
+		log.Infof("successfully prepared %d plugins", len(plugNames))
+	}
+
 	return plugNames
+}
+
+// preparePlugin 处理单个插件的准备工作。
+// 它会检查插件是否已存在，创建插件实例，并将其添加到管理器中。
+// 如果任何步骤失败，则返回错误。
+func (m *DefaultLynxPluginManager) preparePlugin(name string) error {
+	// 检查插件是否已经加载，如果已加载则返回错误信息
+	if _, exists := m.pluginMap.Load(name); exists {
+		return fmt.Errorf("plugin %s is already loaded", name)
+	}
+
+	// 验证插件是否存在于工厂中，如果不存在则返回错误信息
+	if !m.factory.HasPlugin(name) {
+		return fmt.Errorf("plugin %s does not exist in factory", name)
+	}
+
+	// 创建插件实例，如果创建失败则返回错误信息
+	p, err := m.factory.CreatePlugin(name)
+	if err != nil {
+		return fmt.Errorf("failed to create plugin %s: %v", name, err)
+	}
+
+	// 检查创建的插件实例是否为 nil，如果为 nil 则返回错误信息
+	if p == nil {
+		return fmt.Errorf("created plugin %s is nil", name)
+	}
+
+	// 将插件添加到管理器的跟踪结构中
+	m.mu.Lock()
+	m.pluginList = append(m.pluginList, p)
+	m.mu.Unlock()
+	m.pluginMap.Store(p.Name(), p)
+
+	return nil
 }
