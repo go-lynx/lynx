@@ -3,6 +3,7 @@ package http
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/go-lynx/lynx/app"
 )
@@ -20,13 +21,22 @@ import (
 // Returns:
 //   - grpc.ServerOption: A configured TLS option for the Http server
 func (h *ServiceHttp) tlsLoad() http.ServerOption {
-	tlsCert, err := tls.X509KeyPair(app.Lynx().Cert().GetCrt(), app.Lynx().Cert().GetKey())
-	if err != nil {
-		panic(err)
+	// Get the certificate provider
+	certProvider := app.Lynx().Certificate()
+	if certProvider == nil {
+		panic("certificate provider not configured")
 	}
+
+	// Load certificate and private key
+	tlsCert, err := tls.X509KeyPair(certProvider.GetCertificate(), certProvider.GetPrivateKey())
+	if err != nil {
+		panic(fmt.Errorf("failed to load X509 key pair: %v", err))
+	}
+
+	// Create certificate pool and add root CA
 	certPool := x509.NewCertPool()
-	if !certPool.AppendCertsFromPEM(app.Lynx().Cert().GetRootCA()) {
-		panic(err)
+	if !certPool.AppendCertsFromPEM(certProvider.GetRootCACertificate()) {
+		panic("failed to append root CA certificate to pool")
 	}
 
 	return http.TLSConfig(&tls.Config{

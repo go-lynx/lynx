@@ -30,22 +30,49 @@ var (
 // 初始化应用的日志系统，设置主日志记录器并配置各种日志字段，
 // 如时间戳、调用者信息、服务详情和追踪 ID 等。
 // 返回一个错误对象，如果初始化过程中出现错误则返回相应错误，否则返回 nil。
+// InitLogger initializes the application's logging system with the provided configuration.
+// It returns an error if initialization fails.
+//
+// Parameters:
+//   - name: The name of the service
+//   - host: The host identifier
+//   - version: The service version
+//   - cfg: The configuration instance
+//
+// Returns:
+//   - error: An error if initialization fails, nil otherwise
 func InitLogger(name string, host string, version string, cfg kconf.Config) error {
-	// 检查 LynxApp 实例是否为 nil，如果为 nil 则返回错误
+	// Validate input parameters
+	if name == "" {
+		return fmt.Errorf("service name cannot be empty")
+	}
+	if host == "" {
+		return fmt.Errorf("host cannot be empty")
+	}
 	if cfg == nil {
-		return fmt.Errorf("lynx app instance is nil")
+		return fmt.Errorf("configuration instance cannot be nil")
 	}
 
 	// Log the initialization of the logging component
-	// 记录日志组件初始化开始的信息
+	// Use Info level as this is an important system event
 	log.Info("initializing Lynx logging component")
 
-	// 启用控制台彩色输出
+	// Configure console output with color support
 	output := zerolog.ConsoleWriter{
 		Out:        os.Stdout,
 		TimeFormat: time.RFC3339Nano,
+		NoColor:    false, // Explicitly set color output
 	}
+	
+	// Set global time format for consistency
 	zerolog.TimeFieldFormat = time.RFC3339Nano
+	
+	// Set global level based on environment
+	if os.Getenv("GO_ENV") == "production" {
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	} else {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
 
 	// 用 zeroLogger 初始化底层日志器
 	zeroLogger := zerolog.New(output).With().Timestamp().Logger()
@@ -95,92 +122,144 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	return nil
 }
 
-// Caller returns a Valuer that returns a pkg/file:line description of the caller.
+// Caller returns a log.Valuer that provides the caller's source location.
+// The depth parameter determines how many stack frames to skip.
+//
+// Example output: "app/handler/user.go:42"
 func Caller(depth int) log.Valuer {
+	if depth < 0 {
+		depth = 0
+	}
 	return func(context.Context) any {
-		_, file, line, _ := runtime.Caller(depth)
+		_, file, line, ok := runtime.Caller(depth)
+		if !ok {
+			return "unknown:0"
+		}
 		return trimFilePath(file, 3) + ":" + strconv.Itoa(line)
 	}
 }
 
+// trimFilePath reduces a file path to its last 'depth' components.
+// For example, with depth=2: "/a/b/c/d.go" becomes "c/d.go".
+//
+// Parameters:
+//   - file: The full file path
+//   - depth: Number of path components to keep
+//
+// Returns:
+//   - The trimmed file path
 func trimFilePath(file string, depth int) string {
-	// 记录斜杠位置
+	if file == "" || depth <= 0 {
+		return "unknown"
+	}
+
+	// Find the last 'depth' number of slashes
 	var slashPos []int
 	for i := len(file) - 1; i >= 0; i-- {
-		if file[i] == '/' {
+		if file[i] == '/' || file[i] == '\\' { // Handle both Unix and Windows paths
 			slashPos = append(slashPos, i)
 			if len(slashPos) == depth {
 				break
 			}
 		}
 	}
+
+	// If we found fewer slashes than requested depth
 	if len(slashPos) == 0 {
-		return file // 没有斜杠，直接返回文件名
+		return file
 	}
-	// 从最后第 depth 个 / 开始截取
+
+	// Return the path from the last found slash
 	start := slashPos[len(slashPos)-1] + 1
 	return file[start:]
 }
 
-// initBanner handles the initialization and display of the application banner.
-// 处理应用启动横幅的初始化和显示操作。
-// 从嵌入的文件系统中读取横幅内容，并根据配置决定是否显示横幅。
-// 返回一个错误对象，如果初始化过程中出现错误则返回相应错误，否则返回 nil。
+// initBanner initializes and displays the application banner.
+// It first attempts to read from a local banner file, then falls back to an embedded banner.
+// The banner display can be disabled through application configuration.
+//
+// Parameters:
+//   - cfg: The configuration instance containing banner display preferences
+//
+// Returns:
+//   - error: An error if banner initialization fails, nil otherwise
 func initBanner(cfg kconf.Config) error {
-	// 尝试读取本地 configs/banner.txt 文件
-	localBannerPath := "configs/banner.txt"
-	var bannerData []byte
-	var err error
+	const (
+		localBannerPath = "configs/banner.txt"
+		embeddedBannerPath = "banner.txt"
+	)
 
-	if _, statErr := os.Stat(localBannerPath); statErr == nil {
-		// 本地文件存在，读取本地 banner
-		bannerData, err = os.ReadFile(localBannerPath)
-		if err != nil {
-			return fmt.Errorf("failed to read local banner: %v", err)
-		}
-	} else {
-		// 本地文件不存在，回退读取嵌入式 banner
-		bannerData, err = fs.ReadFile(bannerFS, "banner.txt")
+	// Try to read banner data, with fallback options
+	bannerData, err := loadBannerData(localBannerPath)
+	if err != nil {
+		// Log the local file read failure and try embedded banner
+		log.Debugf("could not read local banner: %v, falling back to embedded banner", err)
+		bannerData, err = fs.ReadFile(bannerFS, embeddedBannerPath)
 		if err != nil {
 			return fmt.Errorf("failed to read embedded banner: %v", err)
 		}
 	}
 
-	// Read application configuration
-	// 读取应用的启动配置
+	// Parse application configuration
 	var bootConfig conf.Bootstrap
-	// 将全局配置扫描到 bootConfig 结构体中
 	if err := cfg.Scan(&bootConfig); err != nil {
-		return fmt.Errorf("failed to read configuration: %v", err)
+		return fmt.Errorf("failed to parse configuration: %v", err)
 	}
 
-	// Check if banner display is enabled
-	// 检查配置结构是否有效，若无效则返回错误信息
-	if bootConfig.GetLynx() == nil ||
-		bootConfig.GetLynx().GetApplication() == nil {
-		return fmt.Errorf("invalid configuration structure")
+	// Validate configuration structure
+	app := bootConfig.GetLynx().GetApplication()
+	if app == nil {
+		return fmt.Errorf("invalid configuration: application settings not found")
 	}
 
-	// Display banner if not disabled in configuration
-	// 若配置中未禁用横幅显示，则打印横幅内容
-	if !bootConfig.GetLynx().GetApplication().GetCloseBanner() {
-		_, err := fmt.Fprintln(os.Stdout, string(bannerData))
-		if err != nil {
-			return err
+	// Display banner unless explicitly disabled
+	if !app.GetCloseBanner() {
+		if err := displayBanner(bannerData); err != nil {
+			return fmt.Errorf("failed to display banner: %v", err)
 		}
 	}
 
 	return nil
 }
 
+// loadBannerData attempts to read banner data from the specified file.
+// It returns the banner content as bytes or an error if the read fails.
+func loadBannerData(path string) ([]byte, error) {
+	// Check if file exists
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+
+	// Read file contents
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read banner file: %v", err)
+	}
+
+	return data, nil
+}
+
+// displayBanner writes the banner data to standard output.
+// It returns an error if the write operation fails.
+func displayBanner(data []byte) error {
+	_, err := fmt.Fprintln(os.Stdout, string(data))
+	return err
+}
+
 type zeroLogLogger struct {
 	logger zerolog.Logger
 }
 
+// Log implements the log.Logger interface.
+// It converts Kratos log levels to zerolog levels and handles structured logging.
 func (l zeroLogLogger) Log(level log.Level, keyvals ...interface{}) error {
-	var event *zerolog.Event
+	// Validate input parameters
+	if len(keyvals)%2 != 0 {
+		return fmt.Errorf("number of keyvals must be even")
+	}
 
-	// 根据日志等级创建对应的 event
+	// Map Kratos log levels to zerolog levels
+	var event *zerolog.Event
 	switch level {
 	case log.LevelDebug:
 		event = l.logger.Debug()
@@ -193,20 +272,32 @@ func (l zeroLogLogger) Log(level log.Level, keyvals ...interface{}) error {
 	case log.LevelFatal:
 		event = l.logger.Fatal()
 	default:
-		event = l.logger.Info()
+		// Log unknown levels as warnings and include the original level
+		event = l.logger.Warn().Interface("original_level", level)
 	}
 
-	// 加 key-value 字段
+	// Add structured key-value fields
+	var msg string
 	for i := 0; i < len(keyvals); i += 2 {
-		if i+1 < len(keyvals) {
-			key, ok := keyvals[i].(string)
-			if !ok {
-				key = fmt.Sprintf("BAD_KEY_%d", i)
-			}
-			event = event.Interface(key, keyvals[i+1])
+		key, ok := keyvals[i].(string)
+		if !ok {
+			key = fmt.Sprintf("BAD_KEY_%d", i)
+			event = event.Interface("original_key", keyvals[i])
 		}
+
+		// Special handling for "msg" field
+		if key == "msg" {
+			if str, ok := keyvals[i+1].(string); ok {
+				msg = str
+				continue
+			}
+		}
+
+		// Add the field to the event
+		event = event.Interface(key, keyvals[i+1])
 	}
 
-	event.Msg("") // 最终输出
+	// Output the log entry
+	event.Msg(msg)
 	return nil
 }
