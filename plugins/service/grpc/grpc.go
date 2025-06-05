@@ -75,7 +75,6 @@ func NewServiceGrpc() *ServiceGrpc {
 			// 权重
 			10,
 		),
-		conf: &conf.Grpc{},
 	}
 }
 
