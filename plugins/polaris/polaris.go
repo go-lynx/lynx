@@ -7,6 +7,7 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/plugins/polaris/v2/conf"
 	"github.com/polarismesh/polaris-go/api"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"math"
 )
 
@@ -50,19 +51,47 @@ func NewPolarisControlPlane() *PlugPolaris {
 			// 权重
 			math.MaxInt,
 		),
-		conf: &conf.Polaris{},
 	}
 }
 
 // InitializeResources 实现了 Polaris 插件的自定义初始化逻辑。
 // 该函数会加载并验证 Polaris 配置，如果配置未提供，则使用默认配置。
 func (p *PlugPolaris) InitializeResources(rt plugins.Runtime) error {
-	// 从配置值 b 中扫描并解析 Polaris 插件的配置到 p.conf 中。
+	// 初始化一个空的配置结构
+	p.conf = &conf.Polaris{}
+
+	// 从运行时配置中扫描并加载 Polaris 配置
 	err := rt.GetConfig().Value(confPrefix).Scan(p.conf)
-	// 如果发生错误，返回 nil 和错误信息。
 	if err != nil {
 		return err
 	}
+
+	// 设置默认配置
+	defaultConf := &conf.Polaris{
+		// 默认命名空间为 default
+		Namespace: "default",
+		// 默认服务实例权重为 100
+		Weight: 100,
+		// 默认 TTL 为 5 秒
+		Ttl: 5,
+		// 默认超时时间为 5 秒
+		Timeout: &durationpb.Duration{Seconds: 5},
+	}
+
+	// 对未设置的字段使用默认值
+	if p.conf.Namespace == "" {
+		p.conf.Namespace = defaultConf.Namespace
+	}
+	if p.conf.Weight == 0 {
+		p.conf.Weight = defaultConf.Weight
+	}
+	if p.conf.Ttl == 0 {
+		p.conf.Ttl = defaultConf.Ttl
+	}
+	if p.conf.Timeout == nil {
+		p.conf.Timeout = defaultConf.Timeout
+	}
+
 	return nil
 }
 

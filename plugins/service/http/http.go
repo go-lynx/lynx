@@ -63,7 +63,6 @@ func NewServiceHttp() *ServiceHttp {
 			// 权重
 			10,
 		),
-		conf: &conf.Http{},
 	}
 }
 
