@@ -5,13 +5,14 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	kconf "github.com/go-kratos/kratos/v2/config"
-	"github.com/go-lynx/lynx/app/conf"
 	"io/fs"
 	"os"
 	"runtime"
 	"strconv"
 	"time"
+
+	kconf "github.com/go-kratos/kratos/v2/config"
+	"github.com/go-lynx/lynx/app/conf"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
@@ -62,11 +63,20 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		Out:        os.Stdout,
 		TimeFormat: time.RFC3339Nano,
 		NoColor:    false, // Explicitly set color output
+		PartsOrder: []string{
+			zerolog.TimestampFieldName,
+			zerolog.LevelFieldName,
+			zerolog.CallerFieldName,
+			zerolog.MessageFieldName,
+		},
+		FormatMessage: func(i interface{}) string {
+			return fmt.Sprintf("msg=\"%v\"", i)
+		},
 	}
-	
+
 	// Set global time format for consistency
 	zerolog.TimeFieldFormat = time.RFC3339Nano
-	
+
 	// Set global level based on environment
 	if os.Getenv("GO_ENV") == "production" {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -185,7 +195,7 @@ func trimFilePath(file string, depth int) string {
 //   - error: An error if banner initialization fails, nil otherwise
 func initBanner(cfg kconf.Config) error {
 	const (
-		localBannerPath = "configs/banner.txt"
+		localBannerPath    = "configs/banner.txt"
 		embeddedBannerPath = "banner.txt"
 	)
 
