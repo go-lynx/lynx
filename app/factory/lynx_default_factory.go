@@ -2,6 +2,7 @@ package factory
 
 import (
 	"fmt"
+	"sync"
 	"github.com/go-lynx/lynx/plugins"
 )
 
@@ -9,14 +10,15 @@ import (
 // 全局插件工厂实例，用于实现单例模式
 var (
 	globalPluginFactory *LynxPluginFactory
+	once              sync.Once
 )
 
 // GlobalPluginFactory returns the singleton instance of the plugin factory.
 // GlobalPluginFactory 返回插件工厂的单例实例。
 func GlobalPluginFactory() PluginFactory {
-	if globalPluginFactory == nil {
+	once.Do(func() {
 		globalPluginFactory = newDefaultPluginFactory()
-	}
+	})
 	return globalPluginFactory
 }
 
