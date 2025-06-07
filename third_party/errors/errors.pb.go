@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v5.29.3
-// source: errors.proto
+// source: third_party/errors/errors.proto
 
 package errors
 
@@ -21,14 +21,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-var file_errors_proto_extTypes = []protoimpl.ExtensionInfo{
+var file_third_party_errors_errors_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.EnumOptions)(nil),
 		ExtensionType: (*int32)(nil),
 		Field:         1108,
 		Name:          "errors.default_code",
 		Tag:           "varint,1108,opt,name=default_code",
-		Filename:      "errors.proto",
+		Filename:      "third_party/errors/errors.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.EnumValueOptions)(nil),
@@ -36,36 +36,36 @@ var file_errors_proto_extTypes = []protoimpl.ExtensionInfo{
 		Field:         1109,
 		Name:          "errors.code",
 		Tag:           "varint,1109,opt,name=code",
-		Filename:      "errors.proto",
+		Filename:      "third_party/errors/errors.proto",
 	},
 }
 
 // Extension fields to descriptorpb.EnumOptions.
 var (
 	// optional int32 default_code = 1108;
-	E_DefaultCode = &file_errors_proto_extTypes[0]
+	E_DefaultCode = &file_third_party_errors_errors_proto_extTypes[0]
 )
 
 // Extension fields to descriptorpb.EnumValueOptions.
 var (
 	// optional int32 code = 1109;
-	E_Code = &file_errors_proto_extTypes[1]
+	E_Code = &file_third_party_errors_errors_proto_extTypes[1]
 )
 
-var File_errors_proto protoreflect.FileDescriptor
+var File_third_party_errors_errors_proto protoreflect.FileDescriptor
 
-const file_errors_proto_rawDesc = "" +
+const file_third_party_errors_errors_proto_rawDesc = "" +
 	"\n" +
-	"\ferrors.proto\x12\x06errors\x1a google/protobuf/descriptor.proto:@\n" +
+	"\x1fthird_party/errors/errors.proto\x12\x06errors\x1a google/protobuf/descriptor.proto:@\n" +
 	"\fdefault_code\x12\x1c.google.protobuf.EnumOptions\x18\xd4\b \x01(\x05R\vdefaultCode:6\n" +
 	"\x04code\x12!.google.protobuf.EnumValueOptions\x18\xd5\b \x01(\x05R\x04codeBY\n" +
 	"\x18com.github.kratos.errorsP\x01Z,github.com/go-kratos/kratos/v2/errors;errors\xa2\x02\fKratosErrorsb\x06proto3"
 
-var file_errors_proto_goTypes = []any{
+var file_third_party_errors_errors_proto_goTypes = []any{
 	(*descriptorpb.EnumOptions)(nil),      // 0: google.protobuf.EnumOptions
 	(*descriptorpb.EnumValueOptions)(nil), // 1: google.protobuf.EnumValueOptions
 }
-var file_errors_proto_depIdxs = []int32{
+var file_third_party_errors_errors_proto_depIdxs = []int32{
 	0, // 0: errors.default_code:extendee -> google.protobuf.EnumOptions
 	1, // 1: errors.code:extendee -> google.protobuf.EnumValueOptions
 	2, // [2:2] is the sub-list for method output_type
@@ -75,26 +75,26 @@ var file_errors_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for field type_name
 }
 
-func init() { file_errors_proto_init() }
-func file_errors_proto_init() {
-	if File_errors_proto != nil {
+func init() { file_third_party_errors_errors_proto_init() }
+func file_third_party_errors_errors_proto_init() {
+	if File_third_party_errors_errors_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_errors_proto_rawDesc), len(file_errors_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_third_party_errors_errors_proto_rawDesc), len(file_third_party_errors_errors_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   0,
 			NumExtensions: 2,
 			NumServices:   0,
 		},
-		GoTypes:           file_errors_proto_goTypes,
-		DependencyIndexes: file_errors_proto_depIdxs,
-		ExtensionInfos:    file_errors_proto_extTypes,
+		GoTypes:           file_third_party_errors_errors_proto_goTypes,
+		DependencyIndexes: file_third_party_errors_errors_proto_depIdxs,
+		ExtensionInfos:    file_third_party_errors_errors_proto_extTypes,
 	}.Build()
-	File_errors_proto = out.File
-	file_errors_proto_goTypes = nil
-	file_errors_proto_depIdxs = nil
+	File_third_party_errors_errors_proto = out.File
+	file_third_party_errors_errors_proto_goTypes = nil
+	file_third_party_errors_errors_proto_depIdxs = nil
 }

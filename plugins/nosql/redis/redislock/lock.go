@@ -209,9 +209,9 @@ func generateLockValue() string {
 	// 使用原子操作获取递增的序列号
 	seq := atomic.AddUint64(&sequenceNum, 1)
 	// 生成 UUID v4
-	uuid := uuid.New()
+	uid := uuid.New()
 	// 生成唯一标识：进程前缀 + 序列号 + UUID
-	return fmt.Sprintf("%s%d-%s", lockValuePrefix, seq, uuid.String())
+	return fmt.Sprintf("%s%d-%s", lockValuePrefix, seq, uid.String())
 }
 
 // RetryStrategy 定义锁重试策略

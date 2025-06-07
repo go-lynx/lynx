@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v5.29.3
-// source: validate.proto
+// source: third_party/validate/validate.proto
 
 package validate
 
@@ -60,11 +60,11 @@ func (x KnownRegex) String() string {
 }
 
 func (KnownRegex) Descriptor() protoreflect.EnumDescriptor {
-	return file_validate_proto_enumTypes[0].Descriptor()
+	return file_third_party_validate_validate_proto_enumTypes[0].Descriptor()
 }
 
 func (KnownRegex) Type() protoreflect.EnumType {
-	return &file_validate_proto_enumTypes[0]
+	return &file_third_party_validate_validate_proto_enumTypes[0]
 }
 
 func (x KnownRegex) Number() protoreflect.EnumNumber {
@@ -83,7 +83,7 @@ func (x *KnownRegex) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use KnownRegex.Descriptor instead.
 func (KnownRegex) EnumDescriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{0}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{0}
 }
 
 // FieldRules encapsulates the rules for each type of field. Depending on the
@@ -121,7 +121,7 @@ type FieldRules struct {
 
 func (x *FieldRules) Reset() {
 	*x = FieldRules{}
-	mi := &file_validate_proto_msgTypes[0]
+	mi := &file_third_party_validate_validate_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -133,7 +133,7 @@ func (x *FieldRules) String() string {
 func (*FieldRules) ProtoMessage() {}
 
 func (x *FieldRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[0]
+	mi := &file_third_party_validate_validate_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -146,7 +146,7 @@ func (x *FieldRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FieldRules.ProtoReflect.Descriptor instead.
 func (*FieldRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{0}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *FieldRules) GetMessage() *MessageRules {
@@ -519,7 +519,7 @@ type FloatRules struct {
 
 func (x *FloatRules) Reset() {
 	*x = FloatRules{}
-	mi := &file_validate_proto_msgTypes[1]
+	mi := &file_third_party_validate_validate_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -531,7 +531,7 @@ func (x *FloatRules) String() string {
 func (*FloatRules) ProtoMessage() {}
 
 func (x *FloatRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[1]
+	mi := &file_third_party_validate_validate_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -544,7 +544,7 @@ func (x *FloatRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FloatRules.ProtoReflect.Descriptor instead.
 func (*FloatRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{1}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *FloatRules) GetConst() float32 {
@@ -637,7 +637,7 @@ type DoubleRules struct {
 
 func (x *DoubleRules) Reset() {
 	*x = DoubleRules{}
-	mi := &file_validate_proto_msgTypes[2]
+	mi := &file_third_party_validate_validate_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -649,7 +649,7 @@ func (x *DoubleRules) String() string {
 func (*DoubleRules) ProtoMessage() {}
 
 func (x *DoubleRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[2]
+	mi := &file_third_party_validate_validate_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -662,7 +662,7 @@ func (x *DoubleRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DoubleRules.ProtoReflect.Descriptor instead.
 func (*DoubleRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{2}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *DoubleRules) GetConst() float64 {
@@ -755,7 +755,7 @@ type Int32Rules struct {
 
 func (x *Int32Rules) Reset() {
 	*x = Int32Rules{}
-	mi := &file_validate_proto_msgTypes[3]
+	mi := &file_third_party_validate_validate_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -767,7 +767,7 @@ func (x *Int32Rules) String() string {
 func (*Int32Rules) ProtoMessage() {}
 
 func (x *Int32Rules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[3]
+	mi := &file_third_party_validate_validate_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -780,7 +780,7 @@ func (x *Int32Rules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Int32Rules.ProtoReflect.Descriptor instead.
 func (*Int32Rules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{3}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Int32Rules) GetConst() int32 {
@@ -873,7 +873,7 @@ type Int64Rules struct {
 
 func (x *Int64Rules) Reset() {
 	*x = Int64Rules{}
-	mi := &file_validate_proto_msgTypes[4]
+	mi := &file_third_party_validate_validate_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -885,7 +885,7 @@ func (x *Int64Rules) String() string {
 func (*Int64Rules) ProtoMessage() {}
 
 func (x *Int64Rules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[4]
+	mi := &file_third_party_validate_validate_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -898,7 +898,7 @@ func (x *Int64Rules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Int64Rules.ProtoReflect.Descriptor instead.
 func (*Int64Rules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{4}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Int64Rules) GetConst() int64 {
@@ -991,7 +991,7 @@ type UInt32Rules struct {
 
 func (x *UInt32Rules) Reset() {
 	*x = UInt32Rules{}
-	mi := &file_validate_proto_msgTypes[5]
+	mi := &file_third_party_validate_validate_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1003,7 +1003,7 @@ func (x *UInt32Rules) String() string {
 func (*UInt32Rules) ProtoMessage() {}
 
 func (x *UInt32Rules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[5]
+	mi := &file_third_party_validate_validate_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1016,7 +1016,7 @@ func (x *UInt32Rules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UInt32Rules.ProtoReflect.Descriptor instead.
 func (*UInt32Rules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{5}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *UInt32Rules) GetConst() uint32 {
@@ -1109,7 +1109,7 @@ type UInt64Rules struct {
 
 func (x *UInt64Rules) Reset() {
 	*x = UInt64Rules{}
-	mi := &file_validate_proto_msgTypes[6]
+	mi := &file_third_party_validate_validate_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1121,7 +1121,7 @@ func (x *UInt64Rules) String() string {
 func (*UInt64Rules) ProtoMessage() {}
 
 func (x *UInt64Rules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[6]
+	mi := &file_third_party_validate_validate_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1134,7 +1134,7 @@ func (x *UInt64Rules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UInt64Rules.ProtoReflect.Descriptor instead.
 func (*UInt64Rules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{6}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *UInt64Rules) GetConst() uint64 {
@@ -1227,7 +1227,7 @@ type SInt32Rules struct {
 
 func (x *SInt32Rules) Reset() {
 	*x = SInt32Rules{}
-	mi := &file_validate_proto_msgTypes[7]
+	mi := &file_third_party_validate_validate_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1239,7 +1239,7 @@ func (x *SInt32Rules) String() string {
 func (*SInt32Rules) ProtoMessage() {}
 
 func (x *SInt32Rules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[7]
+	mi := &file_third_party_validate_validate_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1252,7 +1252,7 @@ func (x *SInt32Rules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SInt32Rules.ProtoReflect.Descriptor instead.
 func (*SInt32Rules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{7}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SInt32Rules) GetConst() int32 {
@@ -1345,7 +1345,7 @@ type SInt64Rules struct {
 
 func (x *SInt64Rules) Reset() {
 	*x = SInt64Rules{}
-	mi := &file_validate_proto_msgTypes[8]
+	mi := &file_third_party_validate_validate_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1357,7 +1357,7 @@ func (x *SInt64Rules) String() string {
 func (*SInt64Rules) ProtoMessage() {}
 
 func (x *SInt64Rules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[8]
+	mi := &file_third_party_validate_validate_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1370,7 +1370,7 @@ func (x *SInt64Rules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SInt64Rules.ProtoReflect.Descriptor instead.
 func (*SInt64Rules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{8}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SInt64Rules) GetConst() int64 {
@@ -1463,7 +1463,7 @@ type Fixed32Rules struct {
 
 func (x *Fixed32Rules) Reset() {
 	*x = Fixed32Rules{}
-	mi := &file_validate_proto_msgTypes[9]
+	mi := &file_third_party_validate_validate_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1475,7 +1475,7 @@ func (x *Fixed32Rules) String() string {
 func (*Fixed32Rules) ProtoMessage() {}
 
 func (x *Fixed32Rules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[9]
+	mi := &file_third_party_validate_validate_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1488,7 +1488,7 @@ func (x *Fixed32Rules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Fixed32Rules.ProtoReflect.Descriptor instead.
 func (*Fixed32Rules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{9}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Fixed32Rules) GetConst() uint32 {
@@ -1581,7 +1581,7 @@ type Fixed64Rules struct {
 
 func (x *Fixed64Rules) Reset() {
 	*x = Fixed64Rules{}
-	mi := &file_validate_proto_msgTypes[10]
+	mi := &file_third_party_validate_validate_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1593,7 +1593,7 @@ func (x *Fixed64Rules) String() string {
 func (*Fixed64Rules) ProtoMessage() {}
 
 func (x *Fixed64Rules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[10]
+	mi := &file_third_party_validate_validate_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1606,7 +1606,7 @@ func (x *Fixed64Rules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Fixed64Rules.ProtoReflect.Descriptor instead.
 func (*Fixed64Rules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{10}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Fixed64Rules) GetConst() uint64 {
@@ -1699,7 +1699,7 @@ type SFixed32Rules struct {
 
 func (x *SFixed32Rules) Reset() {
 	*x = SFixed32Rules{}
-	mi := &file_validate_proto_msgTypes[11]
+	mi := &file_third_party_validate_validate_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1711,7 +1711,7 @@ func (x *SFixed32Rules) String() string {
 func (*SFixed32Rules) ProtoMessage() {}
 
 func (x *SFixed32Rules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[11]
+	mi := &file_third_party_validate_validate_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1724,7 +1724,7 @@ func (x *SFixed32Rules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SFixed32Rules.ProtoReflect.Descriptor instead.
 func (*SFixed32Rules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{11}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SFixed32Rules) GetConst() int32 {
@@ -1817,7 +1817,7 @@ type SFixed64Rules struct {
 
 func (x *SFixed64Rules) Reset() {
 	*x = SFixed64Rules{}
-	mi := &file_validate_proto_msgTypes[12]
+	mi := &file_third_party_validate_validate_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1829,7 +1829,7 @@ func (x *SFixed64Rules) String() string {
 func (*SFixed64Rules) ProtoMessage() {}
 
 func (x *SFixed64Rules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[12]
+	mi := &file_third_party_validate_validate_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1842,7 +1842,7 @@ func (x *SFixed64Rules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SFixed64Rules.ProtoReflect.Descriptor instead.
 func (*SFixed64Rules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{12}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SFixed64Rules) GetConst() int64 {
@@ -1912,7 +1912,7 @@ type BoolRules struct {
 
 func (x *BoolRules) Reset() {
 	*x = BoolRules{}
-	mi := &file_validate_proto_msgTypes[13]
+	mi := &file_third_party_validate_validate_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1924,7 +1924,7 @@ func (x *BoolRules) String() string {
 func (*BoolRules) ProtoMessage() {}
 
 func (x *BoolRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[13]
+	mi := &file_third_party_validate_validate_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1937,7 +1937,7 @@ func (x *BoolRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BoolRules.ProtoReflect.Descriptor instead.
 func (*BoolRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{13}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *BoolRules) GetConst() bool {
@@ -2031,7 +2031,7 @@ const (
 
 func (x *StringRules) Reset() {
 	*x = StringRules{}
-	mi := &file_validate_proto_msgTypes[14]
+	mi := &file_third_party_validate_validate_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2043,7 +2043,7 @@ func (x *StringRules) String() string {
 func (*StringRules) ProtoMessage() {}
 
 func (x *StringRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[14]
+	mi := &file_third_party_validate_validate_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2056,7 +2056,7 @@ func (x *StringRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StringRules.ProtoReflect.Descriptor instead.
 func (*StringRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{14}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *StringRules) GetConst() string {
@@ -2402,7 +2402,7 @@ type BytesRules struct {
 
 func (x *BytesRules) Reset() {
 	*x = BytesRules{}
-	mi := &file_validate_proto_msgTypes[15]
+	mi := &file_third_party_validate_validate_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2414,7 +2414,7 @@ func (x *BytesRules) String() string {
 func (*BytesRules) ProtoMessage() {}
 
 func (x *BytesRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[15]
+	mi := &file_third_party_validate_validate_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2427,7 +2427,7 @@ func (x *BytesRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BytesRules.ProtoReflect.Descriptor instead.
 func (*BytesRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{15}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *BytesRules) GetConst() []byte {
@@ -2589,7 +2589,7 @@ type EnumRules struct {
 
 func (x *EnumRules) Reset() {
 	*x = EnumRules{}
-	mi := &file_validate_proto_msgTypes[16]
+	mi := &file_third_party_validate_validate_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2601,7 +2601,7 @@ func (x *EnumRules) String() string {
 func (*EnumRules) ProtoMessage() {}
 
 func (x *EnumRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[16]
+	mi := &file_third_party_validate_validate_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2614,7 +2614,7 @@ func (x *EnumRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnumRules.ProtoReflect.Descriptor instead.
 func (*EnumRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{16}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *EnumRules) GetConst() int32 {
@@ -2660,7 +2660,7 @@ type MessageRules struct {
 
 func (x *MessageRules) Reset() {
 	*x = MessageRules{}
-	mi := &file_validate_proto_msgTypes[17]
+	mi := &file_third_party_validate_validate_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2672,7 +2672,7 @@ func (x *MessageRules) String() string {
 func (*MessageRules) ProtoMessage() {}
 
 func (x *MessageRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[17]
+	mi := &file_third_party_validate_validate_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2685,7 +2685,7 @@ func (x *MessageRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MessageRules.ProtoReflect.Descriptor instead.
 func (*MessageRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{17}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *MessageRules) GetSkip() bool {
@@ -2728,7 +2728,7 @@ type RepeatedRules struct {
 
 func (x *RepeatedRules) Reset() {
 	*x = RepeatedRules{}
-	mi := &file_validate_proto_msgTypes[18]
+	mi := &file_third_party_validate_validate_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2740,7 +2740,7 @@ func (x *RepeatedRules) String() string {
 func (*RepeatedRules) ProtoMessage() {}
 
 func (x *RepeatedRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[18]
+	mi := &file_third_party_validate_validate_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2753,7 +2753,7 @@ func (x *RepeatedRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepeatedRules.ProtoReflect.Descriptor instead.
 func (*RepeatedRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{18}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RepeatedRules) GetMinItems() uint64 {
@@ -2818,7 +2818,7 @@ type MapRules struct {
 
 func (x *MapRules) Reset() {
 	*x = MapRules{}
-	mi := &file_validate_proto_msgTypes[19]
+	mi := &file_third_party_validate_validate_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2830,7 +2830,7 @@ func (x *MapRules) String() string {
 func (*MapRules) ProtoMessage() {}
 
 func (x *MapRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[19]
+	mi := &file_third_party_validate_validate_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2843,7 +2843,7 @@ func (x *MapRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MapRules.ProtoReflect.Descriptor instead.
 func (*MapRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{19}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *MapRules) GetMinPairs() uint64 {
@@ -2906,7 +2906,7 @@ type AnyRules struct {
 
 func (x *AnyRules) Reset() {
 	*x = AnyRules{}
-	mi := &file_validate_proto_msgTypes[20]
+	mi := &file_third_party_validate_validate_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2918,7 +2918,7 @@ func (x *AnyRules) String() string {
 func (*AnyRules) ProtoMessage() {}
 
 func (x *AnyRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[20]
+	mi := &file_third_party_validate_validate_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2931,7 +2931,7 @@ func (x *AnyRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnyRules.ProtoReflect.Descriptor instead.
 func (*AnyRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{20}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *AnyRules) GetRequired() bool {
@@ -2987,7 +2987,7 @@ type DurationRules struct {
 
 func (x *DurationRules) Reset() {
 	*x = DurationRules{}
-	mi := &file_validate_proto_msgTypes[21]
+	mi := &file_third_party_validate_validate_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2999,7 +2999,7 @@ func (x *DurationRules) String() string {
 func (*DurationRules) ProtoMessage() {}
 
 func (x *DurationRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[21]
+	mi := &file_third_party_validate_validate_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3012,7 +3012,7 @@ func (x *DurationRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DurationRules.ProtoReflect.Descriptor instead.
 func (*DurationRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{21}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *DurationRules) GetRequired() bool {
@@ -3107,7 +3107,7 @@ type TimestampRules struct {
 
 func (x *TimestampRules) Reset() {
 	*x = TimestampRules{}
-	mi := &file_validate_proto_msgTypes[22]
+	mi := &file_third_party_validate_validate_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3119,7 +3119,7 @@ func (x *TimestampRules) String() string {
 func (*TimestampRules) ProtoMessage() {}
 
 func (x *TimestampRules) ProtoReflect() protoreflect.Message {
-	mi := &file_validate_proto_msgTypes[22]
+	mi := &file_third_party_validate_validate_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3132,7 +3132,7 @@ func (x *TimestampRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TimestampRules.ProtoReflect.Descriptor instead.
 func (*TimestampRules) Descriptor() ([]byte, []int) {
-	return file_validate_proto_rawDescGZIP(), []int{22}
+	return file_third_party_validate_validate_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *TimestampRules) GetRequired() bool {
@@ -3198,14 +3198,14 @@ func (x *TimestampRules) GetWithin() *durationpb.Duration {
 	return nil
 }
 
-var file_validate_proto_extTypes = []protoimpl.ExtensionInfo{
+var file_third_party_validate_validate_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.MessageOptions)(nil),
 		ExtensionType: (*bool)(nil),
 		Field:         1071,
 		Name:          "validate.disabled",
 		Tag:           "varint,1071,opt,name=disabled",
-		Filename:      "validate.proto",
+		Filename:      "third_party/validate/validate.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.MessageOptions)(nil),
@@ -3213,7 +3213,7 @@ var file_validate_proto_extTypes = []protoimpl.ExtensionInfo{
 		Field:         1072,
 		Name:          "validate.ignored",
 		Tag:           "varint,1072,opt,name=ignored",
-		Filename:      "validate.proto",
+		Filename:      "third_party/validate/validate.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.OneofOptions)(nil),
@@ -3221,7 +3221,7 @@ var file_validate_proto_extTypes = []protoimpl.ExtensionInfo{
 		Field:         1071,
 		Name:          "validate.required",
 		Tag:           "varint,1071,opt,name=required",
-		Filename:      "validate.proto",
+		Filename:      "third_party/validate/validate.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
@@ -3229,7 +3229,7 @@ var file_validate_proto_extTypes = []protoimpl.ExtensionInfo{
 		Field:         1071,
 		Name:          "validate.rules",
 		Tag:           "bytes,1071,opt,name=rules",
-		Filename:      "validate.proto",
+		Filename:      "third_party/validate/validate.proto",
 	},
 }
 
@@ -3239,11 +3239,11 @@ var (
 	// message fields associated with it that do support validation.
 	//
 	// optional bool disabled = 1071;
-	E_Disabled = &file_validate_proto_extTypes[0]
+	E_Disabled = &file_third_party_validate_validate_proto_extTypes[0]
 	// Ignore skips generation of validation methods for this message.
 	//
 	// optional bool ignored = 1072;
-	E_Ignored = &file_validate_proto_extTypes[1]
+	E_Ignored = &file_third_party_validate_validate_proto_extTypes[1]
 )
 
 // Extension fields to descriptorpb.OneofOptions.
@@ -3252,7 +3252,7 @@ var (
 	// validation fails if no fields in the oneof are set.
 	//
 	// optional bool required = 1071;
-	E_Required = &file_validate_proto_extTypes[2]
+	E_Required = &file_third_party_validate_validate_proto_extTypes[2]
 )
 
 // Extension fields to descriptorpb.FieldOptions.
@@ -3261,14 +3261,14 @@ var (
 	// no validation is performed against a field.
 	//
 	// optional validate.FieldRules rules = 1071;
-	E_Rules = &file_validate_proto_extTypes[3]
+	E_Rules = &file_third_party_validate_validate_proto_extTypes[3]
 )
 
-var File_validate_proto protoreflect.FileDescriptor
+var File_third_party_validate_validate_proto protoreflect.FileDescriptor
 
-const file_validate_proto_rawDesc = "" +
+const file_third_party_validate_validate_proto_rawDesc = "" +
 	"\n" +
-	"\x0evalidate.proto\x12\bvalidate\x1a google/protobuf/descriptor.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc8\b\n" +
+	"#third_party/validate/validate.proto\x12\bvalidate\x1a google/protobuf/descriptor.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc8\b\n" +
 	"\n" +
 	"FieldRules\x120\n" +
 	"\amessage\x18\x11 \x01(\v2\x16.validate.MessageRulesR\amessage\x12,\n" +
@@ -3513,20 +3513,20 @@ const file_validate_proto_rawDesc = "" +
 	"\x1aio.envoyproxy.pgv.validateZ2github.com/envoyproxy/protoc-gen-validate/validate"
 
 var (
-	file_validate_proto_rawDescOnce sync.Once
-	file_validate_proto_rawDescData []byte
+	file_third_party_validate_validate_proto_rawDescOnce sync.Once
+	file_third_party_validate_validate_proto_rawDescData []byte
 )
 
-func file_validate_proto_rawDescGZIP() []byte {
-	file_validate_proto_rawDescOnce.Do(func() {
-		file_validate_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_validate_proto_rawDesc), len(file_validate_proto_rawDesc)))
+func file_third_party_validate_validate_proto_rawDescGZIP() []byte {
+	file_third_party_validate_validate_proto_rawDescOnce.Do(func() {
+		file_third_party_validate_validate_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_third_party_validate_validate_proto_rawDesc), len(file_third_party_validate_validate_proto_rawDesc)))
 	})
-	return file_validate_proto_rawDescData
+	return file_third_party_validate_validate_proto_rawDescData
 }
 
-var file_validate_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_validate_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
-var file_validate_proto_goTypes = []any{
+var file_third_party_validate_validate_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_third_party_validate_validate_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_third_party_validate_validate_proto_goTypes = []any{
 	(KnownRegex)(0),                     // 0: validate.KnownRegex
 	(*FieldRules)(nil),                  // 1: validate.FieldRules
 	(*FloatRules)(nil),                  // 2: validate.FloatRules
@@ -3557,7 +3557,7 @@ var file_validate_proto_goTypes = []any{
 	(*descriptorpb.OneofOptions)(nil),   // 27: google.protobuf.OneofOptions
 	(*descriptorpb.FieldOptions)(nil),   // 28: google.protobuf.FieldOptions
 }
-var file_validate_proto_depIdxs = []int32{
+var file_third_party_validate_validate_proto_depIdxs = []int32{
 	18, // 0: validate.FieldRules.message:type_name -> validate.MessageRules
 	2,  // 1: validate.FieldRules.float:type_name -> validate.FloatRules
 	3,  // 2: validate.FieldRules.double:type_name -> validate.DoubleRules
@@ -3609,12 +3609,12 @@ var file_validate_proto_depIdxs = []int32{
 	0,  // [0:39] is the sub-list for field type_name
 }
 
-func init() { file_validate_proto_init() }
-func file_validate_proto_init() {
-	if File_validate_proto != nil {
+func init() { file_third_party_validate_validate_proto_init() }
+func file_third_party_validate_validate_proto_init() {
+	if File_third_party_validate_validate_proto != nil {
 		return
 	}
-	file_validate_proto_msgTypes[0].OneofWrappers = []any{
+	file_third_party_validate_validate_proto_msgTypes[0].OneofWrappers = []any{
 		(*FieldRules_Float)(nil),
 		(*FieldRules_Double)(nil),
 		(*FieldRules_Int32)(nil),
@@ -3637,7 +3637,7 @@ func file_validate_proto_init() {
 		(*FieldRules_Duration)(nil),
 		(*FieldRules_Timestamp)(nil),
 	}
-	file_validate_proto_msgTypes[14].OneofWrappers = []any{
+	file_third_party_validate_validate_proto_msgTypes[14].OneofWrappers = []any{
 		(*StringRules_Email)(nil),
 		(*StringRules_Hostname)(nil),
 		(*StringRules_Ip)(nil),
@@ -3649,7 +3649,7 @@ func file_validate_proto_init() {
 		(*StringRules_Uuid)(nil),
 		(*StringRules_WellKnownRegex)(nil),
 	}
-	file_validate_proto_msgTypes[15].OneofWrappers = []any{
+	file_third_party_validate_validate_proto_msgTypes[15].OneofWrappers = []any{
 		(*BytesRules_Ip)(nil),
 		(*BytesRules_Ipv4)(nil),
 		(*BytesRules_Ipv6)(nil),
@@ -3658,19 +3658,19 @@ func file_validate_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_validate_proto_rawDesc), len(file_validate_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_third_party_validate_validate_proto_rawDesc), len(file_third_party_validate_validate_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   23,
 			NumExtensions: 4,
 			NumServices:   0,
 		},
-		GoTypes:           file_validate_proto_goTypes,
-		DependencyIndexes: file_validate_proto_depIdxs,
-		EnumInfos:         file_validate_proto_enumTypes,
-		MessageInfos:      file_validate_proto_msgTypes,
-		ExtensionInfos:    file_validate_proto_extTypes,
+		GoTypes:           file_third_party_validate_validate_proto_goTypes,
+		DependencyIndexes: file_third_party_validate_validate_proto_depIdxs,
+		EnumInfos:         file_third_party_validate_validate_proto_enumTypes,
+		MessageInfos:      file_third_party_validate_validate_proto_msgTypes,
+		ExtensionInfos:    file_third_party_validate_validate_proto_extTypes,
 	}.Build()
-	File_validate_proto = out.File
-	file_validate_proto_goTypes = nil
-	file_validate_proto_depIdxs = nil
+	File_third_party_validate_validate_proto = out.File
+	file_third_party_validate_validate_proto_goTypes = nil
+	file_third_party_validate_validate_proto_depIdxs = nil
 }
