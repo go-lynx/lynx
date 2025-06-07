@@ -139,12 +139,19 @@ func (h *ServiceHttp) StartupTasks() error {
 	// 定义 HTTP 服务器的选项列表
 	opts := []http.ServerOption{
 		hMiddlewares,
-		// 404 格式化
+		// 404 方法不存在格式化
 		http.NotFoundHandler(nhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(nhttp.StatusNotFound)
 			_, _ = w.Write([]byte(`{"code": 404, "message": "404 not found"}`))
 			log.Warnf("404 not found path %s", r.URL.Path)
+		})),
+		// 405 方法不允许处理
+		http.MethodNotAllowedHandler(nhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(nhttp.StatusMethodNotAllowed)
+			_, _ = w.Write([]byte(`{"code": 405, "message": "method not allowed"}`))
+			log.Warnf("405 method not allowed: %s %s", r.Method, r.URL.Path)
 		})),
 		// 配置响应编码器
 		http.ResponseEncoder(ResponseEncoder),
