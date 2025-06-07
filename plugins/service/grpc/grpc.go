@@ -11,7 +11,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
-	"github.com/go-kratos/kratos/v2/middleware/validate"
+	"github.com/go-kratos/kratos/contrib/middleware/validate/v2"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
@@ -140,8 +140,8 @@ func (g *ServiceGrpc) StartupTasks() error {
 		tracing.Server(tracing.WithTracerName(app.GetName())),
 		// 配置日志中间件，使用 Lynx 框架的日志记录器
 		logging.Server(log.Logger),
-		// 配置参数验证中间件，注意：该方法已弃用
-		validate.Validator(),
+		// 配置参数验证中间件
+		validate.ProtoValidate(),
 		// 配置恢复中间件，处理请求处理过程中的 panic
 		recovery.Recovery(
 			recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {

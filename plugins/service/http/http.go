@@ -5,11 +5,11 @@ import (
 	"context"
 	nhttp "net/http"
 
+	"github.com/go-kratos/kratos/contrib/middleware/validate/v2"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
-	"github.com/go-kratos/kratos/v2/middleware/validate"
 	"github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
@@ -119,7 +119,7 @@ func (h *ServiceHttp) StartupTasks() error {
 		// 配置响应包装中间件
 		TracerLogPack(),
 		// 配置参数验证中间件
-		validate.Validator(),
+		validate.ProtoValidate(),
 		// 配置恢复中间件，处理请求处理过程中的 panic
 		recovery.Recovery(
 			recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
