@@ -73,8 +73,8 @@ func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
 		Source:      "host=localhost port=5432 user=postgres password=postgres dbname=postgres sslmode=disable",
 		MinConn:     10,
 		MaxConn:     20,
-		MaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
-		MaxLifeTime: &durationpb.Duration{Seconds: 300, Nanos: 0},
+		MaxIdleTime: &durationpb.Duration{Seconds: 10},
+		MaxLifeTime: &durationpb.Duration{Seconds: 300},
 	}
 
 	// 对未设置的字段使用默认值

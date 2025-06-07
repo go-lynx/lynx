@@ -87,7 +87,7 @@ func (h *ServiceHttp) InitializeResources(rt plugins.Runtime) error {
 		// 默认不启用 TLS
 		TlsEnable: false,
 		// 默认超时时间为 10 秒
-		Timeout: &durationpb.Duration{Seconds: 10, Nanos: 0},
+		Timeout: &durationpb.Duration{Seconds: 10},
 	}
 
 	// 对未设置的字段使用默认值
