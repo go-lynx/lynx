@@ -39,6 +39,65 @@ var (
 	lockValuePrefix string
 )
 
+// startRenewalService 启动续期服务
+func (lm *lockManager) startRenewalService() {
+	lm.mutex.Lock()
+	if lm.running {
+		lm.mutex.Unlock()
+		return
+	}
+	lm.renewCtx, lm.renewCancel = context.WithCancel(context.Background())
+	lm.running = true
+	lm.mutex.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(time.Second) // 每秒检查一次
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				lm.mutex.RLock()
+				for _, lock := range lm.locks {
+					go lm.renewLock(lock)
+				}
+				lm.mutex.RUnlock()
+			case <-lm.renewCtx.Done():
+				return
+			}
+		}
+	}()
+}
+
+// renewLock 续期单个锁
+func (lm *lockManager) renewLock(lock *RedisLock) {
+	// 检查是否需要续期
+	if time.Until(lock.expiresAt) > lock.expiration/3 {
+		return
+	}
+
+	// 执行续期脚本
+	result, err := lock.client.Eval(context.Background(), renewScript, []string{lock.key},
+		lock.value, lock.expiration.Milliseconds()).Result()
+	if err != nil {
+		log.Error(context.Background(), "failed to renew lock", "error", err)
+		return
+	}
+
+	switch result.(int64) {
+	case 1: // 续期成功
+		lock.mutex.Lock()
+		lock.expiresAt = time.Now().Add(lock.expiration)
+		lock.mutex.Unlock()
+	case 0, -1, -2: // 锁不存在或不是当前持有者
+		lm.mutex.Lock()
+		delete(lm.locks, lock.key)
+		lm.mutex.Unlock()
+	default:
+		log.Error(context.Background(), "unknown renewal result", "result", result)
+	}
+}
+
 // init 初始化锁标识前缀
 func init() {
 	// 获取主机名
@@ -70,8 +129,12 @@ func init() {
 
 // lockManager 管理所有的分布式锁实例
 type lockManager struct {
-	mutex sync.Mutex
+	mutex sync.RWMutex
 	locks map[string]*RedisLock
+	// 续期服务
+	renewCtx    context.Context
+	renewCancel context.CancelFunc
+	running     bool
 }
 
 // RedisLock 实现了基于 Redis 的分布式锁
@@ -80,7 +143,7 @@ type RedisLock struct {
 	key        string        // 锁的键名
 	value      string        // 锁的值（用于识别持有者）
 	expiration time.Duration // 锁的过期时间
-	renewCh    chan struct{} // 用于控制续期 goroutine
+	expiresAt  time.Time     // 锁的过期时间点
 	mutex      sync.Mutex    // 保护内部状态
 }
 
@@ -217,10 +280,14 @@ func LockWithRetry(ctx context.Context, key string, expiration time.Duration, fn
 		// 检查是否成功获取锁
 		switch result {
 		case "OK":
-			// 创建一个通道来监听续期失败
-			renewErrCh := make(chan error, 1)
-			// 启动自动续期
-			lock.startAutoRenew(ctx, renewErrCh)
+			// 设置锁的过期时间点
+			lock.expiresAt = time.Now().Add(lock.expiration)
+			// 添加到全局锁管理器
+			globalLockManager.mutex.Lock()
+			globalLockManager.locks[key] = lock
+			globalLockManager.mutex.Unlock()
+			// 启动续期服务
+			globalLockManager.startRenewalService()
 
 			// 使用 defer 确保锁会被释放
 			var err error
@@ -262,12 +329,6 @@ func Unlock(ctx context.Context, key string) error {
 	delete(globalLockManager.locks, key)
 	globalLockManager.mutex.Unlock()
 
-	// 停止自动续期
-	if lock.renewCh != nil {
-		close(lock.renewCh)
-		lock.renewCh = nil
-	}
-
 	// 执行解锁脚本
 	result, err := lock.client.Eval(ctx, unlockScript, []string{lock.key}, lock.value).Result()
 	if err != nil {
@@ -286,59 +347,6 @@ func Unlock(ctx context.Context, key string) error {
 		return fmt.Errorf("unknown unlock result: %v", result)
 	}
 
-}
-
-// startAutoRenew 启动自动续期 goroutine
-func (rl *RedisLock) startAutoRenew(ctx context.Context, renewErrCh chan<- error) {
-	rl.renewCh = make(chan struct{})
-	renewInterval := rl.expiration / 3 // 在过期时间的 1/3 处进行续期
-
-	go func() {
-		ticker := time.NewTicker(renewInterval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				// 执行续期脚本
-				result, err := rl.client.Eval(ctx, renewScript, []string{rl.key},
-					rl.value, rl.expiration.Milliseconds()).Result()
-				if err != nil {
-					// Redis 错误，停止续期
-					log.Error(ctx, "failed to renew lock", "error", err)
-					renewErrCh <- fmt.Errorf("failed to renew lock: %w", err)
-					return
-				}
-
-				switch result.(int64) {
-				case 1: // 续期成功
-					continue
-				case 0: // 锁存在但不是当前持有者
-					renewErrCh <- ErrLockNotHeld
-					return
-				case -1: // 锁不存在
-					renewErrCh <- ErrLockNotHeld
-					return
-				case -2: // PEXPIRE 失败，锁已不存在
-					renewErrCh <- ErrLockNotHeld
-					return
-				default:
-					// 未知错误，停止续期
-					err := fmt.Errorf("unknown renewal result: %v", result)
-					log.Error(ctx, "failed to renew lock", "error", err)
-					renewErrCh <- err
-					return
-				}
-			case <-rl.renewCh:
-				// 收到停止信号
-				return
-			case <-ctx.Done():
-				// 上下文取消
-				renewErrCh <- ctx.Err()
-				return
-			}
-		}
-	}()
 }
 
 // IsLocked 检查锁是否被当前实例持有
