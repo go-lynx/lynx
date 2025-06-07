@@ -176,7 +176,7 @@ func (g *ServiceGrpc) StartupTasks() error {
 		// 设置超时时间
 		opts = append(opts, grpc.Timeout(g.conf.Timeout.AsDuration()))
 	}
-	if g.conf.GetTls() {
+	if g.conf.GetTlsEnable() {
 		// 如果启用 TLS，添加 TLS 配置选项
 		opts = append(opts, g.tlsLoad())
 	}

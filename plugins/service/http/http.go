@@ -171,7 +171,7 @@ func (h *ServiceHttp) StartupTasks() error {
 		// 设置超时时间
 		opts = append(opts, http.Timeout(h.conf.Timeout.AsDuration()))
 	}
-	if h.conf.GetTls() {
+	if h.conf.GetTlsEnable() {
 		// 如果启用 TLS，添加 TLS 配置选项
 		opts = append(opts, h.tlsLoad())
 	}
