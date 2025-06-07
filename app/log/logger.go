@@ -1,22 +1,27 @@
-// Package app provides core application functionality for the Lynx framework
+// Package log provides core application functionality for the Lynx framework
 package log
 
 import (
 	"context"
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	kconf "github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app/conf"
+	lconf "github.com/go-lynx/lynx/app/log/conf"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/rs/zerolog"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -58,30 +63,82 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// Use Info level as this is an important system event
 	log.Info("initializing Lynx logging component")
 
-	// Configure console output with color support
-	output := zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: time.RFC3339Nano,
-		NoColor:    false, // Explicitly set color output
-		PartsOrder: []string{
-			zerolog.TimestampFieldName,
-			zerolog.LevelFieldName,
-			zerolog.CallerFieldName,
-			zerolog.MessageFieldName,
-		},
-		FormatMessage: func(i interface{}) string {
-			return fmt.Sprintf("msg=\"%v\"", i)
-		},
+	// 解析日志配置
+	var logConfig lconf.Log
+	if err := cfg.Value("lynx.log").Scan(&logConfig); err != nil {
+		// 如果没有配置，使用默认配置
+		logConfig = lconf.Log{
+			Level:         "info",
+			ConsoleOutput: true,
+		}
 	}
+
+	// 设置日志输出
+	var writers []io.Writer
+
+	// 配置控制台输出
+	if logConfig.GetConsoleOutput() {
+		consoleWriter := zerolog.ConsoleWriter{
+			Out:        os.Stdout,
+			TimeFormat: time.RFC3339Nano,
+			NoColor:    false,
+			PartsOrder: []string{
+				zerolog.TimestampFieldName,
+				zerolog.LevelFieldName,
+				zerolog.CallerFieldName,
+				zerolog.MessageFieldName,
+			},
+			FormatMessage: func(i interface{}) string {
+				return fmt.Sprintf("msg=\"%v\"", i)
+			},
+		}
+		writers = append(writers, consoleWriter)
+	}
+
+	// 配置文件输出
+	if logConfig.GetFilePath() != "" {
+		// 确保日志目录存在
+		logDir := filepath.Dir(logConfig.GetFilePath())
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			return fmt.Errorf("failed to create log directory: %v", err)
+		}
+
+		// 配置日志轮转
+		fileWriter := &lumberjack.Logger{
+			Filename:   logConfig.GetFilePath(),
+			MaxSize:    int(logConfig.GetMaxSizeMb()),  // 单个文件最大大小，单位 MB
+			MaxBackups: int(logConfig.GetMaxBackups()), // 最多保留的旧文件数
+			MaxAge:     int(logConfig.GetMaxAgeDays()), // 旧文件最多保留天数
+			Compress:   logConfig.GetCompress(),        // 是否压缩旧文件
+		}
+		writers = append(writers, fileWriter)
+	}
+
+	// 如果没有配置任何输出，默认输出到控制台
+	if len(writers) == 0 {
+		writers = append(writers, os.Stdout)
+	}
+
+	// 创建多输出写入器
+	output := zerolog.MultiLevelWriter(writers...)
 
 	// Set global time format for consistency
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
-	// Set global level based on environment
-	if os.Getenv("GO_ENV") == "production" {
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	} else {
+	// 设置全局日志级别
+	logLevel := strings.ToLower(logConfig.GetLevel())
+	switch logLevel {
+	case "debug":
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	case "info":
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	case "warn":
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	case "error":
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	default:
+		// 默认使用 Info 级别
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 
 	// 用 zeroLogger 初始化底层日志器

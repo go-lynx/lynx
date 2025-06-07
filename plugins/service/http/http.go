@@ -84,6 +84,8 @@ func (h *ServiceHttp) InitializeResources(rt plugins.Runtime) error {
 		Network: "tcp",
 		// 默认监听地址为 :8080
 		Addr: ":8080",
+		// 默认不启用 TLS
+		TlsEnable: false,
 		// 默认超时时间为 10 秒
 		Timeout: &durationpb.Duration{Seconds: 10, Nanos: 0},
 	}

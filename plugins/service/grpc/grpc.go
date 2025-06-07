@@ -7,11 +7,11 @@ package grpc
 import (
 	"context"
 
+	"github.com/go-kratos/kratos/contrib/middleware/validate/v2"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
-	"github.com/go-kratos/kratos/contrib/middleware/validate/v2"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
@@ -101,7 +101,7 @@ func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
 		// 默认监听地址为 :9090
 		Addr: ":9090",
 		// 默认不启用 TLS
-		Tls: false,
+		TlsEnable: false,
 		// 默认不进行客户端认证
 		TlsAuthType: 0,
 		// 默认超时时间为 10 秒
