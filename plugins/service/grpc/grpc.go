@@ -105,7 +105,7 @@ func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
 		// 默认不进行客户端认证
 		TlsAuthType: 0,
 		// 默认超时时间为 10 秒
-		Timeout: &durationpb.Duration{Seconds: 10, Nanos: 0},
+		Timeout: &durationpb.Duration{Seconds: 10},
 	}
 
 	// 对未设置的字段使用默认值

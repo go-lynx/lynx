@@ -75,8 +75,8 @@ func (m *DBMysqlClient) InitializeResources(rt plugins.Runtime) error {
 		Source:      "root:123456@tcp(127.0.0.1:3306)/db_name?charset=utf8mb4&parseTime=True&loc=Local",
 		MinConn:     10,
 		MaxConn:     20,
-		MaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
-		MaxLifeTime: &durationpb.Duration{Seconds: 300, Nanos: 0},
+		MaxIdleTime: &durationpb.Duration{Seconds: 10},
+		MaxLifeTime: &durationpb.Duration{Seconds: 300},
 	}
 
 	// 对未设置的字段使用默认值
