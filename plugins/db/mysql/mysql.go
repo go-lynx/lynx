@@ -10,7 +10,7 @@ import (
 	esql "entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/db/mysql/v2/conf"
+	"github.com/go-lynx/lynx/plugins/db/mysql/conf"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 

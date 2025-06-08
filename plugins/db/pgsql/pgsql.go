@@ -11,7 +11,7 @@ import (
 	esql "entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/db/pgsql/v2/conf"
+	"github.com/go-lynx/lynx/plugins/db/pgsql/conf"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
