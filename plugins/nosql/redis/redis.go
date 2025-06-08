@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/nosql/redis/v2/conf"
+	"github.com/go-lynx/lynx/plugins/nosql/redis/conf"
 
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -76,10 +76,10 @@ func (r *PlugRedis) InitializeResources(rt plugins.Runtime) error {
 		MinIdleConns:    10,
 		MaxIdleConns:    20,
 		MaxActiveConns:  20,
-		DialTimeout:     &durationpb.Duration{Seconds: 10, Nanos: 0},
-		ReadTimeout:     &durationpb.Duration{Seconds: 10, Nanos: 0},
-		WriteTimeout:    &durationpb.Duration{Seconds: 10, Nanos: 0},
-		ConnMaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
+		DialTimeout:     &durationpb.Duration{Seconds: 10},
+		ReadTimeout:     &durationpb.Duration{Seconds: 10},
+		WriteTimeout:    &durationpb.Duration{Seconds: 10},
+		ConnMaxIdleTime: &durationpb.Duration{Seconds: 10},
 	}
 
 	// 对未设置的字段使用默认值

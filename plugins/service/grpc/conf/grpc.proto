@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package lynx.protobuf.plugin.grpc;
 
-option go_package = "github.com/go-lynx/lynx/plugins/service/grpc/v2/conf;conf";
+option go_package = "github.com/go-lynx/lynx/plugins/service/grpc/conf;conf";
 
 import "google/protobuf/duration.proto";
 
@@ -19,7 +19,7 @@ message grpc {
 
   // Tls 指示是否启用 TLS/GRPCS 加密通信。
   // Tls indicates whether TLS/GRPCS encryption is enabled.
-  bool tls = 3;
+  bool tls_enable = 3;
 
   // TlsAuthType 指定 TLS 客户端认证类型，不同的值代表不同的认证策略：
   // 0: 不进行客户端认证

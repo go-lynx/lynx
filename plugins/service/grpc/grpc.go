@@ -7,16 +7,16 @@ package grpc
 import (
 	"context"
 
+	"github.com/go-kratos/kratos/contrib/middleware/validate/v2"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
-	"github.com/go-kratos/kratos/v2/middleware/validate"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/service/grpc/v2/conf"
+	"github.com/go-lynx/lynx/plugins/service/grpc/conf"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -101,11 +101,11 @@ func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
 		// 默认监听地址为 :9090
 		Addr: ":9090",
 		// 默认不启用 TLS
-		Tls: false,
+		TlsEnable: false,
 		// 默认不进行客户端认证
 		TlsAuthType: 0,
 		// 默认超时时间为 10 秒
-		Timeout: &durationpb.Duration{Seconds: 10, Nanos: 0},
+		Timeout: &durationpb.Duration{Seconds: 10},
 	}
 
 	// 对未设置的字段使用默认值
@@ -140,8 +140,8 @@ func (g *ServiceGrpc) StartupTasks() error {
 		tracing.Server(tracing.WithTracerName(app.GetName())),
 		// 配置日志中间件，使用 Lynx 框架的日志记录器
 		logging.Server(log.Logger),
-		// 配置参数验证中间件，注意：该方法已弃用
-		validate.Validator(),
+		// 配置参数验证中间件
+		validate.ProtoValidate(),
 		// 配置恢复中间件，处理请求处理过程中的 panic
 		recovery.Recovery(
 			recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
@@ -176,7 +176,7 @@ func (g *ServiceGrpc) StartupTasks() error {
 		// 设置超时时间
 		opts = append(opts, grpc.Timeout(g.conf.Timeout.AsDuration()))
 	}
-	if g.conf.GetTls() {
+	if g.conf.GetTlsEnable() {
 		// 如果启用 TLS，添加 TLS 配置选项
 		opts = append(opts, g.tlsLoad())
 	}

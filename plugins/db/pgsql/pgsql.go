@@ -2,13 +2,17 @@ package pgsql
 
 import (
 	"context"
-	_ "database/sql"
-	"entgo.io/ent/dialect/sql"
+	sql "database/sql"
+
+	stdlib "github.com/jackc/pgx/v5/stdlib"
+
+	"time"
+
+	esql "entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/db/pgsql/v2/conf"
+	"github.com/go-lynx/lynx/plugins/db/pgsql/conf"
 	"google.golang.org/protobuf/types/known/durationpb"
-	"time"
 )
 
 // Plugin metadata
@@ -29,7 +33,7 @@ type DBPgsqlClient struct {
 	// 继承基础插件
 	*plugins.BasePlugin
 	// 数据库驱动
-	dri *sql.Driver
+	dri *esql.Driver
 	// PgSQL 配置
 	conf *conf.Pgsql
 }
@@ -69,12 +73,12 @@ func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
 
 	// 设置默认配置
 	defaultConf := &conf.Pgsql{
-		Driver:      "pgsql",
-		Source:      "host=localhost port=5432 user=postgres password=postgres dbname=postgres sslmode=disable",
+		Driver:      "postgres",
+		Source:      "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable",
 		MinConn:     10,
 		MaxConn:     20,
-		MaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
-		MaxLifeTime: &durationpb.Duration{Seconds: 300, Nanos: 0},
+		MaxIdleTime: &durationpb.Duration{Seconds: 10},
+		MaxLifeTime: &durationpb.Duration{Seconds: 300},
 	}
 
 	// 对未设置的字段使用默认值
@@ -105,8 +109,12 @@ func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
 func (p *DBPgsqlClient) StartupTasks() error {
 	// 记录数据库初始化日志
 	log.Infof("initializing database")
+
+	// 注册数据库驱动
+	sql.Register("postgres", stdlib.GetDefaultDriver())
+
 	// 打开数据库连接
-	drv, err := sql.Open(
+	drv, err := esql.Open(
 		p.conf.Driver,
 		p.conf.Source,
 	)

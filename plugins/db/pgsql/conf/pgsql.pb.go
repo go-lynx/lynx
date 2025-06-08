@@ -131,7 +131,7 @@ const file_pgsql_proto_rawDesc = "" +
 	"\bmin_conn\x18\x03 \x01(\x05R\aminConn\x12\x19\n" +
 	"\bmax_conn\x18\x04 \x01(\x05R\amaxConn\x12=\n" +
 	"\rmax_life_time\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\vmaxLifeTime\x12=\n" +
-	"\rmax_idle_time\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\vmaxIdleTimeB7Z5github.com/go-lynx/lynx/plugins/db/pgsql/v2/conf;confb\x06proto3"
+	"\rmax_idle_time\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\vmaxIdleTimeB4Z2github.com/go-lynx/lynx/plugins/db/pgsql/conf;confb\x06proto3"
 
 var (
 	file_pgsql_proto_rawDescOnce sync.Once

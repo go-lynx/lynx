@@ -453,7 +453,7 @@ const file_kafka_proto_rawDesc = "" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1c\n" +
 	"\tmechanism\x18\x02 \x01(\tR\tmechanism\x12\x1a\n" +
 	"\busername\x18\x03 \x01(\tR\busername\x12\x1a\n" +
-	"\bpassword\x18\x04 \x01(\tR\bpasswordB7Z5github.com/go-lynx/lynx/plugins/mq/kafka/v2/conf;confb\x06proto3"
+	"\bpassword\x18\x04 \x01(\tR\bpasswordB4Z2github.com/go-lynx/lynx/plugins/mq/kafka/conf;confb\x06proto3"
 
 var (
 	file_kafka_proto_rawDescOnce sync.Once

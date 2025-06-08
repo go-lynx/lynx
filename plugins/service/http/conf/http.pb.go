@@ -34,7 +34,7 @@ type Http struct {
 	Addr string `protobuf:"bytes,2,opt,name=addr,proto3" json:"addr,omitempty"`
 	// Tls indicates whether TLS/HTTPS is enabled
 	// Tls 指示是否启用 TLS/HTTPS 加密。
-	Tls bool `protobuf:"varint,3,opt,name=tls,proto3" json:"tls,omitempty"`
+	TlsEnable bool `protobuf:"varint,3,opt,name=tls_enable,json=tlsEnable,proto3" json:"tls_enable,omitempty"`
 	// TlsAuthType specifies the TLS authentication type:
 	// 0: No client auth
 	// 1: Request client cert
@@ -99,9 +99,9 @@ func (x *Http) GetAddr() string {
 	return ""
 }
 
-func (x *Http) GetTls() bool {
+func (x *Http) GetTlsEnable() bool {
 	if x != nil {
-		return x.Tls
+		return x.TlsEnable
 	}
 	return false
 }
@@ -125,13 +125,14 @@ var File_http_proto protoreflect.FileDescriptor
 const file_http_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"http.proto\x12\x19lynx.protobuf.plugin.http\x1a\x1egoogle/protobuf/duration.proto\"\x9f\x01\n" +
+	"http.proto\x12\x19lynx.protobuf.plugin.http\x1a\x1egoogle/protobuf/duration.proto\"\xac\x01\n" +
 	"\x04http\x12\x18\n" +
 	"\anetwork\x18\x01 \x01(\tR\anetwork\x12\x12\n" +
-	"\x04addr\x18\x02 \x01(\tR\x04addr\x12\x10\n" +
-	"\x03tls\x18\x03 \x01(\bR\x03tls\x12\"\n" +
+	"\x04addr\x18\x02 \x01(\tR\x04addr\x12\x1d\n" +
+	"\n" +
+	"tls_enable\x18\x03 \x01(\bR\ttlsEnable\x12\"\n" +
 	"\rtls_auth_type\x18\x04 \x01(\x05R\vtlsAuthType\x123\n" +
-	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeoutB;Z9github.com/go-lynx/lynx/plugins/service/http/v2/conf;confb\x06proto3"
+	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeoutB8Z6github.com/go-lynx/lynx/plugins/service/http/conf;confb\x06proto3"
 
 var (
 	file_http_proto_rawDescOnce sync.Once

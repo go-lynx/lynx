@@ -95,7 +95,7 @@ const file_tracer_proto_rawDesc = "" +
 	"\x06Tracer\x12\x16\n" +
 	"\x06enable\x18\x01 \x01(\bR\x06enable\x12\x12\n" +
 	"\x04addr\x18\x02 \x01(\tR\x04addr\x12\x14\n" +
-	"\x05ratio\x18\x03 \x01(\x02R\x05ratioB5Z3github.com/go-lynx/lynx/plugins/tracer/v2/conf;confb\x06proto3"
+	"\x05ratio\x18\x03 \x01(\x02R\x05ratioB2Z0github.com/go-lynx/lynx/plugins/tracer/conf;confb\x06proto3"
 
 var (
 	file_tracer_proto_rawDescOnce sync.Once
