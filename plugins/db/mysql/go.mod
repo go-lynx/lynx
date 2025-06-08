@@ -5,11 +5,13 @@ go 1.24.3
 require (
 	entgo.io/ent v0.14.4
 	github.com/go-lynx/lynx v1.2.1
+	github.com/go-sql-driver/mysql v1.9.2
 	google.golang.org/protobuf v1.35.2
 )
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
 	github.com/go-kratos/kratos/v2 v2.8.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
