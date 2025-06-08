@@ -5,7 +5,9 @@ import (
 	_ "database/sql"
 	"time"
 
-	"entgo.io/ent/dialect/sql"
+	_ "github.com/go-sql-driver/mysql"
+
+	esql "entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/db/mysql/v2/conf"
@@ -30,7 +32,7 @@ type DBMysqlClient struct {
 	// 继承基础插件
 	*plugins.BasePlugin
 	// 数据库驱动
-	dri *sql.Driver
+	dri *esql.Driver
 	// MySQL 配置
 	conf *conf.Mysql
 }
@@ -107,8 +109,9 @@ func (m *DBMysqlClient) InitializeResources(rt plugins.Runtime) error {
 func (m *DBMysqlClient) StartupTasks() error {
 	// 记录数据库初始化日志
 	log.Infof("Initializing database")
+
 	// 打开数据库连接
-	drv, err := sql.Open(
+	drv, err := esql.Open(
 		m.conf.Driver,
 		m.conf.Source,
 	)
