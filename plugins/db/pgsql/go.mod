@@ -1,4 +1,4 @@
-module github.com/go-lynx/lynx/plugins/db/pgsql/v2
+module github.com/go-lynx/lynx/plugins/db/pgsql
 
 go 1.24.3
 

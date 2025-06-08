@@ -5,7 +5,7 @@ import (
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/polaris/v2/conf"
+	"github.com/go-lynx/lynx/plugins/polaris/conf"
 	"github.com/polarismesh/polaris-go/api"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"math"
