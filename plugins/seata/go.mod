@@ -1,4 +1,4 @@
-module github.com/go-lynx/lynx/plugins/seata/v2
+module github.com/go-lynx/lynx/plugins/seata
 
 go 1.24.3
 

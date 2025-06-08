@@ -5,10 +5,12 @@ import (
 	_ "database/sql"
 	"time"
 
-	"entgo.io/ent/dialect/sql"
+	_ "github.com/go-sql-driver/mysql"
+
+	esql "entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/db/mysql/v2/conf"
+	"github.com/go-lynx/lynx/plugins/db/mysql/conf"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -30,7 +32,7 @@ type DBMysqlClient struct {
 	// 继承基础插件
 	*plugins.BasePlugin
 	// 数据库驱动
-	dri *sql.Driver
+	dri *esql.Driver
 	// MySQL 配置
 	conf *conf.Mysql
 }
@@ -75,8 +77,8 @@ func (m *DBMysqlClient) InitializeResources(rt plugins.Runtime) error {
 		Source:      "root:123456@tcp(127.0.0.1:3306)/db_name?charset=utf8mb4&parseTime=True&loc=Local",
 		MinConn:     10,
 		MaxConn:     20,
-		MaxIdleTime: &durationpb.Duration{Seconds: 10, Nanos: 0},
-		MaxLifeTime: &durationpb.Duration{Seconds: 300, Nanos: 0},
+		MaxIdleTime: &durationpb.Duration{Seconds: 10},
+		MaxLifeTime: &durationpb.Duration{Seconds: 300},
 	}
 
 	// 对未设置的字段使用默认值
@@ -107,8 +109,9 @@ func (m *DBMysqlClient) InitializeResources(rt plugins.Runtime) error {
 func (m *DBMysqlClient) StartupTasks() error {
 	// 记录数据库初始化日志
 	log.Infof("Initializing database")
+
 	// 打开数据库连接
-	drv, err := sql.Open(
+	drv, err := esql.Open(
 		m.conf.Driver,
 		m.conf.Source,
 	)

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package lynx.protobuf.plugin.http;
 
-option go_package = "github.com/go-lynx/lynx/plugins/service/http/v2/conf;conf";
+option go_package = "github.com/go-lynx/lynx/plugins/service/http/conf;conf";
 
 import "google/protobuf/duration.proto";
 
@@ -19,7 +19,7 @@ message http {
 
   // Tls indicates whether TLS/HTTPS is enabled
   // Tls 指示是否启用 TLS/HTTPS 加密。
-  bool tls = 3;
+  bool tls_enable = 3;
 
   // TlsAuthType specifies the TLS authentication type:
   // 0: No client auth

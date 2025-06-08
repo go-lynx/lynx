@@ -85,7 +85,7 @@ const file_seata_proto_rawDesc = "" +
 	"\vseata.proto\x12\x1alynx.protobuf.plugin.seata\"K\n" +
 	"\x05Seata\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12(\n" +
-	"\x10config_file_path\x18\x02 \x01(\tR\x0econfigFilePathB4Z2github.com/go-lynx/lynx/plugins/seata/v2/conf;confb\x06proto3"
+	"\x10config_file_path\x18\x02 \x01(\tR\x0econfigFilePathB1Z/github.com/go-lynx/lynx/plugins/seata/conf;confb\x06proto3"
 
 var (
 	file_seata_proto_rawDescOnce sync.Once

@@ -5,16 +5,16 @@ import (
 	"context"
 	nhttp "net/http"
 
+	"github.com/go-kratos/kratos/contrib/middleware/validate/v2"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
-	"github.com/go-kratos/kratos/v2/middleware/validate"
 	"github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/plugins/service/http/v2/conf"
+	"github.com/go-lynx/lynx/plugins/service/http/conf"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -84,8 +84,10 @@ func (h *ServiceHttp) InitializeResources(rt plugins.Runtime) error {
 		Network: "tcp",
 		// 默认监听地址为 :8080
 		Addr: ":8080",
+		// 默认不启用 TLS
+		TlsEnable: false,
 		// 默认超时时间为 10 秒
-		Timeout: &durationpb.Duration{Seconds: 10, Nanos: 0},
+		Timeout: &durationpb.Duration{Seconds: 10},
 	}
 
 	// 对未设置的字段使用默认值
@@ -119,7 +121,7 @@ func (h *ServiceHttp) StartupTasks() error {
 		// 配置响应包装中间件
 		TracerLogPack(),
 		// 配置参数验证中间件
-		validate.Validator(),
+		validate.ProtoValidate(),
 		// 配置恢复中间件，处理请求处理过程中的 panic
 		recovery.Recovery(
 			recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
@@ -139,12 +141,19 @@ func (h *ServiceHttp) StartupTasks() error {
 	// 定义 HTTP 服务器的选项列表
 	opts := []http.ServerOption{
 		hMiddlewares,
-		// 404 格式化
+		// 404 方法不存在格式化
 		http.NotFoundHandler(nhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(nhttp.StatusNotFound)
 			_, _ = w.Write([]byte(`{"code": 404, "message": "404 not found"}`))
 			log.Warnf("404 not found path %s", r.URL.Path)
+		})),
+		// 405 方法不允许处理
+		http.MethodNotAllowedHandler(nhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(nhttp.StatusMethodNotAllowed)
+			_, _ = w.Write([]byte(`{"code": 405, "message": "method not allowed"}`))
+			log.Warnf("405 method not allowed: %s %s", r.Method, r.URL.Path)
 		})),
 		// 配置响应编码器
 		http.ResponseEncoder(ResponseEncoder),
@@ -164,7 +173,7 @@ func (h *ServiceHttp) StartupTasks() error {
 		// 设置超时时间
 		opts = append(opts, http.Timeout(h.conf.Timeout.AsDuration()))
 	}
-	if h.conf.GetTls() {
+	if h.conf.GetTlsEnable() {
 		// 如果启用 TLS，添加 TLS 配置选项
 		opts = append(opts, h.tlsLoad())
 	}
