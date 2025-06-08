@@ -65,7 +65,3 @@ func main() {
 ```
 
 来和我们一起，使用 Lynx，即插即用的 Go 微服务框架，简化微服务开发，期待你的加入。
-
-## 钉钉交流
-
-<img width="400" src="https://github.com/go-lynx/lynx/assets/32378959/cfeacfb8-95d4-4b23-8299-a868502f1076" alt="Ding Talk">
