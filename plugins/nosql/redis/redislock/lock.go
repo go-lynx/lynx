@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
-	lynx "github.com/go-lynx/lynx/plugins/nosql/redis/v2"
+	lynx "github.com/go-lynx/lynx/plugins/nosql/redis/v1"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )

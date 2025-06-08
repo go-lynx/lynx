@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package lynx.protobuf.plugin.db;
 
-option go_package = "github.com/go-lynx/lynx/plugins/db/pgsql/v2/conf;conf";
+option go_package = "github.com/go-lynx/lynx/plugins/db/pgsql/conf;conf";
 
 import "google/protobuf/duration.proto";
 
