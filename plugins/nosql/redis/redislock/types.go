@@ -16,6 +16,7 @@ type LockOptions struct {
 	RenewalEnabled   bool          // 是否启用自动续期
 	RenewalThreshold float64       // 续期阈值（相对于过期时间的比例，默认1/3）
 	WorkerPoolSize   int           // 续期工作池大小，默认20
+	RenewalConfig    RenewalConfig // 续期配置
 }
 
 // Validate 验证配置选项
@@ -35,6 +36,26 @@ func (lo *LockOptions) Validate() error {
 	return lo.RetryStrategy.Validate()
 }
 
+// ValidateKey 验证锁键名的有效性
+func ValidateKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("lock key cannot be empty")
+	}
+
+	if len(key) > 255 {
+		return fmt.Errorf("lock key too long, max length is 255, got %d", len(key))
+	}
+
+	// 检查是否包含非法字符
+	for _, char := range key {
+		if char < 32 || char > 126 {
+			return fmt.Errorf("lock key contains invalid character: %c", char)
+		}
+	}
+
+	return nil
+}
+
 // Validate 验证重试策略
 func (rs *RetryStrategy) Validate() error {
 	if rs.MaxRetries < 0 {
@@ -52,6 +73,14 @@ func (rs *RetryStrategy) Validate() error {
 type RetryStrategy struct {
 	MaxRetries int           // 最大重试次数
 	RetryDelay time.Duration // 重试间隔
+}
+
+// RenewalConfig 续期配置
+type RenewalConfig struct {
+	MaxRetries    int           // 续期最大重试次数
+	BaseDelay     time.Duration // 基础重试延迟
+	MaxDelay      time.Duration // 最大重试延迟
+	CheckInterval time.Duration // 续期检查间隔
 }
 
 // LockCallback 锁操作回调接口
@@ -110,6 +139,13 @@ var (
 		RetryDelay: 100 * time.Millisecond,
 	}
 
+	DefaultRenewalConfig = RenewalConfig{
+		MaxRetries:    3,
+		BaseDelay:     100 * time.Millisecond,
+		MaxDelay:      1 * time.Second,
+		CheckInterval: 500 * time.Millisecond,
+	}
+
 	DefaultLockOptions LockOptions
 )
 
@@ -121,5 +157,6 @@ func init() {
 		RenewalEnabled:   true,
 		RenewalThreshold: 1.0 / 3.0,
 		WorkerPoolSize:   20,
+		RenewalConfig:    DefaultRenewalConfig,
 	}
 }

@@ -31,9 +31,14 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 		return ErrLockFnRequired
 	}
 
+	// 验证锁键名
+	if err := ValidateKey(key); err != nil {
+		return newLockError(ErrCodeInvalidOptions, "invalid lock key", err)
+	}
+
 	// 验证配置选项
 	if err := options.Validate(); err != nil {
-		return newLockError(ErrCodeLockFnRequired, "invalid lock options", err)
+		return newLockError(ErrCodeInvalidOptions, "invalid lock options", err)
 	}
 
 	// 从应用程序获取 Redis 客户端
@@ -117,10 +122,10 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 			return err
 		case "LOCKED":
 			// 触发获取锁失败回调
-			globalCallback.OnLockAcquireFailed(key, ErrLockAcquireFailed)
+			globalCallback.OnLockAcquireFailed(key, ErrLockAcquireConflict)
 			// 如果不需要重试，直接返回错误
 			if options.RetryStrategy.MaxRetries == 0 {
-				return ErrLockAcquireFailed
+				return ErrLockAcquireConflict
 			}
 			// 否则继续重试
 			continue
@@ -132,6 +137,11 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 
 // TryLock 尝试获取锁，不阻塞
 func TryLock(ctx context.Context, key string, expiration time.Duration) (*RedisLock, error) {
+	// 验证锁键名
+	if err := ValidateKey(key); err != nil {
+		return nil, newLockError(ErrCodeInvalidOptions, "invalid lock key", err)
+	}
+
 	client := lynx.GetRedis()
 	if client == nil {
 		return nil, ErrRedisClientNotFound

@@ -45,6 +45,16 @@ func (rl *RedisLock) IsExpired() bool {
 	return time.Now().After(rl.expiresAt)
 }
 
+// GetStatus 获取锁的当前状态信息（避免重复时间计算）
+func (rl *RedisLock) GetStatus() (remainingTime time.Duration, isExpired bool) {
+	rl.mutex.Lock()
+	defer rl.mutex.Unlock()
+	now := time.Now()
+	remainingTime = rl.expiresAt.Sub(now)
+	isExpired = now.After(rl.expiresAt)
+	return
+}
+
 // Renew 手动续期锁
 func (rl *RedisLock) Renew(ctx context.Context, newExpiration time.Duration) error {
 	rl.mutex.Lock()
@@ -61,7 +71,8 @@ func (rl *RedisLock) Renew(ctx context.Context, newExpiration time.Duration) err
 	switch result.(int64) {
 	case 1: // 续期成功
 		rl.expiration = newExpiration
-		rl.expiresAt = time.Now().Add(newExpiration)
+		now := time.Now()
+		rl.expiresAt = now.Add(newExpiration)
 		globalCallback.OnLockRenewed(rl.key, newExpiration)
 		return nil
 	case 0, -1, -2: // 锁不存在或不是当前持有者
