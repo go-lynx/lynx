@@ -2,6 +2,7 @@ package redislock
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -14,6 +15,37 @@ type LockOptions struct {
 	RetryStrategy    RetryStrategy // 重试策略
 	RenewalEnabled   bool          // 是否启用自动续期
 	RenewalThreshold float64       // 续期阈值（相对于过期时间的比例，默认1/3）
+	WorkerPoolSize   int           // 续期工作池大小，默认20
+}
+
+// Validate 验证配置选项
+func (lo *LockOptions) Validate() error {
+	if lo.Expiration <= 0 {
+		return fmt.Errorf("expiration must be positive, got %v", lo.Expiration)
+	}
+
+	if lo.RenewalThreshold < 0 || lo.RenewalThreshold > 1 {
+		return fmt.Errorf("renewal threshold must be between 0 and 1, got %f", lo.RenewalThreshold)
+	}
+
+	if lo.WorkerPoolSize < 0 {
+		return fmt.Errorf("worker pool size must be non-negative, got %d", lo.WorkerPoolSize)
+	}
+
+	return lo.RetryStrategy.Validate()
+}
+
+// Validate 验证重试策略
+func (rs *RetryStrategy) Validate() error {
+	if rs.MaxRetries < 0 {
+		return fmt.Errorf("max retries must be non-negative, got %d", rs.MaxRetries)
+	}
+
+	if rs.RetryDelay < 0 {
+		return fmt.Errorf("retry delay must be non-negative, got %v", rs.RetryDelay)
+	}
+
+	return nil
 }
 
 // RetryStrategy 定义锁重试策略
@@ -73,15 +105,21 @@ type lockManager struct {
 
 // 默认配置
 var (
+	DefaultRetryStrategy = RetryStrategy{
+		MaxRetries: 3,
+		RetryDelay: 100 * time.Millisecond,
+	}
+
+	DefaultLockOptions LockOptions
+)
+
+// init 初始化默认配置，避免循环依赖
+func init() {
 	DefaultLockOptions = LockOptions{
 		Expiration:       30 * time.Second,
 		RetryStrategy:    DefaultRetryStrategy,
 		RenewalEnabled:   true,
 		RenewalThreshold: 1.0 / 3.0,
+		WorkerPoolSize:   20,
 	}
-
-	DefaultRetryStrategy = RetryStrategy{
-		MaxRetries: 3,
-		RetryDelay: 100 * time.Millisecond,
-	}
-)
+}

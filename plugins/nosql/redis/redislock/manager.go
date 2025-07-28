@@ -26,7 +26,7 @@ func SetCallback(callback LockCallback) {
 }
 
 // startRenewalService 启动续期服务（改进版）
-func (lm *lockManager) startRenewalService() {
+func (lm *lockManager) startRenewalService(options LockOptions) {
 	lm.mutex.Lock()
 	if lm.running {
 		lm.mutex.Unlock()
@@ -35,7 +35,11 @@ func (lm *lockManager) startRenewalService() {
 	lm.renewCtx, lm.renewCancel = context.WithCancel(context.Background())
 	lm.running = true
 	// 初始化工作池，限制并发goroutine数量
-	lm.workerPool = make(chan struct{}, 20) // 最多20个并发续期
+	workerPoolSize := options.WorkerPoolSize
+	if workerPoolSize <= 0 {
+		workerPoolSize = DefaultLockOptions.WorkerPoolSize
+	}
+	lm.workerPool = make(chan struct{}, workerPoolSize)
 	lm.mutex.Unlock()
 
 	go func() {
@@ -70,7 +74,9 @@ func (lm *lockManager) stopRenewalService() {
 // processRenewals 处理锁续期（使用工作池模式）
 func (lm *lockManager) processRenewals() {
 	lm.mutex.RLock()
-	locksToRenew := make([]*RedisLock, 0)
+
+	// 预分配切片容量，减少内存分配
+	locksToRenew := make([]*RedisLock, 0, len(lm.locks))
 
 	for _, lock := range lm.locks {
 		// 只处理需要续期的锁
@@ -118,7 +124,7 @@ func (lm *lockManager) renewLockWithRetry(lock *RedisLock) {
 	atomic.AddInt64(&lm.stats.ActiveLocks, -1)
 	lm.mutex.Unlock()
 
-	log.Error(context.Background(), "lock renewal failed after retries",
+	log.ErrorCtx(context.Background(), "lock renewal failed after retries",
 		"key", lock.key, "retries", maxRetries)
 }
 

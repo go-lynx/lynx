@@ -23,14 +23,14 @@ func init() {
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown-host"
-		log.Error(context.Background(), "failed to get hostname", "error", err)
+		log.ErrorCtx(context.Background(), "failed to get hostname", "error", err)
 	}
 
 	// 获取本机 IP
 	ip := "unknown-ip"
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
-		log.Error(context.Background(), "failed to get interface addresses", "error", err)
+		log.ErrorCtx(context.Background(), "failed to get interface addresses", "error", err)
 	} else {
 		for _, addr := range addrs {
 			if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
