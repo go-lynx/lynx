@@ -43,13 +43,17 @@ func (lm *lockManager) startRenewalService(options LockOptions) {
 	lm.mutex.Unlock()
 
 	go func() {
-		ticker := time.NewTicker(500 * time.Millisecond) // 提高检查频率
+		checkInterval := options.RenewalConfig.CheckInterval
+		if checkInterval <= 0 {
+			checkInterval = DefaultRenewalConfig.CheckInterval
+		}
+		ticker := time.NewTicker(checkInterval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ticker.C:
-				lm.processRenewals()
+				lm.processRenewals(options)
 			case <-lm.renewCtx.Done():
 				return
 			}
@@ -72,7 +76,7 @@ func (lm *lockManager) stopRenewalService() {
 }
 
 // processRenewals 处理锁续期（使用工作池模式）
-func (lm *lockManager) processRenewals() {
+func (lm *lockManager) processRenewals(options LockOptions) {
 	lm.mutex.RLock()
 
 	// 预分配切片容量，减少内存分配
@@ -92,18 +96,23 @@ func (lm *lockManager) processRenewals() {
 		case lm.workerPool <- struct{}{}:
 			go func(l *RedisLock) {
 				defer func() { <-lm.workerPool }()
-				lm.renewLockWithRetry(l)
+				lm.renewLockWithRetry(l, options)
 			}(lock)
 		default:
 			// 工作池已满，直接在当前goroutine中处理
-			lm.renewLockWithRetry(lock)
+			lm.renewLockWithRetry(lock, options)
 		}
 	}
 }
 
 // renewLockWithRetry 带重试的锁续期
-func (lm *lockManager) renewLockWithRetry(lock *RedisLock) {
-	const maxRetries = 3
+func (lm *lockManager) renewLockWithRetry(lock *RedisLock, options LockOptions) {
+	config := options.RenewalConfig
+	maxRetries := config.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = DefaultRenewalConfig.MaxRetries
+	}
+
 	for i := 0; i < maxRetries; i++ {
 		if err := lm.renewLock(lock); err == nil {
 			atomic.AddInt64(&lm.stats.RenewalCount, 1)
@@ -114,7 +123,11 @@ func (lm *lockManager) renewLockWithRetry(lock *RedisLock) {
 
 		// 指数退避重试
 		if i < maxRetries-1 {
-			time.Sleep(time.Duration(1<<i) * 100 * time.Millisecond)
+			delay := config.BaseDelay * time.Duration(1<<i)
+			if delay > config.MaxDelay {
+				delay = config.MaxDelay
+			}
+			time.Sleep(delay)
 		}
 	}
 

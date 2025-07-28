@@ -9,11 +9,14 @@ import (
 const (
 	ErrCodeLockNotHeld           = "LOCK_NOT_HELD"
 	ErrCodeLockAcquireFailed     = "LOCK_ACQUIRE_FAILED"
+	ErrCodeLockAcquireTimeout    = "LOCK_ACQUIRE_TIMEOUT"
+	ErrCodeLockAcquireConflict   = "LOCK_ACQUIRE_CONFLICT"
 	ErrCodeRedisClientNotFound   = "REDIS_CLIENT_NOT_FOUND"
 	ErrCodeMaxRetriesExceeded    = "MAX_RETRIES_EXCEEDED"
 	ErrCodeLockFnRequired        = "LOCK_FN_REQUIRED"
 	ErrCodeLockRenewalFailed     = "LOCK_RENEWAL_FAILED"
 	ErrCodeRenewalServiceStopped = "RENEWAL_SERVICE_STOPPED"
+	ErrCodeInvalidOptions        = "INVALID_OPTIONS"
 )
 
 // LockError 自定义锁错误类型
@@ -48,6 +51,10 @@ var (
 	ErrLockNotHeld = newLockError(ErrCodeLockNotHeld, "lock not held", nil)
 	// ErrLockAcquireFailed 表示获取锁失败
 	ErrLockAcquireFailed = newLockError(ErrCodeLockAcquireFailed, "failed to acquire lock", nil)
+	// ErrLockAcquireTimeout 表示获取锁超时
+	ErrLockAcquireTimeout = newLockError(ErrCodeLockAcquireTimeout, "lock acquire timeout", nil)
+	// ErrLockAcquireConflict 表示获取锁冲突
+	ErrLockAcquireConflict = newLockError(ErrCodeLockAcquireConflict, "lock acquire conflict", nil)
 	// ErrRedisClientNotFound 表示未找到 Redis 客户端
 	ErrRedisClientNotFound = newLockError(ErrCodeRedisClientNotFound, "redis client not found", nil)
 	// ErrMaxRetriesExceeded 表示超过最大重试次数
@@ -58,7 +65,53 @@ var (
 	ErrLockRenewalFailed = newLockError(ErrCodeLockRenewalFailed, "lock renewal failed", nil)
 	// ErrRenewalServiceStopped 表示续期服务已停止
 	ErrRenewalServiceStopped = newLockError(ErrCodeRenewalServiceStopped, "renewal service stopped", nil)
+	// ErrInvalidOptions 表示配置选项无效
+	ErrInvalidOptions = newLockError(ErrCodeInvalidOptions, "invalid options", nil)
 )
+
+// 错误信息国际化映射（可以根据需要扩展）
+var errorMessages = map[string]map[string]string{
+	"en": {
+		ErrCodeLockNotHeld:           "Lock is not held by current instance",
+		ErrCodeLockAcquireFailed:     "Failed to acquire lock",
+		ErrCodeLockAcquireTimeout:    "Lock acquisition timeout",
+		ErrCodeLockAcquireConflict:   "Lock acquisition conflict",
+		ErrCodeRedisClientNotFound:   "Redis client not found",
+		ErrCodeMaxRetriesExceeded:    "Maximum retries exceeded",
+		ErrCodeLockFnRequired:        "Lock function is required",
+		ErrCodeLockRenewalFailed:     "Lock renewal failed",
+		ErrCodeRenewalServiceStopped: "Renewal service stopped",
+		ErrCodeInvalidOptions:        "Invalid options provided",
+	},
+	"zh": {
+		ErrCodeLockNotHeld:           "锁未被当前实例持有",
+		ErrCodeLockAcquireFailed:     "获取锁失败",
+		ErrCodeLockAcquireTimeout:    "获取锁超时",
+		ErrCodeLockAcquireConflict:   "获取锁冲突",
+		ErrCodeRedisClientNotFound:   "未找到Redis客户端",
+		ErrCodeMaxRetriesExceeded:    "超过最大重试次数",
+		ErrCodeLockFnRequired:        "锁保护函数不能为空",
+		ErrCodeLockRenewalFailed:     "锁续期失败",
+		ErrCodeRenewalServiceStopped: "续期服务已停止",
+		ErrCodeInvalidOptions:        "配置选项无效",
+	},
+}
+
+// GetErrorMessage 获取国际化错误信息
+func GetErrorMessage(code, lang string) string {
+	if messages, ok := errorMessages[lang]; ok {
+		if msg, ok := messages[code]; ok {
+			return msg
+		}
+	}
+	// 默认返回英文
+	if messages, ok := errorMessages["en"]; ok {
+		if msg, ok := messages[code]; ok {
+			return msg
+		}
+	}
+	return code
+}
 
 // 错误检查辅助函数
 func IsLockError(err error, code string) bool {
