@@ -31,6 +31,11 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 		return ErrLockFnRequired
 	}
 
+	// 验证配置选项
+	if err := options.Validate(); err != nil {
+		return newLockError(ErrCodeLockFnRequired, "invalid lock options", err)
+	}
+
 	// 从应用程序获取 Redis 客户端
 	client := lynx.GetRedis()
 	if client == nil {
@@ -76,9 +81,10 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 		// 检查是否成功获取锁
 		switch result {
 		case "OK":
-			// 设置锁的过期时间点
-			lock.expiresAt = time.Now().Add(lock.expiration)
-			lock.acquiredAt = time.Now() // 记录获取时间
+			// 使用同一个时间戳，避免重复调用 time.Now()
+			now := time.Now()
+			lock.expiresAt = now.Add(lock.expiration)
+			lock.acquiredAt = now
 
 			// 触发获取锁回调
 			globalCallback.OnLockAcquired(key, lock.expiration)
@@ -91,14 +97,14 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 				atomic.AddInt64(&globalLockManager.stats.ActiveLocks, 1)
 				globalLockManager.mutex.Unlock()
 				// 启动续期服务
-				globalLockManager.startRenewalService()
+				globalLockManager.startRenewalService(options)
 			}
 
 			// 使用 defer 确保锁会被释放
 			var err error
 			defer func() {
 				if unlockErr := Unlock(ctx, key); unlockErr != nil {
-					log.Error(ctx, "failed to unlock", "error", unlockErr)
+					log.ErrorCtx(ctx, "failed to unlock", "error", unlockErr)
 					// 如果原始错误为空，则返回解锁错误
 					if err == nil {
 						err = unlockErr
@@ -149,8 +155,9 @@ func TryLock(ctx context.Context, key string, expiration time.Duration) (*RedisL
 
 	switch result {
 	case "OK":
-		lock.expiresAt = time.Now().Add(lock.expiration)
-		lock.acquiredAt = time.Now() // 记录获取时间
+		now := time.Now()
+		lock.expiresAt = now.Add(lock.expiration)
+		lock.acquiredAt = now
 		return lock, nil
 	case "LOCKED":
 		return nil, ErrLockAcquireFailed
