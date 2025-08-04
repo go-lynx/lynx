@@ -2,6 +2,9 @@ package tracer
 
 import (
 	"context"
+	"fmt"
+	"time"
+
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
@@ -67,28 +70,43 @@ func (t *PlugTracer) InitializeResources(rt plugins.Runtime) error {
 	// 从运行时配置中扫描并加载 Tracer 配置
 	err := rt.GetConfig().Value(confPrefix).Scan(t.conf)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load tracer configuration: %w", err)
 	}
 
-	// 设置默认配置
-	defaultConf := &conf.Tracer{
-		// 默认不启用链路跟踪
-		Enable: false,
-		// 默认导出地址为 localhost:4317
-		Addr: "localhost:4317",
-		// 默认采样率为 1.0，即全量采样
-		Ratio: 1.0,
+	// 验证配置
+	if err := t.validateConfiguration(); err != nil {
+		return fmt.Errorf("tracer configuration validation failed: %w", err)
 	}
 
-	// 对未设置的字段使用默认值
-	if t.conf.Addr == "" {
-		t.conf.Addr = defaultConf.Addr
+	// 设置默认值
+	t.setDefaultValues()
+
+	return nil
+}
+
+// validateConfiguration 验证配置
+func (t *PlugTracer) validateConfiguration() error {
+	// 验证采样率
+	if t.conf.Ratio < 0 || t.conf.Ratio > 1 {
+		return fmt.Errorf("sampling ratio must be between 0 and 1, got %f", t.conf.Ratio)
 	}
-	if t.conf.Ratio == 0 {
-		t.conf.Ratio = defaultConf.Ratio
+
+	// 验证地址配置
+	if t.conf.Enable && t.conf.Addr == "" {
+		return fmt.Errorf("tracer address is required when tracing is enabled")
 	}
 
 	return nil
+}
+
+// setDefaultValues 设置默认值
+func (t *PlugTracer) setDefaultValues() {
+	if t.conf.Addr == "" {
+		t.conf.Addr = "localhost:4317"
+	}
+	if t.conf.Ratio == 0 {
+		t.conf.Ratio = 1.0
+	}
 }
 
 func (t *PlugTracer) StartupTasks() error {
@@ -129,9 +147,9 @@ func (t *PlugTracer) StartupTasks() error {
 			// 使用 gzip 压缩算法来压缩跟踪数据
 			otlptracegrpc.WithCompressor("gzip"),
 		)
-		// 如果创建导出器时发生错误，返回 nil 和错误信息
+		// 如果创建导出器时发生错误，返回详细的错误信息
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create OTLP exporter: %w", err)
 		}
 		// 设置导出器，用于将跟踪数据发送到收集器
 		tracerProviderOptions = append(tracerProviderOptions, traceSdk.WithBatcher(exp))
@@ -143,7 +161,36 @@ func (t *PlugTracer) StartupTasks() error {
 	// 设置全局跟踪提供者，用于后续的跟踪数据生成和处理
 	otel.SetTracerProvider(tp)
 
+	// 验证 TracerProvider 是否成功创建
+	if tp == nil {
+		return fmt.Errorf("failed to create tracer provider")
+	}
+
 	// 使用 Lynx 应用的 Helper 记录日志，指示链路监控组件初始化成功
 	log.Infof("link monitoring component successfully initialized")
+	return nil
+}
+
+// ShutdownTasks 关闭任务
+func (t *PlugTracer) ShutdownTasks() error {
+	// 获取全局 TracerProvider
+	tp := otel.GetTracerProvider()
+	if tp != nil {
+		// 检查是否为 SDK TracerProvider
+		if sdkTp, ok := tp.(*traceSdk.TracerProvider); ok {
+			// 创建带超时的上下文
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// 优雅关闭 TracerProvider
+			if err := sdkTp.Shutdown(ctx); err != nil {
+				log.Errorf("Failed to shutdown tracer provider: %v", err)
+				return fmt.Errorf("failed to shutdown tracer provider: %w", err)
+			}
+
+			log.Infof("Tracer provider shutdown successfully")
+		}
+	}
+
 	return nil
 }
