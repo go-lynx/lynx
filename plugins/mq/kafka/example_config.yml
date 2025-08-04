@@ -1,0 +1,44 @@
+# Kafka 插件配置示例
+lynx:
+  kafka:
+    # Kafka 集群地址
+    brokers:
+      - "localhost:9092"
+      - "localhost:9093"
+      - "localhost:9094"
+    
+    # 连接超时时间
+    dial_timeout: "10s"
+    
+    # TLS 配置
+    tls: false
+    
+    # SASL 认证配置
+    sasl:
+      enabled: false
+      mechanism: "PLAIN"  # PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
+      username: "your-username"
+      password: "your-password"
+    
+    # 生产者配置
+    producer:
+      enabled: true
+      required_acks: true
+      max_retries: 3
+      retry_backoff: "1s"
+      batch_size: 1000
+      batch_timeout: "1s"
+      compression: "snappy"  # none, gzip, snappy, lz4, zstd
+    
+    # 消费者配置
+    consumer:
+      enabled: true
+      group_id: "my-consumer-group"
+      auto_commit: true
+      auto_commit_interval: "5s"
+      start_offset: "latest"  # earliest, latest
+      max_concurrency: 10
+      min_batch_size: 1
+      max_batch_size: 1000
+      max_wait_time: "1s"
+      rebalance_timeout: "30s" 
