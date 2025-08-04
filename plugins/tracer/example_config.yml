@@ -1,0 +1,70 @@
+# Lynx Tracer Plugin Configuration Example
+# 链路追踪插件配置示例
+
+# 全局 Lynx 配置
+lynx:
+  # 链路追踪插件配置
+  tracer:
+    # 是否启用链路追踪功能
+    # 默认值: false
+    # 说明: 设置为 true 时启用链路追踪，false 时禁用
+    enable: true
+    
+    # 跟踪数据导出的目标端点地址
+    # 默认值: "localhost:4317"
+    # 说明: 通常是 OpenTelemetry Collector 等跟踪数据收集器的地址
+    # 格式: "host:port"
+    # 示例: "localhost:4317", "otel-collector:4317", "jaeger:14250"
+    addr: "localhost:4317"
+    
+    # 跟踪采样率，取值范围为 0.0 到 1.0
+    # 默认值: 1.0
+    # 说明: 
+    #   - 0.0 表示不采样，不收集任何跟踪数据
+    #   - 1.0 表示对所有请求进行采样，收集所有跟踪数据
+    #   - 0.5 表示对 50% 的请求进行采样
+    #   - 建议在生产环境中使用 0.1-0.3 的采样率以平衡性能和可观测性
+    ratio: 0.1
+
+# 完整配置示例
+# 以下是一个完整的配置示例，展示了所有可用的配置选项
+
+# lynx:
+#   tracer:
+#     # 启用链路追踪
+#     enable: true
+#     
+#     # 配置 Jaeger 收集器地址
+#     addr: "jaeger:14250"
+#     
+#     # 设置 10% 采样率
+#     ratio: 0.1
+
+# 不同环境的配置示例
+
+# 开发环境配置
+# lynx:
+#   tracer:
+#     enable: true
+#     addr: "localhost:4317"
+#     ratio: 1.0  # 开发环境全量采样
+
+# 测试环境配置
+# lynx:
+#   tracer:
+#     enable: true
+#     addr: "otel-collector-test:4317"
+#     ratio: 0.5  # 测试环境 50% 采样
+
+# 生产环境配置
+# lynx:
+#   tracer:
+#     enable: true
+#     addr: "otel-collector-prod:4317"
+#     ratio: 0.1  # 生产环境 10% 采样
+
+# 禁用链路追踪
+# lynx:
+#   tracer:
+#     enable: false
+#     # 当 enable 为 false 时，addr 和 ratio 配置会被忽略 
