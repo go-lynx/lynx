@@ -1,6 +1,8 @@
 package kafka
 
-import "sync"
+import (
+	"sync"
+)
 
 // GoroutinePool 是一个简单的 goroutine 池实现
 type GoroutinePool struct {
@@ -31,4 +33,16 @@ func (p *GoroutinePool) Submit(task func()) {
 // Wait 等待所有任务完成
 func (p *GoroutinePool) Wait() {
 	p.wg.Wait()
+}
+
+// PoolConfig 协程池配置
+type PoolConfig struct {
+	Size int // 池大小
+}
+
+// DefaultPoolConfig 默认协程池配置
+func DefaultPoolConfig() *PoolConfig {
+	return &PoolConfig{
+		Size: 10,
+	}
 }
