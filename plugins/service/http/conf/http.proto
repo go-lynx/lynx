@@ -38,4 +38,204 @@ message http {
   // Timeout specifies the maximum duration for handling HTTP requests
   // Timeout 指定处理 HTTP 请求的最大时长。
   google.protobuf.Duration timeout = 5;
+
+  // Monitoring configuration
+  // 监控配置
+  MonitoringConfig monitoring = 6;
+
+  // Security configuration
+  // 安全配置
+  SecurityConfig security = 7;
+
+  // Performance configuration
+  // 性能配置
+  PerformanceConfig performance = 8;
+
+  // Middleware configuration
+  // 中间件配置
+  MiddlewareConfig middleware = 9;
+
+  // Graceful shutdown configuration
+  // 优雅关闭配置
+  GracefulShutdownConfig graceful_shutdown = 10;
+}
+
+// Monitoring configuration
+// 监控配置
+message MonitoringConfig {
+  // Whether to enable Prometheus metrics
+  // 是否启用 Prometheus 指标
+  bool enable_metrics = 1;
+  
+  // Metrics endpoint path
+  // 指标端点路径
+  string metrics_path = 2;
+  
+  // Health check endpoint path
+  // 健康检查端点路径
+  string health_path = 3;
+  
+  // Whether to enable request logging
+  // 是否启用请求日志
+  bool enable_request_logging = 4;
+  
+  // Whether to enable error logging
+  // 是否启用错误日志
+  bool enable_error_logging = 5;
+}
+
+// Security configuration
+// 安全配置
+message SecurityConfig {
+  // CORS configuration
+  // CORS 配置
+  CorsConfig cors = 1;
+  
+  // Request size limit in bytes
+  // 请求大小限制（字节）
+  int64 max_request_size = 2;
+  
+  // Rate limiting configuration
+  // 限流配置
+  RateLimitConfig rate_limit = 3;
+  
+  // Security headers configuration
+  // 安全头配置
+  SecurityHeadersConfig security_headers = 4;
+}
+
+// CORS configuration
+// CORS 配置
+message CorsConfig {
+  // Whether to enable CORS
+  // 是否启用 CORS
+  bool enabled = 1;
+  
+  // Allowed origins
+  // 允许的源
+  repeated string allowed_origins = 2;
+  
+  // Allowed methods
+  // 允许的方法
+  repeated string allowed_methods = 3;
+  
+  // Allowed headers
+  // 允许的头
+  repeated string allowed_headers = 4;
+  
+  // Exposed headers
+  // 暴露的头
+  repeated string exposed_headers = 5;
+  
+  // Whether to allow credentials
+  // 是否允许凭据
+  bool allow_credentials = 6;
+  
+  // Max age for preflight requests
+  // 预检请求的最大年龄
+  int32 max_age = 7;
+}
+
+// Rate limiting configuration
+// 限流配置
+message RateLimitConfig {
+  // Whether to enable rate limiting
+  // 是否启用限流
+  bool enabled = 1;
+  
+  // Rate limit per second
+  // 每秒限流数
+  int32 rate_per_second = 2;
+  
+  // Burst limit
+  // 突发限制
+  int32 burst_limit = 3;
+}
+
+// Security headers configuration
+// 安全头配置
+message SecurityHeadersConfig {
+  // Whether to enable security headers
+  // 是否启用安全头
+  bool enabled = 1;
+  
+  // Content Security Policy
+  // 内容安全策略
+  string content_security_policy = 2;
+  
+  // X-Frame-Options
+  // X-Frame-Options 头
+  string x_frame_options = 3;
+  
+  // X-Content-Type-Options
+  // X-Content-Type-Options 头
+  string x_content_type_options = 4;
+  
+  // X-XSS-Protection
+  // X-XSS-Protection 头
+  string x_xss_protection = 5;
+}
+
+// Performance configuration
+// 性能配置
+message PerformanceConfig {
+  // Connection pool size
+  // 连接池大小
+  int32 connection_pool_size = 1;
+  
+  // Read buffer size
+  // 读取缓冲区大小
+  int32 read_buffer_size = 2;
+  
+  // Write buffer size
+  // 写入缓冲区大小
+  int32 write_buffer_size = 3;
+  
+  // Idle timeout
+  // 空闲超时
+  google.protobuf.Duration idle_timeout = 4;
+  
+  // Keep alive timeout
+  // 保持连接超时
+  google.protobuf.Duration keep_alive_timeout = 5;
+}
+
+// Middleware configuration
+// 中间件配置
+message MiddlewareConfig {
+  // Whether to enable tracing middleware
+  // 是否启用追踪中间件
+  bool enable_tracing = 1;
+  
+  // Whether to enable logging middleware
+  // 是否启用日志中间件
+  bool enable_logging = 2;
+  
+  // Whether to enable recovery middleware
+  // 是否启用恢复中间件
+  bool enable_recovery = 3;
+  
+  // Whether to enable validation middleware
+  // 是否启用验证中间件
+  bool enable_validation = 4;
+  
+  // Custom middleware configuration
+  // 自定义中间件配置
+  repeated string custom_middleware = 5;
+}
+
+// Graceful shutdown configuration
+// 优雅关闭配置
+message GracefulShutdownConfig {
+  // Shutdown timeout
+  // 关闭超时
+  google.protobuf.Duration shutdown_timeout = 1;
+  
+  // Whether to wait for ongoing requests
+  // 是否等待正在进行的请求
+  bool wait_for_ongoing_requests = 2;
+  
+  // Maximum wait time for ongoing requests
+  // 等待正在进行的请求的最大时间
+  google.protobuf.Duration max_wait_time = 3;
 }

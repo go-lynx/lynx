@@ -1,0 +1,75 @@
+# HTTP 插件配置示例
+# 这个文件展示了如何配置 HTTP 服务器插件的各种功能
+
+lynx:
+  http:
+    # 基础配置
+    network: "tcp"
+    addr: ":8080"
+    timeout: "10s"
+    tls_enable: false
+
+# 生产环境配置示例
+# lynx:
+#   http:
+#     network: "tcp"
+#     addr: ":80"
+#     timeout: "30s"
+#     tls_enable: true
+#     tls_auth_type: 2
+
+# 开发环境配置示例
+# lynx:
+#   http:
+#     network: "tcp"
+#     addr: "localhost:8080"
+#     timeout: "5s"
+#     tls_enable: false
+
+# 高并发配置示例
+# lynx:
+#   http:
+#     network: "tcp"
+#     addr: ":8080"
+#     timeout: "60s"
+#     tls_enable: false
+#     # 性能优化配置
+#     # 这些配置通过代码设置，可以通过环境变量覆盖
+#     # idle_timeout: "300s"        # 空闲连接超时
+#     # keep_alive_timeout: "60s"   # Keep-Alive 超时
+#     # read_header_timeout: "30s"  # 读取头部超时
+#     # max_request_size: 10485760  # 10MB 请求大小限制
+#     # rate_limit_enabled: true
+#     # rate_per_second: 1000
+#     # burst_limit: 2000
+#     # shutdown_timeout: "60s"
+
+# 安全配置示例
+# lynx:
+#   http:
+#     network: "tcp"
+#     addr: ":443"
+#     timeout: "30s"
+#     tls_enable: true
+#     tls_auth_type: 2
+#     # 安全配置
+#     # max_request_size: 5242880  # 5MB
+#     # rate_limit_enabled: true
+#     # rate_per_second: 100
+#     # burst_limit: 200
+#     # cors_enabled: true
+#     # security_headers_enabled: true
+
+# 监控配置示例
+# lynx:
+#   http:
+#     network: "tcp"
+#     addr: ":8080"
+#     timeout: "10s"
+#     tls_enable: false
+#     # 监控配置
+#     # metrics_enabled: true
+#     # metrics_path: "/metrics"
+#     # health_path: "/health"
+#     # request_logging_enabled: true
+#     # error_logging_enabled: true 
