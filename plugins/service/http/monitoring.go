@@ -2,6 +2,7 @@
 package http
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	nhttp "net/http"
@@ -118,9 +119,12 @@ func (h *ServiceHttp) healthCheckHandler() nhttp.Handler {
 		// 执行健康检查
 		err := h.CheckHealth()
 
+		var response map[string]interface{}
+		var statusCode int
+
 		if err != nil {
-			w.WriteHeader(nhttp.StatusServiceUnavailable)
-			_ = map[string]interface{}{
+			statusCode = nhttp.StatusServiceUnavailable
+			response = map[string]interface{}{
 				"status": "unhealthy",
 				"error":  err.Error(),
 				"time":   time.Now().Format(time.RFC3339),
@@ -130,8 +134,8 @@ func (h *ServiceHttp) healthCheckHandler() nhttp.Handler {
 				h.healthCheckTotal.WithLabelValues("failure").Inc()
 			}
 		} else {
-			w.WriteHeader(nhttp.StatusOK)
-			_ = map[string]interface{}{
+			statusCode = nhttp.StatusOK
+			response = map[string]interface{}{
 				"status": "healthy",
 				"time":   time.Now().Format(time.RFC3339),
 			}
@@ -139,6 +143,16 @@ func (h *ServiceHttp) healthCheckHandler() nhttp.Handler {
 			if h.healthCheckTotal != nil {
 				h.healthCheckTotal.WithLabelValues("success").Inc()
 			}
+		}
+
+		// 序列化并写入响应
+		w.WriteHeader(statusCode)
+		if data, err := json.Marshal(response); err == nil {
+			w.Write(data)
+		} else {
+			log.Errorf("Failed to marshal health check response: %v", err)
+			w.WriteHeader(nhttp.StatusInternalServerError)
+			w.Write([]byte(`{"error": "Failed to serialize response"}`))
 		}
 	})
 }

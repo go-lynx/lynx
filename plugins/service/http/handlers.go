@@ -2,7 +2,9 @@
 package http
 
 import (
+	"encoding/json"
 	nhttp "net/http"
+	"time"
 
 	"github.com/go-lynx/lynx/app/log"
 )
@@ -13,11 +15,20 @@ func (h *ServiceHttp) notFoundHandler() nhttp.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(nhttp.StatusNotFound)
 
-		_ = map[string]interface{}{
+		response := map[string]interface{}{
 			"code":    404,
 			"message": "Resource not found",
 			"path":    r.URL.Path,
 			"method":  r.Method,
+			"time":    time.Now().Format(time.RFC3339),
+		}
+
+		// 序列化并写入响应
+		if data, err := json.Marshal(response); err == nil {
+			w.Write(data)
+		} else {
+			log.Errorf("Failed to marshal 404 response: %v", err)
+			w.Write([]byte(`{"error": "Failed to serialize response"}`))
 		}
 
 		// 记录 404 错误
@@ -35,11 +46,20 @@ func (h *ServiceHttp) methodNotAllowedHandler() nhttp.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(nhttp.StatusMethodNotAllowed)
 
-		_ = map[string]interface{}{
+		response := map[string]interface{}{
 			"code":    405,
 			"message": "Method not allowed",
 			"path":    r.URL.Path,
 			"method":  r.Method,
+			"time":    time.Now().Format(time.RFC3339),
+		}
+
+		// 序列化并写入响应
+		if data, err := json.Marshal(response); err == nil {
+			w.Write(data)
+		} else {
+			log.Errorf("Failed to marshal 405 response: %v", err)
+			w.Write([]byte(`{"error": "Failed to serialize response"}`))
 		}
 
 		// 记录 405 错误
