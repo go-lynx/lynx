@@ -1,0 +1,74 @@
+# PgSQL 插件配置示例
+# 这个文件展示了如何正确配置 PgSQL 数据库连接
+
+lynx:
+  pgsql:
+    # 数据库驱动名称
+    driver: "postgres"
+    
+    # 数据库连接字符串
+    # 格式: postgres://username:password@host:port/database?sslmode=disable
+    source: "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable"
+    
+    # 连接池配置
+    # 最小连接数（空闲连接数）
+    min_conn: 10
+    
+    # 最大连接数
+    max_conn: 50
+    
+    # 连接最大空闲时间
+    # 超过此时间的空闲连接将被关闭
+    max_idle_time: "30s"
+    
+    # 连接最大生命周期
+    # 超过此时间的连接将被关闭并重新创建
+    max_life_time: "300s"
+
+# 高级配置示例
+# lynx:
+#   pgsql:
+#     driver: "postgres"
+#     source: "postgres://user:password@localhost:5432/mydb?sslmode=require&connect_timeout=10"
+#     min_conn: 5
+#     max_conn: 100
+#     max_idle_time: "60s"
+#     max_life_time: "600s"
+
+# 生产环境配置示例
+# lynx:
+#   pgsql:
+#     driver: "postgres"
+#     source: "postgres://prod_user:secure_password@prod-db.example.com:5432/production_db?sslmode=require&connect_timeout=30&statement_timeout=30000"
+#     min_conn: 20
+#     max_conn: 200
+#     max_idle_time: "300s"
+#     max_life_time: "3600s"
+#     prometheus:
+#       enabled: true
+#       metrics_path: "/metrics"
+#       metrics_port: 9090
+#       namespace: "lynx"
+#       subsystem: "pgsql"
+#       labels:
+#         environment: "production"
+#         region: "us-west-2"
+
+# 启用 Prometheus 监控的配置示例
+lynx:
+  pgsql:
+    driver: "postgres"
+    source: "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable"
+    min_conn: 10
+    max_conn: 50
+    max_idle_time: "30s"
+    max_life_time: "300s"
+    prometheus:
+      enabled: true
+      metrics_path: "/metrics"
+      metrics_port: 9090
+      namespace: "lynx"
+      subsystem: "pgsql"
+      labels:
+        environment: "development"
+        service: "myapp" 

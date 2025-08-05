@@ -27,4 +27,30 @@ message pgsql {
   // The maximum idle time for a connection in the connection pool.
   // 连接池中连接的最大空闲时间，超过该时间的连接可能会被关闭。
   google.protobuf.Duration max_idle_time = 6;
+  // Prometheus monitoring configuration.
+  // Prometheus 监控配置。
+  PrometheusConfig prometheus = 7;
+}
+
+// Prometheus monitoring configuration.
+// Prometheus 监控配置。
+message PrometheusConfig {
+  // Whether to enable Prometheus metrics export.
+  // 是否启用 Prometheus 指标导出。
+  bool enabled = 1;
+  // The HTTP endpoint path for metrics exposure.
+  // 指标暴露的 HTTP 端点路径。
+  string metrics_path = 2;
+  // The port for metrics HTTP server.
+  // 指标 HTTP 服务器的端口。
+  int32 metrics_port = 3;
+  // The namespace for Prometheus metrics.
+  // Prometheus 指标的命名空间。
+  string namespace = 4;
+  // The subsystem for Prometheus metrics.
+  // Prometheus 指标的子系统。
+  string subsystem = 5;
+  // Additional labels for metrics.
+  // 指标的额外标签。
+  map<string, string> labels = 6;
 }
