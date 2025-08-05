@@ -160,10 +160,28 @@ func (h *ServiceHttp) validateConfig() error {
 		}
 	}
 
+	// 验证网络协议
+	if h.conf.Network != "" {
+		validNetworks := []string{"tcp", "tcp4", "tcp6", "unix", "unixpacket"}
+		valid := false
+		for _, network := range validNetworks {
+			if h.conf.Network == network {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fmt.Errorf("invalid network protocol: %s, valid options: %v", h.conf.Network, validNetworks)
+		}
+	}
+
 	// 验证超时时间
 	if h.conf.Timeout != nil {
 		if h.conf.Timeout.AsDuration() <= 0 {
 			return fmt.Errorf("timeout must be positive")
+		}
+		if h.conf.Timeout.AsDuration() > 300*time.Second {
+			return fmt.Errorf("timeout cannot exceed 5 minutes")
 		}
 	}
 
@@ -171,12 +189,54 @@ func (h *ServiceHttp) validateConfig() error {
 	if h.maxRequestSize < 0 {
 		return fmt.Errorf("max request size cannot be negative")
 	}
+	if h.maxRequestSize > 100*1024*1024 { // 100MB
+		return fmt.Errorf("max request size cannot exceed 100MB")
+	}
+
+	// 验证性能配置
+	if h.idleTimeout < 0 {
+		return fmt.Errorf("idle timeout cannot be negative")
+	}
+	if h.idleTimeout > 600*time.Second { // 10 minutes
+		return fmt.Errorf("idle timeout cannot exceed 10 minutes")
+	}
+
+	if h.keepAliveTimeout < 0 {
+		return fmt.Errorf("keep alive timeout cannot be negative")
+	}
+	if h.keepAliveTimeout > 300*time.Second { // 5 minutes
+		return fmt.Errorf("keep alive timeout cannot exceed 5 minutes")
+	}
+
+	if h.readHeaderTimeout < 0 {
+		return fmt.Errorf("read header timeout cannot be negative")
+	}
+	if h.readHeaderTimeout > 60*time.Second { // 1 minute
+		return fmt.Errorf("read header timeout cannot exceed 1 minute")
+	}
+
+	// 验证优雅关闭超时
+	if h.shutdownTimeout < 0 {
+		return fmt.Errorf("shutdown timeout cannot be negative")
+	}
+	if h.shutdownTimeout > 300*time.Second { // 5 minutes
+		return fmt.Errorf("shutdown timeout cannot exceed 5 minutes")
+	}
 
 	// 验证限流配置
 	if h.rateLimiter != nil {
-		// 限流器已初始化，配置有效
+		if h.rateLimiter.Limit() <= 0 {
+			return fmt.Errorf("rate limit must be positive")
+		}
+		if h.rateLimiter.Burst() <= 0 {
+			return fmt.Errorf("rate limit burst must be positive")
+		}
+		if h.rateLimiter.Limit() > 10000 { // 10k req/s
+			return fmt.Errorf("rate limit cannot exceed 10,000 requests per second")
+		}
 	}
 
+	// 配置验证通过
 	return nil
 }
 
@@ -286,8 +346,10 @@ func (h *ServiceHttp) applyPerformanceConfig() {
 		}
 
 		if h.keepAliveTimeout > 0 {
+			// 注意：Go 的 net/http.Server 没有直接的 KeepAliveTimeout
+			// 但可以通过设置 ReadHeaderTimeout 来间接控制
 			httpServer.ReadHeaderTimeout = h.keepAliveTimeout
-			log.Infof("Applied KeepAliveTimeout: %v", h.keepAliveTimeout)
+			log.Infof("Applied KeepAliveTimeout (via ReadHeaderTimeout): %v", h.keepAliveTimeout)
 		}
 
 		// 设置读取头部超时

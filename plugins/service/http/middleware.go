@@ -11,8 +11,10 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
+	"github.com/go-kratos/kratos/v2/transport"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
+	"google.golang.org/protobuf/proto"
 )
 
 // buildMiddlewares 构建中间件链
@@ -71,7 +73,7 @@ func (h *ServiceHttp) rateLimitMiddleware() middleware.Middleware {
 			if h.rateLimiter != nil && !h.rateLimiter.Allow() {
 				// 记录限流指标
 				if h.errorCounter != nil {
-					h.errorCounter.WithLabelValues("rate_limit", "rate_limit", "rate_limit").Inc()
+					h.errorCounter.WithLabelValues("rate_limit", "rate_limit", "rate_limit_exceeded").Inc()
 				}
 				return nil, fmt.Errorf("rate limit exceeded")
 			}
@@ -86,13 +88,45 @@ func (h *ServiceHttp) metricsMiddleware() middleware.Middleware {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
 			start := time.Now()
 
+			// 获取请求信息
+			method := "unknown"
+			path := "unknown"
+
+			// 使用 Kratos transport 包获取请求信息
+			if tr, ok := transport.FromServerContext(ctx); ok {
+				method = tr.RequestHeader().Get("X-HTTP-Method")
+				if method == "" {
+					method = "POST" // Kratos 默认使用 POST
+				}
+				path = tr.Operation() // 获取操作路径
+			}
+
 			// 处理请求
 			reply, err = handler(ctx, req)
 
 			// 记录指标
 			duration := time.Since(start).Seconds()
 			if h.requestDuration != nil {
-				h.requestDuration.WithLabelValues("method", "path").Observe(duration)
+				h.requestDuration.WithLabelValues(method, path).Observe(duration)
+			}
+
+			// 记录请求计数
+			if h.requestCounter != nil {
+				status := "success"
+				if err != nil {
+					status = "error"
+				}
+				h.requestCounter.WithLabelValues(method, path, status).Inc()
+			}
+
+			// 记录响应大小
+			if h.responseSize != nil && reply != nil {
+				// 尝试获取响应大小
+				if msg, ok := reply.(proto.Message); ok {
+					if data, err := proto.Marshal(msg); err == nil {
+						h.responseSize.WithLabelValues(method, path).Observe(float64(len(data)))
+					}
+				}
 			}
 
 			return reply, err
