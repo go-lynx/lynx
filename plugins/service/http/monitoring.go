@@ -11,8 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// ========== 监控相关 ==========
-
 // initMonitoringDefaults 初始化监控默认配置
 func (h *ServiceHttp) initMonitoringDefaults() {
 	// 监控配置可以通过环境变量或配置文件设置
@@ -87,8 +85,6 @@ func (h *ServiceHttp) initMetrics() {
 		h.healthCheckTotal,
 	)
 }
-
-// ========== 健康检查 ==========
 
 // CheckHealth 对 HTTP 服务器进行全面的健康检查。
 func (h *ServiceHttp) CheckHealth() error {
