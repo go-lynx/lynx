@@ -46,7 +46,6 @@ type ServiceHttp struct {
 	// HTTP 服务器实例
 	server *http.Server
 
-	// ========== 监控相关 ==========
 	// Prometheus 监控指标
 	requestCounter   *prometheus.CounterVec
 	requestDuration  *prometheus.HistogramVec
@@ -54,11 +53,9 @@ type ServiceHttp struct {
 	errorCounter     *prometheus.CounterVec
 	healthCheckTotal *prometheus.CounterVec
 
-	// ========== 安全相关 ==========
 	// 限流器
 	rateLimiter *rate.Limiter
 
-	// ========== 性能相关 ==========
 	// 连接超时配置
 	idleTimeout       time.Duration
 	keepAliveTimeout  time.Duration
@@ -66,7 +63,6 @@ type ServiceHttp struct {
 	// 请求大小限制
 	maxRequestSize int64
 
-	// ========== 优雅关闭相关 ==========
 	// 关闭信号通道
 	shutdownChan chan struct{}
 	// 是否正在关闭
@@ -96,8 +92,6 @@ func NewServiceHttp() *ServiceHttp {
 		shutdownChan: make(chan struct{}),
 	}
 }
-
-// ========== 配置管理 ==========
 
 // InitializeResources 实现了 HTTP 插件的自定义初始化逻辑。
 // 该函数会加载并验证 HTTP 服务器的配置，如果配置未提供，则使用默认配置。
@@ -186,8 +180,6 @@ func (h *ServiceHttp) validateConfig() error {
 	return nil
 }
 
-// ========== 安全相关 ==========
-
 // initSecurityDefaults 初始化安全默认配置
 func (h *ServiceHttp) initSecurityDefaults() {
 	// 请求大小限制：10MB
@@ -205,8 +197,6 @@ func (h *ServiceHttp) initRateLimiter() {
 	}
 }
 
-// ========== 性能相关 ==========
-
 // initPerformanceDefaults 初始化性能默认配置
 func (h *ServiceHttp) initPerformanceDefaults() {
 	h.idleTimeout = 60 * time.Second
@@ -214,14 +204,10 @@ func (h *ServiceHttp) initPerformanceDefaults() {
 	h.readHeaderTimeout = 20 * time.Second
 }
 
-// ========== 优雅关闭相关 ==========
-
 // initGracefulShutdownDefaults 初始化优雅关闭默认配置
 func (h *ServiceHttp) initGracefulShutdownDefaults() {
 	h.shutdownTimeout = 30 * time.Second
 }
-
-// ========== 服务器管理 ==========
 
 // StartupTasks 实现了 HTTP 插件的自定义启动逻辑。
 // 该函数会配置并启动 HTTP 服务器，添加必要的中间件和配置选项。
@@ -353,8 +339,6 @@ func (h *ServiceHttp) CleanupTasks() error {
 	return nil
 }
 
-// ========== 配置管理 ==========
-
 // Configure 更新 HTTP 服务器的配置。
 // 该函数接收一个任意类型的参数，尝试将其转换为 *conf.Http 类型，如果转换成功则更新配置。
 func (h *ServiceHttp) Configure(c any) error {
@@ -382,6 +366,3 @@ func (h *ServiceHttp) Configure(c any) error {
 	// 转换失败，返回配置无效错误
 	return plugins.ErrInvalidConfiguration
 }
-
-// ========== 处理器实现 ==========
-// 处理器相关代码已移至 handlers.go 文件

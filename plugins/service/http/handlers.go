@@ -7,8 +7,6 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 )
 
-// ========== 处理器实现 ==========
-
 // notFoundHandler 404 处理器
 func (h *ServiceHttp) notFoundHandler() nhttp.Handler {
 	return nhttp.HandlerFunc(func(w nhttp.ResponseWriter, r *nhttp.Request) {
