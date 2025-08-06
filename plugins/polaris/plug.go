@@ -26,7 +26,11 @@ func init() {
 func GetPolaris() *polaris.Polaris {
 	// 从应用的插件管理器中获取指定名称的插件实例，
 	// 并将其类型断言为 *PlugPolaris，然后返回其内部的 polaris 字段。
-	return app.Lynx().GetPluginManager().GetPlugin(pluginName).(*PlugPolaris).polaris
+	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
+	if plugin == nil {
+		return nil
+	}
+	return plugin.(*PlugPolaris).polaris
 }
 
 // GetPlugin 函数用于从应用的插件管理器中获取 PlugPolaris 插件实例。

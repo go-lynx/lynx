@@ -6,7 +6,8 @@ package polaris
 // 然后从该实例的配置中提取命名空间信息。
 // 返回值为字符串类型，表示获取到的命名空间。
 func (p *PlugPolaris) GetNamespace() string {
-	// 调用 GetPlugin 函数获取 PlugPolaris 插件实例，
-	// 并从该实例的配置中调用 GetNamespace 方法获取命名空间
-	return GetPlugin().conf.GetNamespace()
+	if p.conf != nil {
+		return p.conf.Namespace
+	}
+	return "default"
 }

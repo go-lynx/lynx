@@ -12,16 +12,92 @@ message Polaris {
   // namespace 表示 Polaris 中的命名空间。
   // 命名空间用于隔离不同环境或业务的服务和配置，每个服务和配置都属于一个特定的命名空间。
   string namespace = 1;
+  
   // token 是用于访问 Polaris 服务的认证令牌。
   // 该令牌用于验证客户端的身份，确保只有授权的客户端可以访问 Polaris 的服务和配置。
   string token = 2;
+  
   // weight 表示服务实例的权重。
   // 在负载均衡时，权重会影响流量分配的比例，权重越高，分配到的流量可能越多。
   int32 weight = 4;
+  
   // ttl 是服务实例的生存时间（Time To Live），单位为秒。
   // Polaris 会根据该值定期检查服务实例的健康状态，若超过该时间未收到心跳，实例可能会被标记为不健康。
   int32 ttl = 5;
+  
   // timeout 是与 Polaris 服务交互时的超时时间。
   // 当发起请求到 Polaris 服务后，如果在该时间内未收到响应，则认为请求超时。
   google.protobuf.Duration timeout = 6;
+  
+  // config_path 是 Polaris SDK 配置文件的路径。
+  // 如果为空，将使用默认配置。建议使用 polaris.yaml 文件进行详细配置。
+  string config_path = 7;
+  
+  // enable_health_check 是否启用健康检查。
+  // 启用后会自动检查服务实例的健康状态。
+  bool enable_health_check = 8;
+  
+  // health_check_interval 健康检查间隔时间。
+  google.protobuf.Duration health_check_interval = 9;
+  
+  // enable_metrics 是否启用监控指标。
+  // 启用后会收集和上报各种监控指标。
+  bool enable_metrics = 10;
+  
+  // enable_retry 是否启用重试机制。
+  // 启用后会在连接失败时自动重试。
+  bool enable_retry = 11;
+  
+  // max_retry_times 最大重试次数。
+  int32 max_retry_times = 12;
+  
+  // retry_interval 重试间隔时间。
+  google.protobuf.Duration retry_interval = 13;
+  
+  // enable_circuit_breaker 是否启用熔断器。
+  // 启用后会在服务不可用时自动熔断。
+  bool enable_circuit_breaker = 14;
+  
+  // circuit_breaker_threshold 熔断器阈值。
+  // 当错误率超过此阈值时触发熔断。
+  float circuit_breaker_threshold = 15;
+  
+  // enable_service_watch 是否启用服务监听。
+  // 启用后会监听服务实例变更。
+  bool enable_service_watch = 16;
+  
+  // enable_config_watch 是否启用配置监听。
+  // 启用后会监听配置变更。
+  bool enable_config_watch = 17;
+  
+  // load_balancer_type 负载均衡类型。
+  // 支持：weighted_random, ring_hash, maglev, l5cst
+  string load_balancer_type = 18;
+  
+  // enable_route_rule 是否启用路由规则。
+  // 启用后会应用动态路由规则。
+  bool enable_route_rule = 19;
+  
+  // enable_rate_limit 是否启用限流。
+  // 启用后会应用限流策略。
+  bool enable_rate_limit = 20;
+  
+  // rate_limit_type 限流类型。
+  // 支持：local, global
+  string rate_limit_type = 21;
+  
+  // enable_graceful_shutdown 是否启用优雅关闭。
+  // 启用后会在关闭时优雅地注销服务。
+  bool enable_graceful_shutdown = 22;
+  
+  // shutdown_timeout 优雅关闭超时时间。
+  google.protobuf.Duration shutdown_timeout = 23;
+  
+  // enable_logging 是否启用详细日志。
+  // 启用后会输出详细的调试日志。
+  bool enable_logging = 24;
+  
+  // log_level 日志级别。
+  // 支持：debug, info, warn, error
+  string log_level = 25;
 }
