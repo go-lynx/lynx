@@ -11,8 +11,15 @@ import (
 // 该中间件会从 Polaris 获取 HTTP 限流策略，并应用到 HTTP 请求处理流程中。
 // 返回值为一个实现了 middleware.Middleware 接口的中间件实例。
 func (p *PlugPolaris) HTTPRateLimit() middleware.Middleware {
+	// 检查插件是否已初始化
+	if !p.IsInitialized() {
+		log.Warnf("Polaris plugin not initialized, returning nil HTTP rate limit middleware")
+		return nil
+	}
+
 	// 使用 Lynx 应用的日志辅助器记录正在同步 HTTP 限流策略的信息
 	log.Infof("Synchronizing [HTTP] rate limit policy")
+
 	// 调用 GetPolaris().Limiter 方法获取一个限流实例，同时设置服务名称和命名空间
 	// 服务名称通过 app.GetName() 获取，命名空间从插件配置中获取
 	// 最后调用 polaris.RateLimit 方法将限流实例转换为中间件
@@ -28,8 +35,15 @@ func (p *PlugPolaris) HTTPRateLimit() middleware.Middleware {
 // 该中间件会从 Polaris 获取 gRPC 限流策略，并应用到 gRPC 请求处理流程中。
 // 返回值为一个实现了 middleware.Middleware 接口的中间件实例。
 func (p *PlugPolaris) GRPCRateLimit() middleware.Middleware {
+	// 检查插件是否已初始化
+	if !p.IsInitialized() {
+		log.Warnf("Polaris plugin not initialized, returning nil gRPC rate limit middleware")
+		return nil
+	}
+
 	// 使用 Lynx 应用的日志辅助器记录正在同步 gRPC 限流策略的信息
 	log.Infof("Synchronizing [GRPC] rate limit policy")
+
 	// 调用 GetPolaris().Limiter 方法获取一个限流实例，同时设置服务名称和命名空间
 	// 服务名称通过 app.GetName() 获取，命名空间从插件配置中获取
 	// 最后调用 polaris.RateLimit 方法将限流实例转换为中间件

@@ -3,6 +3,7 @@ package app
 
 import (
 	"fmt"
+
 	"github.com/go-lynx/lynx/app/log"
 
 	"github.com/go-kratos/kratos/v2/config"
