@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
-	"github.com/polarismesh/polaris-go"
 	"github.com/polarismesh/polaris-go/api"
 	"github.com/polarismesh/polaris-go/pkg/model"
 )
@@ -195,7 +194,7 @@ func (sw *ServiceWatcher) IsRunning() bool {
 // ConfigWatcher 配置监听器
 // 监听配置变更
 type ConfigWatcher struct {
-	configAPI polaris.ConfigAPI
+	configAPI api.ConfigFileAPI
 	fileName  string
 	group     string
 	namespace string
@@ -206,19 +205,19 @@ type ConfigWatcher struct {
 	mu     sync.RWMutex
 
 	// 回调函数
-	onConfigChanged func(config polaris.ConfigFile)
+	onConfigChanged func(config model.ConfigFile)
 	onError         func(error)
 
 	// 状态
 	isRunning  bool
-	lastConfig polaris.ConfigFile
+	lastConfig model.ConfigFile
 
 	// 监控指标
 	metrics *Metrics
 }
 
 // NewConfigWatcher 创建新的配置监听器
-func NewConfigWatcher(configAPI polaris.ConfigAPI, fileName, group, namespace string) *ConfigWatcher {
+func NewConfigWatcher(configAPI api.ConfigFileAPI, fileName, group, namespace string) *ConfigWatcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ConfigWatcher{
 		configAPI: configAPI,
@@ -232,7 +231,7 @@ func NewConfigWatcher(configAPI polaris.ConfigAPI, fileName, group, namespace st
 }
 
 // SetOnConfigChanged 设置配置变更回调
-func (cw *ConfigWatcher) SetOnConfigChanged(callback func(config polaris.ConfigFile)) {
+func (cw *ConfigWatcher) SetOnConfigChanged(callback func(config model.ConfigFile)) {
 	cw.mu.Lock()
 	defer cw.mu.Unlock()
 	cw.onConfigChanged = callback
@@ -334,7 +333,7 @@ func (cw *ConfigWatcher) checkConfig() {
 }
 
 // hasConfigChanged 检查配置是否发生变化
-func (cw *ConfigWatcher) hasConfigChanged(newConfig polaris.ConfigFile) bool {
+func (cw *ConfigWatcher) hasConfigChanged(newConfig model.ConfigFile) bool {
 	if cw.lastConfig == nil {
 		return true
 	}
@@ -344,7 +343,7 @@ func (cw *ConfigWatcher) hasConfigChanged(newConfig polaris.ConfigFile) bool {
 }
 
 // notifyConfigChanged 通知配置变更
-func (cw *ConfigWatcher) notifyConfigChanged(config polaris.ConfigFile) {
+func (cw *ConfigWatcher) notifyConfigChanged(config model.ConfigFile) {
 	// 记录配置变更指标
 	if cw.metrics != nil {
 		cw.metrics.RecordConfigChange(cw.fileName, cw.group)
@@ -369,7 +368,7 @@ func (cw *ConfigWatcher) notifyError(err error) {
 }
 
 // GetLastConfig 获取最后的配置
-func (cw *ConfigWatcher) GetLastConfig() polaris.ConfigFile {
+func (cw *ConfigWatcher) GetLastConfig() model.ConfigFile {
 	cw.mu.RLock()
 	defer cw.mu.RUnlock()
 	return cw.lastConfig

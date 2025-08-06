@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-lynx/lynx/plugins/polaris/conf"
 	"github.com/go-lynx/lynx/plugins/polaris/errors"
-	"github.com/polarismesh/polaris-go"
 	"github.com/polarismesh/polaris-go/pkg/model"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -128,7 +127,7 @@ func TestConfigWatcher_Functionality(t *testing.T) {
 
 	// 测试回调设置
 	callbackCalled := false
-	watcher.SetOnConfigChanged(func(config polaris.ConfigFile) {
+	watcher.SetOnConfigChanged(func(config model.ConfigFile) {
 		callbackCalled = true
 	})
 
