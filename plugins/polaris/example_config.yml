@@ -1,0 +1,44 @@
+# 增强版 Polaris 插件配置示例
+# 充分利用 Polaris SDK 的所有功能
+
+polaris:
+  # 基础配置
+  namespace: "default"                    # 命名空间
+  token: "your-polaris-token"            # 认证令牌（可选）
+  weight: 100                            # 服务权重 (0-1000)
+  ttl: 30                                # 服务生存时间（秒）
+  timeout: "10s"                         # 操作超时时间
+  
+  # 高级功能配置
+  config_path: "polaris.yaml"            # SDK 配置文件路径（可选）
+  enable_health_check: true              # 启用健康检查
+  health_check_interval: "30s"           # 健康检查间隔
+  enable_metrics: true                   # 启用监控指标
+  enable_retry: true                     # 启用重试机制
+  max_retry_times: 3                     # 最大重试次数
+  retry_interval: "1s"                   # 重试间隔
+  enable_circuit_breaker: true           # 启用熔断器
+  circuit_breaker_threshold: 0.5         # 熔断器阈值
+  enable_service_watch: true             # 启用服务监听
+  enable_config_watch: true              # 启用配置监听
+  load_balancer_type: "weighted_random" # 负载均衡类型
+  enable_route_rule: true                # 启用路由规则
+  enable_rate_limit: true                # 启用限流
+  rate_limit_type: "local"               # 限流类型
+  enable_graceful_shutdown: true         # 启用优雅关闭
+  shutdown_timeout: "30s"                # 优雅关闭超时
+  enable_logging: true                   # 启用详细日志
+  log_level: "info"                      # 日志级别
+
+# 服务注册信息（可选）
+service_info:
+  service_name: "my-service"
+  namespace: "default"
+  host: "127.0.0.1"
+  port: 8080
+  weight: 100
+  ttl: 30
+  metadata:
+    version: "1.0.0"
+    environment: "production"
+    region: "us-west-1" 
