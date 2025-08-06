@@ -64,18 +64,22 @@ func TracerLogPack() middleware.Middleware {
 
 			// 提取请求信息
 			if tr, ok = transport.FromServerContext(ctx); !ok {
+				// 无法获取 transport，但仍然记录基本信息
+				log.WarnfCtx(ctx, "Failed to get transport from context, proceeding without tracing")
 				return handler(ctx, req)
 			}
 
 			endpoint := tr.Endpoint()
 			clientIP := getClientIP(tr.RequestHeader())
+			api := tr.Operation()
 
 			// 设置响应头
 			defer func() {
 				header := tr.ReplyHeader()
 				header.Set("Trace-Id", traceID)
 				header.Set("Span-Id", spanID)
-				// 只在确实是 JSON 响应时设置 Content-Type
+
+				// 安全地检查响应类型并设置 Content-Type
 				if _, ok := reply.(proto.Message); ok {
 					header.Set(contentTypeKey, jsonContentType)
 				}
@@ -99,9 +103,9 @@ func TracerLogPack() middleware.Middleware {
 				headers[key] = tr.RequestHeader().Get(key)
 			}
 			headersStr := fmt.Sprintf("%#v", headers)
-			api := tr.Operation()
 
-			log.DebugfCtx(ctx, httpRequestLogFormat, api, endpoint, clientIP, headersStr, reqBody)
+			// 使用 Info 级别记录请求日志，便于生产环境监控
+			log.InfofCtx(ctx, httpRequestLogFormat, api, endpoint, clientIP, headersStr, reqBody)
 
 			// 处理请求
 			reply, err = handler(ctx, req)
@@ -125,9 +129,145 @@ func TracerLogPack() middleware.Middleware {
 			}
 			respHeadersStr := fmt.Sprintf("%#v", respHeaders)
 
-			// 使用相同的 API 名称
-			log.DebugfCtx(ctx, httpResponseLogFormat,
-				api, endpoint, time.Since(start), err, respHeadersStr, respBody)
+			// 根据是否有错误选择日志级别
+			duration := time.Since(start)
+			if err != nil {
+				log.ErrorfCtx(ctx, httpResponseLogFormat,
+					api, endpoint, duration, err, respHeadersStr, respBody)
+			} else {
+				log.InfofCtx(ctx, httpResponseLogFormat,
+					api, endpoint, duration, err, respHeadersStr, respBody)
+			}
+
+			return reply, err
+		}
+	}
+}
+
+// TracerLogPackWithMetrics 返回一个增强的中间件，集成了追踪、日志和监控指标
+func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
+	return func(handler middleware.Handler) middleware.Handler {
+		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
+			// 检查上下文是否已取消
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
+			start := time.Now()
+			span := trace.SpanContextFromContext(ctx)
+			traceID := span.TraceID().String()
+			spanID := span.SpanID().String()
+
+			var tr transport.Transporter
+			var ok bool
+
+			// 提取请求信息
+			if tr, ok = transport.FromServerContext(ctx); !ok {
+				// 无法获取 transport，但仍然记录基本信息
+				log.WarnfCtx(ctx, "Failed to get transport from context, proceeding without tracing")
+				return handler(ctx, req)
+			}
+
+			endpoint := tr.Endpoint()
+			clientIP := getClientIP(tr.RequestHeader())
+			api := tr.Operation()
+
+			// 设置响应头
+			defer func() {
+				header := tr.ReplyHeader()
+				header.Set("Trace-Id", traceID)
+				header.Set("Span-Id", spanID)
+
+				// 安全地检查响应类型并设置 Content-Type
+				if _, ok := reply.(proto.Message); ok {
+					header.Set(contentTypeKey, jsonContentType)
+				}
+			}()
+
+			// 记录请求日志
+			var reqBody string
+			if msg, ok := req.(proto.Message); ok {
+				if body, err := safeProtoToJSON(msg); err == nil {
+					reqBody = body
+				} else {
+					reqBody = fmt.Sprintf("<failed to marshal request: %v>", err)
+				}
+			} else {
+				reqBody = fmt.Sprintf("%#v", req)
+			}
+
+			// 获取所有请求头
+			headers := make(map[string]string)
+			for _, key := range tr.RequestHeader().Keys() {
+				headers[key] = tr.RequestHeader().Get(key)
+			}
+			headersStr := fmt.Sprintf("%#v", headers)
+
+			// 使用 Info 级别记录请求日志，便于生产环境监控
+			log.InfofCtx(ctx, httpRequestLogFormat, api, endpoint, clientIP, headersStr, reqBody)
+
+			// 处理请求
+			reply, err = handler(ctx, req)
+
+			// 记录响应日志
+			var respBody string
+			if msg, ok := reply.(proto.Message); ok {
+				if body, err := safeProtoToJSON(msg); err == nil {
+					respBody = body
+				} else {
+					respBody = fmt.Sprintf("<failed to marshal response: %v>", err)
+				}
+			} else {
+				respBody = fmt.Sprintf("%#v", reply)
+			}
+
+			// 获取所有响应头
+			respHeaders := make(map[string]string)
+			for _, key := range tr.ReplyHeader().Keys() {
+				respHeaders[key] = tr.ReplyHeader().Get(key)
+			}
+			respHeadersStr := fmt.Sprintf("%#v", respHeaders)
+
+			// 根据是否有错误选择日志级别
+			duration := time.Since(start)
+			if err != nil {
+				log.ErrorfCtx(ctx, httpResponseLogFormat,
+					api, endpoint, duration, err, respHeadersStr, respBody)
+			} else {
+				log.InfofCtx(ctx, httpResponseLogFormat,
+					api, endpoint, duration, err, respHeadersStr, respBody)
+			}
+
+			// 记录监控指标（如果服务实例可用）
+			if service != nil {
+				// 记录请求持续时间
+				if service.requestDuration != nil {
+					service.requestDuration.WithLabelValues("POST", api).Observe(duration.Seconds())
+				}
+
+				// 记录请求计数
+				if service.requestCounter != nil {
+					status := "success"
+					if err != nil {
+						status = "error"
+					}
+					service.requestCounter.WithLabelValues("POST", api, status).Inc()
+				}
+
+				// 记录响应大小
+				if service.responseSize != nil && reply != nil {
+					if msg, ok := reply.(proto.Message); ok {
+						if data, err := proto.Marshal(msg); err == nil {
+							service.responseSize.WithLabelValues("POST", api).Observe(float64(len(data)))
+						}
+					}
+				}
+
+				// 记录错误
+				if err != nil && service.errorCounter != nil {
+					service.errorCounter.WithLabelValues("POST", api, "tracer_error").Inc()
+				}
+			}
 
 			return reply, err
 		}
