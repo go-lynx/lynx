@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://go-lynx.cn/" target="_blank">
-    <img width="200" src="https://avatars.githubusercontent.com/u/150900434?s=250&u=8f8e9a5d1fab6f321b4aa350283197fc1d100efa&v=4" alt="Lynx Logo">
+    <img width="120" src="https://avatars.githubusercontent.com/u/150900434?s=250&u=8f8e9a5d1fab6f321b4aa350283197fc1d100efa&v=4" alt="Lynx Logo">
   </a>
 </p>
 
@@ -20,6 +20,8 @@
 </p>
 
 ---
+
+Translations: [English](README.md) | [简体中文](README_zh.md)
 
 ## 🚀 什么是 Lynx？
 
