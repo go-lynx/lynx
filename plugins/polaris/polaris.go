@@ -38,6 +38,9 @@ type PlugPolaris struct {
 	polaris *polaris.Polaris
 	conf    *conf.Polaris
 
+	// SDK 组件
+	sdk api.SDKContext
+
 	// 增强的组件
 	metrics        *Metrics
 	retryManager   *RetryManager
@@ -196,6 +199,9 @@ func (p *PlugPolaris) StartupTasks() error {
 		}
 		return errors.WrapInitError(err, "failed to initialize Polaris SDK")
 	}
+
+	// 保存 SDK 实例
+	p.sdk = sdk
 
 	// 创建一个新的 Polaris 实例，使用之前初始化的 SDK 和配置。
 	pol := polaris.New(
@@ -372,8 +378,15 @@ func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) 
 	}
 
 	log.Infof("Watching service: %s", serviceName)
-	// 这里应该调用实际的 SDK API
-	watcher := NewServiceWatcher(nil, serviceName, p.conf.Namespace)
+
+	// 创建 Consumer API 客户端
+	consumerAPI := api.NewConsumerAPIByContext(p.sdk)
+	if consumerAPI == nil {
+		return nil, errors.NewInitError("failed to create consumer API")
+	}
+
+	// 创建服务监听器并连接到 SDK
+	watcher := NewServiceWatcher(consumerAPI, serviceName, p.conf.Namespace)
 	watcher.metrics = p.metrics // 传递 metrics 引用
 	return watcher, nil
 }
@@ -416,8 +429,15 @@ func (p *PlugPolaris) WatchConfig(fileName, group string) (*ConfigWatcher, error
 	}
 
 	log.Infof("Watching config: %s, group: %s", fileName, group)
-	// 这里应该调用实际的 SDK API
-	watcher := NewConfigWatcher(nil, fileName, group, p.conf.Namespace)
+
+	// 创建 Config API 客户端
+	configAPI := api.NewConfigFileAPIBySDKContext(p.sdk)
+	if configAPI == nil {
+		return nil, errors.NewInitError("failed to create config API")
+	}
+
+	// 创建配置监听器并连接到 SDK
+	watcher := NewConfigWatcher(configAPI, fileName, group, p.conf.Namespace)
 	watcher.metrics = p.metrics // 传递 metrics 引用
 	return watcher, nil
 }
