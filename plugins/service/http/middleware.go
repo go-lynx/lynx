@@ -27,8 +27,8 @@ func (h *ServiceHttp) buildMiddlewares() []middleware.Middleware {
 		tracing.Server(tracing.WithTracerName(app.GetName())),
 		// 配置日志中间件，使用 Lynx 框架的日志记录器
 		logging.Server(log.Logger),
-		// 配置响应包装中间件
-		TracerLogPack(),
+		// 配置增强的响应包装中间件（集成监控指标）
+		TracerLogPackWithMetrics(h),
 		// 配置参数验证中间件
 		validate.ProtoValidate(),
 		// 配置恢复中间件，处理请求处理过程中的 panic
@@ -37,9 +37,6 @@ func (h *ServiceHttp) buildMiddlewares() []middleware.Middleware {
 
 	// 安全中间件
 	middlewares = append(middlewares, h.rateLimitMiddleware())
-
-	// 监控中间件
-	middlewares = append(middlewares, h.metricsMiddleware())
 
 	// 配置限流中间件，使用 Lynx 框架控制平面的 HTTP 限流策略
 	// 如果有限流中间件，则追加进去
