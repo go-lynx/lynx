@@ -30,6 +30,9 @@ type ServiceWatcher struct {
 	// 状态
 	isRunning     bool
 	lastInstances []model.Instance
+
+	// 监控指标
+	metrics *Metrics
 }
 
 // NewServiceWatcher 创建新的服务监听器
@@ -41,6 +44,7 @@ func NewServiceWatcher(consumer api.ConsumerAPI, serviceName, namespace string) 
 		namespace:   namespace,
 		ctx:         ctx,
 		cancel:      cancel,
+		metrics:     nil, // 将在使用时设置
 	}
 }
 
@@ -67,6 +71,11 @@ func (sw *ServiceWatcher) Start() {
 		return
 	}
 
+	// 记录监听启动指标
+	if sw.metrics != nil {
+		sw.metrics.RecordSDKOperation("service_watch_start", "success")
+	}
+
 	sw.isRunning = true
 	go sw.watchLoop()
 
@@ -80,6 +89,11 @@ func (sw *ServiceWatcher) Stop() {
 
 	if !sw.isRunning {
 		return
+	}
+
+	// 记录监听停止指标
+	if sw.metrics != nil {
+		sw.metrics.RecordSDKOperation("service_watch_stop", "success")
 	}
 
 	sw.cancel()
@@ -141,6 +155,11 @@ func (sw *ServiceWatcher) hasInstancesChanged(newInstances []model.Instance) boo
 
 // notifyInstancesChanged 通知实例变更
 func (sw *ServiceWatcher) notifyInstancesChanged(instances []model.Instance) {
+	// 记录实例变更指标
+	if sw.metrics != nil {
+		sw.metrics.RecordServiceDiscovery(sw.serviceName, sw.namespace, "changed")
+	}
+
 	sw.mu.RLock()
 	defer sw.mu.RUnlock()
 
@@ -193,6 +212,9 @@ type ConfigWatcher struct {
 	// 状态
 	isRunning  bool
 	lastConfig polaris.ConfigFile
+
+	// 监控指标
+	metrics *Metrics
 }
 
 // NewConfigWatcher 创建新的配置监听器
@@ -205,6 +227,7 @@ func NewConfigWatcher(configAPI polaris.ConfigAPI, fileName, group, namespace st
 		namespace: namespace,
 		ctx:       ctx,
 		cancel:    cancel,
+		metrics:   nil, // 将在使用时设置
 	}
 }
 
@@ -231,6 +254,11 @@ func (cw *ConfigWatcher) Start() {
 		return
 	}
 
+	// 记录配置监听启动指标
+	if cw.metrics != nil {
+		cw.metrics.RecordSDKOperation("config_watch_start", "success")
+	}
+
 	cw.isRunning = true
 	go cw.watchLoop()
 
@@ -245,6 +273,11 @@ func (cw *ConfigWatcher) Stop() {
 
 	if !cw.isRunning {
 		return
+	}
+
+	// 记录配置监听停止指标
+	if cw.metrics != nil {
+		cw.metrics.RecordSDKOperation("config_watch_stop", "success")
 	}
 
 	cw.cancel()
@@ -270,9 +303,22 @@ func (cw *ConfigWatcher) watchLoop() {
 
 // checkConfig 检查配置变更
 func (cw *ConfigWatcher) checkConfig() {
+	// 记录配置检查操作指标
+	if cw.metrics != nil {
+		cw.metrics.RecordConfigOperation("check", cw.fileName, cw.group, "start")
+		defer func() {
+			if cw.metrics != nil {
+				cw.metrics.RecordConfigOperation("check", cw.fileName, cw.group, "success")
+			}
+		}()
+	}
+
 	config, err := cw.configAPI.GetConfigFile(cw.namespace, cw.group, cw.fileName)
 	if err != nil {
 		log.Errorf("Failed to get config %s:%s: %v", cw.group, cw.fileName, err)
+		if cw.metrics != nil {
+			cw.metrics.RecordConfigOperation("check", cw.fileName, cw.group, "error")
+		}
 		cw.notifyError(err)
 		return
 	}
@@ -299,6 +345,11 @@ func (cw *ConfigWatcher) hasConfigChanged(newConfig polaris.ConfigFile) bool {
 
 // notifyConfigChanged 通知配置变更
 func (cw *ConfigWatcher) notifyConfigChanged(config polaris.ConfigFile) {
+	// 记录配置变更指标
+	if cw.metrics != nil {
+		cw.metrics.RecordConfigChange(cw.fileName, cw.group)
+	}
+
 	cw.mu.RLock()
 	defer cw.mu.RUnlock()
 

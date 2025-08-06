@@ -173,6 +173,16 @@ func (p *PlugPolaris) StartupTasks() error {
 		return errors.NewInitError("Polaris plugin already initialized")
 	}
 
+	// 记录启动操作指标
+	if p.metrics != nil {
+		p.metrics.RecordSDKOperation("startup", "start")
+		defer func() {
+			if p.metrics != nil {
+				p.metrics.RecordSDKOperation("startup", "success")
+			}
+		}()
+	}
+
 	// 使用 Lynx 应用的 Helper 记录 Polaris 插件初始化的信息。
 	log.Infof("Initializing polaris plugin with namespace: %s", p.conf.Namespace)
 
@@ -181,6 +191,9 @@ func (p *PlugPolaris) StartupTasks() error {
 	// 如果初始化失败，记录错误信息并返回错误。
 	if err != nil {
 		log.Errorf("Failed to initialize Polaris SDK: %v", err)
+		if p.metrics != nil {
+			p.metrics.RecordSDKOperation("startup", "error")
+		}
 		return errors.WrapInitError(err, "failed to initialize Polaris SDK")
 	}
 
@@ -197,6 +210,9 @@ func (p *PlugPolaris) StartupTasks() error {
 	err = app.Lynx().SetControlPlane(p)
 	if err != nil {
 		log.Errorf("Failed to set control plane: %v", err)
+		if p.metrics != nil {
+			p.metrics.RecordSDKOperation("startup", "error")
+		}
 		return errors.WrapInitError(err, "failed to set control plane")
 	}
 
@@ -204,6 +220,9 @@ func (p *PlugPolaris) StartupTasks() error {
 	cfg, err := app.Lynx().InitControlPlaneConfig()
 	if err != nil {
 		log.Errorf("Failed to init control plane config: %v", err)
+		if p.metrics != nil {
+			p.metrics.RecordSDKOperation("startup", "error")
+		}
 		return errors.WrapInitError(err, "failed to init control plane config")
 	}
 
@@ -226,6 +245,16 @@ func (p *PlugPolaris) CleanupTasks() error {
 
 	if p.destroyed {
 		return nil
+	}
+
+	// 记录清理操作指标
+	if p.metrics != nil {
+		p.metrics.RecordSDKOperation("cleanup", "start")
+		defer func() {
+			if p.metrics != nil {
+				p.metrics.RecordSDKOperation("cleanup", "success")
+			}
+		}()
 	}
 
 	log.Infof("Destroying Polaris plugin")
@@ -311,6 +340,16 @@ func (p *PlugPolaris) GetServiceInstances(serviceName string) ([]model.Instance,
 		return nil, errors.NewInitError("Polaris plugin not initialized")
 	}
 
+	// 记录服务发现操作指标
+	if p.metrics != nil {
+		p.metrics.RecordServiceDiscovery(serviceName, p.conf.Namespace, "start")
+		defer func() {
+			if p.metrics != nil {
+				p.metrics.RecordServiceDiscovery(serviceName, p.conf.Namespace, "success")
+			}
+		}()
+	}
+
 	log.Infof("Getting service instances for: %s", serviceName)
 	// 这里应该调用实际的 SDK API
 	return []model.Instance{}, nil
@@ -322,15 +361,37 @@ func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) 
 		return nil, errors.NewInitError("Polaris plugin not initialized")
 	}
 
+	// 记录服务监听操作指标
+	if p.metrics != nil {
+		p.metrics.RecordSDKOperation("watch_service", "start")
+		defer func() {
+			if p.metrics != nil {
+				p.metrics.RecordSDKOperation("watch_service", "success")
+			}
+		}()
+	}
+
 	log.Infof("Watching service: %s", serviceName)
 	// 这里应该调用实际的 SDK API
-	return NewServiceWatcher(nil, serviceName, ""), nil
+	watcher := NewServiceWatcher(nil, serviceName, p.conf.Namespace)
+	watcher.metrics = p.metrics // 传递 metrics 引用
+	return watcher, nil
 }
 
 // GetConfigValue 获取配置值
 func (p *PlugPolaris) GetConfigValue(fileName, group string) (string, error) {
 	if !p.initialized {
 		return "", errors.NewInitError("Polaris plugin not initialized")
+	}
+
+	// 记录配置操作指标
+	if p.metrics != nil {
+		p.metrics.RecordConfigOperation("get", fileName, group, "start")
+		defer func() {
+			if p.metrics != nil {
+				p.metrics.RecordConfigOperation("get", fileName, group, "success")
+			}
+		}()
 	}
 
 	log.Infof("Getting config: %s, group: %s", fileName, group)
@@ -344,15 +405,37 @@ func (p *PlugPolaris) WatchConfig(fileName, group string) (*ConfigWatcher, error
 		return nil, errors.NewInitError("Polaris plugin not initialized")
 	}
 
+	// 记录配置监听操作指标
+	if p.metrics != nil {
+		p.metrics.RecordSDKOperation("watch_config", "start")
+		defer func() {
+			if p.metrics != nil {
+				p.metrics.RecordSDKOperation("watch_config", "success")
+			}
+		}()
+	}
+
 	log.Infof("Watching config: %s, group: %s", fileName, group)
 	// 这里应该调用实际的 SDK API
-	return NewConfigWatcher(nil, fileName, group, ""), nil
+	watcher := NewConfigWatcher(nil, fileName, group, p.conf.Namespace)
+	watcher.metrics = p.metrics // 传递 metrics 引用
+	return watcher, nil
 }
 
 // CheckRateLimit 检查限流
 func (p *PlugPolaris) CheckRateLimit(serviceName string, labels map[string]string) (bool, error) {
 	if !p.initialized {
 		return false, errors.NewInitError("Polaris plugin not initialized")
+	}
+
+	// 记录限流检查操作指标
+	if p.metrics != nil {
+		p.metrics.RecordSDKOperation("check_rate_limit", "start")
+		defer func() {
+			if p.metrics != nil {
+				p.metrics.RecordSDKOperation("check_rate_limit", "success")
+			}
+		}()
 	}
 
 	log.Infof("Checking rate limit for service: %s", serviceName)
