@@ -40,7 +40,7 @@ type ConsumerGroup struct {
 }
 
 // NewConsumerGroup 创建新的消费者组
-func (k *KafkaClient) NewConsumerGroup(groupID string, topics []string, handler MessageHandler) *ConsumerGroup {
+func (k *Client) NewConsumerGroup(groupID string, topics []string, handler MessageHandler) *ConsumerGroup {
 	ctx, cancel := context.WithCancel(k.ctx)
 	return &ConsumerGroup{
 		client:        k.consumer,
@@ -57,7 +57,7 @@ func (k *KafkaClient) NewConsumerGroup(groupID string, topics []string, handler 
 }
 
 // initConsumer 初始化消费者
-func (k *KafkaClient) initConsumer() error {
+func (k *Client) initConsumer() error {
 	if k.consumer != nil {
 		return nil
 	}
@@ -90,7 +90,7 @@ func (k *KafkaClient) initConsumer() error {
 }
 
 // getStartOffset 获取起始偏移量
-func (k *KafkaClient) getStartOffset() kgo.Offset {
+func (k *Client) getStartOffset() kgo.Offset {
 	switch k.conf.Consumer.StartOffset {
 	case StartOffsetEarliest:
 		return kgo.NewOffset().AtStart()
@@ -102,7 +102,7 @@ func (k *KafkaClient) getStartOffset() kgo.Offset {
 }
 
 // Subscribe 订阅主题
-func (k *KafkaClient) Subscribe(ctx context.Context, topics []string, handler MessageHandler) error {
+func (k *Client) Subscribe(ctx context.Context, topics []string, handler MessageHandler) error {
 	if k.consumer == nil {
 		if err := k.initConsumer(); err != nil {
 			return fmt.Errorf("failed to initialize consumer: %w", err)
@@ -257,14 +257,14 @@ func (cg *ConsumerGroup) IsRunning() bool {
 }
 
 // GetConsumer 获取消费者客户端（用于高级操作）
-func (k *KafkaClient) GetConsumer() *kgo.Client {
+func (k *Client) GetConsumer() *kgo.Client {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	return k.consumer
 }
 
 // IsConsumerReady 检查消费者是否就绪
-func (k *KafkaClient) IsConsumerReady() bool {
+func (k *Client) IsConsumerReady() bool {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	return k.consumer != nil

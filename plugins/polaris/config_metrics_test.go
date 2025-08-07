@@ -3,7 +3,6 @@ package polaris
 import (
 	"testing"
 
-	"github.com/go-lynx/lynx/plugins/polaris/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -40,9 +39,9 @@ func TestConfigOperationsWithMetrics(t *testing.T) {
 	// 测试未初始化状态下的配置操作
 	_, err := plugin.GetConfigValue("application.yml", "DEFAULT_GROUP")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	_, err = plugin.WatchConfig("application.yml", "DEFAULT_GROUP")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 }

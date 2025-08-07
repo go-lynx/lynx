@@ -2,6 +2,7 @@ package polaris
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -95,9 +96,20 @@ func (v *Validator) validateBasicFields(result *ValidationResult) {
 	// 验证命名空间
 	if v.config.Namespace == "" {
 		result.AddError("namespace", "namespace cannot be empty", v.config.Namespace)
+	} else if len(v.config.Namespace) > 64 {
+		result.AddError("namespace", "namespace length must not exceed 64 characters", v.config.Namespace)
+	} else {
+		// 验证命名空间格式（只允许字母、数字、下划线、连字符）
+		namespaceRegex := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+		if !namespaceRegex.MatchString(v.config.Namespace) {
+			result.AddError("namespace", "namespace can only contain letters, numbers, underscores, and hyphens", v.config.Namespace)
+		}
 	}
 
 	// 验证 Token（如果提供）
+	if v.config.Token != "" && len(v.config.Token) > 1024 {
+		result.AddError("token", "token length must not exceed 1024 characters", v.config.Token)
+	}
 	if v.config.Token != "" && len(v.config.Token) < 8 {
 		result.AddError("token", "token must be at least 8 characters long", v.config.Token)
 	}
@@ -134,7 +146,25 @@ func (v *Validator) validateTimeConfigs(result *ValidationResult) {
 
 // validateDependencies 验证依赖关系
 func (v *Validator) validateDependencies(result *ValidationResult) {
-	// 当前配置中没有复杂的依赖关系，跳过验证
+	// 权重和 TTL 的合理性验证
+	if v.config.Weight > 0 && v.config.Ttl < 5 {
+		result.AddError("ttl", "TTL should be at least 5 seconds when weight is greater than 0", v.config.Ttl)
+	}
+
+	// 超时和 TTL 的协调性验证
+	if v.config.Timeout != nil && v.config.Ttl > 0 {
+		timeout := time.Duration(v.config.Timeout.Seconds) * time.Second
+		ttlDuration := time.Duration(v.config.Ttl) * time.Second
+
+		if timeout >= ttlDuration {
+			result.AddError("timeout", "Timeout should be less than TTL to ensure proper operation", timeout)
+		}
+	}
+
+	// 命名空间和服务的协调性验证
+	if v.config.Namespace == "default" && v.config.Token != "" {
+		result.AddError("token", "Token should not be required for default namespace", v.config.Token)
+	}
 }
 
 // contains 检查切片是否包含指定值

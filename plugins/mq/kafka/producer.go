@@ -10,7 +10,7 @@ import (
 )
 
 // initProducer 初始化生产者
-func (k *KafkaClient) initProducer() error {
+func (k *Client) initProducer() error {
 	if k.producer != nil {
 		return nil
 	}
@@ -46,7 +46,7 @@ func (k *KafkaClient) initProducer() error {
 }
 
 // Produce 发送消息到指定主题
-func (k *KafkaClient) Produce(ctx context.Context, topic string, key, value []byte) error {
+func (k *Client) Produce(ctx context.Context, topic string, key, value []byte) error {
 	// 验证参数
 	if err := k.validateTopic(topic); err != nil {
 		return fmt.Errorf("invalid topic %s: %w", topic, err)
@@ -86,7 +86,7 @@ func (k *KafkaClient) Produce(ctx context.Context, topic string, key, value []by
 }
 
 // ProduceBatch 批量发送消息
-func (k *KafkaClient) ProduceBatch(ctx context.Context, topic string, records []*kgo.Record) error {
+func (k *Client) ProduceBatch(ctx context.Context, topic string, records []*kgo.Record) error {
 	k.mu.RLock()
 	producer := k.producer
 	k.mu.RUnlock()
@@ -119,7 +119,7 @@ func (k *KafkaClient) ProduceBatch(ctx context.Context, topic string, records []
 }
 
 // getCompression 获取压缩算法
-func (k *KafkaClient) getCompression() kgo.CompressionCodec {
+func (k *Client) getCompression() kgo.CompressionCodec {
 	switch k.conf.Producer.Compression {
 	case CompressionGzip:
 		return kgo.GzipCompression()
@@ -137,14 +137,14 @@ func (k *KafkaClient) getCompression() kgo.CompressionCodec {
 }
 
 // GetProducer 获取生产者客户端（用于高级操作）
-func (k *KafkaClient) GetProducer() *kgo.Client {
+func (k *Client) GetProducer() *kgo.Client {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	return k.producer
 }
 
 // IsProducerReady 检查生产者是否就绪
-func (k *KafkaClient) IsProducerReady() bool {
+func (k *Client) IsProducerReady() bool {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	return k.producer != nil

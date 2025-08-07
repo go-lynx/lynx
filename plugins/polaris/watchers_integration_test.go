@@ -3,7 +3,6 @@ package polaris
 import (
 	"testing"
 
-	"github.com/go-lynx/lynx/plugins/polaris/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,11 +13,11 @@ func TestWatchersIntegration(t *testing.T) {
 	// 测试未初始化状态下的监听器创建
 	_, err := plugin.WatchService("test-service")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	_, err = plugin.WatchConfig("test-config", "test-group")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 }
 
 // TestServiceWatcherCreation 测试服务监听器创建

@@ -12,8 +12,8 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// KafkaClient Kafka 客户端插件
-type KafkaClient struct {
+// Client Kafka 客户端插件
+type Client struct {
 	*plugins.BasePlugin
 	conf           *conf.Kafka
 	producer       *kgo.Client
@@ -26,15 +26,15 @@ type KafkaClient struct {
 	retryHandler   *RetryHandler
 }
 
-// 确保 KafkaClient 实现了所有接口
-var _ KafkaClientInterface = (*KafkaClient)(nil)
-var _ KafkaProducer = (*KafkaClient)(nil)
-var _ KafkaConsumer = (*KafkaClient)(nil)
+// 确保 Client 实现了所有接口
+var _ ClientInterface = (*Client)(nil)
+var _ Producer = (*Client)(nil)
+var _ Consumer = (*Client)(nil)
 
 // NewKafkaClient 创建一个新的 Kafka 客户端插件实例
-func NewKafkaClient() *KafkaClient {
+func NewKafkaClient() *Client {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &KafkaClient{
+	return &Client{
 		BasePlugin: plugins.NewBasePlugin(
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
 			pluginName,
@@ -51,7 +51,7 @@ func NewKafkaClient() *KafkaClient {
 }
 
 // InitializeResources 初始化 Kafka 资源
-func (k *KafkaClient) InitializeResources(rt plugins.Runtime) error {
+func (k *Client) InitializeResources(rt plugins.Runtime) error {
 	k.conf = &conf.Kafka{}
 
 	// 加载配置
@@ -72,7 +72,7 @@ func (k *KafkaClient) InitializeResources(rt plugins.Runtime) error {
 }
 
 // StartupTasks 启动任务
-func (k *KafkaClient) StartupTasks() error {
+func (k *Client) StartupTasks() error {
 	// 初始化生产者
 	if k.conf.Producer != nil && k.conf.Producer.Enabled {
 		if err := k.initProducer(); err != nil {
@@ -86,7 +86,7 @@ func (k *KafkaClient) StartupTasks() error {
 }
 
 // ShutdownTasks 关闭任务
-func (k *KafkaClient) ShutdownTasks() error {
+func (k *Client) ShutdownTasks() error {
 	k.cancel() // 取消所有上下文
 
 	k.mu.Lock()
@@ -105,6 +105,6 @@ func (k *KafkaClient) ShutdownTasks() error {
 }
 
 // GetMetrics 获取监控指标
-func (k *KafkaClient) GetMetrics() *Metrics {
+func (k *Client) GetMetrics() *Metrics {
 	return k.metrics
 }

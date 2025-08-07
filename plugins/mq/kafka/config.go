@@ -8,7 +8,7 @@ import (
 )
 
 // validateConfiguration 验证配置
-func (k *KafkaClient) validateConfiguration() error {
+func (k *Client) validateConfiguration() error {
 	if len(k.conf.Brokers) == 0 {
 		return ErrNoBrokersConfigured
 	}
@@ -38,7 +38,7 @@ func (k *KafkaClient) validateConfiguration() error {
 }
 
 // validateProducerConfig 验证生产者配置
-func (k *KafkaClient) validateProducerConfig() error {
+func (k *Client) validateProducerConfig() error {
 	if k.conf.Producer.Compression != "" {
 		validCompressions := map[string]bool{
 			CompressionNone:   true,
@@ -55,7 +55,7 @@ func (k *KafkaClient) validateProducerConfig() error {
 }
 
 // validateConsumerConfig 验证消费者配置
-func (k *KafkaClient) validateConsumerConfig() error {
+func (k *Client) validateConsumerConfig() error {
 	if k.conf.Consumer.GroupId == "" {
 		return ErrNoGroupID
 	}
@@ -78,7 +78,7 @@ func (k *KafkaClient) validateConsumerConfig() error {
 }
 
 // validateSASLConfig 验证 SASL 配置
-func (k *KafkaClient) validateSASLConfig() error {
+func (k *Client) validateSASLConfig() error {
 	if k.conf.Sasl == nil {
 		return fmt.Errorf("SASL configuration is nil")
 	}
@@ -110,7 +110,7 @@ func (k *KafkaClient) validateSASLConfig() error {
 }
 
 // setDefaultValues 设置默认值
-func (k *KafkaClient) setDefaultValues() {
+func (k *Client) setDefaultValues() {
 	defaultConf := &conf.Kafka{
 		DialTimeout: &durationpb.Duration{Seconds: 10},
 		Producer: &conf.Producer{

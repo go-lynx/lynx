@@ -26,7 +26,7 @@ lynx:
     max_life_time: "300s"
 
 # 高级配置示例
-# lynx:
+#  lynx:
 #   pgsql:
 #     driver: "postgres"
 #     source: "postgres://user:password@localhost:5432/mydb?sslmode=require&connect_timeout=10"
@@ -36,7 +36,7 @@ lynx:
 #     max_life_time: "600s"
 
 # 生产环境配置示例
-# lynx:
+#  lynx:
 #   pgsql:
 #     driver: "postgres"
 #     source: "postgres://prod_user:secure_password@prod-db.example.com:5432/production_db?sslmode=require&connect_timeout=30&statement_timeout=30000"
@@ -55,20 +55,20 @@ lynx:
 #         region: "us-west-2"
 
 # 启用 Prometheus 监控的配置示例
-lynx:
-  pgsql:
-    driver: "postgres"
-    source: "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable"
-    min_conn: 10
-    max_conn: 50
-    max_idle_time: "30s"
-    max_life_time: "300s"
-    prometheus:
-      enabled: true
-      metrics_path: "/metrics"
-      metrics_port: 9090
-      namespace: "lynx"
-      subsystem: "pgsql"
-      labels:
-        environment: "development"
-        service: "myapp" 
+#  lynx:
+#    pgsql:
+#      driver: "postgres"
+#      source: "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable"
+#      min_conn: 10
+#      max_conn: 50
+#      max_idle_time: "30s"
+#      max_life_time: "300s"
+#      prometheus:
+#        enabled: true
+#        metrics_path: "/metrics"
+#        metrics_port: 9090
+#        namespace: "lynx"
+#        subsystem: "pgsql"
+#        labels:
+#          environment: "development"
+#          service: "myapp"
