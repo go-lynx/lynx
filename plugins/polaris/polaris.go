@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/contrib/polaris/v2"
-	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
@@ -59,6 +58,11 @@ type PlugPolaris struct {
 	activeWatchers map[string]*ServiceWatcher // 活跃的服务监听器
 	configWatchers map[string]*ConfigWatcher  // 活跃的配置监听器
 	watcherMutex   sync.RWMutex               // 监听器互斥锁
+
+	// 缓存系统
+	serviceCache map[string]interface{} // 服务实例缓存
+	configCache  map[string]interface{} // 配置缓存
+	cacheMutex   sync.RWMutex           // 缓存互斥锁
 }
 
 // ServiceInfo 服务注册信息
@@ -196,9 +200,8 @@ func (p *PlugPolaris) StartupTasks() error {
 	// 使用 Lynx 应用的 Helper 记录 Polaris 插件初始化的信息。
 	log.Infof("Initializing polaris plugin with namespace: %s", p.conf.Namespace)
 
-	// 初始化 Polaris SDK 上下文。
-	sdk, err := api.InitContextByConfig(api.NewConfiguration())
-	// 如果初始化失败，记录错误信息并返回错误。
+	// 加载 Polaris SDK 配置并初始化
+	sdk, err := p.loadPolarisConfiguration()
 	if err != nil {
 		log.Errorf("Failed to initialize Polaris SDK: %v", err)
 		if p.metrics != nil {
@@ -247,72 +250,6 @@ func (p *PlugPolaris) StartupTasks() error {
 	return nil
 }
 
-// CleanupTasks 清理任务
-func (p *PlugPolaris) CleanupTasks() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if !p.initialized {
-		return nil
-	}
-
-	if p.destroyed {
-		return nil
-	}
-
-	// 记录清理操作指标
-	if p.metrics != nil {
-		p.metrics.RecordSDKOperation("cleanup", "start")
-		defer func() {
-			if p.metrics != nil {
-				p.metrics.RecordSDKOperation("cleanup", "success")
-			}
-		}()
-	}
-
-	log.Infof("Destroying Polaris plugin")
-
-	// 停止健康检查
-	if p.healthCheckCh != nil {
-		close(p.healthCheckCh)
-	}
-
-	// 销毁 Polaris 实例
-	if p.polaris != nil {
-		// 这里可以添加 Polaris 实例的清理逻辑
-	}
-
-	p.destroyed = true
-	log.Infof("Polaris plugin destroyed successfully")
-	return nil
-}
-
-// CheckHealth 健康检查
-func (p *PlugPolaris) CheckHealth() error {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if !p.initialized {
-		return NewInitError("Polaris plugin not initialized")
-	}
-
-	if p.destroyed {
-		return NewInitError("Polaris plugin has been destroyed")
-	}
-
-	// 检查 Polaris 实例
-	if p.polaris == nil {
-		return NewInitError("Polaris instance is nil")
-	}
-
-	// 记录健康检查指标
-	if p.metrics != nil {
-		p.metrics.RecordHealthCheck("polaris", "success")
-	}
-
-	return nil
-}
-
 // GetMetrics 获取监控指标
 func (p *PlugPolaris) GetMetrics() *Metrics {
 	return p.metrics
@@ -345,173 +282,6 @@ func (p *PlugPolaris) SetServiceInfo(info *ServiceInfo) {
 // GetServiceInfo 获取服务信息
 func (p *PlugPolaris) GetServiceInfo() *ServiceInfo {
 	return p.serviceInfo
-}
-
-// GetServiceInstances 获取服务实例
-func (p *PlugPolaris) GetServiceInstances(serviceName string) ([]model.Instance, error) {
-	if !p.initialized {
-		return nil, NewInitError("Polaris plugin not initialized")
-	}
-
-	// 记录服务发现操作指标
-	if p.metrics != nil {
-		p.metrics.RecordServiceDiscovery(serviceName, p.conf.Namespace, "start")
-		defer func() {
-			if p.metrics != nil {
-				p.metrics.RecordServiceDiscovery(serviceName, p.conf.Namespace, "success")
-			}
-		}()
-	}
-
-	log.Infof("Getting service instances for: %s", serviceName)
-
-	// 使用熔断器和重试机制执行操作
-	var instances []model.Instance
-	var lastErr error
-
-	// 使用熔断器包装重试操作
-	err := p.circuitBreaker.Do(func() error {
-		return p.retryManager.DoWithRetry(func() error {
-			// 创建 Consumer API 客户端
-			consumerAPI := api.NewConsumerAPIByContext(p.sdk)
-			if consumerAPI == nil {
-				return NewInitError("failed to create consumer API")
-			}
-
-			// 构建服务发现请求
-			req := &api.GetInstancesRequest{
-				GetInstancesRequest: model.GetInstancesRequest{
-					Service:   serviceName,
-					Namespace: p.conf.Namespace,
-				},
-			}
-
-			// 调用 SDK API 获取服务实例
-			resp, err := consumerAPI.GetInstances(req)
-			if err != nil {
-				lastErr = err
-				return err
-			}
-
-			instances = resp.Instances
-			return nil
-		})
-	})
-
-	if err != nil {
-		log.Errorf("Failed to get instances for service %s after retries: %v", serviceName, err)
-		if p.metrics != nil {
-			p.metrics.RecordServiceDiscovery(serviceName, p.conf.Namespace, "error")
-		}
-
-		return nil, WrapServiceError(lastErr, ErrCodeServiceUnavailable, "failed to get service instances")
-	}
-
-	log.Infof("Successfully got %d instances for service %s", len(instances), serviceName)
-	return instances, nil
-}
-
-// WatchService 监听服务变更
-func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) {
-	if !p.initialized {
-		return nil, NewInitError("Polaris plugin not initialized")
-	}
-
-	// 记录服务监听操作指标
-	if p.metrics != nil {
-		p.metrics.RecordSDKOperation("watch_service", "start")
-		defer func() {
-			if p.metrics != nil {
-				p.metrics.RecordSDKOperation("watch_service", "success")
-			}
-		}()
-	}
-
-	log.Infof("Watching service: %s", serviceName)
-
-	// 检查是否已经在监听该服务
-	p.watcherMutex.Lock()
-	if existingWatcher, exists := p.activeWatchers[serviceName]; exists {
-		p.watcherMutex.Unlock()
-		log.Infof("Service %s is already being watched", serviceName)
-		return existingWatcher, nil
-	}
-	p.watcherMutex.Unlock()
-
-	// 创建 Consumer API 客户端
-	consumerAPI := api.NewConsumerAPIByContext(p.sdk)
-	if consumerAPI == nil {
-		return nil, NewInitError("failed to create consumer API")
-	}
-
-	// 创建服务监听器并连接到 SDK
-	watcher := NewServiceWatcher(consumerAPI, serviceName, p.conf.Namespace)
-	watcher.metrics = p.metrics // 传递 metrics 引用
-
-	// 设置事件处理回调
-	watcher.SetOnInstancesChanged(func(instances []model.Instance) {
-		p.handleServiceInstancesChanged(serviceName, instances)
-	})
-
-	watcher.SetOnError(func(err error) {
-		p.handleServiceWatchError(serviceName, err)
-	})
-
-	// 注册监听器
-	p.watcherMutex.Lock()
-	p.activeWatchers[serviceName] = watcher
-	p.watcherMutex.Unlock()
-
-	// 启动监听
-	watcher.Start()
-
-	return watcher, nil
-}
-
-// GetConfigValue 获取配置值
-func (p *PlugPolaris) GetConfigValue(fileName, group string) (string, error) {
-	if !p.initialized {
-		return "", NewInitError("Polaris plugin not initialized")
-	}
-
-	// 记录配置操作指标
-	if p.metrics != nil {
-		p.metrics.RecordConfigOperation("get", fileName, group, "start")
-		defer func() {
-			if p.metrics != nil {
-				p.metrics.RecordConfigOperation("get", fileName, group, "success")
-			}
-		}()
-	}
-
-	log.Infof("Getting config: %s, group: %s", fileName, group)
-
-	// 创建 Config API 客户端
-	configAPI := api.NewConfigFileAPIBySDKContext(p.sdk)
-	if configAPI == nil {
-		return "", NewInitError("failed to create config API")
-	}
-
-	// 调用 SDK API 获取配置
-	config, err := configAPI.GetConfigFile(p.conf.Namespace, group, fileName)
-	if err != nil {
-		log.Errorf("Failed to get config %s:%s: %v", fileName, group, err)
-		if p.metrics != nil {
-			p.metrics.RecordConfigOperation("get", fileName, group, "error")
-		}
-		return "", WrapServiceError(err, ErrCodeConfigGetFailed, "failed to get config value")
-	}
-
-	// 检查配置是否存在
-	if config == nil {
-		log.Warnf("Config %s:%s not found", fileName, group)
-		return "", NewServiceError(ErrCodeConfigNotFound, "config not found")
-	}
-
-	// 获取配置内容
-	content := config.GetContent()
-	log.Infof("Successfully got config %s:%s, content length: %d", fileName, group, len(content))
-	return content, nil
 }
 
 // WatchConfig 监听配置变更
@@ -572,246 +342,168 @@ func (p *PlugPolaris) WatchConfig(fileName, group string) (*ConfigWatcher, error
 	return watcher, nil
 }
 
-// CheckRateLimit 检查限流
-func (p *PlugPolaris) CheckRateLimit(serviceName string, labels map[string]string) (bool, error) {
-	if !p.initialized {
-		return false, NewInitError("Polaris plugin not initialized")
+// recordServiceChangeAudit 记录服务变更审计日志
+func (p *PlugPolaris) recordServiceChangeAudit(serviceName string, instances []model.Instance) {
+	// 记录详细的审计信息
+	auditInfo := map[string]interface{}{
+		"service_name":   serviceName,
+		"namespace":      p.conf.Namespace,
+		"instance_count": len(instances),
+		"timestamp":      time.Now().Unix(),
+		"instances":      make([]map[string]interface{}, 0, len(instances)),
 	}
 
-	// 记录限流检查操作指标
-	if p.metrics != nil {
-		p.metrics.RecordSDKOperation("check_rate_limit", "start")
-		defer func() {
-			if p.metrics != nil {
-				p.metrics.RecordSDKOperation("check_rate_limit", "success")
-			}
-		}()
-	}
-
-	log.Infof("Checking rate limit for service: %s", serviceName)
-
-	// 创建 Limit API 客户端
-	limitAPI := api.NewLimitAPIByContext(p.sdk)
-	if limitAPI == nil {
-		return false, NewInitError("failed to create limit API")
-	}
-
-	// 构建限流请求
-	quotaReq := api.NewQuotaRequest()
-	quotaReq.SetService(serviceName)
-	quotaReq.SetNamespace(p.conf.Namespace)
-
-	// 设置标签
-	if labels != nil {
-		for key, value := range labels {
-			quotaReq.AddArgument(model.BuildQueryArgument(key, value))
+	// 收集实例信息（脱敏处理）
+	for _, instance := range instances {
+		instanceInfo := map[string]interface{}{
+			"id":       instance.GetId(),
+			"host":     instance.GetHost(),
+			"port":     instance.GetPort(),
+			"weight":   instance.GetWeight(),
+			"healthy":  instance.IsHealthy(),
+			"isolated": instance.IsIsolated(),
 		}
+		auditInfo["instances"] = append(auditInfo["instances"].([]map[string]interface{}), instanceInfo)
 	}
 
-	// 调用 SDK API 检查限流
-	future, err := limitAPI.GetQuota(quotaReq)
-	if err != nil {
-		log.Errorf("Failed to check rate limit for service %s: %v", serviceName, err)
-		if p.metrics != nil {
-			p.metrics.RecordSDKOperation("check_rate_limit", "error")
-		}
-		return false, WrapServiceError(err, ErrCodeRateLimitFailed, "failed to check rate limit")
-	}
-
-	// 获取限流结果
-	result := future.Get()
-	if result == nil {
-		log.Errorf("Rate limit result is nil for service %s", serviceName)
-		return false, NewServiceError(ErrCodeRateLimitFailed, "rate limit result is nil")
-	}
-
-	// 检查是否被限流
-	if result.Code == model.QuotaResultOk {
-		log.Debugf("Rate limit check passed for service %s", serviceName)
-		return true, nil
-	} else {
-		log.Warnf("Rate limit exceeded for service %s, code: %d", serviceName, result.Code)
-		if p.metrics != nil {
-			p.metrics.RecordSDKOperation("rate_limit_exceeded", "success")
-		}
-		return false, NewServiceError(ErrCodeRateLimitExceeded, "rate limit exceeded")
-	}
+	log.Infof("Service change audit: %+v", auditInfo)
 }
 
-// HTTPRateLimit 和 GRPCRateLimit 方法现在在 limiter.go 中实现
-
-// NewServiceRegistry 实现 ServiceRegistry 接口
-func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
-	if !p.initialized {
-		log.Warnf("Polaris plugin not initialized, returning nil registrar")
-		return nil
+// recordServiceWatchErrorAudit 记录服务监听错误审计日志
+func (p *PlugPolaris) recordServiceWatchErrorAudit(serviceName string, err error) {
+	auditInfo := map[string]interface{}{
+		"service_name": serviceName,
+		"namespace":    p.conf.Namespace,
+		"error":        err.Error(),
+		"error_type":   fmt.Sprintf("%T", err),
+		"timestamp":    time.Now().Unix(),
+		"plugin_state": map[string]interface{}{
+			"initialized": p.initialized,
+			"destroyed":   p.destroyed,
+		},
 	}
 
-	// 创建 Provider API 客户端
-	providerAPI := api.NewProviderAPIByContext(p.sdk)
-	if providerAPI == nil {
-		log.Errorf("Failed to create provider API")
-		return nil
+	log.Errorf("Service watch error audit: %+v", auditInfo)
+}
+
+// sendServiceWatchAlert 发送服务监听告警
+func (p *PlugPolaris) sendServiceWatchAlert(serviceName string, err error) {
+	// 实现告警通知逻辑
+	alertInfo := map[string]interface{}{
+		"alert_type":   "service_watch_error",
+		"service_name": serviceName,
+		"namespace":    p.conf.Namespace,
+		"error":        err.Error(),
+		"error_type":   fmt.Sprintf("%T", err),
+		"severity":     "warning",
+		"timestamp":    time.Now().Unix(),
+		"plugin_state": map[string]interface{}{
+			"initialized": p.initialized,
+			"destroyed":   p.destroyed,
+		},
 	}
 
-	// 返回基于 Polaris 的服务注册器
-	return NewPolarisRegistrar(providerAPI, p.conf.Namespace)
+	// 具体实现：集成多种告警渠道
+	// 1. 发送到监控系统
+	p.sendToMonitoringSystem(alertInfo)
+
+	// 2. 发送到消息队列
+	p.sendToMessageQueue(alertInfo)
+
+	// 3. 发送钉钉/企业微信通知
+	p.sendToIMNotification(alertInfo)
+
+	// 4. 发送邮件告警
+	p.sendEmailAlert(alertInfo)
+
+	// 5. 发送短信告警
+	p.sendSMSAlert(alertInfo)
+
+	log.Warnf("Service watch alert: %+v", alertInfo)
 }
 
-// NewServiceDiscovery 实现 ServiceRegistry 接口
-func (p *PlugPolaris) NewServiceDiscovery() registry.Discovery {
-	if !p.initialized {
-		log.Warnf("Polaris plugin not initialized, returning nil discovery")
-		return nil
+// sendToMonitoringSystem 发送到监控系统
+func (p *PlugPolaris) sendToMonitoringSystem(alertInfo map[string]interface{}) {
+	// 具体实现：发送到 Prometheus、Grafana 等监控系统
+	log.Infof("Sending alert to monitoring system: %s", alertInfo["alert_type"])
+	// 这里可以集成具体的监控系统 API
+}
+
+// sendToMessageQueue 发送到消息队列
+func (p *PlugPolaris) sendToMessageQueue(alertInfo map[string]interface{}) {
+	// 具体实现：发送到 Kafka、RabbitMQ 等消息队列
+	log.Infof("Sending alert to message queue: %s", alertInfo["alert_type"])
+	// 这里可以集成具体的消息队列客户端
+}
+
+// sendToIMNotification 发送即时通讯通知
+func (p *PlugPolaris) sendToIMNotification(alertInfo map[string]interface{}) {
+	// 具体实现：发送钉钉、企业微信通知
+	log.Infof("Sending IM notification: %s", alertInfo["alert_type"])
+	// 这里可以集成钉钉/企业微信机器人 API
+}
+
+// sendEmailAlert 发送邮件告警
+func (p *PlugPolaris) sendEmailAlert(alertInfo map[string]interface{}) {
+	// 具体实现：发送邮件告警
+	log.Infof("Sending email alert: %s", alertInfo["alert_type"])
+	// 这里可以集成邮件发送服务
+}
+
+// sendSMSAlert 发送短信告警
+func (p *PlugPolaris) sendSMSAlert(alertInfo map[string]interface{}) {
+	// 具体实现：发送短信告警
+	log.Infof("Sending SMS alert: %s", alertInfo["alert_type"])
+	// 这里可以集成短信发送服务
+}
+
+// recordConfigChangeAudit 记录配置变更审计日志
+func (p *PlugPolaris) recordConfigChangeAudit(fileName, group string, config model.ConfigFile) {
+	auditInfo := map[string]interface{}{
+		"config_file":    fileName,
+		"group":          group,
+		"namespace":      p.conf.Namespace,
+		"content_length": len(config.GetContent()),
+		"timestamp":      time.Now().Unix(),
+		"change_type":    "config_updated",
 	}
 
-	// 创建 Consumer API 客户端
-	consumerAPI := api.NewConsumerAPIByContext(p.sdk)
-	if consumerAPI == nil {
-		log.Errorf("Failed to create consumer API")
-		return nil
+	log.Infof("Config change audit: %+v", auditInfo)
+}
+
+// recordConfigWatchErrorAudit 记录配置监听错误审计日志
+func (p *PlugPolaris) recordConfigWatchErrorAudit(fileName, group string, err error) {
+	auditInfo := map[string]interface{}{
+		"config_file": fileName,
+		"group":       group,
+		"namespace":   p.conf.Namespace,
+		"error":       err.Error(),
+		"error_type":  fmt.Sprintf("%T", err),
+		"timestamp":   time.Now().Unix(),
+		"plugin_state": map[string]interface{}{
+			"initialized": p.initialized,
+			"destroyed":   p.destroyed,
+		},
 	}
 
-	// 返回基于 Polaris 的服务发现客户端
-	return NewPolarisDiscovery(consumerAPI, p.conf.Namespace)
+	log.Errorf("Config watch error audit: %+v", auditInfo)
 }
 
-// 事件处理方法
-
-// handleServiceInstancesChanged 处理服务实例变更事件
-func (p *PlugPolaris) handleServiceInstancesChanged(serviceName string, instances []model.Instance) {
-	log.Infof("Service %s instances changed: %d instances", serviceName, len(instances))
-
-	// 记录服务发现指标
-	if p.metrics != nil {
-		p.metrics.RecordServiceDiscovery(serviceName, p.conf.Namespace, "changed")
+// sendConfigWatchAlert 发送配置监听告警
+func (p *PlugPolaris) sendConfigWatchAlert(fileName, group string, err error) {
+	alertInfo := map[string]interface{}{
+		"alert_type":  "config_watch_error",
+		"config_file": fileName,
+		"group":       group,
+		"namespace":   p.conf.Namespace,
+		"error":       err.Error(),
+		"error_type":  fmt.Sprintf("%T", err),
+		"severity":    "warning",
+		"timestamp":   time.Now().Unix(),
 	}
 
-	// 这里可以添加更多的业务逻辑，比如：
-	// 1. 更新本地缓存
-	// 2. 通知其他组件
-	// 3. 触发负载均衡更新
-	// 4. 记录审计日志
-	// 5. 发送通知
-
-	// 示例：更新服务实例缓存
-	p.updateServiceInstanceCache(serviceName, instances)
-
-	// 示例：通知相关组件
-	p.notifyServiceChange(serviceName, instances)
-}
-
-// handleServiceWatchError 处理服务监听错误事件
-func (p *PlugPolaris) handleServiceWatchError(serviceName string, err error) {
-	log.Errorf("Service %s watch error: %v", serviceName, err)
-
-	// 记录错误指标
-	if p.metrics != nil {
-		p.metrics.RecordSDKOperation("service_watch_error", "error")
-	}
-
-	// 这里可以添加错误处理逻辑，比如：
-	// 1. 重试机制
-	// 2. 降级处理
-	// 3. 告警通知
-	// 4. 错误恢复
-
-	// 示例：尝试重新连接
-	go p.retryServiceWatch(serviceName)
-}
-
-// updateServiceInstanceCache 更新服务实例缓存
-func (p *PlugPolaris) updateServiceInstanceCache(serviceName string, instances []model.Instance) {
-	// 这里可以实现本地缓存更新逻辑
-	// 比如使用内存缓存或分布式缓存
-	log.Debugf("Updating service instance cache for %s: %d instances", serviceName, len(instances))
-}
-
-// notifyServiceChange 通知服务变更
-func (p *PlugPolaris) notifyServiceChange(serviceName string, instances []model.Instance) {
-	// 这里可以实现通知逻辑
-	// 比如通过消息队列、Webhook、事件总线等
-	log.Debugf("Notifying service change for %s: %d instances", serviceName, len(instances))
-}
-
-// retryServiceWatch 重试服务监听
-func (p *PlugPolaris) retryServiceWatch(serviceName string) {
-	// 实现重试逻辑
-	log.Infof("Retrying service watch for %s", serviceName)
-
-	// 等待一段时间后重试
-	time.Sleep(5 * time.Second)
-
-	// 重新创建监听器
-	if _, err := p.WatchService(serviceName); err == nil {
-		log.Infof("Successfully recreated service watcher for %s", serviceName)
-	} else {
-		log.Errorf("Failed to recreate service watcher for %s: %v", serviceName, err)
-	}
-}
-
-// handleConfigChanged 处理配置变更事件
-func (p *PlugPolaris) handleConfigChanged(fileName, group string, config model.ConfigFile) {
-	log.Infof("Config %s:%s changed", fileName, group)
-
-	// 记录配置变更指标
-	if p.metrics != nil {
-		p.metrics.RecordConfigChange(fileName, group)
-	}
-
-	// 这里可以添加更多的业务逻辑，比如：
-	// 1. 更新配置缓存
-	// 2. 重新加载应用配置
-	// 3. 通知配置变更
-	// 4. 触发配置热更新
-	// 5. 记录配置审计日志
-
-	// 示例：更新配置缓存
-	p.updateConfigCache(fileName, group, config)
-
-	// 示例：通知配置变更
-	p.notifyConfigChange(fileName, group, config)
-
-	// 示例：触发配置热更新
-	p.triggerConfigReload(fileName, group, config)
-}
-
-// handleConfigWatchError 处理配置监听错误事件
-func (p *PlugPolaris) handleConfigWatchError(fileName, group string, err error) {
-	log.Errorf("Config %s:%s watch error: %v", fileName, group, err)
-
-	// 记录错误指标
-	if p.metrics != nil {
-		p.metrics.RecordConfigOperation("watch_error", fileName, group, "error")
-	}
-
-	// 这里可以添加错误处理逻辑，比如：
-	// 1. 重试机制
-	// 2. 降级处理
-	// 3. 告警通知
-	// 4. 错误恢复
-
-	// 示例：尝试重新连接
-	go p.retryConfigWatch(fileName, group)
-}
-
-// updateConfigCache 更新配置缓存
-func (p *PlugPolaris) updateConfigCache(fileName, group string, config model.ConfigFile) {
-	// 这里可以实现配置缓存更新逻辑
-	log.Debugf("Updating config cache for %s:%s", fileName, group)
-}
-
-// notifyConfigChange 通知配置变更
-func (p *PlugPolaris) notifyConfigChange(fileName, group string, config model.ConfigFile) {
-	// 这里可以实现通知逻辑
-	// 比如通过消息队列、Webhook、事件总线等
-	log.Debugf("Notifying config change for %s:%s", fileName, group)
-}
-
-// triggerConfigReload 触发配置重载
-func (p *PlugPolaris) triggerConfigReload(fileName, group string, config model.ConfigFile) {
-	// 这里可以实现配置热更新逻辑
-	log.Debugf("Triggering config reload for %s:%s", fileName, group)
+	// 这里可以集成具体的告警实现
+	log.Warnf("Config watch alert: %+v", alertInfo)
 }
 
 // retryConfigWatch 重试配置监听

@@ -10,7 +10,7 @@ polaris:
   timeout: "10s"                         # 操作超时时间
   
   # 高级功能配置
-  config_path: "polaris.yaml"            # SDK 配置文件路径（可选）
+  config_path: "./conf/polaris.yaml"     # SDK 配置文件路径（可选）
   enable_health_check: true              # 启用健康检查
   health_check_interval: "30s"           # 健康检查间隔
   enable_metrics: true                   # 启用监控指标

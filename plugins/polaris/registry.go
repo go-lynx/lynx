@@ -16,6 +16,42 @@ import (
 // RegistryAdapter Polaris Registry 适配器
 // 职责：实现 Kratos registry 接口，提供服务注册发现功能
 
+// NewServiceRegistry 实现 ServiceRegistry 接口
+func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
+	if !p.initialized {
+		log.Warnf("Polaris plugin not initialized, returning nil registrar")
+		return nil
+	}
+
+	// 创建 Provider API 客户端
+	providerAPI := api.NewProviderAPIByContext(p.sdk)
+	if providerAPI == nil {
+		log.Errorf("Failed to create provider API")
+		return nil
+	}
+
+	// 返回基于 Polaris 的服务注册器
+	return NewPolarisRegistrar(providerAPI, p.conf.Namespace)
+}
+
+// NewServiceDiscovery 实现 ServiceRegistry 接口
+func (p *PlugPolaris) NewServiceDiscovery() registry.Discovery {
+	if !p.initialized {
+		log.Warnf("Polaris plugin not initialized, returning nil discovery")
+		return nil
+	}
+
+	// 创建 Consumer API 客户端
+	consumerAPI := api.NewConsumerAPIByContext(p.sdk)
+	if consumerAPI == nil {
+		log.Errorf("Failed to create consumer API")
+		return nil
+	}
+
+	// 返回基于 Polaris 的服务发现客户端
+	return NewPolarisDiscovery(consumerAPI, p.conf.Namespace)
+}
+
 // parseEndpoints 解析端点信息
 func parseEndpoints(endpoints []string) (host string, port int, protocol string) {
 	if len(endpoints) == 0 {
