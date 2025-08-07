@@ -1,4 +1,4 @@
-package errors
+package polaris
 
 import (
 	"fmt"

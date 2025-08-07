@@ -10,6 +10,12 @@ import (
 	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
+// ServiceWatcher 和 ConfigWatcher 模块
+// 职责：底层服务变更监听和配置变更监听
+// 与 registry_impl.go 的区别：
+// - watchers.go: 底层监听能力，直接与 Polaris SDK 交互
+// - registry_impl.go: Kratos 框架适配，实现 registry 接口
+
 // ServiceWatcher 服务监听器
 // 监听服务实例变更
 type ServiceWatcher struct {
@@ -144,12 +150,54 @@ func (sw *ServiceWatcher) checkInstances() {
 
 // hasInstancesChanged 检查实例是否发生变化
 func (sw *ServiceWatcher) hasInstancesChanged(newInstances []model.Instance) bool {
+	// 如果实例数量不同，认为有变化
 	if len(sw.lastInstances) != len(newInstances) {
 		return true
 	}
 
-	// 简单的实例数量比较，实际应用中可能需要更复杂的比较逻辑
-	return true
+	// 如果之前没有实例，现在有实例，认为有变化
+	if len(sw.lastInstances) == 0 && len(newInstances) > 0 {
+		return true
+	}
+
+	// 如果之前有实例，现在没有实例，认为有变化
+	if len(sw.lastInstances) > 0 && len(newInstances) == 0 {
+		return true
+	}
+
+	// 如果实例数量相同，进行详细比较
+	lastInstancesMap := make(map[string]model.Instance)
+	for _, instance := range sw.lastInstances {
+		key := instance.GetId()
+		lastInstancesMap[key] = instance
+	}
+
+	// 检查每个新实例
+	for _, newInstance := range newInstances {
+		key := newInstance.GetId()
+		lastInstance, exists := lastInstancesMap[key]
+
+		if !exists {
+			// 发现新实例
+			return true
+		}
+
+		// 比较实例属性
+		if !sw.compareInstance(lastInstance, newInstance) {
+			// 实例属性发生变化
+			return true
+		}
+
+		// 从映射中移除已比较的实例
+		delete(lastInstancesMap, key)
+	}
+
+	// 如果还有剩余的旧实例，说明有实例被移除
+	if len(lastInstancesMap) > 0 {
+		return true
+	}
+
+	return false
 }
 
 // notifyInstancesChanged 通知实例变更
@@ -334,12 +382,47 @@ func (cw *ConfigWatcher) checkConfig() {
 
 // hasConfigChanged 检查配置是否发生变化
 func (cw *ConfigWatcher) hasConfigChanged(newConfig model.ConfigFile) bool {
-	if cw.lastConfig == nil {
+	// 如果之前没有配置，现在有配置，认为有变化
+	if cw.lastConfig == nil && newConfig != nil {
 		return true
 	}
 
-	// 简化版本比较，实际项目中可以根据需要实现更精确的比较
-	return true
+	// 如果之前有配置，现在没有配置，认为有变化
+	if cw.lastConfig != nil && newConfig == nil {
+		return true
+	}
+
+	// 如果两个配置都是 nil，认为没有变化
+	if cw.lastConfig == nil && newConfig == nil {
+		return false
+	}
+
+	// 比较配置的命名空间
+	if cw.lastConfig.GetNamespace() != newConfig.GetNamespace() {
+		return true
+	}
+
+	// 比较配置的文件组
+	if cw.lastConfig.GetFileGroup() != newConfig.GetFileGroup() {
+		return true
+	}
+
+	// 比较配置的文件名
+	if cw.lastConfig.GetFileName() != newConfig.GetFileName() {
+		return true
+	}
+
+	// 比较配置的内容
+	if cw.lastConfig.GetContent() != newConfig.GetContent() {
+		return true
+	}
+
+	// 比较是否有内容
+	if cw.lastConfig.HasContent() != newConfig.HasContent() {
+		return true
+	}
+
+	return false
 }
 
 // notifyConfigChanged 通知配置变更
@@ -379,4 +462,47 @@ func (cw *ConfigWatcher) IsRunning() bool {
 	cw.mu.RLock()
 	defer cw.mu.RUnlock()
 	return cw.isRunning
+}
+
+// compareInstance 比较两个实例是否相同
+func (sw *ServiceWatcher) compareInstance(instance1, instance2 model.Instance) bool {
+	// 比较基本信息
+	if instance1.GetId() != instance2.GetId() ||
+		instance1.GetHost() != instance2.GetHost() ||
+		instance1.GetPort() != instance2.GetPort() ||
+		instance1.GetProtocol() != instance2.GetProtocol() ||
+		instance1.GetVersion() != instance2.GetVersion() {
+		return false
+	}
+
+	// 比较权重
+	if instance1.GetWeight() != instance2.GetWeight() {
+		return false
+	}
+
+	// 比较健康状态
+	if instance1.IsHealthy() != instance2.IsHealthy() {
+		return false
+	}
+
+	// 比较隔离状态
+	if instance1.IsIsolated() != instance2.IsIsolated() {
+		return false
+	}
+
+	// 比较元数据
+	metadata1 := instance1.GetMetadata()
+	metadata2 := instance2.GetMetadata()
+
+	if len(metadata1) != len(metadata2) {
+		return false
+	}
+
+	for key, value1 := range metadata1 {
+		if value2, exists := metadata2[key]; !exists || value1 != value2 {
+			return false
+		}
+	}
+
+	return true
 }

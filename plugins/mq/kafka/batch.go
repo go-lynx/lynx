@@ -50,7 +50,10 @@ func (bp *BatchProcessor) AddRecord(ctx context.Context, record *kgo.Record) err
 			bp.mu.Lock()
 			defer bp.mu.Unlock()
 			if len(bp.records) > 0 {
-				bp.processBatch(ctx)
+				err := bp.processBatch(ctx)
+				if err != nil {
+					return
+				}
 			}
 		})
 	}

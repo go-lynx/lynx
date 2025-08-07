@@ -5,7 +5,7 @@ import (
 )
 
 // validateTopic 验证主题名称
-func (k *KafkaClient) validateTopic(topic string) error {
+func (k *Client) validateTopic(topic string) error {
 	if topic == "" {
 		return fmt.Errorf("topic name cannot be empty")
 	}

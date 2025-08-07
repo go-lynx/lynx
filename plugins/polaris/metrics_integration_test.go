@@ -3,7 +3,6 @@ package polaris
 import (
 	"testing"
 
-	"github.com/go-lynx/lynx/plugins/polaris/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -41,23 +40,23 @@ func TestMetricsInOperations(t *testing.T) {
 	// 测试未初始化状态下的操作（应该不会记录 metrics，因为会提前返回错误）
 	_, err := plugin.GetServiceInstances("test-service")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	_, err = plugin.WatchService("test-service")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	_, err = plugin.GetConfigValue("test-config", "test-group")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	_, err = plugin.WatchConfig("test-config", "test-group")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	_, err = plugin.CheckRateLimit("test-service", nil)
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 }
 
 // TestMetricsInWatchers 测试监听器中的 metrics 记录

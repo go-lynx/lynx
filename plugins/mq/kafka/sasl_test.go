@@ -116,7 +116,7 @@ func TestDefaultSASLConfig(t *testing.T) {
 }
 
 func TestSASLConfigValidation(t *testing.T) {
-	client := &KafkaClient{
+	client := &Client{
 		conf: &conf.Kafka{
 			Sasl: &conf.SASL{
 				Enabled:   true,

@@ -22,7 +22,7 @@ func NewSASLMechanism(config *conf.SASL) *SASLMechanism {
 }
 
 // getSASLMechanism 获取 SASL 认证机制
-func (k *KafkaClient) getSASLMechanism() sasl.Mechanism {
+func (k *Client) getSASLMechanism() sasl.Mechanism {
 	if k.conf.Sasl == nil || !k.conf.Sasl.Enabled {
 		return nil
 	}

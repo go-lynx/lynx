@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/go-lynx/lynx/plugins/polaris/conf"
-	"github.com/go-lynx/lynx/plugins/polaris/errors"
 	"github.com/polarismesh/polaris-go/pkg/model"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -204,27 +203,27 @@ func TestPlugin_Integration(t *testing.T) {
 	// 测试服务实例获取（未初始化状态）
 	_, err := plugin.GetServiceInstances("test-service")
 	assert.Error(t, err) // 应该返回错误，因为未初始化
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	// 测试服务监听（未初始化状态）
 	_, err = plugin.WatchService("test-service")
 	assert.Error(t, err) // 应该返回错误，因为未初始化
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	// 测试配置获取（未初始化状态）
 	_, err = plugin.GetConfigValue("test-config", "test-group")
 	assert.Error(t, err) // 应该返回错误，因为未初始化
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	// 测试配置监听（未初始化状态）
 	_, err = plugin.WatchConfig("test-config", "test-group")
 	assert.Error(t, err) // 应该返回错误，因为未初始化
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	// 测试限流检查（未初始化状态）
 	_, err = plugin.CheckRateLimit("test-service", map[string]string{"user": "test"})
 	assert.Error(t, err) // 应该返回错误，因为未初始化
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 }
 
 // TestControlPlane_Interface 测试控制平面接口实现
@@ -266,23 +265,23 @@ func TestErrorHandling(t *testing.T) {
 	// 测试未初始化状态下的操作
 	_, err := plugin.GetServiceInstances("test-service")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	_, err = plugin.WatchService("test-service")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	_, err = plugin.GetConfigValue("test-config", "test-group")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	_, err = plugin.WatchConfig("test-config", "test-group")
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 
 	_, err = plugin.CheckRateLimit("test-service", nil)
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 }
 
 // TestPlugin_HealthCheck 测试健康检查
@@ -292,7 +291,7 @@ func TestPlugin_HealthCheck(t *testing.T) {
 	// 测试未初始化状态
 	err := plugin.CheckHealth()
 	assert.Error(t, err)
-	assert.IsType(t, &errors.PolarisError{}, err)
+	assert.IsType(t, &PolarisError{}, err)
 }
 
 // BenchmarkRetryManager 重试管理器性能测试

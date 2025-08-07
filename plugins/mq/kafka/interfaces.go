@@ -8,8 +8,8 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// KafkaProducer Kafka 生产者接口
-type KafkaProducer interface {
+// Producer Kafka 生产者接口
+type Producer interface {
 	// Produce 发送单条消息到指定主题
 	Produce(ctx context.Context, topic string, key, value []byte) error
 
@@ -23,8 +23,8 @@ type KafkaProducer interface {
 	IsProducerReady() bool
 }
 
-// KafkaConsumer Kafka 消费者接口
-type KafkaConsumer interface {
+// Consumer Kafka 消费者接口
+type Consumer interface {
 	// Subscribe 订阅主题并设置消息处理器
 	Subscribe(ctx context.Context, topics []string, handler MessageHandler) error
 
@@ -35,10 +35,10 @@ type KafkaConsumer interface {
 	IsConsumerReady() bool
 }
 
-// KafkaClientInterface Kafka 客户端接口
-type KafkaClientInterface interface {
-	KafkaProducer
-	KafkaConsumer
+// ClientInterface Kafka 客户端接口
+type ClientInterface interface {
+	Producer
+	Consumer
 
 	// InitializeResources 初始化资源
 	InitializeResources(rt plugins.Runtime) error
