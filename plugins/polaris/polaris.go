@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kratos/kratos/contrib/polaris/v2"
@@ -45,10 +46,10 @@ type PlugPolaris struct {
 	retryManager   *RetryManager
 	circuitBreaker *CircuitBreaker
 
-	// 状态管理
+	// 状态管理 - 使用原子操作提高并发安全性
 	mu            sync.RWMutex
-	initialized   bool
-	destroyed     bool
+	initialized   int32 // 使用 int32 替代 bool，支持原子操作
+	destroyed     int32 // 使用 int32 替代 bool，支持原子操作
 	healthCheckCh chan struct{}
 
 	// 服务信息
@@ -177,13 +178,34 @@ func (p *PlugPolaris) initComponents() error {
 	return nil
 }
 
+// checkInitialized 统一的状态检查方法，确保线程安全
+func (p *PlugPolaris) checkInitialized() error {
+	if atomic.LoadInt32(&p.initialized) == 0 {
+		return NewInitError("Polaris plugin not initialized")
+	}
+	if atomic.LoadInt32(&p.destroyed) == 1 {
+		return NewInitError("Polaris plugin has been destroyed")
+	}
+	return nil
+}
+
+// setInitialized 原子地设置初始化状态
+func (p *PlugPolaris) setInitialized() {
+	atomic.StoreInt32(&p.initialized, 1)
+}
+
+// setDestroyed 原子地设置销毁状态
+func (p *PlugPolaris) setDestroyed() {
+	atomic.StoreInt32(&p.destroyed, 1)
+}
+
 // StartupTasks 实现了 Polaris 插件的自定义启动逻辑。
 // 该函数会配置并启动 Polaris 控制平面，添加必要的中间件和配置选项。
 func (p *PlugPolaris) StartupTasks() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.initialized {
+	if atomic.LoadInt32(&p.initialized) == 1 {
 		return NewInitError("Polaris plugin already initialized")
 	}
 
@@ -245,7 +267,7 @@ func (p *PlugPolaris) StartupTasks() error {
 	// 加载插件列表中的插件。
 	app.Lynx().GetPluginManager().LoadPlugins(cfg)
 
-	p.initialized = true
+	p.setInitialized()
 	log.Infof("Polaris plugin initialized successfully")
 	return nil
 }
@@ -257,16 +279,12 @@ func (p *PlugPolaris) GetMetrics() *Metrics {
 
 // IsInitialized 检查是否已初始化
 func (p *PlugPolaris) IsInitialized() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.initialized
+	return atomic.LoadInt32(&p.initialized) == 1
 }
 
 // IsDestroyed 检查是否已销毁
 func (p *PlugPolaris) IsDestroyed() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.destroyed
+	return atomic.LoadInt32(&p.destroyed) == 1
 }
 
 // GetPolarisConfig 获取 Polaris 配置
@@ -286,7 +304,7 @@ func (p *PlugPolaris) GetServiceInfo() *ServiceInfo {
 
 // WatchConfig 监听配置变更
 func (p *PlugPolaris) WatchConfig(fileName, group string) (*ConfigWatcher, error) {
-	if !p.initialized {
+	if !p.IsInitialized() {
 		return nil, NewInitError("Polaris plugin not initialized")
 	}
 
@@ -378,8 +396,8 @@ func (p *PlugPolaris) recordServiceWatchErrorAudit(serviceName string, err error
 		"error_type":   fmt.Sprintf("%T", err),
 		"timestamp":    time.Now().Unix(),
 		"plugin_state": map[string]interface{}{
-			"initialized": p.initialized,
-			"destroyed":   p.destroyed,
+			"initialized": p.IsInitialized(),
+			"destroyed":   p.IsDestroyed(),
 		},
 	}
 
@@ -398,8 +416,8 @@ func (p *PlugPolaris) sendServiceWatchAlert(serviceName string, err error) {
 		"severity":     "warning",
 		"timestamp":    time.Now().Unix(),
 		"plugin_state": map[string]interface{}{
-			"initialized": p.initialized,
-			"destroyed":   p.destroyed,
+			"initialized": p.IsInitialized(),
+			"destroyed":   p.IsDestroyed(),
 		},
 	}
 
@@ -481,8 +499,8 @@ func (p *PlugPolaris) recordConfigWatchErrorAudit(fileName, group string, err er
 		"error_type":  fmt.Sprintf("%T", err),
 		"timestamp":   time.Now().Unix(),
 		"plugin_state": map[string]interface{}{
-			"initialized": p.initialized,
-			"destroyed":   p.destroyed,
+			"initialized": p.IsInitialized(),
+			"destroyed":   p.IsDestroyed(),
 		},
 	}
 

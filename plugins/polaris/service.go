@@ -1,8 +1,9 @@
 package polaris
 
 import (
-	"github.com/polarismesh/polaris-go/api"
 	"time"
+
+	"github.com/polarismesh/polaris-go/api"
 
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/polarismesh/polaris-go/pkg/model"
@@ -10,8 +11,8 @@ import (
 
 // GetServiceInstances 获取服务实例
 func (p *PlugPolaris) GetServiceInstances(serviceName string) ([]model.Instance, error) {
-	if !p.initialized {
-		return nil, NewInitError("Polaris plugin not initialized")
+	if err := p.checkInitialized(); err != nil {
+		return nil, err
 	}
 
 	// 记录服务发现操作指标
@@ -72,10 +73,10 @@ func (p *PlugPolaris) GetServiceInstances(serviceName string) ([]model.Instance,
 	return instances, nil
 }
 
-// WatchService 监听服务变更
+// WatchService 监听服务变更 - 使用双重检查锁定模式提高并发安全性
 func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) {
-	if !p.initialized {
-		return nil, NewInitError("Polaris plugin not initialized")
+	if err := p.checkInitialized(); err != nil {
+		return nil, err
 	}
 
 	// 记录服务监听操作指标
@@ -90,14 +91,14 @@ func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) 
 
 	log.Infof("Watching service: %s", serviceName)
 
-	// 检查是否已经在监听该服务
-	p.watcherMutex.Lock()
+	// 第一次检查（读锁）
+	p.watcherMutex.RLock()
 	if existingWatcher, exists := p.activeWatchers[serviceName]; exists {
-		p.watcherMutex.Unlock()
+		p.watcherMutex.RUnlock()
 		log.Infof("Service %s is already being watched", serviceName)
 		return existingWatcher, nil
 	}
-	p.watcherMutex.Unlock()
+	p.watcherMutex.RUnlock()
 
 	// 创建 Consumer API 客户端
 	consumerAPI := api.NewConsumerAPIByContext(p.sdk)
@@ -107,9 +108,21 @@ func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) 
 
 	// 创建服务监听器并连接到 SDK
 	watcher := NewServiceWatcher(consumerAPI, serviceName, p.conf.Namespace)
-	watcher.metrics = p.metrics // 传递 metrics 引用
 
-	// 设置事件处理回调
+	// 第二次检查（写锁）- 双重检查锁定模式
+	p.watcherMutex.Lock()
+	defer p.watcherMutex.Unlock()
+
+	// 再次检查是否已经有其他 goroutine 创建了监听器
+	if existingWatcher, exists := p.activeWatchers[serviceName]; exists {
+		log.Infof("Service %s watcher was created by another goroutine", serviceName)
+		return existingWatcher, nil
+	}
+
+	// 注册监听器
+	p.activeWatchers[serviceName] = watcher
+
+	// 设置回调函数
 	watcher.SetOnInstancesChanged(func(instances []model.Instance) {
 		p.handleServiceInstancesChanged(serviceName, instances)
 	})
@@ -118,14 +131,10 @@ func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) 
 		p.handleServiceWatchError(serviceName, err)
 	})
 
-	// 注册监听器
-	p.watcherMutex.Lock()
-	p.activeWatchers[serviceName] = watcher
-	p.watcherMutex.Unlock()
-
 	// 启动监听
 	watcher.Start()
 
+	log.Infof("Started watching service: %s", serviceName)
 	return watcher, nil
 }
 

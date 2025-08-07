@@ -224,11 +224,11 @@ func (p *PlugPolaris) CleanupTasks() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if !p.initialized {
+	if !p.IsInitialized() {
 		return nil
 	}
 
-	if p.destroyed {
+	if p.IsDestroyed() {
 		return nil
 	}
 
@@ -262,7 +262,7 @@ func (p *PlugPolaris) CleanupTasks() error {
 	// 6. 停止后台任务
 	p.stopBackgroundTasks()
 
-	p.destroyed = true
+	p.setDestroyed()
 	log.Infof("Polaris plugin destroyed successfully")
 	return nil
 }

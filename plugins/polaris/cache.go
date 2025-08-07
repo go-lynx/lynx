@@ -22,7 +22,10 @@ func (p *PlugPolaris) updateServiceInstanceCache(serviceName string, instances [
 		"count":        len(instances),
 	}
 
-	// 具体实现：使用内存缓存
+	// 使用锁保护缓存操作
+	p.cacheMutex.Lock()
+	defer p.cacheMutex.Unlock()
+
 	// 1. 检查缓存是否存在
 	if p.serviceCache == nil {
 		p.serviceCache = make(map[string]interface{})
@@ -92,6 +95,10 @@ func (p *PlugPolaris) updateConfigCache(fileName, group string, config model.Con
 func (p *PlugPolaris) getServiceInstanceFromCache(serviceName string) ([]model.Instance, bool) {
 	cacheKey := fmt.Sprintf("service:%s:%s", p.conf.Namespace, serviceName)
 
+	// 使用读锁保护缓存读取
+	p.cacheMutex.RLock()
+	defer p.cacheMutex.RUnlock()
+
 	if p.serviceCache == nil {
 		return nil, false
 	}
@@ -99,7 +106,7 @@ func (p *PlugPolaris) getServiceInstanceFromCache(serviceName string) ([]model.I
 	if cacheData, exists := p.serviceCache[cacheKey]; exists {
 		if data, ok := cacheData.(map[string]interface{}); ok {
 			if instances, ok := data["instances"].([]model.Instance); ok {
-				log.Infof("Retrieved service instances from cache: %s, count: %d", serviceName, len(instances))
+				log.Infof("Found %d cached instances for service %s", len(instances), serviceName)
 				return instances, true
 			}
 		}
@@ -112,6 +119,7 @@ func (p *PlugPolaris) getServiceInstanceFromCache(serviceName string) ([]model.I
 func (p *PlugPolaris) getConfigFromCache(fileName, group string) (string, bool) {
 	cacheKey := fmt.Sprintf("config:%s:%s:%s", p.conf.Namespace, group, fileName)
 
+	// 使用读锁保护缓存读取
 	p.cacheMutex.RLock()
 	defer p.cacheMutex.RUnlock()
 
@@ -122,7 +130,7 @@ func (p *PlugPolaris) getConfigFromCache(fileName, group string) (string, bool) 
 	if cacheData, exists := p.configCache[cacheKey]; exists {
 		if data, ok := cacheData.(map[string]interface{}); ok {
 			if content, ok := data["content"].(string); ok {
-				log.Infof("Retrieved config from cache: %s:%s, length: %d", fileName, group, len(content))
+				log.Infof("Found cached config for %s:%s", fileName, group)
 				return content, true
 			}
 		}
@@ -133,10 +141,13 @@ func (p *PlugPolaris) getConfigFromCache(fileName, group string) (string, bool) 
 
 // clearServiceCache 清理服务缓存
 func (p *PlugPolaris) clearServiceCache() {
+	p.cacheMutex.Lock()
+	defer p.cacheMutex.Unlock()
+
 	if p.serviceCache != nil {
-		cacheSize := len(p.serviceCache)
+		clearedCount := len(p.serviceCache)
 		p.serviceCache = make(map[string]interface{})
-		log.Infof("Cleared service cache, removed %d entries", cacheSize)
+		log.Infof("Cleared %d service cache entries", clearedCount)
 	}
 }
 
@@ -146,28 +157,30 @@ func (p *PlugPolaris) clearConfigCache() {
 	defer p.cacheMutex.Unlock()
 
 	if p.configCache != nil {
-		cacheSize := len(p.configCache)
+		clearedCount := len(p.configCache)
 		p.configCache = make(map[string]interface{})
-		log.Infof("Cleared config cache, removed %d entries", cacheSize)
+		log.Infof("Cleared %d config cache entries", clearedCount)
 	}
 }
 
 // getCacheStats 获取缓存统计信息
 func (p *PlugPolaris) getCacheStats() map[string]interface{} {
-	serviceCacheSize := 0
-	configCacheSize := 0
+	p.cacheMutex.RLock()
+	defer p.cacheMutex.RUnlock()
+
+	stats := map[string]interface{}{
+		"service_cache_size": 0,
+		"config_cache_size":  0,
+		"timestamp":          time.Now().Unix(),
+	}
 
 	if p.serviceCache != nil {
-		serviceCacheSize = len(p.serviceCache)
+		stats["service_cache_size"] = len(p.serviceCache)
 	}
 
 	if p.configCache != nil {
-		configCacheSize = len(p.configCache)
+		stats["config_cache_size"] = len(p.configCache)
 	}
 
-	return map[string]interface{}{
-		"service_cache_size": serviceCacheSize,
-		"config_cache_size":  configCacheSize,
-		"timestamp":          time.Now().Unix(),
-	}
+	return stats
 }
