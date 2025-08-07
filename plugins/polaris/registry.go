@@ -18,8 +18,8 @@ import (
 
 // NewServiceRegistry 实现 ServiceRegistry 接口
 func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
-	if !p.initialized {
-		log.Warnf("Polaris plugin not initialized, returning nil registrar")
+	if err := p.checkInitialized(); err != nil {
+		log.Warnf("Polaris plugin not initialized, returning nil registrar: %v", err)
 		return nil
 	}
 
@@ -36,8 +36,8 @@ func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
 
 // NewServiceDiscovery 实现 ServiceRegistry 接口
 func (p *PlugPolaris) NewServiceDiscovery() registry.Discovery {
-	if !p.initialized {
-		log.Warnf("Polaris plugin not initialized, returning nil discovery")
+	if err := p.checkInitialized(); err != nil {
+		log.Warnf("Polaris plugin not initialized, returning nil discovery: %v", err)
 		return nil
 	}
 

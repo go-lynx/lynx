@@ -28,8 +28,8 @@ func (p *PlugPolaris) GetConfig(fileName string, group string) (config.Source, e
 
 // GetConfigValue 获取配置值
 func (p *PlugPolaris) GetConfigValue(fileName, group string) (string, error) {
-	if !p.initialized {
-		return "", NewInitError("Polaris plugin not initialized")
+	if err := p.checkInitialized(); err != nil {
+		return "", err
 	}
 
 	// 记录配置操作指标

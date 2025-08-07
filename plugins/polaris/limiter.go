@@ -15,8 +15,8 @@ import (
 // HTTPRateLimit 创建 HTTP 限流中间件
 // 从 Polaris 获取 HTTP 限流策略，并应用到 HTTP 请求处理流程中
 func (p *PlugPolaris) HTTPRateLimit() middleware.Middleware {
-	if !p.IsInitialized() {
-		log.Warnf("Polaris plugin not initialized, returning nil HTTP rate limit middleware")
+	if err := p.checkInitialized(); err != nil {
+		log.Warnf("Polaris plugin not initialized, returning nil HTTP rate limit middleware: %v", err)
 		return nil
 	}
 
@@ -31,8 +31,8 @@ func (p *PlugPolaris) HTTPRateLimit() middleware.Middleware {
 // GRPCRateLimit 创建 gRPC 限流中间件
 // 从 Polaris 获取 gRPC 限流策略，并应用到 gRPC 请求处理流程中
 func (p *PlugPolaris) GRPCRateLimit() middleware.Middleware {
-	if !p.IsInitialized() {
-		log.Warnf("Polaris plugin not initialized, returning nil gRPC rate limit middleware")
+	if err := p.checkInitialized(); err != nil {
+		log.Warnf("Polaris plugin not initialized, returning nil gRPC rate limit middleware: %v", err)
 		return nil
 	}
 
@@ -46,8 +46,8 @@ func (p *PlugPolaris) GRPCRateLimit() middleware.Middleware {
 
 // CheckRateLimit 检查限流
 func (p *PlugPolaris) CheckRateLimit(serviceName string, labels map[string]string) (bool, error) {
-	if !p.initialized {
-		return false, NewInitError("Polaris plugin not initialized")
+	if err := p.checkInitialized(); err != nil {
+		return false, err
 	}
 
 	// 记录限流检查操作指标
@@ -112,13 +112,10 @@ func (p *PlugPolaris) CheckRateLimit(serviceName string, labels map[string]strin
 
 	// 检查是否被限流
 	if result.Code == model.QuotaResultOk {
-		log.Debugf("Rate limit check passed for service %s", serviceName)
+		log.Infof("Rate limit check passed for service %s", serviceName)
 		return true, nil
 	} else {
-		log.Warnf("Rate limit exceeded for service %s, code: %d", serviceName, result.Code)
-		if p.metrics != nil {
-			p.metrics.RecordSDKOperation("rate_limit_exceeded", "success")
-		}
-		return false, NewServiceError(ErrCodeRateLimitExceeded, "rate limit exceeded")
+		log.Warnf("Rate limit exceeded for service %s", serviceName)
+		return false, nil
 	}
 }

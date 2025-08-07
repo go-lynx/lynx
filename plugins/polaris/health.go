@@ -2,23 +2,17 @@ package polaris
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/polarismesh/polaris-go/api"
 	"github.com/polarismesh/polaris-go/pkg/model"
-	"strings"
 )
 
 // CheckHealth 健康检查
 func (p *PlugPolaris) CheckHealth() error {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if !p.initialized {
-		return NewInitError("Polaris plugin not initialized")
-	}
-
-	if p.destroyed {
-		return NewInitError("Polaris plugin has been destroyed")
+	if err := p.checkInitialized(); err != nil {
+		return err
 	}
 
 	// 检查 Polaris 实例

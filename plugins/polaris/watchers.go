@@ -27,6 +27,7 @@ type ServiceWatcher struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	mu     sync.RWMutex
+	wg     sync.WaitGroup // 添加 WaitGroup 确保 goroutine 正确退出
 
 	// 回调函数
 	onInstancesChanged func(instances []model.Instance)
@@ -82,7 +83,11 @@ func (sw *ServiceWatcher) Start() {
 	}
 
 	sw.isRunning = true
-	go sw.watchLoop()
+	sw.wg.Add(1) // 增加 WaitGroup 计数
+	go func() {
+		defer sw.wg.Done() // 确保在 goroutine 退出时减少计数
+		sw.watchLoop()
+	}()
 
 	log.Infof("Started watching service: %s in namespace: %s", sw.serviceName, sw.namespace)
 }
@@ -104,6 +109,9 @@ func (sw *ServiceWatcher) Stop() {
 	sw.cancel()
 	sw.isRunning = false
 
+	// 等待 goroutine 完全退出
+	sw.wg.Wait()
+
 	log.Infof("Stopped watching service: %s", sw.serviceName)
 }
 
@@ -115,6 +123,7 @@ func (sw *ServiceWatcher) watchLoop() {
 	for {
 		select {
 		case <-sw.ctx.Done():
+			log.Infof("Watch loop for service %s stopped due to context cancellation", sw.serviceName)
 			return
 		case <-ticker.C:
 			sw.checkInstances()
@@ -251,6 +260,7 @@ type ConfigWatcher struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	mu     sync.RWMutex
+	wg     sync.WaitGroup // 添加 WaitGroup 确保 goroutine 正确退出
 
 	// 回调函数
 	onConfigChanged func(config model.ConfigFile)
@@ -301,16 +311,19 @@ func (cw *ConfigWatcher) Start() {
 		return
 	}
 
-	// 记录配置监听启动指标
+	// 记录监听启动指标
 	if cw.metrics != nil {
 		cw.metrics.RecordSDKOperation("config_watch_start", "success")
 	}
 
 	cw.isRunning = true
-	go cw.watchLoop()
+	cw.wg.Add(1) // 增加 WaitGroup 计数
+	go func() {
+		defer cw.wg.Done() // 确保在 goroutine 退出时减少计数
+		cw.watchLoop()
+	}()
 
-	log.Infof("Started watching config: %s:%s in namespace: %s",
-		cw.group, cw.fileName, cw.namespace)
+	log.Infof("Started watching config: %s:%s in namespace: %s", cw.fileName, cw.group, cw.namespace)
 }
 
 // Stop 停止监听
@@ -322,7 +335,7 @@ func (cw *ConfigWatcher) Stop() {
 		return
 	}
 
-	// 记录配置监听停止指标
+	// 记录监听停止指标
 	if cw.metrics != nil {
 		cw.metrics.RecordSDKOperation("config_watch_stop", "success")
 	}
@@ -330,17 +343,21 @@ func (cw *ConfigWatcher) Stop() {
 	cw.cancel()
 	cw.isRunning = false
 
-	log.Infof("Stopped watching config: %s:%s", cw.group, cw.fileName)
+	// 等待 goroutine 完全退出
+	cw.wg.Wait()
+
+	log.Infof("Stopped watching config: %s:%s", cw.fileName, cw.group)
 }
 
 // watchLoop 监听循环
 func (cw *ConfigWatcher) watchLoop() {
-	ticker := time.NewTicker(30 * time.Second) // 每30秒检查一次
+	ticker := time.NewTicker(10 * time.Second) // 每10秒检查一次
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-cw.ctx.Done():
+			log.Infof("Watch loop for config %s:%s stopped due to context cancellation", cw.fileName, cw.group)
 			return
 		case <-ticker.C:
 			cw.checkConfig()
