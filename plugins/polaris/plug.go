@@ -1,8 +1,6 @@
 package polaris
 
 import (
-	"github.com/go-kratos/kratos/contrib/polaris/v2"
-	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/factory"
 	"github.com/go-lynx/lynx/plugins"
 )
@@ -18,30 +16,4 @@ func init() {
 		// 调用 Polaris 函数获取插件实例并返回
 		return NewPolarisControlPlane()
 	})
-}
-
-// GetPolaris 函数用于从应用的插件管理器中获取 Polaris 实例。
-// 该实例可用于与 Polaris 服务进行交互，如服务发现、配置管理等。
-// 返回值为 *polaris.Polaris 类型的指针，指向获取到的 Polaris 实例。
-func GetPolaris() *polaris.Polaris {
-	// 从应用的插件管理器中获取指定名称的插件实例，
-	// 并将其类型断言为 *PlugPolaris，然后返回其内部的 polaris 字段。
-	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
-	if plugin == nil {
-		return nil
-	}
-	return plugin.(*PlugPolaris).polaris
-}
-
-// GetPlugin 函数用于从应用的插件管理器中获取 PlugPolaris 插件实例。
-// 该实例可用于调用插件提供的各种方法。
-// 返回值为 *PlugPolaris 类型的指针，指向获取到的插件实例。
-func GetPlugin() *PlugPolaris {
-	// 从应用的插件管理器中获取指定名称的插件实例，
-	// 并将其类型断言为 *PlugPolaris 后返回。
-	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
-	if plugin == nil {
-		return nil
-	}
-	return plugin.(*PlugPolaris)
 }

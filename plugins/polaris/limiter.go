@@ -5,6 +5,8 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/polarismesh/polaris-go/api"
+	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
 // MiddlewareAdapter 中间件适配器
@@ -40,4 +42,83 @@ func (p *PlugPolaris) GRPCRateLimit() middleware.Middleware {
 		polaris.WithLimiterService(app.GetName()),
 		polaris.WithLimiterNamespace(GetPlugin().conf.Namespace),
 	))
+}
+
+// CheckRateLimit 检查限流
+func (p *PlugPolaris) CheckRateLimit(serviceName string, labels map[string]string) (bool, error) {
+	if !p.initialized {
+		return false, NewInitError("Polaris plugin not initialized")
+	}
+
+	// 记录限流检查操作指标
+	if p.metrics != nil {
+		p.metrics.RecordSDKOperation("check_rate_limit", "start")
+		defer func() {
+			if p.metrics != nil {
+				p.metrics.RecordSDKOperation("check_rate_limit", "success")
+			}
+		}()
+	}
+
+	log.Infof("Checking rate limit for service: %s", serviceName)
+
+	// 创建 Limit API 客户端
+	limitAPI := api.NewLimitAPIByContext(p.sdk)
+	if limitAPI == nil {
+		return false, NewInitError("failed to create limit API")
+	}
+
+	// 构建限流请求
+	quotaReq := api.NewQuotaRequest()
+	quotaReq.SetService(serviceName)
+	quotaReq.SetNamespace(p.conf.Namespace)
+
+	// 设置标签
+	for key, value := range labels {
+		quotaReq.AddArgument(model.BuildQueryArgument(key, value))
+	}
+
+	// 使用熔断器和重试机制执行操作
+	var future api.QuotaFuture
+	var lastErr error
+
+	err := p.circuitBreaker.Do(func() error {
+		return p.retryManager.DoWithRetry(func() error {
+			// 调用 SDK API 检查限流
+			fut, err := limitAPI.GetQuota(quotaReq)
+			if err != nil {
+				lastErr = err
+				return err
+			}
+			future = fut
+			return nil
+		})
+	})
+
+	if err != nil {
+		log.Errorf("Failed to check rate limit for service %s after retries: %v", serviceName, err)
+		if p.metrics != nil {
+			p.metrics.RecordSDKOperation("check_rate_limit", "error")
+		}
+		return false, WrapServiceError(lastErr, ErrCodeRateLimitFailed, "failed to check rate limit")
+	}
+
+	// 获取限流结果
+	result := future.Get()
+	if result == nil {
+		log.Errorf("Rate limit result is nil for service %s", serviceName)
+		return false, NewServiceError(ErrCodeRateLimitFailed, "rate limit result is nil")
+	}
+
+	// 检查是否被限流
+	if result.Code == model.QuotaResultOk {
+		log.Debugf("Rate limit check passed for service %s", serviceName)
+		return true, nil
+	} else {
+		log.Warnf("Rate limit exceeded for service %s, code: %d", serviceName, result.Code)
+		if p.metrics != nil {
+			p.metrics.RecordSDKOperation("rate_limit_exceeded", "success")
+		}
+		return false, NewServiceError(ErrCodeRateLimitExceeded, "rate limit exceeded")
+	}
 }

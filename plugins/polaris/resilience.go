@@ -148,6 +148,8 @@ func (cb *CircuitBreaker) Do(operation func() error) error {
 	case CircuitStateHalfOpen:
 		// 半开状态，允许一次尝试
 		log.Infof("Circuit breaker in half-open state, allowing one attempt")
+	default:
+		return fmt.Errorf("circuit breaker is closed")
 	}
 
 	// 执行操作

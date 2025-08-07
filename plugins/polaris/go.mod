@@ -10,6 +10,7 @@ require (
 	github.com/prometheus/client_golang v1.12.2
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/protobuf v1.35.2
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -53,5 +54,4 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241209162323-e6fa225c2576 // indirect
 	google.golang.org/grpc v1.68.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
