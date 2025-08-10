@@ -1,3 +1,5 @@
+// Package plugins provides the core plugin system for the Lynx framework.
+// 包 plugins 为 Lynx 框架提供核心插件系统。
 package plugins
 
 import (
@@ -6,11 +8,8 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
-// BasePlugin provides a default implementation of the Plugin interface and common optional interfaces.
-// It serves as a foundation for building custom plugins with standard functionality.
-// BasePlugin 提供了 Plugin 接口和常见可选接口的默认实现。
-// 它作为构建具有标准功能的自定义插件的基础。
-type BasePlugin struct {
+// TypedBasePlugin 泛型基础插件，提供类型安全的插件基础实现
+type TypedBasePlugin[T any] struct {
 	// Basic plugin metadata
 	// 插件基本元数据
 	id          string // Unique identifier for the plugin // 插件的唯一标识符
@@ -40,14 +39,21 @@ type BasePlugin struct {
 	// 依赖管理
 	dependencies []Dependency        // List of plugin dependencies // 插件依赖列表
 	capabilities []UpgradeCapability // List of plugin upgrade capabilities // 插件升级能力列表
+
+	// 类型安全的实例
+	instance T
 }
 
-// NewBasePlugin creates a new instance of BasePlugin with the provided metadata.
-// This is the recommended way to initialize a new plugin implementation.
-// NewBasePlugin 使用提供的元数据创建一个新的 BasePlugin 实例。
-// 这是初始化新插件实现的推荐方式。
-func NewBasePlugin(id, name, description, version, confPrefix string, weight int) *BasePlugin {
-	return &BasePlugin{
+// NewTypedBasePlugin creates a new instance of TypedBasePlugin with the provided metadata.
+// This is the recommended way to initialize a new typed plugin implementation.
+// NewTypedBasePlugin 使用提供的元数据创建一个新的 TypedBasePlugin 实例。
+// 这是初始化新类型安全插件实现的推荐方式。
+func NewTypedBasePlugin[T any](
+	id, name, description, version, confPrefix string,
+	weight int,
+	instance T,
+) *TypedBasePlugin[T] {
+	return &TypedBasePlugin[T]{
 		id:           id,
 		name:         name,
 		description:  description,
@@ -59,14 +65,20 @@ func NewBasePlugin(id, name, description, version, confPrefix string, weight int
 		dependencies: make([]Dependency, 0),
 		weight:       weight,
 		capabilities: []UpgradeCapability{UpgradeNone},
+		instance:     instance,
 	}
+}
+
+// GetTypedInstance 获取类型安全的实例
+func (p *TypedBasePlugin[T]) GetTypedInstance() T {
+	return p.instance
 }
 
 // Initialize prepares the plugin for use by setting up its runtime environment.
 // This method must be called before the plugin can be started.
 // Initialize 通过设置运行时环境为插件使用做准备。
 // 在启动插件之前必须调用此方法。
-func (p *BasePlugin) Initialize(plugin Plugin, rt Runtime) error {
+func (p *TypedBasePlugin[T]) Initialize(plugin Plugin, rt Runtime) error {
 	if rt == nil {
 		return ErrPluginNotInitialized
 	}
@@ -108,7 +120,7 @@ func (p *BasePlugin) Initialize(plugin Plugin, rt Runtime) error {
 // The plugin must be initialized before it can be started.
 // Start 激活插件并开始其主要操作。
 // 插件必须在初始化后才能启动。
-func (p *BasePlugin) Start(plugin Plugin) error {
+func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 	if p.status == StatusActive {
 		return ErrPluginAlreadyActive
 	}
@@ -156,7 +168,7 @@ func (p *BasePlugin) Start(plugin Plugin) error {
 // This method should release all resources and perform cleanup.
 // Stop 优雅地终止插件的操作。
 // 此方法应释放所有资源并执行清理操作。
-func (p *BasePlugin) Stop(plugin Plugin) error {
+func (p *TypedBasePlugin[T]) Stop(plugin Plugin) error {
 	if p.status != StatusActive {
 		return NewPluginError(p.id, "Stop", "Plugin must be active to stop", ErrPluginNotActive)
 	}
@@ -195,7 +207,7 @@ func (p *BasePlugin) Stop(plugin Plugin) error {
 // This method is thread-safe and can be called at any time.
 // Status 返回插件当前的运行状态。
 // 此方法是线程安全的，可以在任何时候调用。
-func (p *BasePlugin) Status(plugin Plugin) PluginStatus {
+func (p *TypedBasePlugin[T]) Status(plugin Plugin) PluginStatus {
 	return p.status
 }
 
@@ -203,7 +215,7 @@ func (p *BasePlugin) Status(plugin Plugin) PluginStatus {
 // This method can be overridden by embedding structs to provide custom initialization.
 // InitializeResources 设置插件所需的资源。
 // 嵌入结构体可以重写此方法以提供自定义初始化逻辑。
-func (p *BasePlugin) InitializeResources(rt Runtime) error {
+func (p *TypedBasePlugin[T]) InitializeResources(rt Runtime) error {
 	return nil
 }
 
@@ -211,7 +223,7 @@ func (p *BasePlugin) InitializeResources(rt Runtime) error {
 // This method can be overridden by embedding structs to provide custom startup logic.
 // StartupTasks 在插件启动期间执行必要的任务。
 // 嵌入结构体可以重写此方法以提供自定义启动逻辑。
-func (p *BasePlugin) StartupTasks() error {
+func (p *TypedBasePlugin[T]) StartupTasks() error {
 	return nil
 }
 
@@ -219,7 +231,7 @@ func (p *BasePlugin) StartupTasks() error {
 // This method can be overridden by embedding structs to provide custom cleanup logic.
 // CleanupTasks 在插件关闭期间执行清理操作。
 // 嵌入结构体可以重写此方法以提供自定义清理逻辑。
-func (p *BasePlugin) CleanupTasks() error {
+func (p *TypedBasePlugin[T]) CleanupTasks() error {
 	return nil
 }
 
@@ -227,7 +239,7 @@ func (p *BasePlugin) CleanupTasks() error {
 // This ID must be unique across all plugins in the system.
 // ID 返回插件的唯一标识符。
 // 此 ID 在系统中的所有插件中必须是唯一的。
-func (p *BasePlugin) ID() string {
+func (p *TypedBasePlugin[T]) ID() string {
 	return p.id
 }
 
@@ -235,12 +247,12 @@ func (p *BasePlugin) ID() string {
 // This name is used for display and logging purposes.
 // Name 返回插件的易读名称。
 // 此名称用于显示和日志记录目的。
-func (p *BasePlugin) Name() string {
+func (p *TypedBasePlugin[T]) Name() string {
 	return p.name
 }
 
 // Weight 权重获取
-func (p *BasePlugin) Weight() int {
+func (p *TypedBasePlugin[T]) Weight() int {
 	return p.weight
 }
 
@@ -248,7 +260,7 @@ func (p *BasePlugin) Weight() int {
 // This helps users understand the plugin's purpose and capabilities.
 // Description 返回插件功能的详细描述。
 // 这有助于用户了解插件的用途和功能。
-func (p *BasePlugin) Description() string {
+func (p *TypedBasePlugin[T]) Description() string {
 	return p.description
 }
 
@@ -256,7 +268,7 @@ func (p *BasePlugin) Description() string {
 // Version format should follow semver conventions (MAJOR.MINOR.PATCH).
 // Version 返回插件的语义化版本。
 // 版本格式应遵循语义化版本规范（MAJOR.MINOR.PATCH）。
-func (p *BasePlugin) Version() string {
+func (p *TypedBasePlugin[T]) Version() string {
 	return p.version
 }
 
@@ -264,7 +276,7 @@ func (p *BasePlugin) Version() string {
 // This method is thread-safe and should be used to update plugin status.
 // SetStatus 设置插件当前的运行状态。
 // 此方法是线程安全的，应使用它来更新插件状态。
-func (p *BasePlugin) SetStatus(status PluginStatus) {
+func (p *TypedBasePlugin[T]) SetStatus(status PluginStatus) {
 	p.status = status
 }
 
@@ -272,7 +284,7 @@ func (p *BasePlugin) SetStatus(status PluginStatus) {
 // This method should be called periodically to monitor plugin health.
 // GetHealth 执行健康检查并返回详细的健康报告。
 // 应定期调用此方法以监控插件的健康状况。
-func (p *BasePlugin) GetHealth() HealthReport {
+func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 	report := HealthReport{
 		Status:    "unknown",
 		Details:   make(map[string]any),
@@ -436,7 +448,7 @@ func (p *BasePlugin) GetHealth() HealthReport {
 // This method validates and applies new configuration values.
 // Configure 使用提供的设置更新插件的配置。
 // 此方法验证并应用新的配置值。
-func (p *BasePlugin) Configure(conf any) error {
+func (p *TypedBasePlugin[T]) Configure(conf any) error {
 	// Emit event indicating configuration has changed
 	// 发出配置已更改的事件
 	p.EmitEvent(PluginEvent{
@@ -481,7 +493,7 @@ func (p *BasePlugin) Configure(conf any) error {
 // This includes both required and optional dependencies.
 // GetDependencies 返回插件的依赖列表。
 // 这包括必需和可选的依赖项。
-func (p *BasePlugin) GetDependencies() []Dependency {
+func (p *TypedBasePlugin[T]) GetDependencies() []Dependency {
 	return p.dependencies
 }
 
@@ -489,7 +501,7 @@ func (p *BasePlugin) GetDependencies() []Dependency {
 // The dependency will be validated during plugin initialization.
 // AddDependency 向插件添加一个新的依赖项。
 // 该依赖项将在插件初始化期间进行验证。
-func (p *BasePlugin) AddDependency(dep Dependency) {
+func (p *TypedBasePlugin[T]) AddDependency(dep Dependency) {
 	p.dependencies = append(p.dependencies, dep)
 	// Emit event indicating dependency status has changed
 	// 发出依赖状态已更改的事件
@@ -508,7 +520,7 @@ func (p *BasePlugin) AddDependency(dep Dependency) {
 // Events will be filtered according to the specified criteria.
 // AddEventFilter 向插件添加一个新的事件过滤器。
 // 事件将根据指定的条件进行过滤。
-func (p *BasePlugin) AddEventFilter(filter EventFilter) {
+func (p *TypedBasePlugin[T]) AddEventFilter(filter EventFilter) {
 	p.eventFilters = append(p.eventFilters, filter)
 }
 
@@ -516,7 +528,7 @@ func (p *BasePlugin) AddEventFilter(filter EventFilter) {
 // This affects how future events will be processed.
 // RemoveEventFilter 从插件中移除一个事件过滤器。
 // 这会影响未来事件的处理方式。
-func (p *BasePlugin) RemoveEventFilter(index int) {
+func (p *TypedBasePlugin[T]) RemoveEventFilter(index int) {
 	if index >= 0 && index < len(p.eventFilters) {
 		p.eventFilters = append(p.eventFilters[:index], p.eventFilters[index+1:]...)
 	}
@@ -526,7 +538,7 @@ func (p *BasePlugin) RemoveEventFilter(index int) {
 // Events are filtered and handled according to configured filters.
 // HandleEvent 处理传入的插件事件。
 // 事件将根据配置的过滤器进行过滤和处理。
-func (p *BasePlugin) HandleEvent(event PluginEvent) {
+func (p *TypedBasePlugin[T]) HandleEvent(event PluginEvent) {
 	if !p.ShouldHandleEvent(event) {
 		return
 	}
@@ -549,7 +561,7 @@ func (p *BasePlugin) HandleEvent(event PluginEvent) {
 // This method adds standard fields to the event before emission.
 // EmitEvent 向运行时事件系统发出一个事件。
 // 此方法在发出事件之前会向事件添加标准字段。
-func (p *BasePlugin) EmitEvent(event PluginEvent) {
+func (p *TypedBasePlugin[T]) EmitEvent(event PluginEvent) {
 	p.EmitEventInternal(event)
 }
 
@@ -557,7 +569,7 @@ func (p *BasePlugin) EmitEvent(event PluginEvent) {
 // This method adds standard fields to the event before emission.
 // EmitEventInternal 向运行时事件系统发出一个事件。
 // 此方法在发出事件之前会向事件添加标准字段。
-func (p *BasePlugin) EmitEventInternal(event PluginEvent) {
+func (p *TypedBasePlugin[T]) EmitEventInternal(event PluginEvent) {
 	// Add standard fields
 	// 添加标准字段
 	event.PluginID = p.id
@@ -575,7 +587,7 @@ func (p *BasePlugin) EmitEventInternal(event PluginEvent) {
 // This implements the event filtering logic.
 // ShouldEmitEvent 根据过滤器检查是否应该发出一个事件。
 // 这实现了事件过滤逻辑。
-func (p *BasePlugin) ShouldEmitEvent(event PluginEvent) bool {
+func (p *TypedBasePlugin[T]) ShouldEmitEvent(event PluginEvent) bool {
 	if len(p.eventFilters) == 0 {
 		return true
 	}
@@ -593,7 +605,7 @@ func (p *BasePlugin) ShouldEmitEvent(event PluginEvent) bool {
 // This implements the event handling filter logic.
 // ShouldHandleEvent 根据过滤器检查是否应该处理一个事件。
 // 这实现了事件处理过滤逻辑。
-func (p *BasePlugin) ShouldHandleEvent(event PluginEvent) bool {
+func (p *TypedBasePlugin[T]) ShouldHandleEvent(event PluginEvent) bool {
 	return p.ShouldEmitEvent(event)
 }
 
@@ -601,7 +613,7 @@ func (p *BasePlugin) ShouldHandleEvent(event PluginEvent) bool {
 // This implements the detailed filter matching logic.
 // EventMatchesFilter 检查一个事件是否匹配特定的过滤器。
 // 这实现了详细的过滤器匹配逻辑。
-func (p *BasePlugin) EventMatchesFilter(event PluginEvent, filter EventFilter) bool {
+func (p *TypedBasePlugin[T]) EventMatchesFilter(event PluginEvent, filter EventFilter) bool {
 	// Check event type
 	// 检查事件类型
 	if len(filter.Types) > 0 {
@@ -678,7 +690,7 @@ func (p *BasePlugin) EventMatchesFilter(event PluginEvent, filter EventFilter) b
 // This is called during health status reporting.
 // CheckHealth 执行实际的健康检查操作。
 // 此方法在健康状态报告期间被调用。
-func (p *BasePlugin) CheckHealth() error {
+func (p *TypedBasePlugin[T]) CheckHealth() error {
 	// Implementation-specific health checks
 	// 特定于实现的健康检查
 	return nil
@@ -688,7 +700,7 @@ func (p *BasePlugin) CheckHealth() error {
 // This is called before applying new configuration.
 // ValidateConfig 验证提供的配置。
 // 此方法在应用新配置之前被调用。
-func (p *BasePlugin) ValidateConfig(conf any) error {
+func (p *TypedBasePlugin[T]) ValidateConfig(conf any) error {
 	// Implementation-specific configuration validation
 	// 特定于实现的配置验证
 	return nil
@@ -698,7 +710,7 @@ func (p *BasePlugin) ValidateConfig(conf any) error {
 // This is called after configuration validation succeeds.
 // ApplyConfig 应用经验证的配置。
 // 此方法在配置验证成功后被调用。
-func (p *BasePlugin) ApplyConfig(conf any) error {
+func (p *TypedBasePlugin[T]) ApplyConfig(conf any) error {
 	// Implementation-specific configuration application
 	// 特定于实现的配置应用
 	return nil
@@ -708,7 +720,7 @@ func (p *BasePlugin) ApplyConfig(conf any) error {
 // This implements specific handling for health events.
 // HandleHealthEvent 处理与健康相关的事件。
 // 这实现了对健康事件的特定处理。
-func (p *BasePlugin) HandleHealthEvent(event PluginEvent) {
+func (p *TypedBasePlugin[T]) HandleHealthEvent(event PluginEvent) {
 	// Implementation-specific health event handling
 	// 特定于实现的健康事件处理
 }
@@ -717,7 +729,7 @@ func (p *BasePlugin) HandleHealthEvent(event PluginEvent) {
 // This implements specific handling for configuration events.
 // HandleConfigEvent 处理与配置相关的事件。
 // 这实现了对配置事件的特定处理。
-func (p *BasePlugin) HandleConfigEvent(event PluginEvent) {
+func (p *TypedBasePlugin[T]) HandleConfigEvent(event PluginEvent) {
 	// Implementation-specific configuration event handling
 	// 特定于实现的配置事件处理
 }
@@ -726,7 +738,7 @@ func (p *BasePlugin) HandleConfigEvent(event PluginEvent) {
 // This implements specific handling for dependency events.
 // HandleDependencyEvent 处理与依赖相关的事件。
 // 这实现了对依赖事件的特定处理。
-func (p *BasePlugin) HandleDependencyEvent(event PluginEvent) {
+func (p *TypedBasePlugin[T]) HandleDependencyEvent(event PluginEvent) {
 	// Implementation-specific dependency event handling
 	// 特定于实现的依赖事件处理
 }
@@ -735,7 +747,7 @@ func (p *BasePlugin) HandleDependencyEvent(event PluginEvent) {
 // This implements default event handling behavior.
 // HandleDefaultEvent 处理没有特定处理程序的事件。
 // 这实现了默认的事件处理行为。
-func (p *BasePlugin) HandleDefaultEvent(event PluginEvent) {
+func (p *TypedBasePlugin[T]) HandleDefaultEvent(event PluginEvent) {
 	// Implementation-specific default event handling
 	// 特定于实现的默认事件处理
 }
@@ -744,7 +756,7 @@ func (p *BasePlugin) HandleDefaultEvent(event PluginEvent) {
 // This method checks if the plugin is in the active state.
 // Suspend 暂时挂起插件。
 // 此方法检查插件是否处于活动状态。
-func (p *BasePlugin) Suspend() error {
+func (p *TypedBasePlugin[T]) Suspend() error {
 	if p.status != StatusActive {
 		return NewPluginError(p.id, "Suspend", "Plugin must be active to suspend", ErrPluginNotActive)
 	}
@@ -769,7 +781,7 @@ func (p *BasePlugin) Suspend() error {
 // This method checks if the plugin is in the suspended state.
 // Resume 从挂起状态恢复插件。
 // 此方法检查插件是否处于挂起状态。
-func (p *BasePlugin) Resume() error {
+func (p *TypedBasePlugin[T]) Resume() error {
 	if p.status != StatusSuspended {
 		return NewPluginError(p.id, "Resume", "Plugin must be suspended to resume", ErrPluginNotActive)
 	}
@@ -801,7 +813,7 @@ func (p *BasePlugin) Resume() error {
 // This method checks if the plugin supports the upgrade capability.
 // PrepareUpgrade 为插件升级做准备。
 // 此方法检查插件是否支持升级能力。
-func (p *BasePlugin) PrepareUpgrade(targetVersion string) error {
+func (p *TypedBasePlugin[T]) PrepareUpgrade(targetVersion string) error {
 	if !p.SupportsCapability(UpgradeConfig) && !p.SupportsCapability(UpgradeVersion) {
 		return NewPluginError(p.id, "PrepareUpgrade", "Upgrade not supported", ErrPluginUpgradeNotSupported)
 	}
@@ -831,7 +843,7 @@ func (p *BasePlugin) PrepareUpgrade(targetVersion string) error {
 // This method checks if the plugin is in the upgrading state.
 // ExecuteUpgrade 执行插件升级。
 // 此方法检查插件是否处于升级状态。
-func (p *BasePlugin) ExecuteUpgrade(targetVersion string) error {
+func (p *TypedBasePlugin[T]) ExecuteUpgrade(targetVersion string) error {
 	if p.status != StatusUpgrading {
 		return NewPluginError(p.id, "ExecuteUpgrade", "Plugin must be in upgrading state", ErrPluginNotActive)
 	}
@@ -889,7 +901,7 @@ func (p *BasePlugin) ExecuteUpgrade(targetVersion string) error {
 // This method checks if the plugin is in the upgrading or failed state.
 // RollbackUpgrade 回滚插件升级。
 // 此方法检查插件是否处于升级或失败状态。
-func (p *BasePlugin) RollbackUpgrade(previousVersion string) error {
+func (p *TypedBasePlugin[T]) RollbackUpgrade(previousVersion string) error {
 	if p.status != StatusUpgrading && p.status != StatusFailed {
 		return NewPluginError(p.id, "RollbackUpgrade", "Plugin must be in upgrading or failed state", ErrPluginNotActive)
 	}
@@ -952,7 +964,7 @@ func (p *BasePlugin) RollbackUpgrade(previousVersion string) error {
 // This is an internal method called by ExecuteUpgrade.
 // PerformUpgrade 处理实际的升级过程。
 // 这是一个由 ExecuteUpgrade 调用的内部方法。
-func (p *BasePlugin) PerformUpgrade(targetVersion string) error {
+func (p *TypedBasePlugin[T]) PerformUpgrade(targetVersion string) error {
 	// Implementation-specific upgrade logic
 	// 特定于实现的升级逻辑
 	return nil
@@ -962,7 +974,7 @@ func (p *BasePlugin) PerformUpgrade(targetVersion string) error {
 // This is an internal method called by RollbackUpgrade.
 // PerformRollback 处理实际的回滚过程。
 // 这是一个由 RollbackUpgrade 调用的内部方法。
-func (p *BasePlugin) PerformRollback(previousVersion string) error {
+func (p *TypedBasePlugin[T]) PerformRollback(previousVersion string) error {
 	// Implementation-specific rollback logic
 	// 特定于实现的回滚逻辑
 	return nil
@@ -970,17 +982,25 @@ func (p *BasePlugin) PerformRollback(previousVersion string) error {
 
 // GetCapabilities returns the plugin's upgrade capabilities.
 // GetCapabilities 返回插件的升级能力列表。
-func (p *BasePlugin) GetCapabilities() []UpgradeCapability {
+func (p *TypedBasePlugin[T]) GetCapabilities() []UpgradeCapability {
 	return p.capabilities
 }
 
 // SupportsCapability checks if the plugin supports the specified upgrade capability.
 // SupportsCapability 检查插件是否支持指定的升级能力。
-func (p *BasePlugin) SupportsCapability(cap UpgradeCapability) bool {
+func (p *TypedBasePlugin[T]) SupportsCapability(cap UpgradeCapability) bool {
 	for _, c := range p.capabilities {
 		if c == cap {
 			return true
 		}
 	}
 	return false
+}
+
+// BasePlugin 保持向后兼容的基础插件
+type BasePlugin = TypedBasePlugin[any]
+
+// NewBasePlugin 创建基础插件（向后兼容）
+func NewBasePlugin(id, name, description, version, confPrefix string, weight int) *BasePlugin {
+	return NewTypedBasePlugin[any](id, name, description, version, confPrefix, weight, nil)
 }

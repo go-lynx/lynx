@@ -7,13 +7,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// Metrics holds Prometheus collectors for the redislock package.
+// Metrics holds Prometheus collectors for the redis_lock package.
 // Call InitMetrics once at program start to register them (or use the default Registerer).
 var (
 	lockAcquireTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "lynx",
-			Subsystem: "redislock",
+			Subsystem: "redis_lock",
 			Name:      "acquire_total",
 			Help:      "Total number of lock acquire attempts partitioned by result.",
 		},
@@ -23,7 +23,7 @@ var (
 	lockUnlockTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "lynx",
-			Subsystem: "redislock",
+			Subsystem: "redis_lock",
 			Name:      "unlock_total",
 			Help:      "Total number of unlock attempts partitioned by result.",
 		},
@@ -33,7 +33,7 @@ var (
 	lockRenewTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "lynx",
-			Subsystem: "redislock",
+			Subsystem: "redis_lock",
 			Name:      "renew_total",
 			Help:      "Total number of renew attempts partitioned by result.",
 		},
@@ -43,7 +43,7 @@ var (
 	skippedRenewalsTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Namespace: "lynx",
-			Subsystem: "redislock",
+			Subsystem: "redis_lock",
 			Name:      "skipped_renewals_total",
 			Help:      "Total number of renew tasks skipped due to worker pool saturation.",
 		},
@@ -52,7 +52,7 @@ var (
 	activeLocks = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: "lynx",
-			Subsystem: "redislock",
+			Subsystem: "redis_lock",
 			Name:      "active_locks",
 			Help:      "Current number of active locks managed for renewal.",
 		},
@@ -61,7 +61,7 @@ var (
 	scriptLatency = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "lynx",
-			Subsystem: "redislock",
+			Subsystem: "redis_lock",
 			Name:      "script_latency_seconds",
 			Help:      "Latency of Redis Lua script calls.",
 			Buckets:   prometheus.DefBuckets, // [0.005 .. 10] seconds

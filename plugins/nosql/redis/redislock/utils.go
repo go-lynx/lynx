@@ -2,6 +2,8 @@ package redislock
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -9,7 +11,6 @@ import (
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
-	"github.com/google/uuid"
 )
 
 // 进程级别的锁标识前缀，在进程启动时生成
@@ -78,8 +79,13 @@ func getLocalIPWithRetry() string {
 func generateLockValue() string {
 	// 使用原子操作获取递增的序列号
 	seq := atomic.AddUint64(&sequenceNum, 1)
-	// 生成 UUID v4
-	uid := uuid.New()
-	// 生成唯一标识：进程前缀 + 序列号 + UUID
-	return fmt.Sprintf("%s%d-%s", lockValuePrefix, seq, uid.String())
+	// 使用 crypto/rand 生成 16 字节高熵随机数，并 hex 编码
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// 极端情况下读取熵失败，回退到时间戳，仍保留前缀与序列号，避免阻塞
+		return fmt.Sprintf("%s%d-%d", lockValuePrefix, seq, time.Now().UnixNano())
+	}
+	token := hex.EncodeToString(b[:])
+	// 生成唯一标识：进程前缀 + 序列号 + 随机 token
+	return fmt.Sprintf("%s%d-%s", lockValuePrefix, seq, token)
 }

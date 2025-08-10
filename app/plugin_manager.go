@@ -6,6 +6,8 @@
 package app
 
 import (
+	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -14,98 +16,381 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// LynxPluginManager defines the interface for managing Lynx plugins.
-// LynxPluginManager 定义了管理 Lynx 插件的接口。
-// It provides methods for loading, unloading, and managing plugin lifecycle.
-// 它提供了加载、卸载和管理插件生命周期的方法。
-type LynxPluginManager interface {
-	// LoadPlugins loads and initializes all registered plugins using the provided configuration.
-	// LoadPlugins 使用提供的配置加载并初始化所有已注册的插件。
-	// This method should be called during application startup.
-	// 此方法应在应用程序启动时调用。
-	LoadPlugins(config.Config)
-
-	// UnloadPlugins gracefully unloads all registered plugins.
-	// UnloadPlugins 优雅地卸载所有已注册的插件。
-	// This method should be called during application shutdown.
-	// 此方法应在应用程序关闭时调用。
-	UnloadPlugins()
-
-	// LoadPluginsByName loads specific plugins by their names.
-	// LoadPluginsByName 根据插件名称加载特定的插件。
-	// Parameters:
-	//   - names: List of plugin names to load
-	//   - names: 要加载的插件名称列表
-	//   - conf: Configuration to use for plugin initialization
-	//   - conf: 用于插件初始化的配置
-	LoadPluginsByName([]string, config.Config)
-
-	// UnloadPluginsByName unloads specific plugins by their names.
-	// UnloadPluginsByName 根据插件名称卸载特定的插件。
-	// This allows for selective plugin unloading without affecting others.
-	// 这允许在不影响其他插件的情况下选择性地卸载插件。
-	UnloadPluginsByName([]string)
-
-	// GetPlugin retrieves a plugin instance by its name.
-	// GetPlugin 根据插件名称获取插件实例。
-	// Returns nil if the plugin is not found.
-	// 如果未找到插件，则返回 nil。
-	GetPlugin(name string) plugins.Plugin
-
-	// PreparePlug prepares plugins for loading and returns the names of successfully prepared plugins.
-	// PreparePlug 为插件加载做准备，并返回成功准备的插件名称列表。
-	// This method is called before actual plugin loading to ensure all prerequisites are met.
-	// 此方法在实际加载插件之前调用，以确保满足所有先决条件。
-	PreparePlug(config config.Config) []string
+// PluginWithLevel represents a plugin with its dependency level in the topology.
+// PluginWithLevel 表示一个带有拓扑依赖级别的插件。
+// Used internally for dependency sorting and plugin initialization order.
+// 内部用于依赖排序和插件初始化顺序。
+type PluginWithLevel struct {
+	plugins.Plugin
+	level int
 }
 
-// DefaultLynxPluginManager is the default implementation of LynxPluginManager.
-// DefaultLynxPluginManager 是 LynxPluginManager 接口的默认实现。
-// It manages plugin lifecycle and dependencies using a topological sorting approach.
-// 它使用拓扑排序的方法管理插件的生命周期和依赖关系。
-type DefaultLynxPluginManager struct {
-	// pluginMap stores plugins indexed by their names for quick lookup
-	// pluginMap 以插件名称为键存储插件实例，便于快速查找。
-	pluginMap sync.Map
-	// pluginList maintains the ordered list of plugins
-	// pluginList 维护一个有序的插件列表。
+// PluginManager 统一的插件管理器接口
+type PluginManager interface {
+	// 基本插件管理
+	LoadPlugins(config.Config) error
+	UnloadPlugins()
+	LoadPluginsByName(config.Config, []string) error
+	UnloadPluginsByName([]string)
+	GetPlugin(name string) plugins.Plugin
+	PreparePlug(config config.Config) ([]plugins.Plugin, error)
+	// Runtime 管理
+	GetRuntime() plugins.Runtime
+	SetConfig(config.Config)
+	// 资源管理
+	StopPlugin(pluginID string) error
+	GetResourceStats() map[string]any
+	ListResources() []*plugins.ResourceInfo
+}
+
+// DefaultPluginManager 统一的插件管理器实现
+type DefaultPluginManager struct {
+	// pluginInstances 存储已创建的插件实例
+	pluginInstances sync.Map
+	// pluginList 有序插件列表
 	pluginList []plugins.Plugin
-	// mu protects the pluginList
+	// factory 泛型工厂
+	factory *factory.TypedPluginFactory
 	// mu 保护 pluginList
 	mu sync.RWMutex
-	// factory is used to create plugin instances
-	// factory 用于创建插件实例。
-	factory factory.PluginFactory
+	// runtime 统一的运行时环境
+	runtime plugins.Runtime
+	// config 全局配置
+	config config.Config
 }
 
-// NewLynxPluginManager creates a new instance of the default plugin manager.
-// NewLynxPluginManager 创建一个默认插件管理器的新实例。
-// Parameters:
-//   - plugins: Optional list of plugins to initialize with
-//   - plugins: 可选的用于初始化的插件列表
-//
-// Returns:
-//   - LynxPluginManager: Initialized plugin manager instance
-//   - LynxPluginManager: 初始化后的插件管理器实例
-func NewLynxPluginManager(pluginList ...plugins.Plugin) LynxPluginManager {
-	// 创建默认插件管理器实例
-	manager := &DefaultLynxPluginManager{
+// NewPluginManager 创建统一的插件管理器
+func NewPluginManager(pluginList ...plugins.Plugin) PluginManager {
+	manager := &DefaultPluginManager{
 		pluginList: make([]plugins.Plugin, 0),
-		factory:    factory.GlobalPluginFactory(),
+		factory:    factory.GlobalTypedPluginFactory(),
+		runtime:    plugins.NewTypedRuntime(),
 	}
 
-	// 如果提供了初始插件列表，注册这些插件
+	// 注册初始插件 - 修复并发安全问题
 	for _, plugin := range pluginList {
+		if plugin != nil {
+			// 使用原子操作确保数据一致性
+			manager.pluginInstances.Store(plugin.Name(), plugin)
+
+			// 使用写锁保护pluginList的修改
+			manager.mu.Lock()
+			manager.pluginList = append(manager.pluginList, plugin)
+			manager.mu.Unlock()
+		}
+	}
+
+	return manager
+}
+
+// SetConfig 设置全局配置
+func (m *DefaultPluginManager) SetConfig(conf config.Config) {
+	m.config = conf
+	// 更新 runtime 的配置
+	if typedRuntime, ok := m.runtime.(*plugins.TypedRuntimeImpl); ok {
+		typedRuntime.SetConfig(conf)
+	}
+}
+
+// GetRuntime 获取统一的运行时环境
+func (m *DefaultPluginManager) GetRuntime() plugins.Runtime {
+	return m.runtime
+}
+
+// GetTypedPluginFromManager 获取类型安全的插件（独立函数）
+func GetTypedPluginFromManager[T plugins.Plugin](m *DefaultPluginManager, name string) (T, error) {
+	var zero T
+
+	if value, ok := m.pluginInstances.Load(name); ok {
+		if typed, ok := value.(T); ok {
+			return typed, nil
+		}
+		return zero, fmt.Errorf("plugin %s is not of expected type", name)
+	}
+
+	return zero, fmt.Errorf("plugin %s not found", name)
+}
+
+// RegisterTypedPlugin 注册类型安全的插件到管理器（独立函数）
+func RegisterTypedPlugin[T plugins.Plugin](
+	m *DefaultPluginManager,
+	name string,
+	configPrefix string,
+	creator func() T,
+) {
+	factory.RegisterTypedPlugin(m.factory, name, configPrefix, creator)
+}
+
+// GetPlugin 获取插件（兼容旧接口）
+func (m *DefaultPluginManager) GetPlugin(name string) plugins.Plugin {
+	if value, ok := m.pluginInstances.Load(name); ok {
+		if plugin, ok := value.(plugins.Plugin); ok {
+			return plugin
+		}
+	}
+	return nil
+}
+
+// LoadPlugins 加载插件 - 修复并发安全问题
+func (m *DefaultPluginManager) LoadPlugins(conf config.Config) error {
+	m.SetConfig(conf)
+
+	// 准备插件配置
+	plugins, err := m.PreparePlug(conf)
+	if err != nil {
+		return fmt.Errorf("failed to prepare plugins: %w", err)
+	}
+	if len(plugins) == 0 {
+		return fmt.Errorf("no plugins prepared")
+	}
+
+	// 按依赖关系排序插件
+	sortedPlugins, err := m.TopologicalSort(plugins)
+	if err != nil {
+		return fmt.Errorf("failed to sort plugins: %w", err)
+	}
+
+	// 加载插件
+	for _, pluginWithLevel := range sortedPlugins {
+		plugin := pluginWithLevel.Plugin
+		// 为每个插件创建带上下文的运行时
+		pluginRuntime := m.runtime.WithPluginContext(plugin.ID())
+
+		// 初始化插件
+		if err := plugin.Initialize(plugin, pluginRuntime); err != nil {
+			return fmt.Errorf("failed to initialize plugin %s: %w", plugin.ID(), err)
+		}
+
+		// 启动插件
+		if err := plugin.Start(plugin); err != nil {
+			// 如果启动失败，清理资源
+			m.runtime.CleanupResources(plugin.ID())
+			return fmt.Errorf("failed to start plugin %s: %w", plugin.ID(), err)
+		}
+
+		// 使用sync.Map的Store方法而不是直接索引
+		m.pluginInstances.Store(plugin.ID(), plugin)
+	}
+
+	return nil
+}
+
+// UnloadPlugins 卸载所有插件
+func (m *DefaultPluginManager) UnloadPlugins() {
+	if m == nil || len(m.pluginList) == 0 {
+		return
+	}
+
+	for _, plugin := range m.pluginList {
 		if plugin == nil {
 			continue
 		}
-		// 将插件添加到映射和列表中
-		manager.pluginMap.Store(plugin.Name(), plugin)
-		manager.mu.Lock()
-		manager.pluginList = append(manager.pluginList, plugin)
-		manager.mu.Unlock()
+		if err := plugin.Stop(plugin); err != nil {
+			if app := Lynx(); app != nil {
+				log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
+			}
+		}
 	}
-	return manager
+}
+
+// LoadPluginsByName 按名称加载插件
+func (m *DefaultPluginManager) LoadPluginsByName(conf config.Config, pluginNames []string) error {
+	m.SetConfig(conf)
+
+	// 准备插件配置
+	plugins, err := m.PreparePlug(conf)
+	if err != nil {
+		return err
+	}
+
+	// 过滤指定名称的插件
+	var targetPlugins []plugins.Plugin
+	pluginMap := make(map[string]plugins.Plugin)
+	for _, plugin := range plugins {
+		pluginMap[plugin.ID()] = plugin
+	}
+
+	for _, name := range pluginNames {
+		if plugin, exists := pluginMap[name]; exists {
+			targetPlugins = append(targetPlugins, plugin)
+		} else {
+			return fmt.Errorf("plugin %s not found", name)
+		}
+	}
+
+	// 按依赖关系排序插件
+	sortedPlugins, err := m.TopologicalSort(targetPlugins)
+	if err != nil {
+		return fmt.Errorf("failed to sort plugins: %w", err)
+	}
+
+	// 加载插件
+	for _, plugin := range sortedPlugins {
+		// 为每个插件创建带上下文的运行时
+		pluginRuntime := m.runtime.WithPluginContext(plugin.ID())
+
+		// 初始化插件
+		if err := plugin.Initialize(plugin, pluginRuntime); err != nil {
+			return fmt.Errorf("failed to initialize plugin %s: %w", plugin.ID(), err)
+		}
+
+		// 启动插件
+		if err := plugin.Start(plugin); err != nil {
+			// 如果启动失败，清理资源
+			m.runtime.CleanupResources(plugin.ID())
+			return fmt.Errorf("failed to start plugin %s: %w", plugin.ID(), err)
+		}
+
+		// 使用sync.Map的Store方法而不是直接索引
+		m.pluginInstances.Store(plugin.ID(), plugin)
+	}
+
+	return nil
+}
+
+// UnloadPluginsByName 按名称卸载插件
+func (m *DefaultPluginManager) UnloadPluginsByName(names []string) {
+	if m == nil || len(names) == 0 {
+		return
+	}
+
+	for _, name := range names {
+		if pluginObj, ok := m.pluginInstances.Load(name); ok {
+			if plugin, ok := pluginObj.(plugins.Plugin); ok && plugin != nil {
+				if err := plugin.Stop(plugin); err != nil {
+					if app := Lynx(); app != nil {
+						log.Errorf("Failed to unload plugin %s: %v", name, err)
+					}
+				}
+				m.pluginInstances.Delete(name)
+			}
+		}
+	}
+
+	// 更新插件列表
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	newList := make([]plugins.Plugin, 0, len(m.pluginList))
+	for _, p := range m.pluginList {
+		if !containsName(names, p.Name()) {
+			newList = append(newList, p)
+		}
+	}
+	m.pluginList = newList
+}
+
+// TopologicalSort 对插件进行拓扑排序
+func (m *DefaultPluginManager) TopologicalSort(pluginList []plugins.Plugin) ([]PluginWithLevel, error) {
+	// 构建一个从插件名称到实际插件实例的映射
+	nameToPlugin := make(map[string]plugins.Plugin)
+	for _, p := range pluginList {
+		if p == nil {
+			continue
+		}
+		nameToPlugin[p.Name()] = p
+	}
+
+	// 以邻接表的形式构建依赖图
+	graph := make(map[string][]string)
+	for _, p := range pluginList {
+		if p == nil {
+			continue
+		}
+
+		// 检查插件是否实现了 DependencyAware 接口
+		depAware, ok := p.(plugins.DependencyAware)
+		if !ok {
+			// 插件未实现 DependencyAware 接口，将其视为没有依赖
+			continue
+		}
+
+		// 使用 DependencyAware 接口获取插件的依赖
+		dependencies := depAware.GetDependencies()
+		if dependencies == nil {
+			continue
+		}
+
+		// 验证依赖并将其添加到图中
+		for _, dep := range dependencies {
+			// 验证依赖对象
+			if dep.ID == "" {
+				return nil, fmt.Errorf("plugin %s has an invalid dependency with empty ID", p.Name())
+			}
+
+			// 检查依赖是否存在
+			if _, exists := nameToPlugin[dep.ID]; !exists {
+				if dep.Required {
+					return nil, fmt.Errorf("plugin %s requires missing plugin %s", p.Name(), dep.ID)
+				}
+				// 跳过不可用的可选依赖
+				continue
+			}
+
+			// 添加依赖关系到图中
+			graph[p.Name()] = append(graph[p.Name()], dep.ID)
+		}
+	}
+
+	// 使用深度优先搜索进行拓扑排序
+	visited := make(map[string]bool)
+	temp := make(map[string]bool)
+	levels := make(map[string]int)
+	var result []PluginWithLevel
+
+	var dfs func(string) error
+	dfs = func(node string) error {
+		if temp[node] {
+			return fmt.Errorf("cyclic dependency detected involving plugin %s", node)
+		}
+		if visited[node] {
+			return nil
+		}
+
+		temp[node] = true
+		defer func() { temp[node] = false }()
+
+		// 计算当前节点的依赖级别
+		maxLevel := -1
+		for _, dep := range graph[node] {
+			if err := dfs(dep); err != nil {
+				return err
+			}
+			if levels[dep] > maxLevel {
+				maxLevel = levels[dep]
+			}
+		}
+
+		levels[node] = maxLevel + 1
+		visited[node] = true
+
+		// 将插件添加到结果中
+		if plugin, exists := nameToPlugin[node]; exists {
+			result = append(result, PluginWithLevel{
+				Plugin: plugin,
+				level:  levels[node],
+			})
+		}
+
+		return nil
+	}
+
+	// 对所有插件执行深度优先搜索
+	for _, p := range pluginList {
+		if p == nil {
+			continue
+		}
+		if err := dfs(p.Name()); err != nil {
+			return nil, err
+		}
+	}
+
+	// 按级别排序结果
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].level < result[j].level
+	})
+
+	return result, nil
 }
 
 // containsName checks if a name exists in the string slice.
@@ -119,205 +404,65 @@ func containsName(slice []string, name string) bool {
 	return false
 }
 
-// LoadPlugins loads all registered plugins in dependency order.
-// LoadPlugins 按照依赖顺序加载所有已注册的插件。
-// It performs topological sorting before loading to ensure correct initialization order.
-// 它在加载前进行拓扑排序，以确保正确的初始化顺序。
-func (m *DefaultLynxPluginManager) LoadPlugins(conf config.Config) {
-	// Prepare plugins
-	// 准备插件
-	m.PreparePlug(conf)
+// LynxPluginManager 保持向后兼容的插件管理器接口
+type LynxPluginManager = PluginManager
 
-	// 如果插件管理器为 nil 或者没有已注册的插件，直接返回
-	if m == nil || len(m.pluginList) == 0 {
-		return
-	}
+// DefaultLynxPluginManager 保持向后兼容的插件管理器实现
+type DefaultLynxPluginManager = DefaultPluginManager
 
-	// Sort plugins by dependencies
-	// 根据依赖关系对插件进行排序
-	sortedPlugins, err := m.TopologicalSort(m.pluginList)
-	if err != nil {
-		// 如果获取 Lynx 应用实例不为 nil，记录排序失败的错误日志
-		if app := Lynx(); app != nil {
-			log.Errorf("Failed to sort plugins: %v", err)
-		}
-		return
-	}
-
-	// Load plugins in sorted order
-	// 按排序后的顺序加载插件
-	for _, plugin := range sortedPlugins {
-		// 如果插件实例为 nil，跳过当前循环
-		if plugin.Plugin == nil {
-			continue
-		}
-
-		// 初始化插件配置
-		if plugin.Status(plugin) == plugins.StatusInactive {
-			runtime := &RuntimePlugin{}
-			if err := plugin.Initialize(plugin, runtime); err != nil {
-				if app := Lynx(); app != nil {
-					log.Errorf("Failed to initialize plugin %s: %v", plugin.Name(), err)
-				}
-				return
-			}
-
-			// 启动插件，如果启动失败，记录错误日志并返回
-			if err := plugin.Start(plugin); err != nil {
-				if app := Lynx(); app != nil {
-					log.Errorf("Failed to start plugin %s: %v", plugin.Name(), err)
-				}
-				return
-			}
-		}
-	}
+// NewLynxPluginManager 创建插件管理器（向后兼容）
+func NewLynxPluginManager(pluginList ...plugins.Plugin) LynxPluginManager {
+	return NewPluginManager(pluginList...)
 }
 
-// UnloadPlugins safely unloads all registered plugins.
-// UnloadPlugins 安全地卸载所有已注册的插件。
-// It handles errors during unloading without interrupting the unload process.
-// 它在卸载过程中处理错误，且不会中断卸载流程。
-func (m *DefaultLynxPluginManager) UnloadPlugins() {
-	// 如果插件管理器为 nil 或者没有已注册的插件，直接返回
-	if m == nil || len(m.pluginList) == 0 {
-		return
-	}
+// TypedPluginManager 保持向后兼容的泛型插件管理器接口
+type TypedPluginManager = PluginManager
 
-	// 遍历插件列表，依次卸载插件
-	for _, plugin := range m.pluginList {
-		// 如果插件实例为 nil，跳过当前循环
-		if plugin == nil {
-			continue
-		}
-		// 停止插件，如果停止失败，记录错误日志
-		if err := plugin.Stop(plugin); err != nil {
-			if app := Lynx(); app != nil {
-				log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
-			}
-		}
-	}
+// DefaultTypedPluginManager 保持向后兼容的泛型插件管理器实现
+type DefaultTypedPluginManager = DefaultPluginManager
+
+// NewTypedPluginManager 创建泛型插件管理器（向后兼容）
+func NewTypedPluginManager(pluginList ...plugins.Plugin) TypedPluginManager {
+	return NewPluginManager(pluginList...)
 }
 
-// LoadPluginsByName loads specific plugins by their names.
-// LoadPluginsByName 根据插件名称加载特定的插件。
-// Parameters:
-//   - names: List of plugin names to load
-//   - names: 要加载的插件名称列表
-//   - conf: Configuration to use for loading
-//   - conf: 用于加载的配置
-func (m *DefaultLynxPluginManager) LoadPluginsByName(names []string, conf config.Config) {
-	// 如果插件管理器为 nil、名称列表为空或配置为 nil，直接返回
-	if m == nil || len(names) == 0 || conf == nil {
-		return
-	}
-
-	// Collect plugins to load
-	// 收集要加载的插件
-	var pluginsToLoad []plugins.Plugin
-	for _, name := range names {
-		// 如果插件存在且不为 nil，添加到待加载列表
-		if pluginObj, ok := m.pluginMap.Load(name); ok {
-			if plugin, ok := pluginObj.(plugins.Plugin); ok && plugin != nil {
-				pluginsToLoad = append(pluginsToLoad, plugin)
-			}
-		}
-	}
-
-	// 如果没有要加载的插件，直接返回
-	if len(pluginsToLoad) == 0 {
-		return
-	}
-
-	// Sort and load plugins
-	// 对插件进行排序并加载
-	sortedPlugins, err := m.TopologicalSort(pluginsToLoad)
-	if err != nil {
-		// 如果获取 Lynx 应用实例不为 nil，记录排序失败的错误日志
-		if app := Lynx(); app != nil {
-			log.Errorf("Failed to sort plugins for loading: %v", err)
-		}
-		return
-	}
-
-	// 按排序后的顺序加载插件
-	for _, plugin := range sortedPlugins {
-		// 如果插件实例为 nil，跳过当前循环
-		if plugin.Plugin == nil {
-			continue
-		}
-
-		// 初始化插件配置
-		runtime := &RuntimePlugin{}
-		if err := plugin.Initialize(plugin, runtime); err != nil {
-			if app := Lynx(); app != nil {
-				log.Errorf("Failed to initialize plugin %s: %v", plugin.Name(), err)
-			}
-			return
-		}
-
-		// 启动插件，如果启动失败，记录错误日志并返回
-		if err := plugin.Start(plugin); err != nil {
-			if app := Lynx(); app != nil {
-				log.Errorf("Failed to load plugin %s: %v", plugin.Name(), err)
-			}
-			return
-		}
-	}
+// RegisterTypedPluginToManager 保持向后兼容的泛型函数
+func RegisterTypedPluginToManager[T plugins.Plugin](
+	m *DefaultTypedPluginManager,
+	name string,
+	configPrefix string,
+	creator func() T,
+) {
+	RegisterTypedPlugin(m, name, configPrefix, creator)
 }
 
-// UnloadPluginsByName safely unloads specific plugins by their names.
-// UnloadPluginsByName 安全地卸载指定名称的插件。
-// It handles errors during unloading without interrupting the unload process.
-// 它在卸载过程中处理错误，且不会中断卸载流程。
-func (m *DefaultLynxPluginManager) UnloadPluginsByName(names []string) {
-	// 如果插件管理器为 nil 或名称列表为空，直接返回
-	if m == nil || len(names) == 0 {
-		return
+// StopPlugin 停止指定插件
+func (m *DefaultPluginManager) StopPlugin(pluginID string) error {
+	plugin, exists := m.pluginInstances.Load(pluginID)
+	if !exists {
+		return fmt.Errorf("plugin %s not found", pluginID)
 	}
 
-	// 遍历名称列表，卸载对应的插件
-	for _, name := range names {
-		// 如果插件存在且不为 nil，尝试卸载
-		if pluginObj, ok := m.pluginMap.Load(name); ok {
-			if plugin, ok := pluginObj.(plugins.Plugin); ok && plugin != nil {
-				// 停止插件，如果停止失败，记录错误日志
-				if err := plugin.Stop(plugin); err != nil {
-					if app := Lynx(); app != nil {
-						log.Errorf("Failed to unload plugin %s: %v", name, err)
-					}
-				}
-				// 从 map 中删除插件
-				m.pluginMap.Delete(name)
-			}
-		}
+	// 停止插件
+	if err := plugin.(plugins.Plugin).Stop(plugin.(plugins.Plugin)); err != nil {
+		return fmt.Errorf("failed to stop plugin %s: %w", pluginID, err)
 	}
 
-	// 更新 pluginList
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	
-	// 创建新的插件列表，不包含已卸载的插件
-	newList := make([]plugins.Plugin, 0, len(m.pluginList))
-	for _, p := range m.pluginList {
-		if !containsName(names, p.Name()) {
-			newList = append(newList, p)
-		}
+	// 清理插件资源
+	if err := m.runtime.CleanupResources(pluginID); err != nil {
+		return fmt.Errorf("failed to cleanup resources for plugin %s: %w", pluginID, err)
 	}
-	m.pluginList = newList
-}
 
-// GetPlugin retrieves a plugin instance by its name.
-// GetPlugin 根据插件名称获取插件实例。
-// Returns nil if the plugin manager is nil, the name is empty, or the plugin doesn't exist.
-// 如果插件管理器为 nil、名称为空或插件不存在，则返回 nil。
-func (m *DefaultLynxPluginManager) GetPlugin(name string) plugins.Plugin {
-	// 如果插件管理器为 nil 或名称为空，直接返回 nil
-	if m == nil || name == "" {
-		return nil
-	}
-	// 从插件映射中获取插件实例
-	if plugin, ok := m.pluginMap.Load(name); ok {
-		return plugin.(plugins.Plugin)
-	}
+	m.pluginInstances.Delete(pluginID)
 	return nil
+}
+
+// GetResourceStats 获取资源统计信息
+func (m *DefaultPluginManager) GetResourceStats() map[string]any {
+	return m.runtime.GetResourceStats()
+}
+
+// ListResources 列出所有资源
+func (m *DefaultPluginManager) ListResources() []*plugins.ResourceInfo {
+	return m.runtime.ListResources()
 }

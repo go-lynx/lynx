@@ -295,7 +295,7 @@ func (cr *DefaultConflictResolver) detectResourceConflicts(graph *DependencyGrap
 	// 这里需要检查资源名称冲突
 	// 由于当前架构中没有直接的资源注册信息，我们提供一个框架实现
 	// 实际使用中需要扩展 Plugin 接口以支持资源注册信息
-	
+
 	// 检查插件名称冲突
 	pluginNames := make(map[string][]string)
 	for pluginID, plugin := range graph.GetAllPlugins() {

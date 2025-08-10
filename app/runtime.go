@@ -10,7 +10,8 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-type RuntimePlugin struct {
+// TypedRuntimePlugin 泛型运行时插件
+type TypedRuntimePlugin struct {
 	// resources stores shared resources between plugins
 	// resources 存储插件之间共享的资源
 	resources sync.Map
@@ -47,10 +48,10 @@ type listenerEntry struct {
 	filter   *plugins.EventFilter
 }
 
-// NewRuntimePlugin creates a new RuntimePlugin instance with default settings.
-// NewRuntimePlugin 创建一个带有默认设置的 RuntimePlugin 实例。
-func NewRuntimePlugin() *RuntimePlugin {
-	return &RuntimePlugin{
+// NewTypedRuntimePlugin creates a new TypedRuntimePlugin instance with default settings.
+// NewTypedRuntimePlugin 创建一个带有默认设置的 TypedRuntimePlugin 实例。
+func NewTypedRuntimePlugin() *TypedRuntimePlugin {
+	return &TypedRuntimePlugin{
 		maxHistorySize: 1000, // Default to keeping last 1000 events
 		listeners:      make([]listenerEntry, 0),
 		eventHistory:   make([]plugins.PluginEvent, 0),
@@ -62,7 +63,7 @@ func NewRuntimePlugin() *RuntimePlugin {
 // Returns the resource and any error encountered
 // GetResource 根据名称获取插件共享资源。
 // 返回资源和可能遇到的错误。
-func (r *RuntimePlugin) GetResource(name string) (any, error) {
+func (r *TypedRuntimePlugin) GetResource(name string) (any, error) {
 	if value, ok := r.resources.Load(name); ok {
 		return value, nil
 	}
@@ -73,7 +74,7 @@ func (r *RuntimePlugin) GetResource(name string) (any, error) {
 // Returns error if registration fails
 // RegisterResource 注册一个资源，以便与其他插件共享。
 // 如果注册失败，则返回错误。
-func (r *RuntimePlugin) RegisterResource(name string, resource any) error {
+func (r *TypedRuntimePlugin) RegisterResource(name string, resource any) error {
 	if name == "" {
 		return fmt.Errorf("resource name cannot be empty")
 	}
@@ -86,11 +87,32 @@ func (r *RuntimePlugin) RegisterResource(name string, resource any) error {
 	return nil
 }
 
+// GetTypedResource 获取类型安全的资源（独立函数）
+func GetTypedResource[T any](r *TypedRuntimePlugin, name string) (T, error) {
+	var zero T
+	resource, err := r.GetResource(name)
+	if err != nil {
+		return zero, err
+	}
+
+	typed, ok := resource.(T)
+	if !ok {
+		return zero, fmt.Errorf("type assertion failed for resource %s", name)
+	}
+
+	return typed, nil
+}
+
+// RegisterTypedResource 注册类型安全的资源（独立函数）
+func RegisterTypedResource[T any](r *TypedRuntimePlugin, name string, resource T) error {
+	return r.RegisterResource(name, resource)
+}
+
 // GetConfig returns the plugin configuration manager
 // Provides access to configuration values and updates
 // GetConfig 返回插件配置管理器。
 // 提供对配置值和更新的访问。
-func (r *RuntimePlugin) GetConfig() config.Config {
+func (r *TypedRuntimePlugin) GetConfig() config.Config {
 	if r.config == nil {
 		r.config = Lynx().GetGlobalConfig()
 	}
@@ -101,7 +123,7 @@ func (r *RuntimePlugin) GetConfig() config.Config {
 // Provides structured logging capabilities
 // GetLogger 返回插件日志记录器实例。
 // 提供结构化的日志记录功能。
-func (r *RuntimePlugin) GetLogger() log.Logger {
+func (r *TypedRuntimePlugin) GetLogger() log.Logger {
 	if r.logger == nil {
 		// Initialize with a default logger if not set
 		r.logger = log.DefaultLogger
@@ -113,7 +135,7 @@ func (r *RuntimePlugin) GetLogger() log.Logger {
 // Event will be processed according to its priority and any active filters.
 // EmitEvent 向所有注册的监听器广播一个插件事件。
 // 事件将根据其优先级和任何活动的过滤器进行处理。
-func (r *RuntimePlugin) EmitEvent(event plugins.PluginEvent) {
+func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 	if event.Type == "" { // Check for zero value of EventType
 		return
 	}
@@ -146,7 +168,7 @@ func (r *RuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 // Listener will only receive events that match its filter criteria.
 // AddListener 使用可选的过滤器注册一个新的事件监听器。
 // 监听器将仅接收符合其过滤条件的事件。
-func (r *RuntimePlugin) AddListener(listener plugins.EventListener, filter *plugins.EventFilter) {
+func (r *TypedRuntimePlugin) AddListener(listener plugins.EventListener, filter *plugins.EventFilter) {
 	if listener == nil {
 		return
 	}
@@ -165,7 +187,7 @@ func (r *RuntimePlugin) AddListener(listener plugins.EventListener, filter *plug
 // After removal, the listener will no longer receive any events.
 // RemoveListener 注销一个事件监听器。
 // 删除后，该监听器将不再接收任何事件。
-func (r *RuntimePlugin) RemoveListener(listener plugins.EventListener) {
+func (r *TypedRuntimePlugin) RemoveListener(listener plugins.EventListener) {
 	if listener == nil {
 		return
 	}
@@ -187,7 +209,7 @@ func (r *RuntimePlugin) RemoveListener(listener plugins.EventListener) {
 // Returns events that match the specified filter parameters.
 // GetEventHistory 根据过滤条件检索历史事件。
 // 返回符合指定过滤参数的事件。
-func (r *RuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugins.PluginEvent {
+func (r *TypedRuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugins.PluginEvent {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -214,7 +236,7 @@ func (r *RuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugins.Pl
 // This implements the detailed filter matching logic.
 // eventMatchesFilter 检查一个事件是否匹配特定的过滤器。
 // 这实现了详细的过滤器匹配逻辑。
-func (r *RuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plugins.EventFilter) bool {
+func (r *TypedRuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plugins.EventFilter) bool {
 	// Check event type
 	// 检查事件类型
 	if len(filter.Types) > 0 {
@@ -285,4 +307,12 @@ func (r *RuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plu
 	}
 
 	return true
+}
+
+// RuntimePlugin 保持向后兼容的运行时插件
+type RuntimePlugin = TypedRuntimePlugin
+
+// NewRuntimePlugin 创建运行时插件（向后兼容）
+func NewRuntimePlugin() *RuntimePlugin {
+	return NewTypedRuntimePlugin()
 }

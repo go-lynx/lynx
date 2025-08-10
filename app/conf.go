@@ -2,19 +2,21 @@ package app
 
 import (
 	"fmt"
+
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/plugins"
 
 	"github.com/go-kratos/kratos/v2/config"
 )
 
 // PreparePlug 方法通过远程或本地配置文件引导插件加载。
 // 它基于配置处理插件的初始化和注册操作。
-// 返回一个成功准备好的插件名称列表。
-func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
+// 返回一个成功准备好的插件列表和错误信息。
+func (m *DefaultPluginManager) PreparePlug(config config.Config) ([]plugins.Plugin, error) {
 	// 检查配置是否为 nil，如果为 nil 则记录错误日志并返回 nil
 	if config == nil {
 		log.Error("Configuration is nil")
-		return nil
+		return nil, fmt.Errorf("configuration is nil")
 	}
 
 	// 获取包含所有已注册插件配置前缀的注册表
@@ -22,11 +24,11 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 	// 检查注册表是否为空，如果为空则记录警告日志并返回 nil
 	if len(table) == 0 {
 		log.Warn("No plugins registered in factory")
-		return nil
+		return nil, fmt.Errorf("no plugins registered in factory")
 	}
 
-	// 初始化一个切片，用于存储待加载的插件名称，预分配容量为注册表的长度
-	plugNames := make([]string, 0, len(table))
+	// 初始化一个切片，用于存储待加载的插件实例，预分配容量为注册表的长度
+	plugins := make([]plugins.Plugin, 0, len(table))
 
 	// 遍历配置前缀
 	for confPrefix, names := range table {
@@ -69,25 +71,29 @@ func (m *DefaultLynxPluginManager) PreparePlug(config config.Config) []string {
 				continue
 			}
 
-			// 将成功准备的插件名称添加到切片中
-			plugNames = append(plugNames, name)
+			// 获取插件实例并添加到切片中
+			if value, ok := m.pluginInstances.Load(name); ok {
+				if plugin, ok := value.(plugins.Plugin); ok {
+					plugins = append(plugins, plugin)
+				}
+			}
 		}
 	}
 
 	// 检查是否有成功准备的插件，如果没有则记录警告日志，否则记录成功信息
-	if len(plugNames) != 0 {
-		log.Infof("successfully prepared %d plugins", len(plugNames))
+	if len(plugins) != 0 {
+		log.Infof("successfully prepared %d plugins", len(plugins))
 	}
 
-	return plugNames
+	return plugins, nil
 }
 
 // preparePlugin 处理单个插件的准备工作。
 // 它会检查插件是否已存在，创建插件实例，并将其添加到管理器中。
 // 如果任何步骤失败，则返回错误。
-func (m *DefaultLynxPluginManager) preparePlugin(name string) error {
+func (m *DefaultPluginManager) preparePlugin(name string) error {
 	// 检查插件是否已经加载，如果已加载则返回错误信息
-	if _, exists := m.pluginMap.Load(name); exists {
+	if _, exists := m.pluginInstances.Load(name); exists {
 		return fmt.Errorf("plugin %s is already loaded", name)
 	}
 
@@ -111,7 +117,7 @@ func (m *DefaultLynxPluginManager) preparePlugin(name string) error {
 	m.mu.Lock()
 	m.pluginList = append(m.pluginList, p)
 	m.mu.Unlock()
-	m.pluginMap.Store(p.Name(), p)
+	m.pluginInstances.Store(p.Name(), p)
 
 	return nil
 }
