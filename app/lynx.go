@@ -3,10 +3,11 @@ package app
 
 import (
 	"fmt"
-	"github.com/go-lynx/lynx/app/conf"
-	"github.com/go-lynx/lynx/app/log"
 	"os"
 	"sync"
+
+	"github.com/go-lynx/lynx/app/conf"
+	"github.com/go-lynx/lynx/app/log"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/plugins"
@@ -72,6 +73,12 @@ type LynxApp struct {
 	// pluginManager 处理插件的生命周期和依赖关系。
 	// 负责加载、卸载和协调插件。
 	pluginManager LynxPluginManager
+
+	// typedPluginManager handles typed plugin lifecycle and dependencies.
+	// Provides type-safe plugin management with generic support.
+	// typedPluginManager 处理类型安全的插件生命周期和依赖关系。
+	// 提供支持泛型的类型安全插件管理。
+	typedPluginManager TypedPluginManager
 }
 
 // Lynx returns the global LynxApp instance.
@@ -186,13 +193,14 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 	// Create new application instance
 	// 创建新的应用程序实例
 	app := &LynxApp{
-		host:          hostname,
-		name:          bConf.Lynx.Application.Name,
-		version:       bConf.Lynx.Application.Version,
-		bootConfig:    &bConf,
-		globalConf:    cfg,
-		pluginManager: NewLynxPluginManager(plugins...),
-		controlPlane:  &DefaultControlPlane{},
+		host:               hostname,
+		name:               bConf.Lynx.Application.Name,
+		version:            bConf.Lynx.Application.Version,
+		bootConfig:         &bConf,
+		globalConf:         cfg,
+		pluginManager:      NewLynxPluginManager(plugins...),
+		typedPluginManager: NewTypedPluginManager(plugins...),
+		controlPlane:       &DefaultControlPlane{},
 	}
 
 	// Validate required fields
@@ -219,6 +227,17 @@ func (a *LynxApp) GetPluginManager() LynxPluginManager {
 	return a.pluginManager
 }
 
+// GetTypedPluginManager returns the typed plugin manager instance.
+// Returns nil if the application is not initialized.
+// GetTypedPluginManager 返回类型安全的插件管理器实例。
+// 如果应用程序未初始化，则返回 nil。
+func (a *LynxApp) GetTypedPluginManager() TypedPluginManager {
+	if a == nil {
+		return nil
+	}
+	return a.typedPluginManager
+}
+
 // GetGlobalConfig returns the global configuration instance.
 // Returns nil if the application is not initialized.
 // GetGlobalConfig 返回全局配置实例。
@@ -228,6 +247,28 @@ func (a *LynxApp) GetGlobalConfig() config.Config {
 		return nil
 	}
 	return a.globalConf
+}
+
+// GetTypedPlugin 全局获取类型安全的插件实例
+// GetTypedPlugin globally retrieves a type-safe plugin instance
+func GetTypedPlugin[T plugins.Plugin](name string) (T, error) {
+	var zero T
+	if lynxApp == nil {
+		return zero, fmt.Errorf("lynx application not initialized")
+	}
+
+	manager := lynxApp.GetTypedPluginManager()
+	if manager == nil {
+		return zero, fmt.Errorf("typed plugin manager not initialized")
+	}
+
+	// 类型断言为具体的管理器类型
+	typedManager, ok := manager.(*DefaultTypedPluginManager)
+	if !ok {
+		return zero, fmt.Errorf("invalid typed plugin manager type")
+	}
+
+	return GetTypedPluginFromManager[T](typedManager, name)
 }
 
 // SetGlobalConfig updates the global configuration instance.

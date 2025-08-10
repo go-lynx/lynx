@@ -23,7 +23,21 @@ func init() {
 // GetRedis 函数用于获取 Redis 客户端实例。
 // 它通过全局 Lynx 应用实例获取插件管理器，再根据插件名称获取对应的插件实例，
 // 最后将插件实例转换为 *PlugRedis 类型并返回其 rdb 字段，即 Redis 客户端。
+// GetRedis 返回底层 *redis.Client，仅在单机模式下可用；若为 Cluster/Sentinel 返回 nil。
 func GetRedis() *redis.Client {
+	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
+	if plugin == nil {
+		return nil
+	}
+	// 尝试断言为 *redis.Client（单机）
+	if c, ok := plugin.(*PlugRedis).rdb.(*redis.Client); ok {
+		return c
+	}
+	return nil
+}
+
+// GetUniversalRedis 返回通用客户端，可用于单机/集群/哨兵模式。
+func GetUniversalRedis() redis.UniversalClient {
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
 	if plugin == nil {
 		return nil
