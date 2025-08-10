@@ -15,15 +15,16 @@ import (
 // Client Kafka 客户端插件
 type Client struct {
 	*plugins.BasePlugin
-	conf           *conf.Kafka
-	producer       *kgo.Client
-	consumer       *kgo.Client
-	mu             sync.RWMutex
-	ctx            context.Context
-	cancel         context.CancelFunc
-	metrics        *Metrics
-	batchProcessor *BatchProcessor
-	retryHandler   *RetryHandler
+	conf                *conf.Kafka
+	producer            *kgo.Client
+	consumer            *kgo.Client
+	mu                  sync.RWMutex
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	metrics             *Metrics
+	batchProcessor      *BatchProcessor
+	retryHandler        *RetryHandler
+	activeConsumerGroup *ConsumerGroup
 }
 
 // 确保 Client 实现了所有接口
