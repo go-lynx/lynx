@@ -2,56 +2,14 @@ package redis
 
 import (
 	"context"
+	"time"
+
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/nosql/redis/conf"
-
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
-
-// 插件元数据
-const (
-	// 插件唯一名称
-	pluginName = "redis.client"
-	// 插件版本号
-	pluginVersion = "v2.0.0"
-	// 插件描述信息
-	pluginDescription = "redis plugin for lynx framework"
-	// 配置前缀，用于从配置中读取插件相关配置
-	confPrefix = "lynx.redis"
-)
-
-// PlugRedis 表示 Redis 插件实例
-type PlugRedis struct {
-	// 继承基础插件
-	*plugins.BasePlugin
-	// Redis 配置
-	conf *conf.Redis
-	// Redis 客户端实例
-	rdb *redis.Client
-}
-
-// NewRedisClient 创建一个新的 Redis 插件实例
-// 返回一个指向 PlugRedis 结构体的指针
-func NewRedisClient() *PlugRedis {
-	return &PlugRedis{
-		BasePlugin: plugins.NewBasePlugin(
-			// 生成插件唯一 ID
-			plugins.GeneratePluginID("", pluginName, pluginVersion),
-			// 插件名称
-			pluginName,
-			// 插件描述
-			pluginDescription,
-			// 插件版本
-			pluginVersion,
-			// 配置前缀
-			confPrefix,
-			// 权重
-			100,
-		),
-	}
-}
 
 // InitializeResources 实现 Redis 插件的自定义初始化逻辑
 // 从运行时配置中扫描并加载 Redis 配置，若配置未提供则使用默认配置
@@ -70,7 +28,7 @@ func (r *PlugRedis) InitializeResources(rt plugins.Runtime) error {
 	// 设置默认配置
 	defaultConf := &conf.Redis{
 		Network:         "tcp",
-		Addr:            "localhost:6379",
+		Addrs:           []string{"localhost:6379"},
 		Password:        "",
 		Db:              0,
 		MinIdleConns:    10,
@@ -86,8 +44,8 @@ func (r *PlugRedis) InitializeResources(rt plugins.Runtime) error {
 	if r.conf.Network == "" {
 		r.conf.Network = defaultConf.Network
 	}
-	if r.conf.Addr == "" {
-		r.conf.Addr = defaultConf.Addr
+	if len(r.conf.Addrs) == 0 {
+		r.conf.Addrs = append([]string{}, defaultConf.Addrs...)
 	}
 	if r.conf.MinIdleConns == 0 {
 		r.conf.MinIdleConns = defaultConf.MinIdleConns
@@ -120,22 +78,39 @@ func (r *PlugRedis) StartupTasks() error {
 	// 记录启动 Redis 客户端日志
 	log.Infof("starting redis client")
 
-	// 创建 Redis 客户端实例
-	r.rdb = redis.NewClient(&redis.Options{
-		Addr:            r.conf.Addr,
-		Password:        r.conf.Password,
-		DB:              int(r.conf.Db),
-		MinIdleConns:    int(r.conf.MinIdleConns),
-		MaxIdleConns:    int(r.conf.MaxIdleConns),
-		MaxActiveConns:  int(r.conf.MaxActiveConns),
-		DialTimeout:     r.conf.DialTimeout.AsDuration(),
-		WriteTimeout:    r.conf.WriteTimeout.AsDuration(),
-		ReadTimeout:     r.conf.ReadTimeout.AsDuration(),
-		ConnMaxIdleTime: r.conf.ConnMaxIdleTime.AsDuration(),
-	})
+	// 启动计数
+	redisStartupTotal.Inc()
 
-	// 记录 Redis 客户端启动成功日志
-	log.Infof("redis client successfully started")
+	// 创建 Redis 通用客户端（支持单机/集群/哨兵）
+	r.rdb = redis.NewUniversalClient(r.buildUniversalOptions())
+
+	// 注册命令级指标 Hook
+	r.rdb.AddHook(metricsHook{})
+
+	// 启动时做一次快速健康检查（短超时）
+	pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	start := time.Now()
+	_, err := r.rdb.Ping(pingCtx).Result()
+	cancel()
+	if err != nil {
+		// 启动失败需回滚资源
+		_ = r.rdb.Close()
+		redisStartupFailedTotal.Inc()
+		return err
+	}
+	latency := time.Since(start)
+	redisPingLatency.Observe(latency.Seconds())
+	// 判定模式（单机/集群/哨兵）
+	mode := r.detectMode()
+	log.Infof("redis client successfully started, mode=%s, addrs=%v, ping_latency=%s", mode, r.currentAddrs(), latency)
+
+	// 在启动阶段做一次增强检查
+	r.enhancedReadinessCheck(mode)
+
+	// 启动池统计采集器
+	r.startPoolStatsCollector()
+	// 启动信息采集器
+	r.startInfoCollector(mode)
 	return nil
 }
 
@@ -145,6 +120,11 @@ func (r *PlugRedis) CleanupTasks() error {
 	// 若 Redis 客户端未初始化，直接返回 nil
 	if r.rdb == nil {
 		return nil
+	}
+	// 停止采集器
+	if r.statsQuit != nil {
+		close(r.statsQuit)
+		r.statsWG.Wait()
 	}
 	// 关闭 Redis 客户端
 	if err := r.rdb.Close(); err != nil {
@@ -172,16 +152,17 @@ func (r *PlugRedis) Configure(c any) error {
 // 参数 report 为健康报告指针，用于记录健康检查结果
 // 返回错误信息，如果健康检查失败则返回相应错误
 func (r *PlugRedis) CheckHealth() error {
-	// 创建带超时的上下文
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		r.conf.ConnMaxIdleTime.AsDuration(),
-	)
+	// 使用固定短超时进行健康检查，避免受连接空闲配置影响
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	// 确保在函数结束时取消上下文
 	defer cancel()
 
 	// 执行 Redis 客户端 Ping 操作进行健康检查
+	start := time.Now()
 	_, err := r.rdb.Ping(ctx).Result()
+	latency := time.Since(start)
+	redisPingLatency.Observe(latency.Seconds())
+	log.Infof("redis health check: addrs=%v, ping_latency=%s", r.currentAddrs(), latency)
 	if err != nil {
 		return err
 	}
