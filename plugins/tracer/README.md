@@ -4,16 +4,18 @@ Lynx 链路追踪插件，基于 OpenTelemetry 实现分布式链路追踪功能
 
 ## 功能特性
 
-- ✅ **OpenTelemetry 标准**：完全兼容 OpenTelemetry 标准
-- ✅ **多种导出器**：支持 OTLP gRPC 导出器
-- ✅ **灵活采样**：支持可配置的采样率
-- ✅ **优雅关闭**：支持优雅关闭和资源清理
-- ✅ **配置验证**：完整的配置验证和错误处理
-- ✅ **健康检查**：内置健康检查机制
+- ✅ OpenTelemetry 标准兼容
+- ✅ 导出协议：OTLP gRPC、OTLP HTTP
+- ✅ 传输能力：TLS（含双向）、超时、重试、压缩（gzip）、自定义 Header
+- ✅ 批处理：可配置队列、批大小、导出超时与调度延迟
+- ✅ 传播器：W3C tracecontext、baggage、B3（单/多头）、Jaeger
+- ✅ 采样器：AlwaysOn/AlwaysOff/TraceIDRatio/ParentBased-TraceIDRatio
+- ✅ 资源与限额：service.name/attributes 与 SpanLimits（属性/事件/链接/长度）
+- ✅ 优雅关闭与资源清理
 
 ## 快速开始
 
-### 1. 基本配置
+### 1. 最小配置（gRPC，推荐）
 
 在你的应用配置文件中添加以下配置：
 
@@ -21,8 +23,13 @@ Lynx 链路追踪插件，基于 OpenTelemetry 实现分布式链路追踪功能
 lynx:
   tracer:
     enable: true
-    addr: "localhost:4317"
-    ratio: 0.1
+    addr: "otel-collector:4317"
+    config:
+      protocol: PROTOCOL_OTLP_GRPC
+      insecure: true
+      batch:
+        enabled: true
+      propagators: [W3C_TRACE_CONTEXT, W3C_BAGGAGE]
 ```
 
 ### 2. 启动应用
@@ -37,62 +44,71 @@ go run main.go
 
 ## 配置说明
 
-### 配置项
-
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `enable` | bool | `false` | 是否启用链路追踪 |
-| `addr` | string | `"localhost:4317"` | 导出器地址 |
-| `ratio` | float | `1.0` | 采样率 (0.0-1.0) |
-
-### 详细配置
+### 模块化（modular）配置项
 
 ```yaml
 lynx:
   tracer:
-    # 是否启用链路追踪功能
     enable: true
-    
-    # 跟踪数据导出的目标端点地址
-    # 通常是 OpenTelemetry Collector 等跟踪数据收集器的地址
-    addr: "localhost:4317"
-    
-    # 跟踪采样率，取值范围为 0.0 到 1.0
-    # 0.0 表示不采样，1.0 表示对所有请求进行采样
-    ratio: 0.1
+    addr: "otel-collector:4317"
+    config:
+      protocol: PROTOCOL_OTLP_GRPC | PROTOCOL_OTLP_HTTP
+      http_path: /v1/traces           # 仅 HTTP 时使用
+      insecure: true                  # 或使用 TLS
+      tls:
+        ca_file: /path/ca.pem
+        cert_file: /path/client.crt
+        key_file: /path/client.key
+        insecure_skip_verify: false
+      headers:
+        Authorization: Bearer ${OTEL_TOKEN}
+      timeout: 10s
+      retry:
+        enabled: true
+        initial_interval: 500ms
+        max_interval: 5s
+      batch:
+        enabled: true
+        max_queue_size: 2048
+        scheduled_delay: 200ms
+        export_timeout: 30s
+        max_batch_size: 512
+      sampler:
+        type: SAMPLER_TRACEID_RATIO   # 也支持 ALWAYS_ON/ALWAYS_OFF/PARENT_BASED_TRACEID_RATIO
+        ratio: 0.1
+      propagators: [W3C_TRACE_CONTEXT, W3C_BAGGAGE, B3, B3_MULTI, JAEGER]
+      resource:
+        service_name: my-service
+        attributes:
+          env: prod
+          team: core
+      limits:
+        attribute_count_limit: 128
+        attribute_value_length_limit: 2048
+        event_count_limit: 128
+        link_count_limit: 128
+```
+
+### HTTP 导出示例（OTLP/HTTP）
+
+```yaml
+lynx:
+  tracer:
+    enable: true
+    addr: "otel-collector:4318"
+    config:
+      protocol: PROTOCOL_OTLP_HTTP
+      http_path: /v1/traces
+      insecure: true
+      compression: COMPRESSION_GZIP
+      batch:
+        enabled: true
+      propagators: [B3, W3C_BAGGAGE]
 ```
 
 ## 环境配置
 
-### 开发环境
-
-```yaml
-lynx:
-  tracer:
-    enable: true
-    addr: "localhost:4317"
-    ratio: 1.0  # 开发环境全量采样
-```
-
-### 测试环境
-
-```yaml
-lynx:
-  tracer:
-    enable: true
-    addr: "otel-collector-test:4317"
-    ratio: 0.5  # 测试环境 50% 采样
-```
-
-### 生产环境
-
-```yaml
-lynx:
-  tracer:
-    enable: true
-    addr: "otel-collector-prod:4317"
-    ratio: 0.1  # 生产环境 10% 采样
-```
+建议在不同环境下基于“模块化配置”调整 exporter 地址与采样策略（config.sampler），不再使用旧版 ratio 字段。
 
 ## 使用示例
 
@@ -152,13 +168,15 @@ func main() {
 
 ## 支持的导出器
 
-### OTLP gRPC 导出器
+### OTLP gRPC/HTTP 导出器
 
-默认使用 OTLP gRPC 导出器，支持以下特性：
+支持以下特性：
 
-- **压缩**：使用 gzip 压缩
-- **超时**：30 秒连接超时
-- **TLS**：支持 TLS 加密（当前配置为不加密）
+- 压缩：gzip
+- 超时：可配置 timeout
+- TLS：单向或双向
+- 重试：初始/最大重试间隔
+- 批处理：队列/批大小/导出超时/调度延迟
 
 ### 支持的收集器
 
@@ -186,23 +204,12 @@ func main() {
 
 ## 监控和调试
 
-### 健康检查
-
-插件内置健康检查机制，可以通过以下方式检查状态：
-
-```go
-// 检查 tracer 是否正常
-if err := tracer.HealthCheck(); err != nil {
-    log.Errorf("Tracer health check failed: %v", err)
-}
-```
-
 ### 日志输出
 
 插件会输出详细的日志信息：
 
 ```
-[INFO] Initializing tracing component with ratio: 0.100000, addr: localhost:4317
+[INFO] Initializing link monitoring component
 [INFO] Tracing component successfully initialized
 [INFO] Tracer provider shutdown successfully
 ```
@@ -242,7 +249,7 @@ tracer address is required when tracing is enabled
 ```
 
 **解决方案**：
-- 设置正确的 `addr` 配置项
+- 设置正确的 `addr` 配置项（gRPC: 4317 / HTTP: 4318 + http_path）
 - 或者禁用追踪功能
 
 ### 调试模式
@@ -273,11 +280,10 @@ log.SetLevel(log.DebugLevel)
 
 ### v2.0.0
 
-- ✅ 添加优雅关闭机制
-- ✅ 完善配置验证
-- ✅ 改进错误处理
-- ✅ 添加健康检查
-- ✅ 增加测试覆盖
+- ✅ Modular 配置（协议/TLS/重试/压缩/批处理/传播器/资源/限额）
+- ✅ 导出器支持 OTLP HTTP
+- ✅ 采样器与传播器可配置
+- ✅ 优雅关闭机制
 
 ### v1.0.0
 
@@ -291,4 +297,4 @@ log.SetLevel(log.DebugLevel)
 
 ## 许可证
 
-MIT License 
+MIT License

@@ -9,6 +9,7 @@ package conf
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -21,16 +22,822 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// 协议类型（导出通道）。
+// - PROTOCOL_UNSPECIFIED：未指定时，默认按 OTLP gRPC 处理。
+// - OTLP_GRPC：通过 OTLP gRPC 导出（通常端口 4317）。
+// - OTLP_HTTP：通过 OTLP HTTP 导出（通常端口 4318，路径一般为 /v1/traces）。
+type Protocol int32
+
+const (
+	Protocol_PROTOCOL_UNSPECIFIED Protocol = 0 // 默认使用 OTLP gRPC
+	Protocol_OTLP_GRPC            Protocol = 1
+	Protocol_OTLP_HTTP            Protocol = 2
+)
+
+// Enum value maps for Protocol.
+var (
+	Protocol_name = map[int32]string{
+		0: "PROTOCOL_UNSPECIFIED",
+		1: "OTLP_GRPC",
+		2: "OTLP_HTTP",
+	}
+	Protocol_value = map[string]int32{
+		"PROTOCOL_UNSPECIFIED": 0,
+		"OTLP_GRPC":            1,
+		"OTLP_HTTP":            2,
+	}
+)
+
+func (x Protocol) Enum() *Protocol {
+	p := new(Protocol)
+	*p = x
+	return p
+}
+
+func (x Protocol) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Protocol) Descriptor() protoreflect.EnumDescriptor {
+	return file_tracer_proto_enumTypes[0].Descriptor()
+}
+
+func (Protocol) Type() protoreflect.EnumType {
+	return &file_tracer_proto_enumTypes[0]
+}
+
+func (x Protocol) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Protocol.Descriptor instead.
+func (Protocol) EnumDescriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{0}
+}
+
+// 压缩方式。
+// - COMPRESSION_NONE：不压缩（默认）。
+// - COMPRESSION_GZIP：使用 gzip 压缩。
+type Compression int32
+
+const (
+	Compression_COMPRESSION_NONE Compression = 0
+	Compression_COMPRESSION_GZIP Compression = 1
+)
+
+// Enum value maps for Compression.
+var (
+	Compression_name = map[int32]string{
+		0: "COMPRESSION_NONE",
+		1: "COMPRESSION_GZIP",
+	}
+	Compression_value = map[string]int32{
+		"COMPRESSION_NONE": 0,
+		"COMPRESSION_GZIP": 1,
+	}
+)
+
+func (x Compression) Enum() *Compression {
+	p := new(Compression)
+	*p = x
+	return p
+}
+
+func (x Compression) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Compression) Descriptor() protoreflect.EnumDescriptor {
+	return file_tracer_proto_enumTypes[1].Descriptor()
+}
+
+func (Compression) Type() protoreflect.EnumType {
+	return &file_tracer_proto_enumTypes[1]
+}
+
+func (x Compression) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Compression.Descriptor instead.
+func (Compression) EnumDescriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{1}
+}
+
+// 上下文传播器类型，用于跨进程/服务传递 Trace 上下文。
+// 生产常用组合：W3C_TRACE_CONTEXT + W3C_BAGGAGE；也可根据系统选用 B3/B3_MULTI/Jaeger。
+type Propagator int32
+
+const (
+	Propagator_PROPAGATOR_UNSPECIFIED Propagator = 0
+	Propagator_W3C_TRACE_CONTEXT      Propagator = 1 // tracecontext
+	Propagator_W3C_BAGGAGE            Propagator = 2 // baggage
+	Propagator_B3                     Propagator = 3
+	Propagator_B3_MULTI               Propagator = 4
+	Propagator_JAEGER                 Propagator = 5
+)
+
+// Enum value maps for Propagator.
+var (
+	Propagator_name = map[int32]string{
+		0: "PROPAGATOR_UNSPECIFIED",
+		1: "W3C_TRACE_CONTEXT",
+		2: "W3C_BAGGAGE",
+		3: "B3",
+		4: "B3_MULTI",
+		5: "JAEGER",
+	}
+	Propagator_value = map[string]int32{
+		"PROPAGATOR_UNSPECIFIED": 0,
+		"W3C_TRACE_CONTEXT":      1,
+		"W3C_BAGGAGE":            2,
+		"B3":                     3,
+		"B3_MULTI":               4,
+		"JAEGER":                 5,
+	}
+)
+
+func (x Propagator) Enum() *Propagator {
+	p := new(Propagator)
+	*p = x
+	return p
+}
+
+func (x Propagator) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Propagator) Descriptor() protoreflect.EnumDescriptor {
+	return file_tracer_proto_enumTypes[2].Descriptor()
+}
+
+func (Propagator) Type() protoreflect.EnumType {
+	return &file_tracer_proto_enumTypes[2]
+}
+
+func (x Propagator) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Propagator.Descriptor instead.
+func (Propagator) EnumDescriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{2}
+}
+
+type Sampler_Type int32
+
+const (
+	Sampler_SAMPLER_UNSPECIFIED        Sampler_Type = 0 // 等同于 ALWAYS_ON 或沿用外层 ratio
+	Sampler_ALWAYS_ON                  Sampler_Type = 1
+	Sampler_ALWAYS_OFF                 Sampler_Type = 2
+	Sampler_TRACEID_RATIO              Sampler_Type = 3 // 使用 Tracer.ratio 或本消息 ratio
+	Sampler_PARENT_BASED_TRACEID_RATIO Sampler_Type = 4
+)
+
+// Enum value maps for Sampler_Type.
+var (
+	Sampler_Type_name = map[int32]string{
+		0: "SAMPLER_UNSPECIFIED",
+		1: "ALWAYS_ON",
+		2: "ALWAYS_OFF",
+		3: "TRACEID_RATIO",
+		4: "PARENT_BASED_TRACEID_RATIO",
+	}
+	Sampler_Type_value = map[string]int32{
+		"SAMPLER_UNSPECIFIED":        0,
+		"ALWAYS_ON":                  1,
+		"ALWAYS_OFF":                 2,
+		"TRACEID_RATIO":              3,
+		"PARENT_BASED_TRACEID_RATIO": 4,
+	}
+)
+
+func (x Sampler_Type) Enum() *Sampler_Type {
+	p := new(Sampler_Type)
+	*p = x
+	return p
+}
+
+func (x Sampler_Type) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Sampler_Type) Descriptor() protoreflect.EnumDescriptor {
+	return file_tracer_proto_enumTypes[3].Descriptor()
+}
+
+func (Sampler_Type) Type() protoreflect.EnumType {
+	return &file_tracer_proto_enumTypes[3]
+}
+
+func (x Sampler_Type) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Sampler_Type.Descriptor instead.
+func (Sampler_Type) EnumDescriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{3, 0}
+}
+
+// TLS 配置。
+// - ca_file：CA 根证书路径；用于验证对端证书；HTTPS/gRPCs 通常需要。
+// - cert_file/key_file：客户端证书与私钥；配置后启用 mTLS；留空则为单向 TLS。
+// - insecure_skip_verify：是否跳过服务器证书校验（仅测试环境使用，生产不建议）。
+type TLS struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	CaFile   string                 `protobuf:"bytes,1,opt,name=ca_file,json=caFile,proto3" json:"ca_file,omitempty"`
+	CertFile string                 `protobuf:"bytes,2,opt,name=cert_file,json=certFile,proto3" json:"cert_file,omitempty"`
+	KeyFile  string                 `protobuf:"bytes,3,opt,name=key_file,json=keyFile,proto3" json:"key_file,omitempty"`
+	// 是否跳过证书校验（仅测试环境使用）
+	InsecureSkipVerify bool `protobuf:"varint,4,opt,name=insecure_skip_verify,json=insecureSkipVerify,proto3" json:"insecure_skip_verify,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *TLS) Reset() {
+	*x = TLS{}
+	mi := &file_tracer_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TLS) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TLS) ProtoMessage() {}
+
+func (x *TLS) ProtoReflect() protoreflect.Message {
+	mi := &file_tracer_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TLS.ProtoReflect.Descriptor instead.
+func (*TLS) Descriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *TLS) GetCaFile() string {
+	if x != nil {
+		return x.CaFile
+	}
+	return ""
+}
+
+func (x *TLS) GetCertFile() string {
+	if x != nil {
+		return x.CertFile
+	}
+	return ""
+}
+
+func (x *TLS) GetKeyFile() string {
+	if x != nil {
+		return x.KeyFile
+	}
+	return ""
+}
+
+func (x *TLS) GetInsecureSkipVerify() bool {
+	if x != nil {
+		return x.InsecureSkipVerify
+	}
+	return false
+}
+
+// 重试配置（gRPC 导出器使用指数退避参数）。
+// - enabled：是否启用重试。
+// - max_attempts：最大重试次数（包含首次）；>0 生效；建议 3-10。
+// - initial_interval：初始退避间隔；如 10ms/100ms。
+// - max_interval：最大退避间隔上限；建议不超过 1m。
+type Retry struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Enabled         bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	MaxAttempts     int32                  `protobuf:"varint,2,opt,name=max_attempts,json=maxAttempts,proto3" json:"max_attempts,omitempty"`            // 最大重试次数（包含首次）
+	InitialInterval *durationpb.Duration   `protobuf:"bytes,3,opt,name=initial_interval,json=initialInterval,proto3" json:"initial_interval,omitempty"` // 初始退避
+	MaxInterval     *durationpb.Duration   `protobuf:"bytes,4,opt,name=max_interval,json=maxInterval,proto3" json:"max_interval,omitempty"`             // 最大退避
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *Retry) Reset() {
+	*x = Retry{}
+	mi := &file_tracer_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Retry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Retry) ProtoMessage() {}
+
+func (x *Retry) ProtoReflect() protoreflect.Message {
+	mi := &file_tracer_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Retry.ProtoReflect.Descriptor instead.
+func (*Retry) Descriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Retry) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *Retry) GetMaxAttempts() int32 {
+	if x != nil {
+		return x.MaxAttempts
+	}
+	return 0
+}
+
+func (x *Retry) GetInitialInterval() *durationpb.Duration {
+	if x != nil {
+		return x.InitialInterval
+	}
+	return nil
+}
+
+func (x *Retry) GetMaxInterval() *durationpb.Duration {
+	if x != nil {
+		return x.MaxInterval
+	}
+	return nil
+}
+
+// 批处理配置（BatchSpanProcessor）。开启可显著降低导出开销、提高吞吐。
+// - enabled：是否启用批处理。
+// - max_queue_size：队列最大 span 数（>0）；建议 1k-10k。
+// - scheduled_delay：批调度周期；越小延迟越低、吞吐也可能降低。
+// - export_timeout：单次导出超时。
+// - max_batch_size：单批最大 span 数（>0，通常不超过 max_queue_size）。
+type Batch struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Enabled        bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`                                    // 是否启用批处理
+	MaxQueueSize   int32                  `protobuf:"varint,2,opt,name=max_queue_size,json=maxQueueSize,proto3" json:"max_queue_size,omitempty"`    // 队列最大 span 数
+	ScheduledDelay *durationpb.Duration   `protobuf:"bytes,3,opt,name=scheduled_delay,json=scheduledDelay,proto3" json:"scheduled_delay,omitempty"` // 批调度间隔
+	ExportTimeout  *durationpb.Duration   `protobuf:"bytes,4,opt,name=export_timeout,json=exportTimeout,proto3" json:"export_timeout,omitempty"`    // 单次导出超时
+	MaxBatchSize   int32                  `protobuf:"varint,5,opt,name=max_batch_size,json=maxBatchSize,proto3" json:"max_batch_size,omitempty"`    // 单批最大 span 数
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Batch) Reset() {
+	*x = Batch{}
+	mi := &file_tracer_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Batch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Batch) ProtoMessage() {}
+
+func (x *Batch) ProtoReflect() protoreflect.Message {
+	mi := &file_tracer_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Batch.ProtoReflect.Descriptor instead.
+func (*Batch) Descriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Batch) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *Batch) GetMaxQueueSize() int32 {
+	if x != nil {
+		return x.MaxQueueSize
+	}
+	return 0
+}
+
+func (x *Batch) GetScheduledDelay() *durationpb.Duration {
+	if x != nil {
+		return x.ScheduledDelay
+	}
+	return nil
+}
+
+func (x *Batch) GetExportTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.ExportTimeout
+	}
+	return nil
+}
+
+func (x *Batch) GetMaxBatchSize() int32 {
+	if x != nil {
+		return x.MaxBatchSize
+	}
+	return 0
+}
+
+// 采样器配置（类型 + 比例）。
+// Type 说明：
+// - ALWAYS_ON：全量采样；开发/调试友好，但成本最高。
+// - ALWAYS_OFF：不采样；仅保留上下文开销。
+// - TRACEID_RATIO：按比例采样根 Span（ratio 0.0-1.0），同一 Trace 子 Span 跟随。
+// - PARENT_BASED_TRACEID_RATIO：父级优先；有父则严格跟随父决策，无父按 ratio 采样。
+type Sampler struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Type  Sampler_Type           `protobuf:"varint,1,opt,name=type,proto3,enum=lynx.protobuf.plugin.tracer.Sampler_Type" json:"type,omitempty"`
+	// 采样率；取值范围 0.0-1.0；当 type 为 TRACEID_RATIO 或 PARENT_BASED_TRACEID_RATIO 时使用。
+	// 生产环境常用 0.1-0.3；0.0 表示不采样，1.0 表示全量采样。
+	Ratio         float32 `protobuf:"fixed32,2,opt,name=ratio,proto3" json:"ratio,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Sampler) Reset() {
+	*x = Sampler{}
+	mi := &file_tracer_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Sampler) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Sampler) ProtoMessage() {}
+
+func (x *Sampler) ProtoReflect() protoreflect.Message {
+	mi := &file_tracer_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Sampler.ProtoReflect.Descriptor instead.
+func (*Sampler) Descriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Sampler) GetType() Sampler_Type {
+	if x != nil {
+		return x.Type
+	}
+	return Sampler_SAMPLER_UNSPECIFIED
+}
+
+func (x *Sampler) GetRatio() float32 {
+	if x != nil {
+		return x.Ratio
+	}
+	return 0
+}
+
+// 资源信息（如 service.name、部署/团队等维度标签）。
+// - service_name：服务名，等价于 Resource(service.name)；建议与应用标识一致。
+// - attributes：附加资源属性键值对（如 deployment.environment=prod）。
+type Resource struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServiceName   string                 `protobuf:"bytes,1,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	Attributes    map[string]string      `protobuf:"bytes,2,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 如 deployment.environment=prod
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Resource) Reset() {
+	*x = Resource{}
+	mi := &file_tracer_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Resource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Resource) ProtoMessage() {}
+
+func (x *Resource) ProtoReflect() protoreflect.Message {
+	mi := &file_tracer_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Resource.ProtoReflect.Descriptor instead.
+func (*Resource) Descriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Resource) GetServiceName() string {
+	if x != nil {
+		return x.ServiceName
+	}
+	return ""
+}
+
+func (x *Resource) GetAttributes() map[string]string {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
+}
+
+// Span 限制（SpanLimits）。
+// 说明：当前 OpenTelemetry Go SDK 的 SpanLimits 主要支持下列字段：
+// - attribute_count_limit, attribute_value_length_limit, event_count_limit, link_count_limit
+// 其余 *_attribute_count_limit 字段在当前实现中会被忽略，仅为兼容/预留。
+type Limits struct {
+	state                     protoimpl.MessageState `protogen:"open.v1"`
+	AttributeCountLimit       int32                  `protobuf:"varint,1,opt,name=attribute_count_limit,json=attributeCountLimit,proto3" json:"attribute_count_limit,omitempty"`
+	AttributeValueLengthLimit int32                  `protobuf:"varint,2,opt,name=attribute_value_length_limit,json=attributeValueLengthLimit,proto3" json:"attribute_value_length_limit,omitempty"`
+	EventCountLimit           int32                  `protobuf:"varint,3,opt,name=event_count_limit,json=eventCountLimit,proto3" json:"event_count_limit,omitempty"`
+	EventAttributeCountLimit  int32                  `protobuf:"varint,4,opt,name=event_attribute_count_limit,json=eventAttributeCountLimit,proto3" json:"event_attribute_count_limit,omitempty"`
+	LinkCountLimit            int32                  `protobuf:"varint,5,opt,name=link_count_limit,json=linkCountLimit,proto3" json:"link_count_limit,omitempty"`
+	LinkAttributeCountLimit   int32                  `protobuf:"varint,6,opt,name=link_attribute_count_limit,json=linkAttributeCountLimit,proto3" json:"link_attribute_count_limit,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *Limits) Reset() {
+	*x = Limits{}
+	mi := &file_tracer_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Limits) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Limits) ProtoMessage() {}
+
+func (x *Limits) ProtoReflect() protoreflect.Message {
+	mi := &file_tracer_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Limits.ProtoReflect.Descriptor instead.
+func (*Limits) Descriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *Limits) GetAttributeCountLimit() int32 {
+	if x != nil {
+		return x.AttributeCountLimit
+	}
+	return 0
+}
+
+func (x *Limits) GetAttributeValueLengthLimit() int32 {
+	if x != nil {
+		return x.AttributeValueLengthLimit
+	}
+	return 0
+}
+
+func (x *Limits) GetEventCountLimit() int32 {
+	if x != nil {
+		return x.EventCountLimit
+	}
+	return 0
+}
+
+func (x *Limits) GetEventAttributeCountLimit() int32 {
+	if x != nil {
+		return x.EventAttributeCountLimit
+	}
+	return 0
+}
+
+func (x *Limits) GetLinkCountLimit() int32 {
+	if x != nil {
+		return x.LinkCountLimit
+	}
+	return 0
+}
+
+func (x *Limits) GetLinkAttributeCountLimit() int32 {
+	if x != nil {
+		return x.LinkAttributeCountLimit
+	}
+	return 0
+}
+
+// 组合的导出与运行配置（Exporter/Processor/Sampler/Propagator/Resource/Limits）。
+// 建议优先使用本消息进行模块化配置；旧版顶层 ratio 仅作回退用途。
+type Config struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 导出协议：OTLP gRPC 或 OTLP HTTP（默认 gRPC）。
+	Protocol Protocol `protobuf:"varint,1,opt,name=protocol,proto3,enum=lynx.protobuf.plugin.tracer.Protocol" json:"protocol,omitempty"`
+	// 是否禁用 TLS（明文传输）。与 tls 互斥：当配置 tls 时，应将 insecure 设为 false。
+	Insecure bool `protobuf:"varint,2,opt,name=insecure,proto3" json:"insecure,omitempty"`
+	// TLS 配置（单向 TLS 或双向 mTLS）。
+	Tls *TLS `protobuf:"bytes,3,opt,name=tls,proto3" json:"tls,omitempty"`
+	// 自定义请求头（如认证 Token、租户信息等）；将透传给 Collector。
+	Headers map[string]string `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// 压缩方式（NONE/GZIP）。
+	Compression Compression `protobuf:"varint,5,opt,name=compression,proto3,enum=lynx.protobuf.plugin.tracer.Compression" json:"compression,omitempty"`
+	// 导出超时（请求级超时），如 10s/30s/1m。
+	Timeout *durationpb.Duration `protobuf:"bytes,6,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	// 重试配置（仅 gRPC 导出器使用）。
+	Retry *Retry `protobuf:"bytes,7,opt,name=retry,proto3" json:"retry,omitempty"`
+	// 批处理配置（强烈建议开启以提升吞吐）。
+	Batch *Batch `protobuf:"bytes,8,opt,name=batch,proto3" json:"batch,omitempty"`
+	// 采样器配置（推荐使用 PARENT_BASED_TRACEID_RATIO + 合理 ratio）。
+	Sampler *Sampler `protobuf:"bytes,9,opt,name=sampler,proto3" json:"sampler,omitempty"`
+	// 上下文传播器列表（建议至少包含 W3C_TRACE_CONTEXT + W3C_BAGGAGE）。
+	Propagators []Propagator `protobuf:"varint,10,rep,packed,name=propagators,proto3,enum=lynx.protobuf.plugin.tracer.Propagator" json:"propagators,omitempty"`
+	// 资源信息（service.name 与附加属性）。
+	Resource *Resource `protobuf:"bytes,11,opt,name=resource,proto3" json:"resource,omitempty"`
+	// span 限制（见 Limits）。
+	Limits *Limits `protobuf:"bytes,12,opt,name=limits,proto3" json:"limits,omitempty"`
+	// 仅在 OTLP HTTP 模式下生效；默认 "/v1/traces"。
+	HttpPath      string `protobuf:"bytes,13,opt,name=http_path,json=httpPath,proto3" json:"http_path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Config) Reset() {
+	*x = Config{}
+	mi := &file_tracer_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Config) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Config) ProtoMessage() {}
+
+func (x *Config) ProtoReflect() protoreflect.Message {
+	mi := &file_tracer_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Config.ProtoReflect.Descriptor instead.
+func (*Config) Descriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Config) GetProtocol() Protocol {
+	if x != nil {
+		return x.Protocol
+	}
+	return Protocol_PROTOCOL_UNSPECIFIED
+}
+
+func (x *Config) GetInsecure() bool {
+	if x != nil {
+		return x.Insecure
+	}
+	return false
+}
+
+func (x *Config) GetTls() *TLS {
+	if x != nil {
+		return x.Tls
+	}
+	return nil
+}
+
+func (x *Config) GetHeaders() map[string]string {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
+func (x *Config) GetCompression() Compression {
+	if x != nil {
+		return x.Compression
+	}
+	return Compression_COMPRESSION_NONE
+}
+
+func (x *Config) GetTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.Timeout
+	}
+	return nil
+}
+
+func (x *Config) GetRetry() *Retry {
+	if x != nil {
+		return x.Retry
+	}
+	return nil
+}
+
+func (x *Config) GetBatch() *Batch {
+	if x != nil {
+		return x.Batch
+	}
+	return nil
+}
+
+func (x *Config) GetSampler() *Sampler {
+	if x != nil {
+		return x.Sampler
+	}
+	return nil
+}
+
+func (x *Config) GetPropagators() []Propagator {
+	if x != nil {
+		return x.Propagators
+	}
+	return nil
+}
+
+func (x *Config) GetResource() *Resource {
+	if x != nil {
+		return x.Resource
+	}
+	return nil
+}
+
+func (x *Config) GetLimits() *Limits {
+	if x != nil {
+		return x.Limits
+	}
+	return nil
+}
+
+func (x *Config) GetHttpPath() string {
+	if x != nil {
+		return x.HttpPath
+	}
+	return ""
+}
+
 // Tracer 定义了链路跟踪插件的配置信息。
 type Tracer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// enable 表示是否启用链路跟踪功能,开启则会在日志中打印
+	// 是否启用链路跟踪功能（true/false）。关闭时将不初始化 TracerProvider。
 	Enable bool `protobuf:"varint,1,opt,name=enable,proto3" json:"enable,omitempty"`
-	// addr 表示跟踪数据导出的目标端点地址。
-	// 通常是 OpenTelemetry Collector 等跟踪数据收集器的地址，格式为 "host:port"。
+	// 导出端点地址；通常为 OpenTelemetry Collector 地址，格式 "host:port"。
+	// - gRPC 常用 4317，例如 "otel-collector:4317"
+	// - HTTP 常用 4318（需配合 config.http_path），例如 "otel-collector:4318"
 	Addr string `protobuf:"bytes,2,opt,name=addr,proto3" json:"addr,omitempty"`
-	// ratio 表示跟踪采样率，取值范围为 0.0 到 1.0。
-	// 0.0 表示不采样，1.0 表示对所有请求进行采样，其他值表示按比例采样。
+	// 模块化 OpenTelemetry 配置，包含协议/TLS/重试/压缩/批处理/传播器/资源/限额/采样器。
+	Config *Config `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`
+	// 采样率（legacy 回退字段）：0.0-1.0。
+	// 说明：为兼容旧版而保留。推荐改用 config.sampler（TRACEID_RATIO 或 PARENT_BASED_TRACEID_RATIO）。
 	Ratio         float32 `protobuf:"fixed32,3,opt,name=ratio,proto3" json:"ratio,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -38,7 +845,7 @@ type Tracer struct {
 
 func (x *Tracer) Reset() {
 	*x = Tracer{}
-	mi := &file_tracer_proto_msgTypes[0]
+	mi := &file_tracer_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50,7 +857,7 @@ func (x *Tracer) String() string {
 func (*Tracer) ProtoMessage() {}
 
 func (x *Tracer) ProtoReflect() protoreflect.Message {
-	mi := &file_tracer_proto_msgTypes[0]
+	mi := &file_tracer_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -63,7 +870,7 @@ func (x *Tracer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tracer.ProtoReflect.Descriptor instead.
 func (*Tracer) Descriptor() ([]byte, []int) {
-	return file_tracer_proto_rawDescGZIP(), []int{0}
+	return file_tracer_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Tracer) GetEnable() bool {
@@ -80,6 +887,13 @@ func (x *Tracer) GetAddr() string {
 	return ""
 }
 
+func (x *Tracer) GetConfig() *Config {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
 func (x *Tracer) GetRatio() float32 {
 	if x != nil {
 		return x.Ratio
@@ -91,11 +905,87 @@ var File_tracer_proto protoreflect.FileDescriptor
 
 const file_tracer_proto_rawDesc = "" +
 	"\n" +
-	"\ftracer.proto\x12\x1blynx.protobuf.plugin.tracer\"J\n" +
+	"\ftracer.proto\x12\x1blynx.protobuf.plugin.tracer\x1a\x1egoogle/protobuf/duration.proto\"\x88\x01\n" +
+	"\x03TLS\x12\x17\n" +
+	"\aca_file\x18\x01 \x01(\tR\x06caFile\x12\x1b\n" +
+	"\tcert_file\x18\x02 \x01(\tR\bcertFile\x12\x19\n" +
+	"\bkey_file\x18\x03 \x01(\tR\akeyFile\x120\n" +
+	"\x14insecure_skip_verify\x18\x04 \x01(\bR\x12insecureSkipVerify\"\xc8\x01\n" +
+	"\x05Retry\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12!\n" +
+	"\fmax_attempts\x18\x02 \x01(\x05R\vmaxAttempts\x12D\n" +
+	"\x10initial_interval\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x0finitialInterval\x12<\n" +
+	"\fmax_interval\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxInterval\"\xf3\x01\n" +
+	"\x05Batch\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12$\n" +
+	"\x0emax_queue_size\x18\x02 \x01(\x05R\fmaxQueueSize\x12B\n" +
+	"\x0fscheduled_delay\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x0escheduledDelay\x12@\n" +
+	"\x0eexport_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\rexportTimeout\x12$\n" +
+	"\x0emax_batch_size\x18\x05 \x01(\x05R\fmaxBatchSize\"\xd1\x01\n" +
+	"\aSampler\x12=\n" +
+	"\x04type\x18\x01 \x01(\x0e2).lynx.protobuf.plugin.tracer.Sampler.TypeR\x04type\x12\x14\n" +
+	"\x05ratio\x18\x02 \x01(\x02R\x05ratio\"q\n" +
+	"\x04Type\x12\x17\n" +
+	"\x13SAMPLER_UNSPECIFIED\x10\x00\x12\r\n" +
+	"\tALWAYS_ON\x10\x01\x12\x0e\n" +
+	"\n" +
+	"ALWAYS_OFF\x10\x02\x12\x11\n" +
+	"\rTRACEID_RATIO\x10\x03\x12\x1e\n" +
+	"\x1aPARENT_BASED_TRACEID_RATIO\x10\x04\"\xc3\x01\n" +
+	"\bResource\x12!\n" +
+	"\fservice_name\x18\x01 \x01(\tR\vserviceName\x12U\n" +
+	"\n" +
+	"attributes\x18\x02 \x03(\v25.lynx.protobuf.plugin.tracer.Resource.AttributesEntryR\n" +
+	"attributes\x1a=\n" +
+	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcf\x02\n" +
+	"\x06Limits\x122\n" +
+	"\x15attribute_count_limit\x18\x01 \x01(\x05R\x13attributeCountLimit\x12?\n" +
+	"\x1cattribute_value_length_limit\x18\x02 \x01(\x05R\x19attributeValueLengthLimit\x12*\n" +
+	"\x11event_count_limit\x18\x03 \x01(\x05R\x0feventCountLimit\x12=\n" +
+	"\x1bevent_attribute_count_limit\x18\x04 \x01(\x05R\x18eventAttributeCountLimit\x12(\n" +
+	"\x10link_count_limit\x18\x05 \x01(\x05R\x0elinkCountLimit\x12;\n" +
+	"\x1alink_attribute_count_limit\x18\x06 \x01(\x05R\x17linkAttributeCountLimit\"\xc0\x06\n" +
+	"\x06Config\x12A\n" +
+	"\bprotocol\x18\x01 \x01(\x0e2%.lynx.protobuf.plugin.tracer.ProtocolR\bprotocol\x12\x1a\n" +
+	"\binsecure\x18\x02 \x01(\bR\binsecure\x122\n" +
+	"\x03tls\x18\x03 \x01(\v2 .lynx.protobuf.plugin.tracer.TLSR\x03tls\x12J\n" +
+	"\aheaders\x18\x04 \x03(\v20.lynx.protobuf.plugin.tracer.Config.HeadersEntryR\aheaders\x12J\n" +
+	"\vcompression\x18\x05 \x01(\x0e2(.lynx.protobuf.plugin.tracer.CompressionR\vcompression\x123\n" +
+	"\atimeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x128\n" +
+	"\x05retry\x18\a \x01(\v2\".lynx.protobuf.plugin.tracer.RetryR\x05retry\x128\n" +
+	"\x05batch\x18\b \x01(\v2\".lynx.protobuf.plugin.tracer.BatchR\x05batch\x12>\n" +
+	"\asampler\x18\t \x01(\v2$.lynx.protobuf.plugin.tracer.SamplerR\asampler\x12I\n" +
+	"\vpropagators\x18\n" +
+	" \x03(\x0e2'.lynx.protobuf.plugin.tracer.PropagatorR\vpropagators\x12A\n" +
+	"\bresource\x18\v \x01(\v2%.lynx.protobuf.plugin.tracer.ResourceR\bresource\x12;\n" +
+	"\x06limits\x18\f \x01(\v2#.lynx.protobuf.plugin.tracer.LimitsR\x06limits\x12\x1b\n" +
+	"\thttp_path\x18\r \x01(\tR\bhttpPath\x1a:\n" +
+	"\fHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x87\x01\n" +
 	"\x06Tracer\x12\x16\n" +
 	"\x06enable\x18\x01 \x01(\bR\x06enable\x12\x12\n" +
-	"\x04addr\x18\x02 \x01(\tR\x04addr\x12\x14\n" +
-	"\x05ratio\x18\x03 \x01(\x02R\x05ratioB2Z0github.com/go-lynx/lynx/plugins/tracer/conf;confb\x06proto3"
+	"\x04addr\x18\x02 \x01(\tR\x04addr\x12;\n" +
+	"\x06config\x18\x04 \x01(\v2#.lynx.protobuf.plugin.tracer.ConfigR\x06config\x12\x14\n" +
+	"\x05ratio\x18\x03 \x01(\x02R\x05ratio*B\n" +
+	"\bProtocol\x12\x18\n" +
+	"\x14PROTOCOL_UNSPECIFIED\x10\x00\x12\r\n" +
+	"\tOTLP_GRPC\x10\x01\x12\r\n" +
+	"\tOTLP_HTTP\x10\x02*9\n" +
+	"\vCompression\x12\x14\n" +
+	"\x10COMPRESSION_NONE\x10\x00\x12\x14\n" +
+	"\x10COMPRESSION_GZIP\x10\x01*r\n" +
+	"\n" +
+	"Propagator\x12\x1a\n" +
+	"\x16PROPAGATOR_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11W3C_TRACE_CONTEXT\x10\x01\x12\x0f\n" +
+	"\vW3C_BAGGAGE\x10\x02\x12\x06\n" +
+	"\x02B3\x10\x03\x12\f\n" +
+	"\bB3_MULTI\x10\x04\x12\n" +
+	"\n" +
+	"\x06JAEGER\x10\x05B2Z0github.com/go-lynx/lynx/plugins/tracer/conf;confb\x06proto3"
 
 var (
 	file_tracer_proto_rawDescOnce sync.Once
@@ -109,16 +999,49 @@ func file_tracer_proto_rawDescGZIP() []byte {
 	return file_tracer_proto_rawDescData
 }
 
-var file_tracer_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_tracer_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_tracer_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_tracer_proto_goTypes = []any{
-	(*Tracer)(nil), // 0: lynx.protobuf.plugin.tracer.Tracer
+	(Protocol)(0),               // 0: lynx.protobuf.plugin.tracer.Protocol
+	(Compression)(0),            // 1: lynx.protobuf.plugin.tracer.Compression
+	(Propagator)(0),             // 2: lynx.protobuf.plugin.tracer.Propagator
+	(Sampler_Type)(0),           // 3: lynx.protobuf.plugin.tracer.Sampler.Type
+	(*TLS)(nil),                 // 4: lynx.protobuf.plugin.tracer.TLS
+	(*Retry)(nil),               // 5: lynx.protobuf.plugin.tracer.Retry
+	(*Batch)(nil),               // 6: lynx.protobuf.plugin.tracer.Batch
+	(*Sampler)(nil),             // 7: lynx.protobuf.plugin.tracer.Sampler
+	(*Resource)(nil),            // 8: lynx.protobuf.plugin.tracer.Resource
+	(*Limits)(nil),              // 9: lynx.protobuf.plugin.tracer.Limits
+	(*Config)(nil),              // 10: lynx.protobuf.plugin.tracer.Config
+	(*Tracer)(nil),              // 11: lynx.protobuf.plugin.tracer.Tracer
+	nil,                         // 12: lynx.protobuf.plugin.tracer.Resource.AttributesEntry
+	nil,                         // 13: lynx.protobuf.plugin.tracer.Config.HeadersEntry
+	(*durationpb.Duration)(nil), // 14: google.protobuf.Duration
 }
 var file_tracer_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	14, // 0: lynx.protobuf.plugin.tracer.Retry.initial_interval:type_name -> google.protobuf.Duration
+	14, // 1: lynx.protobuf.plugin.tracer.Retry.max_interval:type_name -> google.protobuf.Duration
+	14, // 2: lynx.protobuf.plugin.tracer.Batch.scheduled_delay:type_name -> google.protobuf.Duration
+	14, // 3: lynx.protobuf.plugin.tracer.Batch.export_timeout:type_name -> google.protobuf.Duration
+	3,  // 4: lynx.protobuf.plugin.tracer.Sampler.type:type_name -> lynx.protobuf.plugin.tracer.Sampler.Type
+	12, // 5: lynx.protobuf.plugin.tracer.Resource.attributes:type_name -> lynx.protobuf.plugin.tracer.Resource.AttributesEntry
+	0,  // 6: lynx.protobuf.plugin.tracer.Config.protocol:type_name -> lynx.protobuf.plugin.tracer.Protocol
+	4,  // 7: lynx.protobuf.plugin.tracer.Config.tls:type_name -> lynx.protobuf.plugin.tracer.TLS
+	13, // 8: lynx.protobuf.plugin.tracer.Config.headers:type_name -> lynx.protobuf.plugin.tracer.Config.HeadersEntry
+	1,  // 9: lynx.protobuf.plugin.tracer.Config.compression:type_name -> lynx.protobuf.plugin.tracer.Compression
+	14, // 10: lynx.protobuf.plugin.tracer.Config.timeout:type_name -> google.protobuf.Duration
+	5,  // 11: lynx.protobuf.plugin.tracer.Config.retry:type_name -> lynx.protobuf.plugin.tracer.Retry
+	6,  // 12: lynx.protobuf.plugin.tracer.Config.batch:type_name -> lynx.protobuf.plugin.tracer.Batch
+	7,  // 13: lynx.protobuf.plugin.tracer.Config.sampler:type_name -> lynx.protobuf.plugin.tracer.Sampler
+	2,  // 14: lynx.protobuf.plugin.tracer.Config.propagators:type_name -> lynx.protobuf.plugin.tracer.Propagator
+	8,  // 15: lynx.protobuf.plugin.tracer.Config.resource:type_name -> lynx.protobuf.plugin.tracer.Resource
+	9,  // 16: lynx.protobuf.plugin.tracer.Config.limits:type_name -> lynx.protobuf.plugin.tracer.Limits
+	10, // 17: lynx.protobuf.plugin.tracer.Tracer.config:type_name -> lynx.protobuf.plugin.tracer.Config
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_tracer_proto_init() }
@@ -131,13 +1054,14 @@ func file_tracer_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_tracer_proto_rawDesc), len(file_tracer_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   1,
+			NumEnums:      4,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_tracer_proto_goTypes,
 		DependencyIndexes: file_tracer_proto_depIdxs,
+		EnumInfos:         file_tracer_proto_enumTypes,
 		MessageInfos:      file_tracer_proto_msgTypes,
 	}.Build()
 	File_tracer_proto = out.File
