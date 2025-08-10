@@ -1,70 +1,77 @@
 # Lynx Tracer Plugin Configuration Example
 # 链路追踪插件配置示例
 
-# 全局 Lynx 配置
+###############################################
+# 新的模块化（modular）配置示例
+# 建议优先使用以下配置方式，功能更完整、更灵活
+###############################################
+
+# gRPC 导出（推荐）
 lynx:
-  # 链路追踪插件配置
   tracer:
-    # 是否启用链路追踪功能
-    # 默认值: false
-    # 说明: 设置为 true 时启用链路追踪，false 时禁用
-    enable: true
-    
-    # 跟踪数据导出的目标端点地址
-    # 默认值: "localhost:4317"
-    # 说明: 通常是 OpenTelemetry Collector 等跟踪数据收集器的地址
-    # 格式: "host:port"
-    # 示例: "localhost:4317", "otel-collector:4317", "jaeger:14250"
-    addr: "localhost:4317"
-    
-    # 跟踪采样率，取值范围为 0.0 到 1.0
-    # 默认值: 1.0
-    # 说明: 
-    #   - 0.0 表示不采样，不收集任何跟踪数据
-    #   - 1.0 表示对所有请求进行采样，收集所有跟踪数据
-    #   - 0.5 表示对 50% 的请求进行采样
-    #   - 建议在生产环境中使用 0.1-0.3 的采样率以平衡性能和可观测性
-    ratio: 0.1
+    enable: true                # 是否启用追踪；bool，true/false；默认 false
+    addr: "otel-collector:4317" # 导出端点地址；host:port；gRPC 常用 4317（例如 otel-collector:4317）
+    config:
+      protocol: PROTOCOL_OTLP_GRPC   # 导出协议；可选：PROTOCOL_OTLP_GRPC / PROTOCOL_OTLP_HTTP
+      insecure: true                 # 明文传输；bool，true/false；与 tls 互斥（有 tls 时请设为 false）
+      compression: COMPRESSION_GZIP  # 压缩算法；可选：COMPRESSION_NONE/COMPRESSION_GZIP（默认 NONE）
+      headers:                       # 自定义请求头；map[string]string，可用于鉴权等
+        Authorization: Bearer ${OTEL_TOKEN}
+      timeout: 10s                   # 导出请求超时；time.Duration 格式，如 500ms/10s/1m
+      retry:                         # 重试配置（仅 gRPC 导出器支持）
+        enabled: true                # 是否开启重试；bool
+        initial_interval: 500ms      # 初始退避间隔；建议 10ms-5s
+        max_interval: 5s             # 最大退避间隔；建议不超过 1m
+      batch:                         # 批处理（建议开启以提高吞吐）
+        enabled: true                # 是否启用批处理；bool
+        max_queue_size: 2048         # 批处理队列上限；int > 0，建议 1k-10k
+        scheduled_delay: 200ms       # 批调度周期；time.Duration，越小延迟越低吞吐越低
+        export_timeout: 30s          # 单批导出超时；time.Duration
+        max_batch_size: 512          # 单批最大条目数；int > 0，建议 <= max_queue_size
+      sampler:
+        type: SAMPLER_TRACEID_RATIO  # 采样器类型；可选：ALWAYS_ON/ALWAYS_OFF/SAMPLER_TRACEID_RATIO/PARENT_BASED_TRACEID_RATIO
+        ratio: 0.1                   # 采样率；0.0-1.0，生产常用 0.1-0.3
+      propagators: [W3C_TRACE_CONTEXT, W3C_BAGGAGE, B3] # 上下文传播器；可选：W3C_TRACE_CONTEXT/W3C_BAGGAGE/B3/B3_MULTI/JAEGER
+      resource:
+        service_name: my-service      # 服务名；string；建议与应用一致
+        attributes:                   # 额外资源属性；map[string]string
+          env: prod                   # 示例：环境标识
+          team: core                  # 示例：团队标识
+      limits:
+        attribute_count_limit: 128        # 每个 span 的最大 attribute 数；int > 0
+        attribute_value_length_limit: 2048 # 单个 attribute 最大长度（字符）；int > 0
+        event_count_limit: 128            # 每个 span 的最大 event 数；int > 0
+        link_count_limit: 128             # 每个 span 的最大 link 数；int > 0
 
-# 完整配置示例
-# 以下是一个完整的配置示例，展示了所有可用的配置选项
+# HTTP 导出（OTLP/HTTP）
+# 注意：需要 Collector 开启 4318 端口，且路径通常为 /v1/traces
+lynx:
+  tracer:
+    enable: true                 # 是否启用；bool
+    addr: "otel-collector:4318" # 导出端点地址；HTTP 常用 4318
+    config:
+      protocol: PROTOCOL_OTLP_HTTP     # 导出协议；HTTP 模式
+      http_path: /v1/traces            # OTLP/HTTP 上报路径；默认 /v1/traces
+      insecure: true                   # 明文 HTTP；如需 HTTPS，请提供 tls 并将其设为 false
+      compression: COMPRESSION_GZIP    # 压缩；同 gRPC
+      headers:                         # 自定义 Header；map[string]string
+        Authorization: Bearer ${OTEL_TOKEN}
+      batch:
+        enabled: true                  # 批处理；其余参数可与上例相同按需补充
+      propagators: [B3, W3C_BAGGAGE]   # 传播器；HTTP 同样适用
 
-# lynx:
-#   tracer:
-#     # 启用链路追踪
-#     enable: true
-#     
-#     # 配置 Jaeger 收集器地址
-#     addr: "jaeger:14250"
-#     
-#     # 设置 10% 采样率
-#     ratio: 0.1
-
-# 不同环境的配置示例
-
-# 开发环境配置
-# lynx:
-#   tracer:
-#     enable: true
-#     addr: "localhost:4317"
-#     ratio: 1.0  # 开发环境全量采样
-
-# 测试环境配置
-# lynx:
-#   tracer:
-#     enable: true
-#     addr: "otel-collector-test:4317"
-#     ratio: 0.5  # 测试环境 50% 采样
-
-# 生产环境配置
-# lynx:
-#   tracer:
-#     enable: true
-#     addr: "otel-collector-prod:4317"
-#     ratio: 0.1  # 生产环境 10% 采样
-
-# 禁用链路追踪
-# lynx:
-#   tracer:
-#     enable: false
-#     # 当 enable 为 false 时，addr 和 ratio 配置会被忽略 
+# gRPC + TLS 双向认证示例
+lynx:
+  tracer:
+    enable: true                 # 启用追踪
+    addr: "otel-collector:4317" # gRPC 端口
+    config:
+      protocol: PROTOCOL_OTLP_GRPC      # gRPC 协议
+      insecure: false                   # 使用 TLS/mTLS 时必须为 false
+      tls:
+        ca_file: /etc/otel/ca.pem       # CA 根证书路径；用于验证对端证书
+        cert_file: /etc/otel/client.crt # 客户端证书（mTLS）；可选，为空则为单向 TLS
+        key_file: /etc/otel/client.key  # 客户端私钥（mTLS）；与 cert_file 配对
+        insecure_skip_verify: false     # 是否跳过服务器证书校验；不建议在生产开启
+      batch:
+        enabled: true                   # 建议启用批处理

@@ -5,30 +5,26 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/tracer/conf"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/sdk/resource"
-	traceSdk "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
-// Plugin metadata
-// 插件元数据，定义插件的基本信息
+// 插件元数据，定义 Tracer 插件的基本信息
 const (
-	// pluginName 是 HTTP 服务器插件的唯一标识符，用于在插件系统中识别该插件。
+	// pluginName 是 Tracer 插件在 Lynx 插件系统中的唯一标识符。
 	pluginName = "tracer.server"
 
-	// pluginVersion 表示 HTTP 服务器插件的当前版本。
+	// pluginVersion 表示 Tracer 插件的当前版本。
 	pluginVersion = "v2.0.0"
 
-	// pluginDescription 简要描述了 HTTP 服务器插件的功能。
-	pluginDescription = "tracer server plugin for lynx framework"
+	// pluginDescription 简要描述 Tracer 插件的用途。
+	pluginDescription = "OpenTelemetry tracer plugin for Lynx framework"
 
-	// confPrefix 是加载 HTTP 服务器配置时使用的配置前缀。
+	// confPrefix 是加载 Tracer 配置时使用的配置前缀。
 	confPrefix = "lynx.tracer"
 )
 
@@ -37,12 +33,12 @@ const (
 type PlugTracer struct {
 	// 嵌入基础插件，继承插件的通用属性和方法
 	*plugins.BasePlugin
-	// HTTP 服务器的配置信息
+	// Tracer 的配置信息（支持模块化配置与向后兼容的旧字段）
 	conf *conf.Tracer
 }
 
-// NewPlugTracer 创建一个新的 Tracer 服务器插件实例。
-// 该函数初始化插件的基础信息，并返回一个指向 Tracer 结构体的指针。
+// NewPlugTracer 创建一个新的 Tracer 插件实例。
+// 该函数初始化插件的基础信息（ID、名称、描述、版本、配置前缀、权重）并返回实例。
 func NewPlugTracer() *PlugTracer {
 	return &PlugTracer{
 		BasePlugin: plugins.NewBasePlugin(
@@ -63,6 +59,10 @@ func NewPlugTracer() *PlugTracer {
 	}
 }
 
+// InitializeResources 从运行时加载并校验 Tracer 配置，同时填充默认值。
+// - 先从 runtime 配置树中扫描 "lynx.tracer" 到 t.conf
+// - 校验必要参数（采样率范围、启用但未配置地址等）
+// - 设置合理默认值（addr、ratio）
 func (t *PlugTracer) InitializeResources(rt plugins.Runtime) error {
 	// 初始化一个空的配置结构
 	t.conf = &conf.Tracer{}
@@ -84,7 +84,9 @@ func (t *PlugTracer) InitializeResources(rt plugins.Runtime) error {
 	return nil
 }
 
-// validateConfiguration 验证配置
+// validateConfiguration 验证配置合法性：
+// - ratio 必须在 [0,1]
+// - 当 enable=true 时必须提供有效的 addr
 func (t *PlugTracer) validateConfiguration() error {
 	// 验证采样率
 	if t.conf.Ratio < 0 || t.conf.Ratio > 1 {
@@ -99,7 +101,9 @@ func (t *PlugTracer) validateConfiguration() error {
 	return nil
 }
 
-// setDefaultValues 设置默认值
+// setDefaultValues 为未配置项设置默认值：
+// - addr 默认为 localhost:4317（OTLP/gRPC 默认端口）
+// - ratio 默认为 1.0（全量采样）
 func (t *PlugTracer) setDefaultValues() {
 	if t.conf.Addr == "" {
 		t.conf.Addr = "localhost:4317"
@@ -109,6 +113,11 @@ func (t *PlugTracer) setDefaultValues() {
 	}
 }
 
+// StartupTasks 完成 OpenTelemetry TracerProvider 的初始化：
+// - 构建采样器、资源、Span 限额
+// - 根据配置创建 OTLP 导出器（gRPC/HTTP），并选择批处理或同步处理器
+// - 设置全局 TracerProvider 与 TextMapPropagator
+// - 打印初始化日志
 func (t *PlugTracer) StartupTasks() error {
 	if !t.conf.Enable {
 		return nil
@@ -117,49 +126,44 @@ func (t *PlugTracer) StartupTasks() error {
 	// 使用 Lynx 应用的 Helper 记录日志，指示正在初始化链路监控组件
 	log.Infof("Initializing link monitoring component")
 
-	var tracerProviderOptions []traceSdk.TracerProviderOption
+	var tracerProviderOptions []trace.TracerProviderOption
 
-	tracerProviderOptions = append(tracerProviderOptions, // 设置采样器，根据配置中的比率进行采样
-		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(float64(t.conf.GetRatio())))),
-		// 设置资源信息，包括服务实例 ID、服务名称、服务版本和服务命名空间
-		traceSdk.WithResource(
-			resource.NewSchemaless(
-				// 服务实例 ID，使用主机名
-				semconv.ServiceInstanceIDKey.String(app.GetHost()),
-				// 服务名称
-				semconv.ServiceNameKey.String(app.GetName()),
-				// 服务版本
-				semconv.ServiceVersionKey.String(app.GetVersion()),
-				// 服务命名空间，使用 Lynx 控制平面的命名空间
-				semconv.ServiceNamespaceKey.String(app.Lynx().GetControlPlane().GetNamespace()),
-			)))
+	// Sampler
+	sampler := buildSampler(t.conf)
+	tracerProviderOptions = append(tracerProviderOptions, trace.WithSampler(sampler))
+
+	// Resource
+	res := buildResource(t.conf)
+	tracerProviderOptions = append(tracerProviderOptions, trace.WithResource(res))
+
+	// Span limits
+	if limits := buildSpanLimits(t.conf); limits != nil {
+		tracerProviderOptions = append(tracerProviderOptions, trace.WithSpanLimits(*limits))
+	}
 
 	// 如果配置中指定了地址，则设置导出器
 	// 否则，不设置导出器
 	if t.conf.GetAddr() != "None" {
-		// 创建一个新的 ot-lp 跟踪导出器，用于将跟踪数据发送到指定的端点
-		exp, err := otlptracegrpc.New(
-			context.Background(),
-			// 设置导出器的端点地址
-			otlptracegrpc.WithEndpoint(t.conf.GetAddr()),
-			// 禁用 TLS 加密，使用不安全的连接
-			otlptracegrpc.WithInsecure(),
-			// 使用 gzip 压缩算法来压缩跟踪数据
-			otlptracegrpc.WithCompressor("gzip"),
-		)
-		// 如果创建导出器时发生错误，返回详细的错误信息
+		exp, batchOpts, useBatch, err := buildExporter(context.Background(), t.conf)
 		if err != nil {
 			return fmt.Errorf("failed to create OTLP exporter: %w", err)
 		}
-		// 设置导出器，用于将跟踪数据发送到收集器
-		tracerProviderOptions = append(tracerProviderOptions, traceSdk.WithBatcher(exp))
+		if useBatch {
+			tracerProviderOptions = append(tracerProviderOptions, trace.WithBatcher(exp, batchOpts...))
+		} else {
+			tracerProviderOptions = append(tracerProviderOptions, trace.WithSyncer(exp))
+		}
 	}
 
 	// 创建一个新的跟踪提供者，用于生成和处理跟踪数据
-	tp := traceSdk.NewTracerProvider(tracerProviderOptions...)
+	tp := trace.NewTracerProvider(tracerProviderOptions...)
 
 	// 设置全局跟踪提供者，用于后续的跟踪数据生成和处理
 	otel.SetTracerProvider(tp)
+
+	// Propagators
+	var propagator propagation.TextMapPropagator = buildPropagator(t.conf)
+	otel.SetTextMapPropagator(propagator)
 
 	// 验证 TracerProvider 是否成功创建
 	if tp == nil {
@@ -171,16 +175,23 @@ func (t *PlugTracer) StartupTasks() error {
 	return nil
 }
 
-// ShutdownTasks 关闭任务
+// ShutdownTasks 优雅关闭 TracerProvider：
+// - 在 30s 超时内调用 SDK 的 Shutdown
+// - 捕获并记录错误
 func (t *PlugTracer) ShutdownTasks() error {
 	// 获取全局 TracerProvider
 	tp := otel.GetTracerProvider()
 	if tp != nil {
 		// 检查是否为 SDK TracerProvider
-		if sdkTp, ok := tp.(*traceSdk.TracerProvider); ok {
+		if sdkTp, ok := tp.(*trace.TracerProvider); ok {
 			// 创建带超时的上下文
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
+
+			// 在关闭前尽力刷新缓冲中的 span，减少数据丢失
+			if err := sdkTp.ForceFlush(ctx); err != nil {
+				log.Errorf("Failed to force flush tracer provider: %v", err)
+			}
 
 			// 优雅关闭 TracerProvider
 			if err := sdkTp.Shutdown(ctx); err != nil {

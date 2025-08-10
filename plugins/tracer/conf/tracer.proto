@@ -3,15 +3,170 @@ syntax = "proto3";
 package lynx.protobuf.plugin.tracer;
 
 option go_package = "github.com/go-lynx/lynx/plugins/tracer/conf;conf";
+import "google/protobuf/duration.proto";
+
+// 协议类型（导出通道）。
+// - PROTOCOL_UNSPECIFIED：未指定时，默认按 OTLP gRPC 处理。
+// - OTLP_GRPC：通过 OTLP gRPC 导出（通常端口 4317）。
+// - OTLP_HTTP：通过 OTLP HTTP 导出（通常端口 4318，路径一般为 /v1/traces）。
+enum Protocol {
+  PROTOCOL_UNSPECIFIED = 0; // 默认使用 OTLP gRPC
+  OTLP_GRPC = 1;
+  OTLP_HTTP = 2;
+}
+
+// 压缩方式。
+// - COMPRESSION_NONE：不压缩（默认）。
+// - COMPRESSION_GZIP：使用 gzip 压缩。
+enum Compression {
+  COMPRESSION_NONE = 0;
+  COMPRESSION_GZIP = 1;
+}
+
+// 上下文传播器类型，用于跨进程/服务传递 Trace 上下文。
+// 生产常用组合：W3C_TRACE_CONTEXT + W3C_BAGGAGE；也可根据系统选用 B3/B3_MULTI/Jaeger。
+enum Propagator {
+  PROPAGATOR_UNSPECIFIED = 0;
+  W3C_TRACE_CONTEXT = 1; // tracecontext
+  W3C_BAGGAGE = 2;       // baggage
+  B3 = 3;
+  B3_MULTI = 4;
+  JAEGER = 5;
+}
+
+// TLS 配置。
+// - ca_file：CA 根证书路径；用于验证对端证书；HTTPS/gRPCs 通常需要。
+// - cert_file/key_file：客户端证书与私钥；配置后启用 mTLS；留空则为单向 TLS。
+// - insecure_skip_verify：是否跳过服务器证书校验（仅测试环境使用，生产不建议）。
+message TLS {
+  string ca_file = 1;
+  string cert_file = 2;
+  string key_file = 3;
+  // 是否跳过证书校验（仅测试环境使用）
+  bool insecure_skip_verify = 4;
+}
+
+// 重试配置（gRPC 导出器使用指数退避参数）。
+// - enabled：是否启用重试。
+// - max_attempts：最大重试次数（包含首次）；>0 生效；建议 3-10。
+// - initial_interval：初始退避间隔；如 10ms/100ms。
+// - max_interval：最大退避间隔上限；建议不超过 1m。
+message Retry {
+  bool enabled = 1;
+  int32 max_attempts = 2; // 最大重试次数（包含首次）
+  google.protobuf.Duration initial_interval = 3; // 初始退避
+  google.protobuf.Duration max_interval = 4; // 最大退避
+}
+
+// 批处理配置（BatchSpanProcessor）。开启可显著降低导出开销、提高吞吐。
+// - enabled：是否启用批处理。
+// - max_queue_size：队列最大 span 数（>0）；建议 1k-10k。
+// - scheduled_delay：批调度周期；越小延迟越低、吞吐也可能降低。
+// - export_timeout：单次导出超时。
+// - max_batch_size：单批最大 span 数（>0，通常不超过 max_queue_size）。
+message Batch {
+  bool enabled = 1; // 是否启用批处理
+  int32 max_queue_size = 2; // 队列最大 span 数
+  google.protobuf.Duration scheduled_delay = 3; // 批调度间隔
+  google.protobuf.Duration export_timeout = 4; // 单次导出超时
+  int32 max_batch_size = 5; // 单批最大 span 数
+}
+
+// 采样器配置（类型 + 比例）。
+// Type 说明：
+// - ALWAYS_ON：全量采样；开发/调试友好，但成本最高。
+// - ALWAYS_OFF：不采样；仅保留上下文开销。
+// - TRACEID_RATIO：按比例采样根 Span（ratio 0.0-1.0），同一 Trace 子 Span 跟随。
+// - PARENT_BASED_TRACEID_RATIO：父级优先；有父则严格跟随父决策，无父按 ratio 采样。
+message Sampler {
+  enum Type {
+    SAMPLER_UNSPECIFIED = 0; // 等同于 ALWAYS_ON 或沿用外层 ratio
+    ALWAYS_ON = 1;
+    ALWAYS_OFF = 2;
+    TRACEID_RATIO = 3; // 使用 Tracer.ratio 或本消息 ratio
+    PARENT_BASED_TRACEID_RATIO = 4;
+  }
+  Type type = 1;
+  // 采样率；取值范围 0.0-1.0；当 type 为 TRACEID_RATIO 或 PARENT_BASED_TRACEID_RATIO 时使用。
+  // 生产环境常用 0.1-0.3；0.0 表示不采样，1.0 表示全量采样。
+  float ratio = 2;
+}
+
+// 资源信息（如 service.name、部署/团队等维度标签）。
+// - service_name：服务名，等价于 Resource(service.name)；建议与应用标识一致。
+// - attributes：附加资源属性键值对（如 deployment.environment=prod）。
+message Resource {
+  string service_name = 1;
+  map<string, string> attributes = 2; // 如 deployment.environment=prod
+}
+
+// Span 限制（SpanLimits）。
+// 说明：当前 OpenTelemetry Go SDK 的 SpanLimits 主要支持下列字段：
+// - attribute_count_limit, attribute_value_length_limit, event_count_limit, link_count_limit
+// 其余 *_attribute_count_limit 字段在当前实现中会被忽略，仅为兼容/预留。
+message Limits {
+  int32 attribute_count_limit = 1;
+  int32 attribute_value_length_limit = 2;
+  int32 event_count_limit = 3;
+  int32 event_attribute_count_limit = 4;
+  int32 link_count_limit = 5;
+  int32 link_attribute_count_limit = 6;
+}
+
+// 组合的导出与运行配置（Exporter/Processor/Sampler/Propagator/Resource/Limits）。
+// 建议优先使用本消息进行模块化配置；旧版顶层 ratio 仅作回退用途。
+message Config {
+  // 导出协议：OTLP gRPC 或 OTLP HTTP（默认 gRPC）。
+  Protocol protocol = 1;
+
+  // 是否禁用 TLS（明文传输）。与 tls 互斥：当配置 tls 时，应将 insecure 设为 false。
+  bool insecure = 2;
+
+  // TLS 配置（单向 TLS 或双向 mTLS）。
+  TLS tls = 3;
+
+  // 自定义请求头（如认证 Token、租户信息等）；将透传给 Collector。
+  map<string, string> headers = 4;
+
+  // 压缩方式（NONE/GZIP）。
+  Compression compression = 5;
+
+  // 导出超时（请求级超时），如 10s/30s/1m。
+  google.protobuf.Duration timeout = 6;
+
+  // 重试配置（仅 gRPC 导出器使用）。
+  Retry retry = 7;
+
+  // 批处理配置（强烈建议开启以提升吞吐）。
+  Batch batch = 8;
+
+  // 采样器配置（推荐使用 PARENT_BASED_TRACEID_RATIO + 合理 ratio）。
+  Sampler sampler = 9;
+
+  // 上下文传播器列表（建议至少包含 W3C_TRACE_CONTEXT + W3C_BAGGAGE）。
+  repeated Propagator propagators = 10;
+
+  // 资源信息（service.name 与附加属性）。
+  Resource resource = 11;
+
+  // span 限制（见 Limits）。
+  Limits limits = 12;
+
+  // 仅在 OTLP HTTP 模式下生效；默认 "/v1/traces"。
+  string http_path = 13;
+}
 
 // Tracer 定义了链路跟踪插件的配置信息。
 message Tracer {
-  // enable 表示是否启用链路跟踪功能,开启则会在日志中打印
+  // 是否启用链路跟踪功能（true/false）。关闭时将不初始化 TracerProvider。
   bool enable = 1;
-  // addr 表示跟踪数据导出的目标端点地址。
-  // 通常是 OpenTelemetry Collector 等跟踪数据收集器的地址，格式为 "host:port"。
+  // 导出端点地址；通常为 OpenTelemetry Collector 地址，格式 "host:port"。
+  // - gRPC 常用 4317，例如 "otel-collector:4317"
+  // - HTTP 常用 4318（需配合 config.http_path），例如 "otel-collector:4318"
   string addr = 2;
-  // ratio 表示跟踪采样率，取值范围为 0.0 到 1.0。
-  // 0.0 表示不采样，1.0 表示对所有请求进行采样，其他值表示按比例采样。
+  // 模块化 OpenTelemetry 配置，包含协议/TLS/重试/压缩/批处理/传播器/资源/限额/采样器。
+  Config config = 4;
+  // 采样率（legacy 回退字段）：0.0-1.0。
+  // 说明：为兼容旧版而保留。推荐改用 config.sampler（TRACEID_RATIO 或 PARENT_BASED_TRACEID_RATIO）。
   float ratio = 3;
 }
