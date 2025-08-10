@@ -17,10 +17,8 @@ func (k *Client) initProducer() error {
 
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(k.conf.Brokers...),
-		kgo.ProducerLinger(time.Duration(0)),
-		kgo.RetryBackoffFn(func(attempts int) time.Duration {
-			return time.Duration(attempts) * time.Second
-		}),
+		// 默认采用较小的 linger，允许 franz-go 进行轻量批处理；重试策略统一交给外层 RetryHandler
+		kgo.ProducerLinger(5 * time.Millisecond),
 		kgo.DialTimeout(k.conf.DialTimeout.AsDuration()),
 	}
 
@@ -34,6 +32,15 @@ func (k *Client) initProducer() error {
 
 	if comp := k.getCompression(); comp != kgo.NoCompression() {
 		opts = append(opts, kgo.ProducerBatchCompression(comp))
+	}
+
+	// 映射 RequiredAcks：true 等待所有 ISR；false 仅等待 leader
+	if k.conf.Producer != nil {
+		if k.conf.Producer.RequiredAcks {
+			opts = append(opts, kgo.RequiredAcks(kgo.AllISRAcks()))
+		} else {
+			opts = append(opts, kgo.RequiredAcks(kgo.LeaderAck()))
+		}
 	}
 
 	producer, err := kgo.NewClient(opts...)
@@ -77,7 +84,7 @@ func (k *Client) Produce(ctx context.Context, topic string, key, value []byte) e
 		return fmt.Errorf("failed to produce message: %w", err)
 	}
 
-	// 更新指标
+	// 更新指标（使用线程安全的封装方法）
 	k.metrics.IncrementProducedMessages(1)
 	k.metrics.IncrementProducedBytes(int64(len(value)))
 	k.metrics.SetProducerLatency(time.Since(start))
@@ -95,9 +102,38 @@ func (k *Client) ProduceBatch(ctx context.Context, topic string, records []*kgo.
 		return ErrProducerNotInitialized
 	}
 
+	// 规范 topic 语义：若入参 topic 非空，则将所有 record 的 Topic 统一设置为该 topic；
+	// 若入参 topic 为空，则要求每条 record 自带合法 Topic。
+	if topic != "" {
+		if err := k.validateTopic(topic); err != nil {
+			return fmt.Errorf("invalid topic %s: %w", topic, err)
+		}
+	}
+
+	// 过滤 nil 记录，避免后续 ProduceSync/统计时出现空指针
+	nonNil := make([]*kgo.Record, 0, len(records))
+	for _, r := range records {
+		if r == nil {
+			continue
+		}
+		if topic != "" {
+			r.Topic = topic
+		} else {
+			if err := k.validateTopic(r.Topic); err != nil {
+				return fmt.Errorf("invalid topic %s: %w", r.Topic, err)
+			}
+		}
+		nonNil = append(nonNil, r)
+	}
+
+	// 若全部为 nil，直接返回
+	if len(nonNil) == 0 {
+		return nil
+	}
+
 	start := time.Now()
 	err := k.retryHandler.DoWithRetry(ctx, func() error {
-		return producer.ProduceSync(ctx, records...).FirstErr()
+		return producer.ProduceSync(ctx, nonNil...).FirstErr()
 	})
 
 	if err != nil {
@@ -106,14 +142,14 @@ func (k *Client) ProduceBatch(ctx context.Context, topic string, records []*kgo.
 		return fmt.Errorf("failed to produce batch messages: %w", err)
 	}
 
-	// 更新指标
+	// 更新指标（基于过滤后的数组）
 	totalBytes := int64(0)
-	for _, record := range records {
+	for _, record := range nonNil {
 		totalBytes += int64(len(record.Value))
 	}
-	k.metrics.IncrementProducedMessages(int64(len(records)))
+	k.metrics.IncrementProducedMessages(int64(len(nonNil)))
 	k.metrics.IncrementProducedBytes(totalBytes)
-	k.metrics.ProducerLatency = time.Since(start)
+	k.metrics.SetProducerLatency(time.Since(start))
 
 	return nil
 }

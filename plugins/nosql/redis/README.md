@@ -11,6 +11,7 @@
 - 连接池指标：命中、未命中、等待超时、空闲/活动/陈旧连接数
 - 启动与健康检查：启动 Ping、延迟日志；增强就绪检查（cluster 状态、role/connected_slaves）
 - 兼容 API：`GetRedis()`（返回 redis.UniversalClient）与 `GetUniversalRedis()`
+- **配置验证**：完整的配置验证逻辑，确保配置的正确性和合理性
 
 ## 配置说明（protobuf）
 见 `plugins/nosql/redis/conf/redis.proto`，核心字段如下（保持原编号，按领域分组）：
@@ -82,6 +83,19 @@ redis:
     enabled: true
     insecure_skip_verify: true  # 仅测试环境
 ```
+
+## 配置验证
+
+Redis 插件现在包含了完整的配置验证功能，确保在插件启动前配置的正确性。验证包括：
+
+- **基础连接验证**：地址格式、网络类型等
+- **连接池配置验证**：连接数量关系、超时时间等
+- **超时配置验证**：各种超时时间的合理性和关系
+- **重试配置验证**：重试次数和退避时间的合理性
+- **TLS配置验证**：TLS启用与地址格式的匹配
+- **Sentinel配置验证**：哨兵模式的必要参数
+
+配置验证会在插件初始化时自动执行，如果验证失败，插件将无法启动。详细的验证规则和配置模板请参考 [VALIDATION.md](./VALIDATION.md)。
 
 ## 代码中使用
 - 推荐使用包级方法获取客户端（无需持有 *PlugRedis 实例）：

@@ -2,13 +2,13 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/nosql/redis/conf"
 	"github.com/redis/go-redis/v9"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // InitializeResources 实现 Redis 插件的自定义初始化逻辑
@@ -25,48 +25,9 @@ func (r *PlugRedis) InitializeResources(rt plugins.Runtime) error {
 		return err
 	}
 
-	// 设置默认配置
-	defaultConf := &conf.Redis{
-		Network:         "tcp",
-		Addrs:           []string{"localhost:6379"},
-		Password:        "",
-		Db:              0,
-		MinIdleConns:    10,
-		MaxIdleConns:    20,
-		MaxActiveConns:  20,
-		DialTimeout:     &durationpb.Duration{Seconds: 10},
-		ReadTimeout:     &durationpb.Duration{Seconds: 10},
-		WriteTimeout:    &durationpb.Duration{Seconds: 10},
-		ConnMaxIdleTime: &durationpb.Duration{Seconds: 10},
-	}
-
-	// 对未设置的字段使用默认值
-	if r.conf.Network == "" {
-		r.conf.Network = defaultConf.Network
-	}
-	if len(r.conf.Addrs) == 0 {
-		r.conf.Addrs = append([]string{}, defaultConf.Addrs...)
-	}
-	if r.conf.MinIdleConns == 0 {
-		r.conf.MinIdleConns = defaultConf.MinIdleConns
-	}
-	if r.conf.MaxIdleConns == 0 {
-		r.conf.MaxIdleConns = defaultConf.MaxIdleConns
-	}
-	if r.conf.MaxActiveConns == 0 {
-		r.conf.MaxActiveConns = defaultConf.MaxActiveConns
-	}
-	if r.conf.DialTimeout == nil {
-		r.conf.DialTimeout = defaultConf.DialTimeout
-	}
-	if r.conf.ReadTimeout == nil {
-		r.conf.ReadTimeout = defaultConf.ReadTimeout
-	}
-	if r.conf.WriteTimeout == nil {
-		r.conf.WriteTimeout = defaultConf.WriteTimeout
-	}
-	if r.conf.ConnMaxIdleTime == nil {
-		r.conf.ConnMaxIdleTime = defaultConf.ConnMaxIdleTime
+	// 验证配置并设置默认值
+	if err := ValidateAndSetDefaults(r.conf); err != nil {
+		return fmt.Errorf("redis configuration validation failed: %w", err)
 	}
 
 	return nil
