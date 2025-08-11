@@ -43,6 +43,6 @@ type PoolConfig struct {
 // DefaultPoolConfig 默认协程池配置
 func DefaultPoolConfig() *PoolConfig {
 	return &PoolConfig{
-		Size: 10,
+		Size: 30,
 	}
 }

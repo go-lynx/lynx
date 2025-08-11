@@ -46,6 +46,12 @@ type ConsumerGroup struct {
 	partMu    sync.Mutex
 }
 
+// ConsumerGroupOptions 创建消费者组的可选参数
+type ConsumerGroupOptions struct {
+	// MaxConcurrency 并发上限。优先级：Options.MaxConcurrency > conf.Consumer.MaxConcurrency > DefaultPoolConfig().Size
+	MaxConcurrency int
+}
+
 // RebalanceEvent 重平衡事件
 type RebalanceEvent struct {
 	Assigned map[string][]int32
@@ -54,10 +60,21 @@ type RebalanceEvent struct {
 
 // NewConsumerGroup 创建新的消费者组（按实例配置）
 func (k *Client) NewConsumerGroup(client *kgo.Client, c *conf.Consumer, topics []string, handler MessageHandler) *ConsumerGroup {
+	return k.NewConsumerGroupWithOptions(client, c, topics, handler, nil)
+}
+
+// NewConsumerGroupWithOptions 创建新的消费者组（支持覆盖并发等可选参数）
+func (k *Client) NewConsumerGroupWithOptions(client *kgo.Client, c *conf.Consumer, topics []string, handler MessageHandler, opts *ConsumerGroupOptions) *ConsumerGroup {
 	ctx, cancel := context.WithCancel(k.ctx)
-	maxConc := 10
+	// 默认并发：来自 DefaultPoolConfig
+	maxConc := DefaultPoolConfig().Size
+	// 配置文件覆盖
 	if c != nil && c.MaxConcurrency > 0 {
 		maxConc = int(c.MaxConcurrency)
+	}
+	// 运行时 options 覆盖
+	if opts != nil && opts.MaxConcurrency > 0 {
+		maxConc = opts.MaxConcurrency
 	}
 	autoCommit := false
 	if c != nil {
@@ -205,6 +222,11 @@ func (k *Client) Subscribe(ctx context.Context, topics []string, handler Message
 
 // SubscribeWith 按消费者实例名订阅
 func (k *Client) SubscribeWith(ctx context.Context, consumerName string, topics []string, handler MessageHandler) error {
+	return k.SubscribeWithOptions(ctx, consumerName, topics, handler, nil)
+}
+
+// SubscribeWithOptions 按消费者实例名订阅（支持可选参数覆盖）
+func (k *Client) SubscribeWithOptions(ctx context.Context, consumerName string, topics []string, handler MessageHandler, opts *ConsumerGroupOptions) error {
 	if len(topics) == 0 {
 		return fmt.Errorf("no topics provided")
 	}
@@ -250,7 +272,7 @@ func (k *Client) SubscribeWith(ctx context.Context, consumerName string, topics 
 		old.Stop()
 		delete(k.activeGroups, consumerName)
 	}
-	cg := k.NewConsumerGroup(consumer, cconf, topics, handler)
+	cg := k.NewConsumerGroupWithOptions(consumer, cconf, topics, handler, opts)
 	k.activeGroups[consumerName] = cg
 	// 兼容旧字段：若 legacy 未设置，则设置为当前实例
 	if k.consumer == nil {
@@ -365,8 +387,18 @@ func (cg *ConsumerGroup) getPartitionChan(topic string, partition int32) chan []
 					if !ok {
 						return
 					}
-					// 串行处理该分区的一批记录
-					cg.processRecordsSerial(t, p, recs)
+					// 使用协程池处理该分区的一批记录，但保证分区内严格顺序：
+					// 提交到池后在本 worker 内同步等待完成，再读取下一批
+					done := make(chan struct{})
+					cg.pool.Submit(func() {
+						cg.processRecordsSerial(t, p, recs)
+						close(done)
+					})
+					select {
+					case <-cg.ctx.Done():
+						return
+					case <-done:
+					}
 				}
 			}
 		}(topic, partition, ch)
