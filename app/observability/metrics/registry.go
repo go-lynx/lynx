@@ -20,14 +20,30 @@ type HealthProvider interface {
 var (
 	// 全局注册表（各插件统一注册）
 	registry = prometheus.NewRegistry()
+	// 额外的聚合源（用于接入无法直接依赖本包的第三方/子模块注册表）
+	extraGatherers []prometheus.Gatherer
 )
 
 // Handler 返回统一 /metrics 的 HTTP 处理器
 func Handler() http.Handler {
-	return promhttp.HandlerFor(registry, promhttp.HandlerOpts{
+	// 聚合本包 registry + 默认全局（多数插件直接使用 prometheus.MustRegister）+ 可选额外 gatherers
+	g := prometheus.Gatherers{registry, prometheus.DefaultGatherer}
+	if len(extraGatherers) > 0 {
+		g = append(g, extraGatherers...)
+	}
+	return promhttp.HandlerFor(g, promhttp.HandlerOpts{
 		EnableOpenMetrics:  true,
-		DisableCompression: false, // 显式保持开启压缩（默认即为开启）
+		DisableCompression: false,
 	})
+}
+
+// RegisterGatherer 允许在不引入该包的插件/模块，通过上层装配时注入其私有注册表
+// 例如：某些插件内部维护了独立的 *prometheus.Registry
+func RegisterGatherer(g prometheus.Gatherer) {
+	if g == nil {
+		return
+	}
+	extraGatherers = append(extraGatherers, g)
 }
 
 // RegisterCollector 向全局注册表注册一个 Collector

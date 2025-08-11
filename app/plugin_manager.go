@@ -8,6 +8,7 @@ package app
 import (
 	"fmt"
 	"sort"
+	"time"
 	"sync"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -156,15 +157,29 @@ func (m *DefaultPluginManager) LoadPlugins(conf config.Config) error {
 		// 为每个插件创建带上下文的运行时
 		pluginRuntime := m.runtime.WithPluginContext(plugin.ID())
 
-		// 初始化插件
-		if err := plugin.Initialize(plugin, pluginRuntime); err != nil {
+		// 初始化插件（带 panic 保护）
+		if err := func() (retErr error) {
+			defer func() {
+				if r := recover(); r != nil {
+					retErr = fmt.Errorf("panic in Initialize of %s: %v", plugin.ID(), r)
+				}
+			}()
+			return plugin.Initialize(plugin, pluginRuntime)
+		}(); err != nil {
 			return fmt.Errorf("failed to initialize plugin %s: %w", plugin.ID(), err)
 		}
 
-		// 启动插件
-		if err := plugin.Start(plugin); err != nil {
+		// 启动插件（带 panic 保护）
+		if err := func() (retErr error) {
+			defer func() {
+				if r := recover(); r != nil {
+					retErr = fmt.Errorf("panic in Start of %s: %v", plugin.ID(), r)
+				}
+			}()
+			return plugin.Start(plugin)
+		}(); err != nil {
 			// 如果启动失败，清理资源
-			m.runtime.CleanupResources(plugin.ID())
+			_ = m.runtime.CleanupResources(plugin.ID())
 			return fmt.Errorf("failed to start plugin %s: %w", plugin.ID(), err)
 		}
 
@@ -181,16 +196,26 @@ func (m *DefaultPluginManager) UnloadPlugins() {
 		return
 	}
 
+	timeout := m.getStopTimeout()
+
 	for _, plugin := range m.pluginList {
 		if plugin == nil {
 			continue
 		}
-		if err := plugin.Stop(plugin); err != nil {
-			if app := Lynx(); app != nil {
-				log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
-			}
+		if err := m.safeStopPlugin(plugin, timeout); err != nil {
+			log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
 		}
+		// 清理插件资源，幂等
+		if err := m.runtime.CleanupResources(plugin.ID()); err != nil {
+			log.Errorf("Failed to cleanup resources for plugin %s: %v", plugin.Name(), err)
+		}
+		m.pluginInstances.Delete(plugin.ID())
 	}
+
+	// 重置插件列表
+	m.mu.Lock()
+	m.pluginList = nil
+	m.mu.Unlock()
 }
 
 // LoadPluginsByName 按名称加载插件
@@ -229,15 +254,29 @@ func (m *DefaultPluginManager) LoadPluginsByName(conf config.Config, pluginNames
 		// 为每个插件创建带上下文的运行时
 		pluginRuntime := m.runtime.WithPluginContext(plugin.ID())
 
-		// 初始化插件
-		if err := plugin.Initialize(plugin, pluginRuntime); err != nil {
+		// 初始化插件（带 panic 保护）
+		if err := func() (retErr error) {
+			defer func() {
+				if r := recover(); r != nil {
+					retErr = fmt.Errorf("panic in Initialize of %s: %v", plugin.ID(), r)
+				}
+			}()
+			return plugin.Initialize(plugin, pluginRuntime)
+		}(); err != nil {
 			return fmt.Errorf("failed to initialize plugin %s: %w", plugin.ID(), err)
 		}
 
-		// 启动插件
-		if err := plugin.Start(plugin); err != nil {
+		// 启动插件（带 panic 保护）
+		if err := func() (retErr error) {
+			defer func() {
+				if r := recover(); r != nil {
+					retErr = fmt.Errorf("panic in Start of %s: %v", plugin.ID(), r)
+				}
+			}()
+			return plugin.Start(plugin)
+		}(); err != nil {
 			// 如果启动失败，清理资源
-			m.runtime.CleanupResources(plugin.ID())
+			_ = m.runtime.CleanupResources(plugin.ID())
 			return fmt.Errorf("failed to start plugin %s: %w", plugin.ID(), err)
 		}
 
@@ -254,13 +293,16 @@ func (m *DefaultPluginManager) UnloadPluginsByName(names []string) {
 		return
 	}
 
+	timeout := m.getStopTimeout()
+
 	for _, name := range names {
 		if pluginObj, ok := m.pluginInstances.Load(name); ok {
 			if plugin, ok := pluginObj.(plugins.Plugin); ok && plugin != nil {
-				if err := plugin.Stop(plugin); err != nil {
-					if app := Lynx(); app != nil {
-						log.Errorf("Failed to unload plugin %s: %v", name, err)
-					}
+				if err := m.safeStopPlugin(plugin, timeout); err != nil {
+					log.Errorf("Failed to unload plugin %s: %v", name, err)
+				}
+				if err := m.runtime.CleanupResources(plugin.ID()); err != nil {
+					log.Errorf("Failed to cleanup resources for plugin %s: %v", name, err)
 				}
 				m.pluginInstances.Delete(name)
 			}
@@ -443,12 +485,20 @@ func (m *DefaultPluginManager) StopPlugin(pluginID string) error {
 		return fmt.Errorf("plugin %s not found", pluginID)
 	}
 
-	// 停止插件
-	if err := plugin.(plugins.Plugin).Stop(plugin.(plugins.Plugin)); err != nil {
+	p, ok := plugin.(plugins.Plugin)
+	if !ok || p == nil {
+		// 已不再是有效插件，做幂等清理
+		_ = m.runtime.CleanupResources(pluginID)
+		m.pluginInstances.Delete(pluginID)
+		return nil
+	}
+
+	timeout := m.getStopTimeout()
+	if err := m.safeStopPlugin(p, timeout); err != nil {
 		return fmt.Errorf("failed to stop plugin %s: %w", pluginID, err)
 	}
 
-	// 清理插件资源
+	// 清理插件资源（幂等）
 	if err := m.runtime.CleanupResources(pluginID); err != nil {
 		return fmt.Errorf("failed to cleanup resources for plugin %s: %w", pluginID, err)
 	}
@@ -465,4 +515,48 @@ func (m *DefaultPluginManager) GetResourceStats() map[string]any {
 // ListResources 列出所有资源
 func (m *DefaultPluginManager) ListResources() []*plugins.ResourceInfo {
 	return m.runtime.ListResources()
+}
+
+// getStopTimeout 从配置读取 Stop 超时，默认 5s
+func (m *DefaultPluginManager) getStopTimeout() time.Duration {
+	// 默认超时
+	d := 5 * time.Second
+	if m == nil || m.config == nil {
+		return d
+	}
+	var confStr string
+	if err := m.config.Value("lynx.plugins.stop_timeout").Scan(&confStr); err == nil {
+		if parsed, err2 := time.ParseDuration(confStr); err2 == nil {
+			return parsed
+		}
+	}
+	return d
+}
+
+// safeStopPlugin 在超时与 panic 保护下调用插件 Stop
+func (m *DefaultPluginManager) safeStopPlugin(p plugins.Plugin, timeout time.Duration) error {
+	if p == nil {
+		return nil
+	}
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// 将 panic 转换为错误返回
+				done <- fmt.Errorf("panic in Stop of %s: %v", p.Name(), r)
+			}
+		}()
+		done <- p.Stop(p)
+	}()
+
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(timeout):
+		return fmt.Errorf("stop timeout after %s for plugin %s", timeout.String(), p.Name())
+	}
 }

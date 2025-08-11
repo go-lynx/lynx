@@ -298,5 +298,29 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 
 	// 更新全局配置
 	a.globalConf = cfg
-	return nil
+
+    // 将新配置注入插件管理器与运行时，并广播配置事件
+    if pm := a.GetPluginManager(); pm != nil {
+        pm.SetConfig(cfg)
+        if rt := pm.GetRuntime(); rt != nil {
+            // 注入配置
+            rt.SetConfig(cfg)
+            // 广播：配置正在更新
+            rt.EmitPluginEvent("", string(plugins.EventConfigurationChanged), map[string]any{
+                "app":      a.name,
+                "version":  a.version,
+                "host":     a.host,
+                "source":   "SetGlobalConfig",
+            })
+            // 广播：配置已应用
+            rt.EmitPluginEvent("", string(plugins.EventConfigurationApplied), map[string]any{
+                "app":      a.name,
+                "version":  a.version,
+                "host":     a.host,
+                "source":   "SetGlobalConfig",
+            })
+        }
+    }
+
+    return nil
 }
