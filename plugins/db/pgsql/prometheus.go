@@ -267,25 +267,15 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		metrics.ConfigMaxConn,
 	)
 
-	// 额外：同时注册到默认全局注册表，便于由统一 Handler 聚合暴露
-	prometheus.MustRegister(
-		metrics.MaxOpenConnections,
-		metrics.OpenConnections,
-		metrics.InUseConnections,
-		metrics.IdleConnections,
-		metrics.MaxIdleConnections,
-		metrics.WaitCount,
-		metrics.WaitDuration,
-		metrics.MaxIdleClosed,
-		metrics.MaxLifetimeClosed,
-		metrics.HealthCheckTotal,
-		metrics.HealthCheckSuccess,
-		metrics.HealthCheckFailure,
-		metrics.ConfigMinConn,
-		metrics.ConfigMaxConn,
-	)
-
 	return metrics
+}
+
+// GetGatherer 返回该插件私有的 Prometheus Gatherer（用于在应用装配阶段统一聚合到全局 /metrics）
+func (pm *PrometheusMetrics) GetGatherer() prometheus.Gatherer {
+    if pm == nil {
+        return nil
+    }
+    return pm.registry
 }
 
 // UpdateMetrics 更新监控指标

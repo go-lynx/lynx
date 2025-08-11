@@ -8,13 +8,15 @@ package app
 import (
 	"fmt"
 	"sort"
-	"time"
 	"sync"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app/factory"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/app/observability/metrics"
 	"github.com/go-lynx/lynx/plugins"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // PluginWithLevel represents a plugin with its dependency level in the topology.
@@ -185,6 +187,15 @@ func (m *DefaultPluginManager) LoadPlugins(conf config.Config) error {
 
 		// 使用sync.Map的Store方法而不是直接索引
 		m.pluginInstances.Store(plugin.ID(), plugin)
+
+		// 统一注册插件自带的 Prometheus Gatherer
+		type metricsGathererProvider interface{ MetricsGatherer() prometheus.Gatherer }
+		if prov, ok := plugin.(metricsGathererProvider); ok {
+			if g := prov.MetricsGatherer(); g != nil {
+				metrics.RegisterGatherer(g)
+				log.Infof("registered private metrics gatherer for plugin %s", plugin.ID())
+			}
+		}
 	}
 
 	return nil
