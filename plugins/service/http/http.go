@@ -12,10 +12,10 @@ import (
 
 	"github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/app/observability/metrics"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/service/http/conf"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
@@ -322,7 +322,7 @@ func (h *ServiceHttp) StartupTasks() error {
 	h.applyPerformanceConfig()
 
 	// 添加监控端点
-	h.server.HandlePrefix("/metrics", promhttp.Handler())
+	h.server.HandlePrefix("/metrics", metrics.Handler())
 	h.server.HandlePrefix("/health", h.healthCheckHandler())
 
 	// 记录 HTTP 服务启动成功日志

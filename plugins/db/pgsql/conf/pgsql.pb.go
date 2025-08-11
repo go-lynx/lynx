@@ -44,8 +44,8 @@ type Pgsql struct {
 	// The maximum idle time for a connection in the connection pool.
 	// 连接池中连接的最大空闲时间，超过该时间的连接可能会被关闭。
 	MaxIdleTime *durationpb.Duration `protobuf:"bytes,6,opt,name=max_idle_time,json=maxIdleTime,proto3" json:"max_idle_time,omitempty"`
-	// Prometheus monitoring configuration.
-	// Prometheus 监控配置。
+	// Prometheus monitoring configuration (semantic only, no HTTP exposure here).
+	// Prometheus 监控配置（仅语义配置，不包含 HTTP 暴露相关）。
 	Prometheus    *PrometheusConfig `protobuf:"bytes,7,opt,name=prometheus,proto3" json:"prometheus,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -130,28 +130,19 @@ func (x *Pgsql) GetPrometheus() *PrometheusConfig {
 	return nil
 }
 
-// Prometheus monitoring configuration.
-// Prometheus 监控配置。
+// Prometheus monitoring configuration (semantic only).
+// Prometheus 监控配置（仅语义配置）。
 type PrometheusConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Whether to enable Prometheus metrics export.
-	// 是否启用 Prometheus 指标导出。
-	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// The HTTP endpoint path for metrics exposure.
-	// 指标暴露的 HTTP 端点路径。
-	MetricsPath string `protobuf:"bytes,2,opt,name=metrics_path,json=metricsPath,proto3" json:"metrics_path,omitempty"`
-	// The port for metrics HTTP server.
-	// 指标 HTTP 服务器的端口。
-	MetricsPort int32 `protobuf:"varint,3,opt,name=metrics_port,json=metricsPort,proto3" json:"metrics_port,omitempty"`
 	// The namespace for Prometheus metrics.
 	// Prometheus 指标的命名空间。
-	Namespace string `protobuf:"bytes,4,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// The subsystem for Prometheus metrics.
 	// Prometheus 指标的子系统。
-	Subsystem string `protobuf:"bytes,5,opt,name=subsystem,proto3" json:"subsystem,omitempty"`
+	Subsystem string `protobuf:"bytes,2,opt,name=subsystem,proto3" json:"subsystem,omitempty"`
 	// Additional labels for metrics.
 	// 指标的额外标签。
-	Labels        map[string]string `protobuf:"bytes,6,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Labels        map[string]string `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -184,27 +175,6 @@ func (x *PrometheusConfig) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PrometheusConfig.ProtoReflect.Descriptor instead.
 func (*PrometheusConfig) Descriptor() ([]byte, []int) {
 	return file_pgsql_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *PrometheusConfig) GetEnabled() bool {
-	if x != nil {
-		return x.Enabled
-	}
-	return false
-}
-
-func (x *PrometheusConfig) GetMetricsPath() string {
-	if x != nil {
-		return x.MetricsPath
-	}
-	return ""
-}
-
-func (x *PrometheusConfig) GetMetricsPort() int32 {
-	if x != nil {
-		return x.MetricsPort
-	}
-	return 0
 }
 
 func (x *PrometheusConfig) GetNamespace() string {
@@ -242,14 +212,11 @@ const file_pgsql_proto_rawDesc = "" +
 	"\rmax_idle_time\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\vmaxIdleTime\x12I\n" +
 	"\n" +
 	"prometheus\x18\a \x01(\v2).lynx.protobuf.plugin.db.PrometheusConfigR\n" +
-	"prometheus\"\xb8\x02\n" +
-	"\x10PrometheusConfig\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\x12!\n" +
-	"\fmetrics_path\x18\x02 \x01(\tR\vmetricsPath\x12!\n" +
-	"\fmetrics_port\x18\x03 \x01(\x05R\vmetricsPort\x12\x1c\n" +
-	"\tnamespace\x18\x04 \x01(\tR\tnamespace\x12\x1c\n" +
-	"\tsubsystem\x18\x05 \x01(\tR\tsubsystem\x12M\n" +
-	"\x06labels\x18\x06 \x03(\v25.lynx.protobuf.plugin.db.PrometheusConfig.LabelsEntryR\x06labels\x1a9\n" +
+	"prometheus\"\xd8\x01\n" +
+	"\x10PrometheusConfig\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1c\n" +
+	"\tsubsystem\x18\x02 \x01(\tR\tsubsystem\x12M\n" +
+	"\x06labels\x18\x03 \x03(\v25.lynx.protobuf.plugin.db.PrometheusConfig.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B4Z2github.com/go-lynx/lynx/plugins/db/pgsql/conf;confb\x06proto3"

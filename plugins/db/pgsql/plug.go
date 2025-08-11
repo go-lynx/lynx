@@ -2,7 +2,6 @@ package pgsql
 
 import (
 	"fmt"
-	"net/http"
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/app"
@@ -72,19 +71,4 @@ func CheckHealth() error {
 		return fmt.Errorf("pgsql plugin not found")
 	}
 	return plugin.(*DBPgsqlClient).CheckHealth()
-}
-
-// GetPrometheusHandler 获取 Prometheus 指标处理器
-func GetPrometheusHandler() http.Handler {
-	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
-	if plugin == nil {
-		return http.NotFoundHandler()
-	}
-
-	pgsqlPlugin := plugin.(*DBPgsqlClient)
-	if pgsqlPlugin.prometheusMetrics == nil {
-		return http.NotFoundHandler()
-	}
-
-	return pgsqlPlugin.prometheusMetrics.GetMetricsHandler()
 }
