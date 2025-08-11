@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-kratos/kratos/v2/selector"
 	"github.com/go-lynx/lynx/app/factory"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/app/observability/metrics"
+	"github.com/go-lynx/lynx/app/subscribe"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -197,6 +199,24 @@ func (m *DefaultPluginManager) LoadPlugins(conf config.Config) error {
 			}
 		}
 	}
+
+    // 所有插件启动完成后，基于配置构建 gRPC 订阅（需要服务发现插件已就绪）
+    if Lynx() != nil && Lynx().bootConfig != nil && Lynx().bootConfig.Lynx != nil && Lynx().bootConfig.Lynx.Subscriptions != nil {
+        disc := Lynx().GetControlPlane().NewServiceDiscovery()
+        if disc != nil {
+            // 注入节点路由工厂，避免 subscribe 包直接依赖 app 包
+            routerFactory := func(service string) selector.NodeFilter {
+                return Lynx().GetControlPlane().NewNodeRouter(service)
+            }
+            conns, err := subscribe.BuildGrpcSubscriptions(Lynx().bootConfig.Lynx.Subscriptions, disc, routerFactory)
+            if err != nil {
+                return fmt.Errorf("build grpc subscriptions failed: %w", err)
+            }
+            Lynx().grpcSubs = conns
+        } else {
+            log.Warnf("service discovery is nil, skip building grpc subscriptions")
+        }
+    }
 
 	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"github.com/go-kratos/kratos/v2/config"
-	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/tls/conf"
 )
 
@@ -22,18 +21,17 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 
 	// 检查是否指定了根 CA 证书的名称
 	if g.caName != "" {
-		// Obtain the root certificate of the remote file
-		// 检查应用的控制平面是否可用，如果不可用则返回 nil
-		if app.Lynx().GetControlPlane() == nil {
-			return nil
+		// 需要由上层注入 configProvider
+		if g.configProvider == nil {
+			panic("tls: configProvider is nil while caName is set")
 		}
 		// if group is empty, use the name as the group name.
 		// 如果未指定根 CA 证书文件所属的组，则使用根 CA 证书的名称作为组名
 		if g.caGroup == "" {
 			g.caGroup = g.caName
 		}
-		// 从控制平面获取配置信息
-		s, err := app.Lynx().GetControlPlane().GetConfig(g.caName, g.caGroup)
+		// 通过注入的 provider 获取配置信息
+		s, err := g.configProvider(g.caName, g.caGroup)
 		if err != nil {
 			// 若获取配置信息失败，则触发 panic
 			panic(err)
@@ -58,8 +56,11 @@ func (g *GrpcSubscribe) tlsLoad() *tls.Config {
 		rootCA = []byte(t.GetRootCA())
 	} else {
 		// Use the root certificate of the current application directly
-		// 若未指定根 CA 证书的名称，则直接使用当前应用的根证书
-		rootCA = app.Lynx().Certificate().GetRootCACertificate()
+		// 若未指定根 CA 证书的名称，则通过注入的 defaultRootCA 获取
+		if g.defaultRootCA == nil {
+			panic("tls: defaultRootCA provider is nil while caName is empty")
+		}
+		rootCA = g.defaultRootCA()
 	}
 	// 将根证书添加到证书池中，如果添加失败则触发 panic
 	if !certPool.AppendCertsFromPEM(rootCA) {

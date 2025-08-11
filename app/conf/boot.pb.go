@@ -67,18 +67,148 @@ func (x *Bootstrap) GetLynx() *Lynx {
 	return nil
 }
 
+// Subscriptions 定义应用需要订阅的服务列表
+type Subscriptions struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// grpc 定义需要订阅的 gRPC 服务列表
+	Grpc          []*GrpcSubscription `protobuf:"bytes,1,rep,name=grpc,proto3" json:"grpc,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Subscriptions) Reset() {
+	*x = Subscriptions{}
+	mi := &file_boot_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Subscriptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Subscriptions) ProtoMessage() {}
+
+func (x *Subscriptions) ProtoReflect() protoreflect.Message {
+	mi := &file_boot_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Subscriptions.ProtoReflect.Descriptor instead.
+func (*Subscriptions) Descriptor() ([]byte, []int) {
+	return file_boot_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Subscriptions) GetGrpc() []*GrpcSubscription {
+	if x != nil {
+		return x.Grpc
+	}
+	return nil
+}
+
+// GrpcSubscription 描述一个要订阅的 gRPC 服务
+type GrpcSubscription struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// service 要订阅的服务名（服务发现中的注册名）
+	Service string `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	// required 是否为强依赖，上线前/启动时需要校验可用性
+	Required bool `protobuf:"varint,2,opt,name=required,proto3" json:"required,omitempty"`
+	// tls 是否启用 TLS
+	Tls bool `protobuf:"varint,3,opt,name=tls,proto3" json:"tls,omitempty"`
+	// ca_name 根 CA 证书文件名
+	CaName string `protobuf:"bytes,4,opt,name=ca_name,json=caName,proto3" json:"ca_name,omitempty"`
+	// ca_group 根 CA 证书文件所在文件组
+	CaGroup       string `protobuf:"bytes,5,opt,name=ca_group,json=caGroup,proto3" json:"ca_group,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GrpcSubscription) Reset() {
+	*x = GrpcSubscription{}
+	mi := &file_boot_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrpcSubscription) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrpcSubscription) ProtoMessage() {}
+
+func (x *GrpcSubscription) ProtoReflect() protoreflect.Message {
+	mi := &file_boot_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrpcSubscription.ProtoReflect.Descriptor instead.
+func (*GrpcSubscription) Descriptor() ([]byte, []int) {
+	return file_boot_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GrpcSubscription) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *GrpcSubscription) GetRequired() bool {
+	if x != nil {
+		return x.Required
+	}
+	return false
+}
+
+func (x *GrpcSubscription) GetTls() bool {
+	if x != nil {
+		return x.Tls
+	}
+	return false
+}
+
+func (x *GrpcSubscription) GetCaName() string {
+	if x != nil {
+		return x.CaName
+	}
+	return ""
+}
+
+func (x *GrpcSubscription) GetCaGroup() string {
+	if x != nil {
+		return x.CaGroup
+	}
+	return ""
+}
+
 // Lynx 消息封装了 Lynx 框架的应用程序配置。
 type Lynx struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// application 字段包含应用程序自身的配置信息。
-	Application   *Application `protobuf:"bytes,1,opt,name=application,proto3" json:"application,omitempty"`
+	Application *Application `protobuf:"bytes,1,opt,name=application,proto3" json:"application,omitempty"`
+	// subscriptions 字段定义 Lynx 在启动时需要订阅的上游服务
+	Subscriptions *Subscriptions `protobuf:"bytes,2,opt,name=subscriptions,proto3" json:"subscriptions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Lynx) Reset() {
 	*x = Lynx{}
-	mi := &file_boot_proto_msgTypes[1]
+	mi := &file_boot_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -90,7 +220,7 @@ func (x *Lynx) String() string {
 func (*Lynx) ProtoMessage() {}
 
 func (x *Lynx) ProtoReflect() protoreflect.Message {
-	mi := &file_boot_proto_msgTypes[1]
+	mi := &file_boot_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -103,12 +233,19 @@ func (x *Lynx) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Lynx.ProtoReflect.Descriptor instead.
 func (*Lynx) Descriptor() ([]byte, []int) {
-	return file_boot_proto_rawDescGZIP(), []int{1}
+	return file_boot_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Lynx) GetApplication() *Application {
 	if x != nil {
 		return x.Application
+	}
+	return nil
+}
+
+func (x *Lynx) GetSubscriptions() *Subscriptions {
+	if x != nil {
+		return x.Subscriptions
 	}
 	return nil
 }
@@ -128,7 +265,7 @@ type Application struct {
 
 func (x *Application) Reset() {
 	*x = Application{}
-	mi := &file_boot_proto_msgTypes[2]
+	mi := &file_boot_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -140,7 +277,7 @@ func (x *Application) String() string {
 func (*Application) ProtoMessage() {}
 
 func (x *Application) ProtoReflect() protoreflect.Message {
-	mi := &file_boot_proto_msgTypes[2]
+	mi := &file_boot_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -153,7 +290,7 @@ func (x *Application) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Application.ProtoReflect.Descriptor instead.
 func (*Application) Descriptor() ([]byte, []int) {
-	return file_boot_proto_rawDescGZIP(), []int{2}
+	return file_boot_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Application) GetName() string {
@@ -185,8 +322,17 @@ const file_boot_proto_rawDesc = "" +
 	"boot.proto\x12\x16lynx.protobuf.app.conf\"=\n" +
 	"\tBootstrap\x120\n" +
 	"\x04lynx\x18\x01 \x01(\v2\x1c.lynx.protobuf.app.conf.LynxR\x04lynx\"M\n" +
+	"\rSubscriptions\x12<\n" +
+	"\x04grpc\x18\x01 \x03(\v2(.lynx.protobuf.app.conf.GrpcSubscriptionR\x04grpc\"\x8e\x01\n" +
+	"\x10GrpcSubscription\x12\x18\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\x12\x1a\n" +
+	"\brequired\x18\x02 \x01(\bR\brequired\x12\x10\n" +
+	"\x03tls\x18\x03 \x01(\bR\x03tls\x12\x17\n" +
+	"\aca_name\x18\x04 \x01(\tR\x06caName\x12\x19\n" +
+	"\bca_group\x18\x05 \x01(\tR\acaGroup\"\x9a\x01\n" +
 	"\x04Lynx\x12E\n" +
-	"\vapplication\x18\x01 \x01(\v2#.lynx.protobuf.app.conf.ApplicationR\vapplication\"^\n" +
+	"\vapplication\x18\x01 \x01(\v2#.lynx.protobuf.app.conf.ApplicationR\vapplication\x12K\n" +
+	"\rsubscriptions\x18\x02 \x01(\v2%.lynx.protobuf.app.conf.SubscriptionsR\rsubscriptions\"^\n" +
 	"\vApplication\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12!\n" +
@@ -204,20 +350,24 @@ func file_boot_proto_rawDescGZIP() []byte {
 	return file_boot_proto_rawDescData
 }
 
-var file_boot_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_boot_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_boot_proto_goTypes = []any{
-	(*Bootstrap)(nil),   // 0: lynx.protobuf.app.conf.Bootstrap
-	(*Lynx)(nil),        // 1: lynx.protobuf.app.conf.Lynx
-	(*Application)(nil), // 2: lynx.protobuf.app.conf.Application
+	(*Bootstrap)(nil),        // 0: lynx.protobuf.app.conf.Bootstrap
+	(*Subscriptions)(nil),    // 1: lynx.protobuf.app.conf.Subscriptions
+	(*GrpcSubscription)(nil), // 2: lynx.protobuf.app.conf.GrpcSubscription
+	(*Lynx)(nil),             // 3: lynx.protobuf.app.conf.Lynx
+	(*Application)(nil),      // 4: lynx.protobuf.app.conf.Application
 }
 var file_boot_proto_depIdxs = []int32{
-	1, // 0: lynx.protobuf.app.conf.Bootstrap.lynx:type_name -> lynx.protobuf.app.conf.Lynx
-	2, // 1: lynx.protobuf.app.conf.Lynx.application:type_name -> lynx.protobuf.app.conf.Application
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 0: lynx.protobuf.app.conf.Bootstrap.lynx:type_name -> lynx.protobuf.app.conf.Lynx
+	2, // 1: lynx.protobuf.app.conf.Subscriptions.grpc:type_name -> lynx.protobuf.app.conf.GrpcSubscription
+	4, // 2: lynx.protobuf.app.conf.Lynx.application:type_name -> lynx.protobuf.app.conf.Application
+	1, // 3: lynx.protobuf.app.conf.Lynx.subscriptions:type_name -> lynx.protobuf.app.conf.Subscriptions
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_boot_proto_init() }
@@ -231,7 +381,7 @@ func file_boot_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_boot_proto_rawDesc), len(file_boot_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
