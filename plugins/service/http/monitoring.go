@@ -77,7 +77,7 @@ func (h *ServiceHttp) initMetrics() {
 		[]string{"status"},
 	)
 
-	// 注册指标
+	// 注册指标（默认注册表）
 	prometheus.MustRegister(
 		h.requestCounter,
 		h.requestDuration,
