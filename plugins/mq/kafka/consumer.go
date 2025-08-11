@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/plugins/mq/kafka/conf"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -51,61 +52,73 @@ type RebalanceEvent struct {
 	Revoked  map[string][]int32
 }
 
-// NewConsumerGroup 创建新的消费者组
-func (k *Client) NewConsumerGroup(groupID string, topics []string, handler MessageHandler) *ConsumerGroup {
+// NewConsumerGroup 创建新的消费者组（按实例配置）
+func (k *Client) NewConsumerGroup(client *kgo.Client, c *conf.Consumer, topics []string, handler MessageHandler) *ConsumerGroup {
 	ctx, cancel := context.WithCancel(k.ctx)
+	maxConc := 10
+	if c != nil && c.MaxConcurrency > 0 {
+		maxConc = int(c.MaxConcurrency)
+	}
+	autoCommit := false
+	if c != nil {
+		autoCommit = c.AutoCommit
+	}
 	return &ConsumerGroup{
-		client:        k.consumer,
-		groupID:       groupID,
+		client:        client,
+		groupID:       c.GetGroupId(),
 		topics:        topics,
 		handler:       handler,
-		pool:          NewGoroutinePool(int(k.conf.Consumer.MaxConcurrency)),
+		pool:          NewGoroutinePool(maxConc),
 		metrics:       k.metrics,
 		ctx:           ctx,
 		cancel:        cancel,
 		errorChan:     make(chan error, 100),
 		rebalanceChan: make(chan RebalanceEvent, 16),
-		autoCommit:    k.conf.Consumer.AutoCommit,
+		autoCommit:    autoCommit,
 		partChans:     make(map[string]chan []*kgo.Record),
 	}
 }
 
-// initConsumer 初始化消费者
-func (k *Client) initConsumer() error {
-	if k.consumer != nil {
-		return nil
+// initConsumerInstance 初始化指定名称的消费者实例
+func (k *Client) initConsumerInstance(name string, cconf *conf.Consumer) (*kgo.Client, error) {
+	if cconf == nil {
+		return nil, fmt.Errorf("consumer config is nil for %s", name)
 	}
 
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(k.conf.Brokers...),
-		kgo.ConsumerGroup(k.conf.Consumer.GroupId),
-		kgo.ConsumeResetOffset(k.getStartOffset()),
+		kgo.ConsumerGroup(cconf.GroupId),
+		kgo.ConsumeResetOffset(k.getStartOffset(cconf)),
 		kgo.DialTimeout(k.conf.DialTimeout.AsDuration()),
-		kgo.RebalanceTimeout(k.conf.Consumer.RebalanceTimeout.AsDuration()),
+	}
+	if cconf.RebalanceTimeout != nil && cconf.RebalanceTimeout.AsDuration() > 0 {
+		opts = append(opts, kgo.RebalanceTimeout(cconf.RebalanceTimeout.AsDuration()))
 	}
 
-	// 根据配置启用自动提交相关选项；手动提交模式下不启用 AutoCommitMarks
-	if k.conf.Consumer.AutoCommit {
+	if cconf.AutoCommit {
 		opts = append(opts,
-			kgo.AutoCommitInterval(k.conf.Consumer.AutoCommitInterval.AsDuration()),
+			kgo.AutoCommitInterval(cconf.AutoCommitInterval.AsDuration()),
 			kgo.AutoCommitMarks(),
 		)
 	}
 
-	// 基础的重平衡回调：仅发送事件到当前活跃的 ConsumerGroup，由 handleRebalances 统一处理
+	// 重平衡事件分派到对应实例的活跃组
 	opts = append(opts,
 		kgo.OnPartitionsAssigned(func(ctx context.Context, c *kgo.Client, assigned map[string][]int32) {
-			var cg *ConsumerGroup
-			if k != nil {
-				k.mu.RLock()
-				cg = k.activeConsumerGroup
-				k.mu.RUnlock()
+			var target *ConsumerGroup
+			k.mu.RLock()
+			// 通过客户端指针反查实例名
+			for in, cli := range k.consumers {
+				if cli == c {
+					target = k.activeGroups[in]
+					break
+				}
 			}
-			if cg != nil {
+			k.mu.RUnlock()
+			if target != nil {
 				select {
-				case <-cg.ctx.Done():
-					// 组已关闭，忽略
-				case cg.rebalanceChan <- RebalanceEvent{Assigned: assigned}:
+				case <-target.ctx.Done():
+				case target.rebalanceChan <- RebalanceEvent{Assigned: assigned}:
 				default:
 					log.WarnfCtx(ctx, "rebalance channel full, dropping assigned event")
 				}
@@ -114,17 +127,19 @@ func (k *Client) initConsumer() error {
 			}
 		}),
 		kgo.OnPartitionsRevoked(func(ctx context.Context, c *kgo.Client, revoked map[string][]int32) {
-			var cg *ConsumerGroup
-			if k != nil {
-				k.mu.RLock()
-				cg = k.activeConsumerGroup
-				k.mu.RUnlock()
+			var target *ConsumerGroup
+			k.mu.RLock()
+			for in, cli := range k.consumers {
+				if cli == c {
+					target = k.activeGroups[in]
+					break
+				}
 			}
-			if cg != nil {
+			k.mu.RUnlock()
+			if target != nil {
 				select {
-				case <-cg.ctx.Done():
-					// 组已关闭，忽略
-				case cg.rebalanceChan <- RebalanceEvent{Revoked: revoked}:
+				case <-target.ctx.Done():
+				case target.rebalanceChan <- RebalanceEvent{Revoked: revoked}:
 				default:
 					log.WarnfCtx(ctx, "rebalance channel full, dropping revoked event")
 				}
@@ -134,83 +149,117 @@ func (k *Client) initConsumer() error {
 		}),
 	)
 
-	if k.conf.Tls {
-		opts = append(opts, kgo.DialTLS())
+	if k.conf.Tls != nil && k.conf.Tls.Enabled {
+		tlsCfg, err := buildTLSConfig(k.conf.Tls)
+		if err != nil {
+			return nil, fmt.Errorf("buildTLSConfig failed: %w", err)
+		}
+		opts = append(opts, kgo.DialTLSConfig(tlsCfg))
 	}
-
 	if saslMech := k.getSASLMechanism(); saslMech != nil {
 		opts = append(opts, kgo.SASL(saslMech))
 	}
 
 	consumer, err := kgo.NewClient(opts...)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
-
-	k.consumer = consumer
-	return nil
+	return consumer, nil
 }
 
-// getStartOffset 获取起始偏移量
-func (k *Client) getStartOffset() kgo.Offset {
-	switch k.conf.Consumer.StartOffset {
+// getStartOffset 获取起始偏移量（按实例配置）
+func (k *Client) getStartOffset(c *conf.Consumer) kgo.Offset {
+	if c == nil {
+		return kgo.NewOffset().AtEnd()
+	}
+	switch c.StartOffset {
 	case StartOffsetEarliest:
 		return kgo.NewOffset().AtStart()
 	case StartOffsetLatest:
-		return kgo.NewOffset().AtEnd()
+		fallthrough
 	default:
 		return kgo.NewOffset().AtEnd()
 	}
 }
 
-// Subscribe 订阅主题
+// Subscribe 订阅主题（路由到第一个启用的消费者实例）
 func (k *Client) Subscribe(ctx context.Context, topics []string, handler MessageHandler) error {
-	if k.consumer == nil {
-		if err := k.initConsumer(); err != nil {
-			return fmt.Errorf("failed to initialize consumer: %w", err)
-		}
-	}
-
-	// 单组约束：若已有活跃消费者组且尚未结束，则拒绝新的订阅
-	k.mu.RLock()
-	if existing := k.activeConsumerGroup; existing != nil {
-		select {
-		case <-existing.ctx.Done():
-			// 旧组已结束，允许继续
-		default:
-			k.mu.RUnlock()
-			return fmt.Errorf("a consumer group is already active; stop it before subscribing a new one")
-		}
-	}
-	k.mu.RUnlock()
-
 	if len(topics) == 0 {
-		return ErrNoTopicsSpecified
+		return fmt.Errorf("no topics provided")
+	}
+	// 选择第一个启用的消费者作为默认
+	var chosen *conf.Consumer
+	var name string
+	for _, c := range k.conf.Consumers {
+		if c != nil && c.Enabled {
+			chosen = c
+			name = c.GetName()
+			break
+		}
+	}
+	if chosen == nil {
+		return fmt.Errorf("no enabled consumer configured")
+	}
+	return k.SubscribeWith(ctx, name, topics, handler)
+}
+
+// SubscribeWith 按消费者实例名订阅
+func (k *Client) SubscribeWith(ctx context.Context, consumerName string, topics []string, handler MessageHandler) error {
+	if len(topics) == 0 {
+		return fmt.Errorf("no topics provided")
+	}
+	// 找到对应配置
+	var cconf *conf.Consumer
+	for _, c := range k.conf.Consumers {
+		if c != nil && c.Enabled && c.GetName() == consumerName {
+			cconf = c
+			break
+		}
+	}
+	if cconf == nil {
+		return fmt.Errorf("consumer instance %s not found or disabled", consumerName)
 	}
 
-	consumerGroup := k.NewConsumerGroup(k.conf.Consumer.GroupId, topics, handler)
-	// 设置当前活跃的 ConsumerGroup，用于 rebalance 回调路由（Plan B）
-	k.mu.Lock()
-	k.activeConsumerGroup = consumerGroup
-	k.mu.Unlock()
-
-	// 启动消费者组
-	go func() {
-		if err := consumerGroup.Start(); err != nil {
-			if err == context.Canceled {
-				log.InfofCtx(ctx, "Consumer group stopped: %v", err)
-			} else {
-				log.ErrorfCtx(ctx, "Consumer group failed: %v", err)
-			}
+	// 获取或初始化客户端
+	k.mu.RLock()
+	consumer := k.consumers[consumerName]
+	k.mu.RUnlock()
+	if consumer == nil {
+		cli, err := k.initConsumerInstance(consumerName, cconf)
+		if err != nil {
+			return err
 		}
-		// 清理活跃组引用（仅当仍指向本组）
 		k.mu.Lock()
-		if k.activeConsumerGroup == consumerGroup {
-			k.activeConsumerGroup = nil
+		k.consumers[consumerName] = cli
+		consumer = cli
+		// 启动消费者连接管理器
+		if _, ok := k.consConnMgrs[consumerName]; !ok {
+			cm := NewConnectionManager(cli, k.conf.GetBrokers())
+			k.consConnMgrs[consumerName] = cm
+			cm.Start()
+			log.Infof("Kafka consumer[%s] connection manager started", consumerName)
 		}
 		k.mu.Unlock()
-	}()
+	}
 
+	// 若已有活跃组，先停止该实例对应的旧组
+	k.mu.Lock()
+	if old := k.activeGroups[consumerName]; old != nil {
+		old.Stop()
+		delete(k.activeGroups, consumerName)
+	}
+	cg := k.NewConsumerGroup(consumer, cconf, topics, handler)
+	k.activeGroups[consumerName] = cg
+	// 兼容旧字段：若 legacy 未设置，则设置为当前实例
+	if k.consumer == nil {
+		k.consumer = consumer
+		k.activeConsumerGroup = cg
+	}
+	k.mu.Unlock()
+
+	if err := cg.Start(); err != nil {
+		return fmt.Errorf("consumer group start failed: %w", err)
+	}
 	return nil
 }
 
@@ -444,12 +493,29 @@ func (cg *ConsumerGroup) IsRunning() bool {
 func (k *Client) GetConsumer() *kgo.Client {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
-	return k.consumer
+	if k.consumer != nil {
+		return k.consumer
+	}
+	// 回退：返回任一已初始化消费者
+	for _, c := range k.consumers {
+		if c != nil {
+			return c
+		}
+	}
+	return nil
 }
 
 // IsConsumerReady 检查消费者是否就绪
 func (k *Client) IsConsumerReady() bool {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
-	return k.consumer != nil
+	if k.consumer != nil {
+		return true
+	}
+	for _, c := range k.consumers {
+		if c != nil {
+			return true
+		}
+	}
+	return false
 }

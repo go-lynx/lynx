@@ -6,61 +6,99 @@ import (
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/plugins/mq/kafka/conf"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// initProducer 初始化生产者
-func (k *Client) initProducer() error {
-	if k.producer != nil {
-		return nil
+// initProducerInstance 初始化指定名称的生产者实例
+func (k *Client) initProducerInstance(name string, p *conf.Producer) (*kgo.Client, error) {
+	if p == nil {
+		return nil, fmt.Errorf("producer config is nil for %s", name)
+	}
+
+	// 将 linger 与配置联动：若配置了 BatchTimeout 则用作 linger，以便更好批处理
+	linger := 5 * time.Millisecond
+	if d := p.BatchTimeout.AsDuration(); d > 0 {
+		linger = d
 	}
 
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(k.conf.Brokers...),
-		// 默认采用较小的 linger，允许 franz-go 进行轻量批处理；重试策略统一交给外层 RetryHandler
-		kgo.ProducerLinger(5 * time.Millisecond),
+		kgo.ProducerLinger(linger),
 		kgo.DialTimeout(k.conf.DialTimeout.AsDuration()),
 	}
 
-	if k.conf.Tls {
-		opts = append(opts, kgo.DialTLS())
+	// TLS 对象配置
+	if k.conf.Tls != nil && k.conf.Tls.Enabled {
+		tlsCfg, err := buildTLSConfig(k.conf.Tls)
+		if err != nil {
+			return nil, fmt.Errorf("buildTLSConfig failed: %w", err)
+		}
+		opts = append(opts, kgo.DialTLSConfig(tlsCfg))
 	}
 
 	if saslMech := k.getSASLMechanism(); saslMech != nil {
 		opts = append(opts, kgo.SASL(saslMech))
 	}
 
-	if comp := k.getCompression(); comp != kgo.NoCompression() {
+	if comp := k.getCompression(p); comp != kgo.NoCompression() {
 		opts = append(opts, kgo.ProducerBatchCompression(comp))
 	}
 
-	// 映射 RequiredAcks：true 等待所有 ISR；false 仅等待 leader
-	if k.conf.Producer != nil {
-		if k.conf.Producer.RequiredAcks {
-			opts = append(opts, kgo.RequiredAcks(kgo.AllISRAcks()))
-		} else {
-			opts = append(opts, kgo.RequiredAcks(kgo.LeaderAck()))
-		}
+	// RequiredAcks 数值映射：-1=AllISRAcks，1=LeaderAck（默认），0=NoAck
+	switch p.RequiredAcks {
+	case -1:
+		opts = append(opts, kgo.RequiredAcks(kgo.AllISRAcks()))
+	case 0:
+		opts = append(opts, kgo.RequiredAcks(kgo.NoAck()))
+	case 1:
+		fallthrough
+	default:
+		opts = append(opts, kgo.RequiredAcks(kgo.LeaderAck()))
 	}
 
 	producer, err := kgo.NewClient(opts...)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
-
-	k.producer = producer
-	return nil
+	return producer, nil
 }
 
 // Produce 发送消息到指定主题
 func (k *Client) Produce(ctx context.Context, topic string, key, value []byte) error {
+	// 路由到默认生产者
+	k.mu.RLock()
+	name := k.defaultProducer
+	k.mu.RUnlock()
+	if name == "" {
+		return ErrProducerNotInitialized
+	}
+	return k.ProduceWith(ctx, name, topic, key, value)
+}
+
+// ProduceWith 按生产者实例名发送
+func (k *Client) ProduceWith(ctx context.Context, producerName, topic string, key, value []byte) error {
 	// 验证参数
 	if err := k.validateTopic(topic); err != nil {
 		return fmt.Errorf("invalid topic %s: %w", topic, err)
 	}
 
+	// 若启用了异步批处理器，则优先入队，由后台统一批量发送与计量
 	k.mu.RLock()
-	producer := k.producer
+	bp := k.batchProcessors[producerName]
+	k.mu.RUnlock()
+	if bp != nil {
+		record := &kgo.Record{Topic: topic, Key: key, Value: value}
+		if err := bp.AddRecord(ctx, record); err != nil {
+			// 入队失败则回退到同步发送路径
+			log.WarnfCtx(ctx, "Batch enqueue failed, fallback to sync produce: %v", err)
+		} else {
+			return nil
+		}
+	}
+
+	k.mu.RLock()
+	producer := k.producers[producerName]
 	k.mu.RUnlock()
 
 	if producer == nil {
@@ -94,8 +132,20 @@ func (k *Client) Produce(ctx context.Context, topic string, key, value []byte) e
 
 // ProduceBatch 批量发送消息
 func (k *Client) ProduceBatch(ctx context.Context, topic string, records []*kgo.Record) error {
+	// 路由到默认生产者
 	k.mu.RLock()
-	producer := k.producer
+	name := k.defaultProducer
+	k.mu.RUnlock()
+	if name == "" {
+		return ErrProducerNotInitialized
+	}
+	return k.ProduceBatchWith(ctx, name, topic, records)
+}
+
+// ProduceBatchWith 按生产者实例名批量发送
+func (k *Client) ProduceBatchWith(ctx context.Context, producerName string, topic string, records []*kgo.Record) error {
+	k.mu.RLock()
+	producer := k.producers[producerName]
 	k.mu.RUnlock()
 
 	if producer == nil {
@@ -138,7 +188,25 @@ func (k *Client) ProduceBatch(ctx context.Context, topic string, records []*kgo.
 
 	if err != nil {
 		k.metrics.IncrementProducerErrors()
-		log.ErrorfCtx(ctx, "Failed to produce batch messages to topic %s: %v", topic, err)
+		// 当传入 topic 为空时，统计本批实际涉及的 topic 以便排障
+		if topic == "" {
+			topicSet := make(map[string]struct{})
+			for _, r := range nonNil {
+				topicSet[r.Topic] = struct{}{}
+			}
+			// 构造稳定的 topic 列表展示（最多展示前 5 个）
+			topics := make([]string, 0, len(topicSet))
+			for tp := range topicSet {
+				topics = append(topics, tp)
+			}
+			if len(topics) > 5 {
+				topics = topics[:5]
+				topics = append(topics, "...")
+			}
+			log.ErrorfCtx(ctx, "Failed to produce batch messages to topics %v: %v", topics, err)
+		} else {
+			log.ErrorfCtx(ctx, "Failed to produce batch messages to topic %s: %v", topic, err)
+		}
 		return fmt.Errorf("failed to produce batch messages: %w", err)
 	}
 
@@ -154,9 +222,12 @@ func (k *Client) ProduceBatch(ctx context.Context, topic string, records []*kgo.
 	return nil
 }
 
-// getCompression 获取压缩算法
-func (k *Client) getCompression() kgo.CompressionCodec {
-	switch k.conf.Producer.Compression {
+// getCompression 获取压缩算法（基于实例配置）
+func (k *Client) getCompression(p *conf.Producer) kgo.CompressionCodec {
+	if p == nil {
+		return kgo.SnappyCompression()
+	}
+	switch p.Compression {
 	case CompressionGzip:
 		return kgo.GzipCompression()
 	case CompressionSnappy:
@@ -172,16 +243,22 @@ func (k *Client) getCompression() kgo.CompressionCodec {
 	}
 }
 
-// GetProducer 获取生产者客户端（用于高级操作）
+// GetProducer 获取默认生产者客户端
 func (k *Client) GetProducer() *kgo.Client {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
-	return k.producer
+	if k.defaultProducer == "" {
+		return nil
+	}
+	return k.producers[k.defaultProducer]
 }
 
-// IsProducerReady 检查生产者是否就绪
+// IsProducerReady 检查默认生产者是否就绪
 func (k *Client) IsProducerReady() bool {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
-	return k.producer != nil
+	if k.defaultProducer == "" {
+		return false
+	}
+	return k.producers[k.defaultProducer] != nil
 }
