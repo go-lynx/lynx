@@ -2,6 +2,7 @@ package tls
 
 import (
 	_ "database/sql"
+
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"

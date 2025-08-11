@@ -1,11 +1,9 @@
 package metrics
 
 import (
-	"net/http"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // HealthProvider 抽象各插件健康数据的提供方
@@ -23,19 +21,6 @@ var (
 	// 额外的聚合源（用于接入无法直接依赖本包的第三方/子模块注册表）
 	extraGatherers []prometheus.Gatherer
 )
-
-// Handler 返回统一 /metrics 的 HTTP 处理器
-func Handler() http.Handler {
-	// 聚合本包 registry + 默认全局（多数插件直接使用 prometheus.MustRegister）+ 可选额外 gatherers
-	g := prometheus.Gatherers{registry, prometheus.DefaultGatherer}
-	if len(extraGatherers) > 0 {
-		g = append(g, extraGatherers...)
-	}
-	return promhttp.HandlerFor(g, promhttp.HandlerOpts{
-		EnableOpenMetrics:  true,
-		DisableCompression: false,
-	})
-}
 
 // RegisterGatherer 允许在不引入该包的插件/模块，通过上层装配时注入其私有注册表
 // 例如：某些插件内部维护了独立的 *prometheus.Registry
