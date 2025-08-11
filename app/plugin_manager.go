@@ -136,16 +136,16 @@ func (m *DefaultPluginManager) LoadPlugins(conf config.Config) error {
 	m.SetConfig(conf)
 
 	// 准备插件配置
-	plugins, err := m.PreparePlug(conf)
+	preparedPlugins, err := m.PreparePlug(conf)
 	if err != nil {
 		return fmt.Errorf("failed to prepare plugins: %w", err)
 	}
-	if len(plugins) == 0 {
+	if len(preparedPlugins) == 0 {
 		return fmt.Errorf("no plugins prepared")
 	}
 
 	// 按依赖关系排序插件
-	sortedPlugins, err := m.TopologicalSort(plugins)
+	sortedPlugins, err := m.TopologicalSort(preparedPlugins)
 	if err != nil {
 		return fmt.Errorf("failed to sort plugins: %w", err)
 	}
@@ -198,7 +198,7 @@ func (m *DefaultPluginManager) LoadPluginsByName(conf config.Config, pluginNames
 	m.SetConfig(conf)
 
 	// 准备插件配置
-	plugins, err := m.PreparePlug(conf)
+	preparedPlugins, err := m.PreparePlug(conf)
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (m *DefaultPluginManager) LoadPluginsByName(conf config.Config, pluginNames
 	// 过滤指定名称的插件
 	var targetPlugins []plugins.Plugin
 	pluginMap := make(map[string]plugins.Plugin)
-	for _, plugin := range plugins {
+	for _, plugin := range preparedPlugins {
 		pluginMap[plugin.ID()] = plugin
 	}
 
