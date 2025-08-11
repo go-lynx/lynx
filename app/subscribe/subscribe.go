@@ -4,7 +4,9 @@ import (
 	"context"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/registry"
+	"github.com/go-kratos/kratos/v2/selector"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/app/log"
 	gGrpc "google.golang.org/grpc"
@@ -19,6 +21,12 @@ type GrpcSubscribe struct {
 	caName    string             // 根 CA 证书的文件名
 	caGroup   string             // 根 CA 证书文件所属的组
 	required  bool               // 是否强依赖的上游服务，启动时会做检查
+	// 可选：节点路由器工厂，由上层注入，避免直接依赖 app 包
+	routerFactory func(service string) selector.NodeFilter
+	// 可选：配置源提供者，由上层注入，用于按 name/group 获取配置源
+	configProvider func(name, group string) (config.Source, error)
+	// 可选：默认 RootCA 提供者，由上层注入，用于直接获得应用 RootCA
+	defaultRootCA func() []byte
 }
 
 // Option 定义一个函数类型，用于配置 GrpcSubscribe 实例。
@@ -63,6 +71,27 @@ func WithRootCAFileGroup(caGroup string) Option {
 func Required() Option {
 	return func(o *GrpcSubscribe) {
 		o.required = true
+	}
+}
+
+// WithNodeRouterFactory 注入节点路由器工厂（可选）
+func WithNodeRouterFactory(f func(string) selector.NodeFilter) Option {
+	return func(o *GrpcSubscribe) {
+		o.routerFactory = f
+	}
+}
+
+// WithConfigProvider 注入配置源提供者（name, group) -> config.Source
+func WithConfigProvider(f func(name, group string) (config.Source, error)) Option {
+	return func(o *GrpcSubscribe) {
+		o.configProvider = f
+	}
+}
+
+// WithDefaultRootCA 注入默认 RootCA 提供者
+func WithDefaultRootCA(f func() []byte) Option {
+	return func(o *GrpcSubscribe) {
+		o.defaultRootCA = f
 	}
 }
 
@@ -111,4 +140,12 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 		panic(err)
 	}
 	return conn
+}
+
+// 内部：基于注入的工厂创建节点过滤器
+func (g *GrpcSubscribe) nodeFilter() selector.NodeFilter {
+	if g.routerFactory == nil {
+		return nil
+	}
+	return g.routerFactory(g.svcName)
 }

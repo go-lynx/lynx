@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/plugins"
+	"google.golang.org/grpc"
 )
 
 // lynxApp 是 Lynx 应用程序的单例实例。
@@ -79,6 +80,9 @@ type LynxApp struct {
 	// typedPluginManager 处理类型安全的插件生命周期和依赖关系。
 	// 提供支持泛型的类型安全插件管理。
 	typedPluginManager TypedPluginManager
+
+	// grpcSubs 保存通过配置订阅的上游 gRPC 连接，key 为服务名
+	grpcSubs map[string]*grpc.ClientConn
 }
 
 // Lynx returns the global LynxApp instance.
@@ -201,6 +205,7 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 		pluginManager:      NewLynxPluginManager(plugins...),
 		typedPluginManager: NewTypedPluginManager(plugins...),
 		controlPlane:       &DefaultControlPlane{},
+		grpcSubs:           make(map[string]*grpc.ClientConn),
 	}
 
 	// Validate required fields

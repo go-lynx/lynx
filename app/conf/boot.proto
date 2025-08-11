@@ -10,10 +10,32 @@ message Bootstrap {
   Lynx lynx = 1;
 }
 
+// Subscriptions 定义应用需要订阅的服务列表
+message Subscriptions {
+  // grpc 定义需要订阅的 gRPC 服务列表
+  repeated GrpcSubscription grpc = 1;
+}
+
+// GrpcSubscription 描述一个要订阅的 gRPC 服务
+message GrpcSubscription {
+  // service 要订阅的服务名（服务发现中的注册名）
+  string service = 1;
+  // required 是否为强依赖，上线前/启动时需要校验可用性
+  bool required = 2;
+  // tls 是否启用 TLS
+  bool tls = 3;
+  // ca_name 根 CA 证书文件名
+  string ca_name = 4;
+  // ca_group 根 CA 证书文件所在文件组
+  string ca_group = 5;
+}
+
 // Lynx 消息封装了 Lynx 框架的应用程序配置。
 message Lynx {
   // application 字段包含应用程序自身的配置信息。
   Application application = 1;
+  // subscriptions 字段定义 Lynx 在启动时需要订阅的上游服务
+  Subscriptions subscriptions = 2;
 }
 
 // Application 消息包含应用程序的基本配置信息。
