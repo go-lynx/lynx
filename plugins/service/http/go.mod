@@ -13,6 +13,8 @@ require (
 	google.golang.org/protobuf v1.36.6
 )
 
+replace github.com/go-lynx/lynx => ../../..
+
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.5-20250307204501-0409229c3780.1 // indirect
 	cel.dev/expr v0.22.0 // indirect

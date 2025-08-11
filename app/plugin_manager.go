@@ -67,7 +67,7 @@ func NewPluginManager(pluginList ...plugins.Plugin) PluginManager {
 	manager := &DefaultPluginManager{
 		pluginList: make([]plugins.Plugin, 0),
 		factory:    factory.GlobalTypedPluginFactory(),
-		runtime:    plugins.NewTypedRuntime(),
+		runtime:    plugins.NewSimpleRuntime(),
 	}
 
 	// 注册初始插件 - 修复并发安全问题
@@ -89,9 +89,9 @@ func NewPluginManager(pluginList ...plugins.Plugin) PluginManager {
 // SetConfig 设置全局配置
 func (m *DefaultPluginManager) SetConfig(conf config.Config) {
 	m.config = conf
-	// 更新 runtime 的配置
-	if typedRuntime, ok := m.runtime.(*plugins.TypedRuntimeImpl); ok {
-		typedRuntime.SetConfig(conf)
+	// 更新 runtime 的配置（通过接口调用，兼容 simpleRuntime/typedRuntime）
+	if m.runtime != nil {
+		m.runtime.SetConfig(conf)
 	}
 }
 

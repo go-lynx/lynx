@@ -14,8 +14,8 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/db/pgsql/conf"
-	"google.golang.org/protobuf/types/known/durationpb"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Plugin metadata
@@ -251,12 +251,14 @@ func (p *DBPgsqlClient) initPrometheusMetrics() {
 
 	// 创建 Prometheus 指标
 	p.prometheusMetrics = NewPrometheusMetrics(promConfig)
+}
 
-	// 启动指标服务器
-	if promConfig.Enabled {
-		p.prometheusMetrics.StartMetricsServer(promConfig)
-		log.Infof("Prometheus 监控已启用: http://localhost:%d%s", promConfig.MetricsPort, promConfig.MetricsPath)
+// MetricsGatherer 返回该插件的 Prometheus Gatherer（用于统一注册聚合）
+func (p *DBPgsqlClient) MetricsGatherer() prometheus.Gatherer {
+	if p == nil || p.prometheusMetrics == nil {
+		return nil
 	}
+	return p.prometheusMetrics.GetGatherer()
 }
 
 // updateStats 更新连接池统计信息

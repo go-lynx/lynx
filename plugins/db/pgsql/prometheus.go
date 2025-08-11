@@ -1,47 +1,30 @@
 package pgsql
 
 import (
-	"fmt"
-	"net/http"
 	"strings"
 
-	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins/db/pgsql/conf"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// PrometheusConfig Prometheus 监控配置
+// PrometheusConfig Prometheus 指标语义配置（插件内部私有 registry 用）
 type PrometheusConfig struct {
-	// 是否启用 Prometheus 指标导出
-	Enabled bool
-	// 指标暴露的 HTTP 端点路径
-	MetricsPath string
-	// 指标 HTTP 服务器的端口
-	MetricsPort int32
 	// Prometheus 指标的命名空间
 	Namespace string
 	// Prometheus 指标的子系统
 	Subsystem string
-	// 指标的额外标签
+	// 指标的额外标签（用于构建静态或扩展标签）
 	Labels map[string]string
 }
 
 // 从配置创建 PrometheusConfig
 func createPrometheusConfig(pgsqlConf *conf.Pgsql) *PrometheusConfig {
-	// 默认配置
-	config := &PrometheusConfig{
-		Enabled:     false,
-		MetricsPath: "/metrics",
-		MetricsPort: 9090,
-		Namespace:   "lynx",
-		Subsystem:   "pgsql",
-		Labels:      make(map[string]string),
+	// 默认仅配置指标语义，不涉及 HTTP 暴露
+	return &PrometheusConfig{
+		Namespace: "lynx",
+		Subsystem: "pgsql",
+		Labels:    make(map[string]string),
 	}
-
-	// 这里可以从环境变量或配置文件读取 Prometheus 配置
-	// 暂时使用默认配置，后续可以通过配置文件扩展
-	return config
 }
 
 // PrometheusMetrics Prometheus 监控指标
@@ -76,7 +59,7 @@ type PrometheusMetrics struct {
 
 // NewPrometheusMetrics 创建新的 Prometheus 监控指标
 func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
-	if config == nil || !config.Enabled {
+	if config == nil {
 		return nil
 	}
 
@@ -86,12 +69,6 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 	}
 	if config.Subsystem == "" {
 		config.Subsystem = "pgsql"
-	}
-	if config.MetricsPath == "" {
-		config.MetricsPath = "/metrics"
-	}
-	if config.MetricsPort == 0 {
-		config.MetricsPort = 9090
 	}
 
 	// 创建标签
@@ -272,10 +249,10 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 
 // GetGatherer 返回该插件私有的 Prometheus Gatherer（用于在应用装配阶段统一聚合到全局 /metrics）
 func (pm *PrometheusMetrics) GetGatherer() prometheus.Gatherer {
-    if pm == nil {
-        return nil
-    }
-    return pm.registry
+	if pm == nil {
+		return nil
+	}
+	return pm.registry
 }
 
 // UpdateMetrics 更新监控指标
@@ -357,36 +334,4 @@ func (pm *PrometheusMetrics) extractDatabaseName(source string) string {
 		}
 	}
 	return ""
-}
-
-// StartMetricsServer 启动指标服务器
-func (pm *PrometheusMetrics) StartMetricsServer(config *PrometheusConfig) {
-	if pm == nil || !config.Enabled {
-		return
-	}
-
-	// 创建 HTTP 服务器
-	mux := http.NewServeMux()
-	mux.Handle(config.MetricsPath, promhttp.HandlerFor(pm.registry, promhttp.HandlerOpts{}))
-
-	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", config.MetricsPort),
-		Handler: mux,
-	}
-
-	log.Infof("启动 Prometheus 指标服务器: http://localhost:%d%s", config.MetricsPort, config.MetricsPath)
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Errorf("Prometheus 指标服务器启动失败: %v", err)
-		}
-	}()
-}
-
-// GetMetricsHandler 获取指标处理器
-func (pm *PrometheusMetrics) GetMetricsHandler() http.Handler {
-	if pm == nil {
-		return http.NotFoundHandler()
-	}
-	return promhttp.HandlerFor(pm.registry, promhttp.HandlerOpts{})
 }
