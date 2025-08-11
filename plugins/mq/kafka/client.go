@@ -117,6 +117,8 @@ func (k *Client) StartupTasks() error {
 			k.prodConnMgrs[name] = cm
 			cm.Start()
 			log.Infof("Kafka producer[%s] connection manager started", name)
+			// 注册健康指标
+			k.registerHealthForProducer(name)
 		}
 		if firstProducerName == "" {
 			firstProducerName = name

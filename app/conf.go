@@ -28,7 +28,7 @@ func (m *DefaultPluginManager) PreparePlug(config config.Config) ([]plugins.Plug
 	}
 
 	// 初始化一个切片，用于存储待加载的插件实例，预分配容量为注册表的长度
-	plugins := make([]plugins.Plugin, 0, len(table))
+	prepared := make([]plugins.Plugin, 0, len(table))
 
 	// 遍历配置前缀
 	for confPrefix, names := range table {
@@ -74,18 +74,18 @@ func (m *DefaultPluginManager) PreparePlug(config config.Config) ([]plugins.Plug
 			// 获取插件实例并添加到切片中
 			if value, ok := m.pluginInstances.Load(name); ok {
 				if plugin, ok := value.(plugins.Plugin); ok {
-					plugins = append(plugins, plugin)
+					prepared = append(prepared, plugin)
 				}
 			}
 		}
 	}
 
 	// 检查是否有成功准备的插件，如果没有则记录警告日志，否则记录成功信息
-	if len(plugins) != 0 {
-		log.Infof("successfully prepared %d plugins", len(plugins))
+	if len(prepared) != 0 {
+		log.Infof("successfully prepared %d plugins", len(prepared))
 	}
 
-	return plugins, nil
+	return prepared, nil
 }
 
 // preparePlugin 处理单个插件的准备工作。

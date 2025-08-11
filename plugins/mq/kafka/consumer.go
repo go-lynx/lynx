@@ -238,6 +238,8 @@ func (k *Client) SubscribeWith(ctx context.Context, consumerName string, topics 
 			k.consConnMgrs[consumerName] = cm
 			cm.Start()
 			log.Infof("Kafka consumer[%s] connection manager started", consumerName)
+			// 注册健康指标
+			k.registerHealthForConsumer(consumerName)
 		}
 		k.mu.Unlock()
 	}
