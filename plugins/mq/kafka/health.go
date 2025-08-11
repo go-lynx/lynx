@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 // HealthChecker 健康检查器
@@ -68,16 +69,39 @@ func (hc *HealthChecker) run() {
 
 // check 执行健康检查
 func (hc *HealthChecker) check() {
-	// 简单的健康检查：尝试获取集群信息
-	// TODO: 实现更完善的健康检查逻辑
+	// 通过 Metadata 请求探测集群健康
+	ctx, cancel := context.WithTimeout(hc.ctx, hc.timeout)
+	defer cancel()
+
+	// 发送空 MetadataRequest（请求全部 topic 的元数据）
+	var req kmsg.MetadataRequest
+	_, err := req.RequestWith(ctx, hc.client)
+
 	hc.mu.Lock()
 	defer hc.mu.Unlock()
-
 	hc.lastCheck = time.Now()
 
-	// 暂时假设连接正常，实际实现中需要根据具体需求调整
-	hc.isHealthy = true
-	hc.errorCount = 0
+	if err != nil {
+		hc.errorCount++
+		if hc.isHealthy && hc.errorCount >= hc.maxErrors {
+			hc.isHealthy = false
+			// 回调不可阻塞主循环
+			go hc.onUnhealthy(err)
+		}
+		log.WarnfCtx(hc.ctx, "Kafka health check failed (%d/%d): %v", hc.errorCount, hc.maxErrors, err)
+		return
+	}
+
+	if !hc.isHealthy {
+		// 状态从不健康 -> 健康
+		hc.isHealthy = true
+		hc.errorCount = 0
+		go hc.onHealthy()
+		log.InfofCtx(hc.ctx, "Kafka health recovered")
+	} else {
+		// 维持健康，清零错误计数
+		hc.errorCount = 0
+	}
 }
 
 // IsHealthy 检查是否健康
@@ -191,12 +215,16 @@ func (cm *ConnectionManager) handleReconnections() {
 // reconnect 重连逻辑
 func (cm *ConnectionManager) reconnect() {
 	log.InfofCtx(cm.ctx, "Attempting to reconnect to Kafka...")
-
-	// 这里可以添加更复杂的重连逻辑
-	// 比如指数退避、重试次数限制等
-
-	// 简单的重连：等待一段时间后重新检查
-	time.Sleep(5 * time.Second)
+	// franz-go 自带连接管理，这里通过触发一次 Metadata 来加速恢复
+	ctx, cancel := context.WithTimeout(cm.ctx, 10*time.Second)
+	defer cancel()
+	var req kmsg.MetadataRequest
+	_, err := req.RequestWith(ctx, cm.client)
+	if err != nil {
+		log.WarnfCtx(cm.ctx, "Reconnect metadata request failed: %v", err)
+	}
+	// 轻微退避，避免风暴
+	time.Sleep(2 * time.Second)
 }
 
 // IsConnected 检查是否已连接

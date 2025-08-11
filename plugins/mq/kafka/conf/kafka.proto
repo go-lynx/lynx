@@ -11,17 +11,17 @@ message Kafka {
   // brokers 表示 Kafka 集群的地址列表
   repeated string brokers = 1;
   
-  // producer 生产者配置
-  Producer producer = 2;
+  // producers 多生产者实例配置
+  repeated Producer producers = 2;
   
-  // consumer 消费者配置
-  Consumer consumer = 3;
+  // consumers 多消费者实例配置
+  repeated Consumer consumers = 3;
   
   // 通用配置
   // sasl 认证配置
   SASL sasl = 4;
-  // tls 配置
-  bool tls = 5;
+  // tls 配置对象
+  TLS tls = 5;
   // 连接超时时间
   google.protobuf.Duration dial_timeout = 6;
 }
@@ -30,8 +30,8 @@ message Kafka {
 message Producer {
   // 是否启用生产者
   bool enabled = 1;
-  // 是否需要等待所有副本确认
-  bool required_acks = 2;
+  // 确认级别：-1=all ISR, 1=leader only, 0=无需确认
+  int32 required_acks = 2;
   // 最大重试次数
   int32 max_retries = 3;
   // 重试间隔
@@ -42,6 +42,10 @@ message Producer {
   google.protobuf.Duration batch_timeout = 6;
   // 压缩类型：none, gzip, snappy, lz4, zstd
   string compression = 7;
+  // 实例名（用于区分、路由），不重用已占用的 tag
+  string name = 8;
+  // 可选：允许发送的 topic 列表，用于路由/权限
+  repeated string topics = 9;
 }
 
 // Consumer 消费者配置
@@ -66,6 +70,10 @@ message Consumer {
   google.protobuf.Duration max_wait_time = 9;
   // 重平衡超时时间
   google.protobuf.Duration rebalance_timeout = 10;
+  // 实例名（用于区分/路由）
+  string name = 11;
+  // 订阅的 topic 列表（或后续扩展为 pattern）
+  repeated string topics = 12;
 }
 
 // SASL 认证配置
@@ -78,4 +86,20 @@ message SASL {
   string username = 3;
   // 密码
   string password = 4;
+}
+
+// TLS 配置
+message TLS {
+  // 是否启用 TLS
+  bool enabled = 1;
+  // 根 CA 证书文件路径
+  string ca_file = 2;
+  // 客户端证书文件路径（可选，用于双向认证）
+  string cert_file = 3;
+  // 客户端私钥文件路径（可选，用于双向认证）
+  string key_file = 4;
+  // 是否跳过服务端证书校验（不建议开启）
+  bool insecure_skip_verify = 5;
+  // 指定 SNI/证书校验域名
+  string server_name = 6;
 }

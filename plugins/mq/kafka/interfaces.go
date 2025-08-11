@@ -16,6 +16,12 @@ type Producer interface {
 	// ProduceBatch 批量发送消息到指定主题
 	ProduceBatch(ctx context.Context, topic string, records []*kgo.Record) error
 
+	// ProduceWith 按生产者实例名发送单条消息
+	ProduceWith(ctx context.Context, producerName, topic string, key, value []byte) error
+
+	// ProduceBatchWith 按生产者实例名批量发送
+	ProduceBatchWith(ctx context.Context, producerName string, topic string, records []*kgo.Record) error
+
 	// GetProducer 获取底层生产者客户端
 	GetProducer() *kgo.Client
 
@@ -27,6 +33,9 @@ type Producer interface {
 type Consumer interface {
 	// Subscribe 订阅主题并设置消息处理器
 	Subscribe(ctx context.Context, topics []string, handler MessageHandler) error
+
+	// SubscribeWith 按消费者实例名订阅
+	SubscribeWith(ctx context.Context, consumerName string, topics []string, handler MessageHandler) error
 
 	// GetConsumer 获取底层消费者客户端
 	GetConsumer() *kgo.Client

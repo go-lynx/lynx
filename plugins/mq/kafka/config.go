@@ -13,17 +13,21 @@ func (k *Client) validateConfiguration() error {
 		return ErrNoBrokersConfigured
 	}
 
-	// 验证生产者配置
-	if k.conf.Producer != nil && k.conf.Producer.Enabled {
-		if err := k.validateProducerConfig(); err != nil {
-			return fmt.Errorf("producer config validation failed: %w", err)
+	// 验证生产者配置（多实例）
+	for _, p := range k.conf.Producers {
+		if p != nil && p.Enabled {
+			if err := k.validateProducerConfig(p); err != nil {
+				return fmt.Errorf("producer config validation failed: %w", err)
+			}
 		}
 	}
 
-	// 验证消费者配置
-	if k.conf.Consumer != nil && k.conf.Consumer.Enabled {
-		if err := k.validateConsumerConfig(); err != nil {
-			return fmt.Errorf("consumer config validation failed: %w", err)
+	// 验证消费者配置（多实例）
+	for _, c := range k.conf.Consumers {
+		if c != nil && c.Enabled {
+			if err := k.validateConsumerConfig(c); err != nil {
+				return fmt.Errorf("consumer config validation failed: %w", err)
+			}
 		}
 	}
 
@@ -34,12 +38,19 @@ func (k *Client) validateConfiguration() error {
 		}
 	}
 
+	// 验证 TLS 配置
+	if k.conf.Tls != nil && k.conf.Tls.Enabled {
+		if err := k.validateTLSConfig(); err != nil {
+			return fmt.Errorf("TLS config validation failed: %w", err)
+		}
+	}
+
 	return nil
 }
 
 // validateProducerConfig 验证生产者配置
-func (k *Client) validateProducerConfig() error {
-	if k.conf.Producer.Compression != "" {
+func (k *Client) validateProducerConfig(p *conf.Producer) error {
+	if p.Compression != "" {
 		validCompressions := map[string]bool{
 			CompressionNone:   true,
 			CompressionGzip:   true,
@@ -47,30 +58,34 @@ func (k *Client) validateProducerConfig() error {
 			CompressionLz4:    true,
 			CompressionZstd:   true,
 		}
-		if !validCompressions[k.conf.Producer.Compression] {
-			return fmt.Errorf("%w: %s", ErrInvalidCompression, k.conf.Producer.Compression)
+		if !validCompressions[p.Compression] {
+			return fmt.Errorf("%w: %s", ErrInvalidCompression, p.Compression)
 		}
+	}
+	// 校验 RequiredAcks 取值范围：允许 -1, 0, 1
+	if p.RequiredAcks != -1 && p.RequiredAcks != 0 && p.RequiredAcks != 1 {
+		return fmt.Errorf("invalid required_acks: %d (allowed: -1,0,1)", p.RequiredAcks)
 	}
 	return nil
 }
 
 // validateConsumerConfig 验证消费者配置
-func (k *Client) validateConsumerConfig() error {
-	if k.conf.Consumer.GroupId == "" {
+func (k *Client) validateConsumerConfig(c *conf.Consumer) error {
+	if c.GroupId == "" {
 		return ErrNoGroupID
 	}
 
-	if k.conf.Consumer.StartOffset != "" {
+	if c.StartOffset != "" {
 		validOffsets := map[string]bool{
 			StartOffsetEarliest: true,
 			StartOffsetLatest:   true,
 		}
-		if !validOffsets[k.conf.Consumer.StartOffset] {
-			return fmt.Errorf("%w: %s", ErrInvalidStartOffset, k.conf.Consumer.StartOffset)
+		if !validOffsets[c.StartOffset] {
+			return fmt.Errorf("%w: %s", ErrInvalidStartOffset, c.StartOffset)
 		}
 	}
 
-	if k.conf.Consumer.MaxConcurrency <= 0 {
+	if c.MaxConcurrency <= 0 {
 		return fmt.Errorf("max concurrency must be greater than 0")
 	}
 
@@ -109,27 +124,52 @@ func (k *Client) validateSASLConfig() error {
 	return nil
 }
 
+// validateTLSConfig 验证 TLS 配置
+func (k *Client) validateTLSConfig() error {
+	if k.conf.Tls == nil {
+		return fmt.Errorf("TLS configuration is nil")
+	}
+
+	if !k.conf.Tls.Enabled {
+		return nil // TLS 未启用，不需要验证
+	}
+
+	// 验证证书和密钥
+	if k.conf.Tls.CertFile == "" {
+		return fmt.Errorf("TLS certificate is required when TLS is enabled")
+	}
+	if k.conf.Tls.KeyFile == "" {
+		return fmt.Errorf("TLS key is required when TLS is enabled")
+	}
+
+	return nil
+}
+
 // setDefaultValues 设置默认值
 func (k *Client) setDefaultValues() {
 	defaultConf := &conf.Kafka{
 		DialTimeout: &durationpb.Duration{Seconds: 10},
-		Producer: &conf.Producer{
-			MaxRetries:   3,
-			RetryBackoff: &durationpb.Duration{Seconds: 1},
-			BatchSize:    1000,
-			BatchTimeout: &durationpb.Duration{Seconds: 1},
-			Compression:  CompressionSnappy,
-			RequiredAcks: true,
+		Producers: []*conf.Producer{
+			{
+				MaxRetries:   3,
+				RetryBackoff: &durationpb.Duration{Seconds: 1},
+				BatchSize:    1000,
+				BatchTimeout: &durationpb.Duration{Seconds: 1},
+				Compression:  CompressionSnappy,
+				RequiredAcks: 1, // 默认 leader ack，避免默认 0 导致 no-ack 不安全
+			},
 		},
-		Consumer: &conf.Consumer{
-			AutoCommitInterval: &durationpb.Duration{Seconds: 5},
-			AutoCommit:         true,
-			StartOffset:        StartOffsetLatest,
-			MaxConcurrency:     10,
-			MinBatchSize:       1,
-			MaxBatchSize:       1000,
-			MaxWaitTime:        &durationpb.Duration{Seconds: 1},
-			RebalanceTimeout:   &durationpb.Duration{Seconds: 30},
+		Consumers: []*conf.Consumer{
+			{
+				AutoCommitInterval: &durationpb.Duration{Seconds: 5},
+				AutoCommit:         true,
+				StartOffset:        StartOffsetLatest,
+				MaxConcurrency:     10,
+				MinBatchSize:       1,
+				MaxBatchSize:       1000,
+				MaxWaitTime:        &durationpb.Duration{Seconds: 1},
+				RebalanceTimeout:   &durationpb.Duration{Seconds: 30},
+			},
 		},
 	}
 
@@ -137,44 +177,53 @@ func (k *Client) setDefaultValues() {
 	if k.conf.DialTimeout == nil {
 		k.conf.DialTimeout = defaultConf.DialTimeout
 	}
-	if k.conf.Producer != nil {
-		if k.conf.Producer.MaxRetries == 0 {
-			k.conf.Producer.MaxRetries = defaultConf.Producer.MaxRetries
+	// 多生产者默认
+	for _, p := range k.conf.Producers {
+		if p == nil {
+			continue
 		}
-		if k.conf.Producer.RetryBackoff == nil {
-			k.conf.Producer.RetryBackoff = defaultConf.Producer.RetryBackoff
+		if p.MaxRetries == 0 {
+			p.MaxRetries = defaultConf.Producers[0].MaxRetries
 		}
-		if k.conf.Producer.BatchSize == 0 {
-			k.conf.Producer.BatchSize = defaultConf.Producer.BatchSize
+		if p.RetryBackoff == nil {
+			p.RetryBackoff = defaultConf.Producers[0].RetryBackoff
 		}
-		if k.conf.Producer.BatchTimeout == nil {
-			k.conf.Producer.BatchTimeout = defaultConf.Producer.BatchTimeout
+		if p.BatchSize == 0 {
+			p.BatchSize = defaultConf.Producers[0].BatchSize
 		}
-		if k.conf.Producer.Compression == "" {
-			k.conf.Producer.Compression = defaultConf.Producer.Compression
+		if p.BatchTimeout == nil {
+			p.BatchTimeout = defaultConf.Producers[0].BatchTimeout
 		}
+		if p.Compression == "" {
+			p.Compression = defaultConf.Producers[0].Compression
+		}
+		// required_acks: 不覆盖 0
 	}
-	if k.conf.Consumer != nil {
-		if k.conf.Consumer.AutoCommitInterval == nil {
-			k.conf.Consumer.AutoCommitInterval = defaultConf.Consumer.AutoCommitInterval
+	// 多消费者默认
+	for _, c := range k.conf.Consumers {
+		if c == nil {
+			continue
 		}
-		if k.conf.Consumer.StartOffset == "" {
-			k.conf.Consumer.StartOffset = defaultConf.Consumer.StartOffset
+		if c.AutoCommitInterval == nil {
+			c.AutoCommitInterval = defaultConf.Consumers[0].AutoCommitInterval
 		}
-		if k.conf.Consumer.MaxConcurrency == 0 {
-			k.conf.Consumer.MaxConcurrency = defaultConf.Consumer.MaxConcurrency
+		if c.StartOffset == "" {
+			c.StartOffset = defaultConf.Consumers[0].StartOffset
 		}
-		if k.conf.Consumer.MinBatchSize == 0 {
-			k.conf.Consumer.MinBatchSize = defaultConf.Consumer.MinBatchSize
+		if c.MaxConcurrency == 0 {
+			c.MaxConcurrency = defaultConf.Consumers[0].MaxConcurrency
 		}
-		if k.conf.Consumer.MaxBatchSize == 0 {
-			k.conf.Consumer.MaxBatchSize = defaultConf.Consumer.MaxBatchSize
+		if c.MinBatchSize == 0 {
+			c.MinBatchSize = defaultConf.Consumers[0].MinBatchSize
 		}
-		if k.conf.Consumer.MaxWaitTime == nil {
-			k.conf.Consumer.MaxWaitTime = defaultConf.Consumer.MaxWaitTime
+		if c.MaxBatchSize == 0 {
+			c.MaxBatchSize = defaultConf.Consumers[0].MaxBatchSize
 		}
-		if k.conf.Consumer.RebalanceTimeout == nil {
-			k.conf.Consumer.RebalanceTimeout = defaultConf.Consumer.RebalanceTimeout
+		if c.MaxWaitTime == nil {
+			c.MaxWaitTime = defaultConf.Consumers[0].MaxWaitTime
+		}
+		if c.RebalanceTimeout == nil {
+			c.RebalanceTimeout = defaultConf.Consumers[0].RebalanceTimeout
 		}
 	}
 }

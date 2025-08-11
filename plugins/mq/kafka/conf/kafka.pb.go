@@ -27,15 +27,15 @@ type Kafka struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// brokers 表示 Kafka 集群的地址列表
 	Brokers []string `protobuf:"bytes,1,rep,name=brokers,proto3" json:"brokers,omitempty"`
-	// producer 生产者配置
-	Producer *Producer `protobuf:"bytes,2,opt,name=producer,proto3" json:"producer,omitempty"`
-	// consumer 消费者配置
-	Consumer *Consumer `protobuf:"bytes,3,opt,name=consumer,proto3" json:"consumer,omitempty"`
+	// producers 多生产者实例配置
+	Producers []*Producer `protobuf:"bytes,2,rep,name=producers,proto3" json:"producers,omitempty"`
+	// consumers 多消费者实例配置
+	Consumers []*Consumer `protobuf:"bytes,3,rep,name=consumers,proto3" json:"consumers,omitempty"`
 	// 通用配置
 	// sasl 认证配置
 	Sasl *SASL `protobuf:"bytes,4,opt,name=sasl,proto3" json:"sasl,omitempty"`
-	// tls 配置
-	Tls bool `protobuf:"varint,5,opt,name=tls,proto3" json:"tls,omitempty"`
+	// tls 配置对象
+	Tls *TLS `protobuf:"bytes,5,opt,name=tls,proto3" json:"tls,omitempty"`
 	// 连接超时时间
 	DialTimeout   *durationpb.Duration `protobuf:"bytes,6,opt,name=dial_timeout,json=dialTimeout,proto3" json:"dial_timeout,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -79,16 +79,16 @@ func (x *Kafka) GetBrokers() []string {
 	return nil
 }
 
-func (x *Kafka) GetProducer() *Producer {
+func (x *Kafka) GetProducers() []*Producer {
 	if x != nil {
-		return x.Producer
+		return x.Producers
 	}
 	return nil
 }
 
-func (x *Kafka) GetConsumer() *Consumer {
+func (x *Kafka) GetConsumers() []*Consumer {
 	if x != nil {
-		return x.Consumer
+		return x.Consumers
 	}
 	return nil
 }
@@ -100,11 +100,11 @@ func (x *Kafka) GetSasl() *SASL {
 	return nil
 }
 
-func (x *Kafka) GetTls() bool {
+func (x *Kafka) GetTls() *TLS {
 	if x != nil {
 		return x.Tls
 	}
-	return false
+	return nil
 }
 
 func (x *Kafka) GetDialTimeout() *durationpb.Duration {
@@ -119,8 +119,8 @@ type Producer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 是否启用生产者
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// 是否需要等待所有副本确认
-	RequiredAcks bool `protobuf:"varint,2,opt,name=required_acks,json=requiredAcks,proto3" json:"required_acks,omitempty"`
+	// 确认级别：-1=all ISR, 1=leader only, 0=无需确认
+	RequiredAcks int32 `protobuf:"varint,2,opt,name=required_acks,json=requiredAcks,proto3" json:"required_acks,omitempty"`
 	// 最大重试次数
 	MaxRetries int32 `protobuf:"varint,3,opt,name=max_retries,json=maxRetries,proto3" json:"max_retries,omitempty"`
 	// 重试间隔
@@ -130,7 +130,11 @@ type Producer struct {
 	// 批量发送等待时间
 	BatchTimeout *durationpb.Duration `protobuf:"bytes,6,opt,name=batch_timeout,json=batchTimeout,proto3" json:"batch_timeout,omitempty"`
 	// 压缩类型：none, gzip, snappy, lz4, zstd
-	Compression   string `protobuf:"bytes,7,opt,name=compression,proto3" json:"compression,omitempty"`
+	Compression string `protobuf:"bytes,7,opt,name=compression,proto3" json:"compression,omitempty"`
+	// 实例名（用于区分、路由），不重用已占用的 tag
+	Name string `protobuf:"bytes,8,opt,name=name,proto3" json:"name,omitempty"`
+	// 可选：允许发送的 topic 列表，用于路由/权限
+	Topics        []string `protobuf:"bytes,9,rep,name=topics,proto3" json:"topics,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -172,11 +176,11 @@ func (x *Producer) GetEnabled() bool {
 	return false
 }
 
-func (x *Producer) GetRequiredAcks() bool {
+func (x *Producer) GetRequiredAcks() int32 {
 	if x != nil {
 		return x.RequiredAcks
 	}
-	return false
+	return 0
 }
 
 func (x *Producer) GetMaxRetries() int32 {
@@ -214,6 +218,20 @@ func (x *Producer) GetCompression() string {
 	return ""
 }
 
+func (x *Producer) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Producer) GetTopics() []string {
+	if x != nil {
+		return x.Topics
+	}
+	return nil
+}
+
 // Consumer 消费者配置
 type Consumer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -237,8 +255,12 @@ type Consumer struct {
 	MaxWaitTime *durationpb.Duration `protobuf:"bytes,9,opt,name=max_wait_time,json=maxWaitTime,proto3" json:"max_wait_time,omitempty"`
 	// 重平衡超时时间
 	RebalanceTimeout *durationpb.Duration `protobuf:"bytes,10,opt,name=rebalance_timeout,json=rebalanceTimeout,proto3" json:"rebalance_timeout,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// 实例名（用于区分/路由）
+	Name string `protobuf:"bytes,11,opt,name=name,proto3" json:"name,omitempty"`
+	// 订阅的 topic 列表（或后续扩展为 pattern）
+	Topics        []string `protobuf:"bytes,12,rep,name=topics,proto3" json:"topics,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Consumer) Reset() {
@@ -341,6 +363,20 @@ func (x *Consumer) GetRebalanceTimeout() *durationpb.Duration {
 	return nil
 }
 
+func (x *Consumer) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Consumer) GetTopics() []string {
+	if x != nil {
+		return x.Topics
+	}
+	return nil
+}
+
 // SASL 认证配置
 type SASL struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -414,28 +450,121 @@ func (x *SASL) GetPassword() string {
 	return ""
 }
 
+// TLS 配置
+type TLS struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 是否启用 TLS
+	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// 根 CA 证书文件路径
+	CaFile string `protobuf:"bytes,2,opt,name=ca_file,json=caFile,proto3" json:"ca_file,omitempty"`
+	// 客户端证书文件路径（可选，用于双向认证）
+	CertFile string `protobuf:"bytes,3,opt,name=cert_file,json=certFile,proto3" json:"cert_file,omitempty"`
+	// 客户端私钥文件路径（可选，用于双向认证）
+	KeyFile string `protobuf:"bytes,4,opt,name=key_file,json=keyFile,proto3" json:"key_file,omitempty"`
+	// 是否跳过服务端证书校验（不建议开启）
+	InsecureSkipVerify bool `protobuf:"varint,5,opt,name=insecure_skip_verify,json=insecureSkipVerify,proto3" json:"insecure_skip_verify,omitempty"`
+	// 指定 SNI/证书校验域名
+	ServerName    string `protobuf:"bytes,6,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TLS) Reset() {
+	*x = TLS{}
+	mi := &file_kafka_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TLS) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TLS) ProtoMessage() {}
+
+func (x *TLS) ProtoReflect() protoreflect.Message {
+	mi := &file_kafka_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TLS.ProtoReflect.Descriptor instead.
+func (*TLS) Descriptor() ([]byte, []int) {
+	return file_kafka_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *TLS) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *TLS) GetCaFile() string {
+	if x != nil {
+		return x.CaFile
+	}
+	return ""
+}
+
+func (x *TLS) GetCertFile() string {
+	if x != nil {
+		return x.CertFile
+	}
+	return ""
+}
+
+func (x *TLS) GetKeyFile() string {
+	if x != nil {
+		return x.KeyFile
+	}
+	return ""
+}
+
+func (x *TLS) GetInsecureSkipVerify() bool {
+	if x != nil {
+		return x.InsecureSkipVerify
+	}
+	return false
+}
+
+func (x *TLS) GetServerName() string {
+	if x != nil {
+		return x.ServerName
+	}
+	return ""
+}
+
 var File_kafka_proto protoreflect.FileDescriptor
 
 const file_kafka_proto_rawDesc = "" +
 	"\n" +
-	"\vkafka.proto\x12\x1alynx.protobuf.plugin.kafka\x1a\x1egoogle/protobuf/duration.proto\"\xab\x02\n" +
+	"\vkafka.proto\x12\x1alynx.protobuf.plugin.kafka\x1a\x1egoogle/protobuf/duration.proto\"\xd0\x02\n" +
 	"\x05Kafka\x12\x18\n" +
-	"\abrokers\x18\x01 \x03(\tR\abrokers\x12@\n" +
-	"\bproducer\x18\x02 \x01(\v2$.lynx.protobuf.plugin.kafka.ProducerR\bproducer\x12@\n" +
-	"\bconsumer\x18\x03 \x01(\v2$.lynx.protobuf.plugin.kafka.ConsumerR\bconsumer\x124\n" +
-	"\x04sasl\x18\x04 \x01(\v2 .lynx.protobuf.plugin.kafka.SASLR\x04sasl\x12\x10\n" +
-	"\x03tls\x18\x05 \x01(\bR\x03tls\x12<\n" +
-	"\fdial_timeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\vdialTimeout\"\xab\x02\n" +
+	"\abrokers\x18\x01 \x03(\tR\abrokers\x12B\n" +
+	"\tproducers\x18\x02 \x03(\v2$.lynx.protobuf.plugin.kafka.ProducerR\tproducers\x12B\n" +
+	"\tconsumers\x18\x03 \x03(\v2$.lynx.protobuf.plugin.kafka.ConsumerR\tconsumers\x124\n" +
+	"\x04sasl\x18\x04 \x01(\v2 .lynx.protobuf.plugin.kafka.SASLR\x04sasl\x121\n" +
+	"\x03tls\x18\x05 \x01(\v2\x1f.lynx.protobuf.plugin.kafka.TLSR\x03tls\x12<\n" +
+	"\fdial_timeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\vdialTimeout\"\xd7\x02\n" +
 	"\bProducer\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12#\n" +
-	"\rrequired_acks\x18\x02 \x01(\bR\frequiredAcks\x12\x1f\n" +
+	"\rrequired_acks\x18\x02 \x01(\x05R\frequiredAcks\x12\x1f\n" +
 	"\vmax_retries\x18\x03 \x01(\x05R\n" +
 	"maxRetries\x12>\n" +
 	"\rretry_backoff\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\fretryBackoff\x12\x1d\n" +
 	"\n" +
 	"batch_size\x18\x05 \x01(\x05R\tbatchSize\x12>\n" +
 	"\rbatch_timeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\fbatchTimeout\x12 \n" +
-	"\vcompression\x18\a \x01(\tR\vcompression\"\xcc\x03\n" +
+	"\vcompression\x18\a \x01(\tR\vcompression\x12\x12\n" +
+	"\x04name\x18\b \x01(\tR\x04name\x12\x16\n" +
+	"\x06topics\x18\t \x03(\tR\x06topics\"\xf8\x03\n" +
 	"\bConsumer\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x19\n" +
 	"\bgroup_id\x18\x02 \x01(\tR\agroupId\x12K\n" +
@@ -448,12 +577,22 @@ const file_kafka_proto_rawDesc = "" +
 	"\x0emax_batch_size\x18\b \x01(\x05R\fmaxBatchSize\x12=\n" +
 	"\rmax_wait_time\x18\t \x01(\v2\x19.google.protobuf.DurationR\vmaxWaitTime\x12F\n" +
 	"\x11rebalance_timeout\x18\n" +
-	" \x01(\v2\x19.google.protobuf.DurationR\x10rebalanceTimeout\"v\n" +
+	" \x01(\v2\x19.google.protobuf.DurationR\x10rebalanceTimeout\x12\x12\n" +
+	"\x04name\x18\v \x01(\tR\x04name\x12\x16\n" +
+	"\x06topics\x18\f \x03(\tR\x06topics\"v\n" +
 	"\x04SASL\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1c\n" +
 	"\tmechanism\x18\x02 \x01(\tR\tmechanism\x12\x1a\n" +
 	"\busername\x18\x03 \x01(\tR\busername\x12\x1a\n" +
-	"\bpassword\x18\x04 \x01(\tR\bpasswordB4Z2github.com/go-lynx/lynx/plugins/mq/kafka/conf;confb\x06proto3"
+	"\bpassword\x18\x04 \x01(\tR\bpassword\"\xc3\x01\n" +
+	"\x03TLS\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x17\n" +
+	"\aca_file\x18\x02 \x01(\tR\x06caFile\x12\x1b\n" +
+	"\tcert_file\x18\x03 \x01(\tR\bcertFile\x12\x19\n" +
+	"\bkey_file\x18\x04 \x01(\tR\akeyFile\x120\n" +
+	"\x14insecure_skip_verify\x18\x05 \x01(\bR\x12insecureSkipVerify\x12\x1f\n" +
+	"\vserver_name\x18\x06 \x01(\tR\n" +
+	"serverNameB4Z2github.com/go-lynx/lynx/plugins/mq/kafka/conf;confb\x06proto3"
 
 var (
 	file_kafka_proto_rawDescOnce sync.Once
@@ -467,29 +606,31 @@ func file_kafka_proto_rawDescGZIP() []byte {
 	return file_kafka_proto_rawDescData
 }
 
-var file_kafka_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_kafka_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_kafka_proto_goTypes = []any{
 	(*Kafka)(nil),               // 0: lynx.protobuf.plugin.kafka.Kafka
 	(*Producer)(nil),            // 1: lynx.protobuf.plugin.kafka.Producer
 	(*Consumer)(nil),            // 2: lynx.protobuf.plugin.kafka.Consumer
 	(*SASL)(nil),                // 3: lynx.protobuf.plugin.kafka.SASL
-	(*durationpb.Duration)(nil), // 4: google.protobuf.Duration
+	(*TLS)(nil),                 // 4: lynx.protobuf.plugin.kafka.TLS
+	(*durationpb.Duration)(nil), // 5: google.protobuf.Duration
 }
 var file_kafka_proto_depIdxs = []int32{
-	1, // 0: lynx.protobuf.plugin.kafka.Kafka.producer:type_name -> lynx.protobuf.plugin.kafka.Producer
-	2, // 1: lynx.protobuf.plugin.kafka.Kafka.consumer:type_name -> lynx.protobuf.plugin.kafka.Consumer
-	3, // 2: lynx.protobuf.plugin.kafka.Kafka.sasl:type_name -> lynx.protobuf.plugin.kafka.SASL
-	4, // 3: lynx.protobuf.plugin.kafka.Kafka.dial_timeout:type_name -> google.protobuf.Duration
-	4, // 4: lynx.protobuf.plugin.kafka.Producer.retry_backoff:type_name -> google.protobuf.Duration
-	4, // 5: lynx.protobuf.plugin.kafka.Producer.batch_timeout:type_name -> google.protobuf.Duration
-	4, // 6: lynx.protobuf.plugin.kafka.Consumer.auto_commit_interval:type_name -> google.protobuf.Duration
-	4, // 7: lynx.protobuf.plugin.kafka.Consumer.max_wait_time:type_name -> google.protobuf.Duration
-	4, // 8: lynx.protobuf.plugin.kafka.Consumer.rebalance_timeout:type_name -> google.protobuf.Duration
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	1,  // 0: lynx.protobuf.plugin.kafka.Kafka.producers:type_name -> lynx.protobuf.plugin.kafka.Producer
+	2,  // 1: lynx.protobuf.plugin.kafka.Kafka.consumers:type_name -> lynx.protobuf.plugin.kafka.Consumer
+	3,  // 2: lynx.protobuf.plugin.kafka.Kafka.sasl:type_name -> lynx.protobuf.plugin.kafka.SASL
+	4,  // 3: lynx.protobuf.plugin.kafka.Kafka.tls:type_name -> lynx.protobuf.plugin.kafka.TLS
+	5,  // 4: lynx.protobuf.plugin.kafka.Kafka.dial_timeout:type_name -> google.protobuf.Duration
+	5,  // 5: lynx.protobuf.plugin.kafka.Producer.retry_backoff:type_name -> google.protobuf.Duration
+	5,  // 6: lynx.protobuf.plugin.kafka.Producer.batch_timeout:type_name -> google.protobuf.Duration
+	5,  // 7: lynx.protobuf.plugin.kafka.Consumer.auto_commit_interval:type_name -> google.protobuf.Duration
+	5,  // 8: lynx.protobuf.plugin.kafka.Consumer.max_wait_time:type_name -> google.protobuf.Duration
+	5,  // 9: lynx.protobuf.plugin.kafka.Consumer.rebalance_timeout:type_name -> google.protobuf.Duration
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_kafka_proto_init() }
@@ -503,7 +644,7 @@ func file_kafka_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kafka_proto_rawDesc), len(file_kafka_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
