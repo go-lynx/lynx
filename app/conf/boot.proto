@@ -64,4 +64,6 @@ message Event {
   int32 worker_count = 2;
   // listener_queue_size 每个监听器的独立队列大小
   int32 listener_queue_size = 3;
+  // history_size 历史事件保留条数（<=0 表示不保留历史）
+  int32 history_size = 4;
 }

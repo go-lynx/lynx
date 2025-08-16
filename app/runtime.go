@@ -2,8 +2,8 @@ package app
 
 import (
 	"fmt"
-	"sync/atomic"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -17,6 +17,8 @@ const (
 	defaultEventWorkerCount = 10
 	// 每个监听器的独立队列大小，避免单个慢监听器阻塞全局
 	defaultListenerQueueSize = 256
+	// 历史事件默认 1000 条，<=0 表示不保留
+	defaultHistorySize = 1000
 )
 
 // TypedRuntimePlugin 泛型运行时插件
@@ -89,6 +91,7 @@ func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 	qsize := defaultEventQueueSize
 	wcount := defaultEventWorkerCount
 	lqsize := defaultListenerQueueSize
+	hsize := defaultHistorySize
 	if app := Lynx(); app != nil {
 		// 优先使用引导配置（boot.pb.go）
 		if app.bootConfig != nil && app.bootConfig.Lynx != nil && app.bootConfig.Lynx.Runtime != nil && app.bootConfig.Lynx.Runtime.Event != nil {
@@ -100,6 +103,10 @@ func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 			}
 			if v := app.bootConfig.Lynx.Runtime.Event.ListenerQueueSize; v > 0 {
 				lqsize = int(v)
+			}
+			// 历史事件大小（<=0 表示不保留）
+			if v := app.bootConfig.Lynx.Runtime.Event.HistorySize; v != 0 {
+				hsize = int(v)
 			}
 		} else if cfg := app.GetGlobalConfig(); cfg != nil {
 			// 兼容旧路径：从全局 config 扫描
@@ -114,18 +121,22 @@ func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 			if err := cfg.Value("lynx.runtime.event.listener_queue_size").Scan(&lqs); err == nil && lqs > 0 {
 				lqsize = lqs
 			}
+			var hs int
+			if err := cfg.Value("lynx.runtime.event.history_size").Scan(&hs); err == nil {
+				hsize = hs
+			}
 		}
 	}
 
 	r := &TypedRuntimePlugin{
-		maxHistorySize: 1000, // Default to keeping last 1000 events
-		listeners:      make([]listenerEntry, 0),
-		eventHistory:   make([]plugins.PluginEvent, 0),
-		logger:         log.DefaultLogger,
-		eventCh:        make(chan plugins.PluginEvent, qsize),
-		workerCount:    wcount,
+		maxHistorySize:    hsize, // 历史事件保留条数（<=0 表示不保留）
+		listeners:         make([]listenerEntry, 0),
+		eventHistory:      make([]plugins.PluginEvent, 0),
+		logger:            log.DefaultLogger,
+		eventCh:           make(chan plugins.PluginEvent, qsize),
+		workerCount:       wcount,
 		listenerQueueSize: lqsize,
-		closed:         make(chan struct{}),
+		closed:            make(chan struct{}),
 	}
 	// 启动固定数量的事件分发worker
 	for i := 0; i < r.workerCount; i++ {
@@ -229,15 +240,17 @@ func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 		return
 	}
 
-	// 先写入历史，后入队
-	r.mu.Lock()
-	// Add to history
-	r.eventHistory = append(r.eventHistory, event)
-	// Trim history if it exceeds max size
-	if r.maxHistorySize > 0 && len(r.eventHistory) > r.maxHistorySize {
-		r.eventHistory = r.eventHistory[len(r.eventHistory)-r.maxHistorySize:]
+	// 先写入历史（可关闭），后入队
+	if r.maxHistorySize > 0 {
+		r.mu.Lock()
+		// Add to history
+		r.eventHistory = append(r.eventHistory, event)
+		// Trim history if it exceeds max size
+		if len(r.eventHistory) > r.maxHistorySize {
+			r.eventHistory = r.eventHistory[len(r.eventHistory)-r.maxHistorySize:]
+		}
+		r.mu.Unlock()
 	}
-	r.mu.Unlock()
 
 	// 将事件写入队列；队列满时丢弃并记录debug日志，避免无背压的goroutine泛滥
 	r.sendMu.Lock()
