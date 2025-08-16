@@ -18,3 +18,14 @@ lynx:
     ttl: 5
     # 请求 Polaris 服务的超时时间，支持时间单位后缀，如 s（秒）、ms（毫秒）等
     timeout: 5s
+
+  # 运行时配置
+  runtime:
+    # 事件系统配置
+    event:
+      # 事件队列大小（>0），默认 1024
+      queue_size: 1024
+      # 事件分发 worker 数量（>0），默认 10
+      worker_count: 10
+      # 每个监听器的独立队列大小（>0），默认 256
+      listener_queue_size: 256

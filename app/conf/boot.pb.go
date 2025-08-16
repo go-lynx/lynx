@@ -202,6 +202,8 @@ type Lynx struct {
 	Application *Application `protobuf:"bytes,1,opt,name=application,proto3" json:"application,omitempty"`
 	// subscriptions 字段定义 Lynx 在启动时需要订阅的上游服务
 	Subscriptions *Subscriptions `protobuf:"bytes,2,opt,name=subscriptions,proto3" json:"subscriptions,omitempty"`
+	// runtime 字段包含运行时相关配置（事件系统等）
+	Runtime       *Runtime `protobuf:"bytes,3,opt,name=runtime,proto3" json:"runtime,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -246,6 +248,13 @@ func (x *Lynx) GetApplication() *Application {
 func (x *Lynx) GetSubscriptions() *Subscriptions {
 	if x != nil {
 		return x.Subscriptions
+	}
+	return nil
+}
+
+func (x *Lynx) GetRuntime() *Runtime {
+	if x != nil {
+		return x.Runtime
 	}
 	return nil
 }
@@ -314,6 +323,116 @@ func (x *Application) GetCloseBanner() bool {
 	return false
 }
 
+// Runtime 运行时配置
+type Runtime struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// event 事件系统配置
+	Event         *Event `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Runtime) Reset() {
+	*x = Runtime{}
+	mi := &file_boot_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Runtime) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Runtime) ProtoMessage() {}
+
+func (x *Runtime) ProtoReflect() protoreflect.Message {
+	mi := &file_boot_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Runtime.ProtoReflect.Descriptor instead.
+func (*Runtime) Descriptor() ([]byte, []int) {
+	return file_boot_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *Runtime) GetEvent() *Event {
+	if x != nil {
+		return x.Event
+	}
+	return nil
+}
+
+// Event 事件系统配置
+type Event struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// queue_size 事件队列大小
+	QueueSize int32 `protobuf:"varint,1,opt,name=queue_size,json=queueSize,proto3" json:"queue_size,omitempty"`
+	// worker_count 事件分发工作协程数量
+	WorkerCount int32 `protobuf:"varint,2,opt,name=worker_count,json=workerCount,proto3" json:"worker_count,omitempty"`
+	// listener_queue_size 每个监听器的独立队列大小
+	ListenerQueueSize int32 `protobuf:"varint,3,opt,name=listener_queue_size,json=listenerQueueSize,proto3" json:"listener_queue_size,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *Event) Reset() {
+	*x = Event{}
+	mi := &file_boot_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Event) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Event) ProtoMessage() {}
+
+func (x *Event) ProtoReflect() protoreflect.Message {
+	mi := &file_boot_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Event.ProtoReflect.Descriptor instead.
+func (*Event) Descriptor() ([]byte, []int) {
+	return file_boot_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Event) GetQueueSize() int32 {
+	if x != nil {
+		return x.QueueSize
+	}
+	return 0
+}
+
+func (x *Event) GetWorkerCount() int32 {
+	if x != nil {
+		return x.WorkerCount
+	}
+	return 0
+}
+
+func (x *Event) GetListenerQueueSize() int32 {
+	if x != nil {
+		return x.ListenerQueueSize
+	}
+	return 0
+}
+
 var File_boot_proto protoreflect.FileDescriptor
 
 const file_boot_proto_rawDesc = "" +
@@ -329,14 +448,22 @@ const file_boot_proto_rawDesc = "" +
 	"\brequired\x18\x02 \x01(\bR\brequired\x12\x10\n" +
 	"\x03tls\x18\x03 \x01(\bR\x03tls\x12\x17\n" +
 	"\aca_name\x18\x04 \x01(\tR\x06caName\x12\x19\n" +
-	"\bca_group\x18\x05 \x01(\tR\acaGroup\"\x9a\x01\n" +
+	"\bca_group\x18\x05 \x01(\tR\acaGroup\"\xd5\x01\n" +
 	"\x04Lynx\x12E\n" +
 	"\vapplication\x18\x01 \x01(\v2#.lynx.protobuf.app.conf.ApplicationR\vapplication\x12K\n" +
-	"\rsubscriptions\x18\x02 \x01(\v2%.lynx.protobuf.app.conf.SubscriptionsR\rsubscriptions\"^\n" +
+	"\rsubscriptions\x18\x02 \x01(\v2%.lynx.protobuf.app.conf.SubscriptionsR\rsubscriptions\x129\n" +
+	"\aruntime\x18\x03 \x01(\v2\x1f.lynx.protobuf.app.conf.RuntimeR\aruntime\"^\n" +
 	"\vApplication\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12!\n" +
-	"\fclose_banner\x18\x03 \x01(\bR\vcloseBannerB\x1eZ\x1cgithub.com/go-lynx/lynx/confb\x06proto3"
+	"\fclose_banner\x18\x03 \x01(\bR\vcloseBanner\">\n" +
+	"\aRuntime\x123\n" +
+	"\x05event\x18\x01 \x01(\v2\x1d.lynx.protobuf.app.conf.EventR\x05event\"y\n" +
+	"\x05Event\x12\x1d\n" +
+	"\n" +
+	"queue_size\x18\x01 \x01(\x05R\tqueueSize\x12!\n" +
+	"\fworker_count\x18\x02 \x01(\x05R\vworkerCount\x12.\n" +
+	"\x13listener_queue_size\x18\x03 \x01(\x05R\x11listenerQueueSizeB\x1eZ\x1cgithub.com/go-lynx/lynx/confb\x06proto3"
 
 var (
 	file_boot_proto_rawDescOnce sync.Once
@@ -350,24 +477,28 @@ func file_boot_proto_rawDescGZIP() []byte {
 	return file_boot_proto_rawDescData
 }
 
-var file_boot_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_boot_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_boot_proto_goTypes = []any{
 	(*Bootstrap)(nil),        // 0: lynx.protobuf.app.conf.Bootstrap
 	(*Subscriptions)(nil),    // 1: lynx.protobuf.app.conf.Subscriptions
 	(*GrpcSubscription)(nil), // 2: lynx.protobuf.app.conf.GrpcSubscription
 	(*Lynx)(nil),             // 3: lynx.protobuf.app.conf.Lynx
 	(*Application)(nil),      // 4: lynx.protobuf.app.conf.Application
+	(*Runtime)(nil),          // 5: lynx.protobuf.app.conf.Runtime
+	(*Event)(nil),            // 6: lynx.protobuf.app.conf.Event
 }
 var file_boot_proto_depIdxs = []int32{
 	3, // 0: lynx.protobuf.app.conf.Bootstrap.lynx:type_name -> lynx.protobuf.app.conf.Lynx
 	2, // 1: lynx.protobuf.app.conf.Subscriptions.grpc:type_name -> lynx.protobuf.app.conf.GrpcSubscription
 	4, // 2: lynx.protobuf.app.conf.Lynx.application:type_name -> lynx.protobuf.app.conf.Application
 	1, // 3: lynx.protobuf.app.conf.Lynx.subscriptions:type_name -> lynx.protobuf.app.conf.Subscriptions
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	5, // 4: lynx.protobuf.app.conf.Lynx.runtime:type_name -> lynx.protobuf.app.conf.Runtime
+	6, // 5: lynx.protobuf.app.conf.Runtime.event:type_name -> lynx.protobuf.app.conf.Event
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_boot_proto_init() }
@@ -381,7 +512,7 @@ func file_boot_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_boot_proto_rawDesc), len(file_boot_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

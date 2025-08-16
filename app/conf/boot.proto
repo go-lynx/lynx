@@ -36,6 +36,8 @@ message Lynx {
   Application application = 1;
   // subscriptions 字段定义 Lynx 在启动时需要订阅的上游服务
   Subscriptions subscriptions = 2;
+  // runtime 字段包含运行时相关配置（事件系统等）
+  Runtime runtime = 3;
 }
 
 // Application 消息包含应用程序的基本配置信息。
@@ -46,4 +48,20 @@ message Application {
   string version = 2;
   // close_banner 字段用于控制是否关闭应用程序启动时显示的横幅信息。
   bool close_banner = 3;
+}
+
+// Runtime 运行时配置
+message Runtime {
+  // event 事件系统配置
+  Event event = 1;
+}
+
+// Event 事件系统配置
+message Event {
+  // queue_size 事件队列大小
+  int32 queue_size = 1;
+  // worker_count 事件分发工作协程数量
+  int32 worker_count = 2;
+  // listener_queue_size 每个监听器的独立队列大小
+  int32 listener_queue_size = 3;
 }
