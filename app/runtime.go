@@ -2,12 +2,21 @@ package app
 
 import (
 	"fmt"
+	"sync/atomic"
 	"sync"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/plugins"
+)
+
+// 默认事件队列与worker参数
+const (
+	defaultEventQueueSize   = 1024
+	defaultEventWorkerCount = 10
+	// 每个监听器的独立队列大小，避免单个慢监听器阻塞全局
+	defaultListenerQueueSize = 256
 )
 
 // TypedRuntimePlugin 泛型运行时插件
@@ -39,6 +48,27 @@ type TypedRuntimePlugin struct {
 	// config is the plugin's configuration
 	// config 是插件的配置
 	config config.Config
+
+	// 事件队列与worker
+	// eventCh 承载事件的缓冲通道，提供背压
+	eventCh chan plugins.PluginEvent
+	// workerCount 工作协程数量
+	workerCount int
+	// 每个监听器的独立队列大小
+	listenerQueueSize int
+	// 关闭控制
+	closeOnce sync.Once
+	closed    chan struct{}
+
+	// goroutine 跟踪
+	workerWg   sync.WaitGroup
+	listenerWg sync.WaitGroup
+
+	// 停止标记，Emit 阶段快速丢弃
+	stopped int32
+
+	// 生产者发送互斥，避免 Close 同步关闭 eventCh 时发生并发发送
+	sendMu sync.Mutex
 }
 
 // listenerEntry represents a registered event listener with its filter
@@ -46,17 +76,63 @@ type TypedRuntimePlugin struct {
 type listenerEntry struct {
 	listener plugins.EventListener
 	filter   *plugins.EventFilter
+	// 每个监听器的独立事件队列
+	ch chan plugins.PluginEvent
+	// 监听器退出信号，不关闭 ch 以避免 worker 发送时的竞态
+	quit chan struct{}
 }
 
 // NewTypedRuntimePlugin creates a new TypedRuntimePlugin instance with default settings.
 // NewTypedRuntimePlugin 创建一个带有默认设置的 TypedRuntimePlugin 实例。
 func NewTypedRuntimePlugin() *TypedRuntimePlugin {
-	return &TypedRuntimePlugin{
+	// 读取可配置的队列大小与 worker 数量（优先从 boot 配置，其次从全局 config 扫描）
+	qsize := defaultEventQueueSize
+	wcount := defaultEventWorkerCount
+	lqsize := defaultListenerQueueSize
+	if app := Lynx(); app != nil {
+		// 优先使用引导配置（boot.pb.go）
+		if app.bootConfig != nil && app.bootConfig.Lynx != nil && app.bootConfig.Lynx.Runtime != nil && app.bootConfig.Lynx.Runtime.Event != nil {
+			if v := app.bootConfig.Lynx.Runtime.Event.QueueSize; v > 0 {
+				qsize = int(v)
+			}
+			if v := app.bootConfig.Lynx.Runtime.Event.WorkerCount; v > 0 {
+				wcount = int(v)
+			}
+			if v := app.bootConfig.Lynx.Runtime.Event.ListenerQueueSize; v > 0 {
+				lqsize = int(v)
+			}
+		} else if cfg := app.GetGlobalConfig(); cfg != nil {
+			// 兼容旧路径：从全局 config 扫描
+			var qs, wc int
+			if err := cfg.Value("lynx.runtime.event.queue_size").Scan(&qs); err == nil && qs > 0 {
+				qsize = qs
+			}
+			if err := cfg.Value("lynx.runtime.event.worker_count").Scan(&wc); err == nil && wc > 0 {
+				wcount = wc
+			}
+			var lqs int
+			if err := cfg.Value("lynx.runtime.event.listener_queue_size").Scan(&lqs); err == nil && lqs > 0 {
+				lqsize = lqs
+			}
+		}
+	}
+
+	r := &TypedRuntimePlugin{
 		maxHistorySize: 1000, // Default to keeping last 1000 events
 		listeners:      make([]listenerEntry, 0),
 		eventHistory:   make([]plugins.PluginEvent, 0),
 		logger:         log.DefaultLogger,
+		eventCh:        make(chan plugins.PluginEvent, qsize),
+		workerCount:    wcount,
+		listenerQueueSize: lqsize,
+		closed:         make(chan struct{}),
 	}
+	// 启动固定数量的事件分发worker
+	for i := 0; i < r.workerCount; i++ {
+		r.workerWg.Add(1)
+		go r.eventWorkerLoop()
+	}
+	return r
 }
 
 // GetResource retrieves a shared plugin resource by name
@@ -114,7 +190,11 @@ func RegisterTypedResource[T any](r *TypedRuntimePlugin, name string, resource T
 // 提供对配置值和更新的访问。
 func (r *TypedRuntimePlugin) GetConfig() config.Config {
 	if r.config == nil {
-		r.config = Lynx().GetGlobalConfig()
+		if app := Lynx(); app != nil {
+			if cfg := app.GetGlobalConfig(); cfg != nil {
+				r.config = cfg
+			}
+		}
 	}
 	return r.config
 }
@@ -144,24 +224,82 @@ func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 		event.Timestamp = time.Now().Unix()
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	// 已停止则直接丢弃
+	if atomic.LoadInt32(&r.stopped) == 1 {
+		return
+	}
 
+	// 先写入历史，后入队
+	r.mu.Lock()
 	// Add to history
 	r.eventHistory = append(r.eventHistory, event)
-
 	// Trim history if it exceeds max size
 	if r.maxHistorySize > 0 && len(r.eventHistory) > r.maxHistorySize {
 		r.eventHistory = r.eventHistory[len(r.eventHistory)-r.maxHistorySize:]
 	}
+	r.mu.Unlock()
 
-	// Notify listeners
-	for _, entry := range r.listeners {
-		if entry.filter == nil || r.eventMatchesFilter(event, *entry.filter) {
-			// Non-blocking event dispatch
-			go entry.listener.HandleEvent(event)
+	// 将事件写入队列；队列满时丢弃并记录debug日志，避免无背压的goroutine泛滥
+	r.sendMu.Lock()
+	select {
+	case r.eventCh <- event:
+	default:
+		if r.logger != nil {
+			_ = r.logger.Log(log.LevelDebug, "msg", "event queue full, dropping event", "type", event.Type, "plugin", event.PluginID)
 		}
 	}
+	r.sendMu.Unlock()
+}
+
+// eventWorkerLoop 顺序处理事件并派发给符合过滤条件的监听器
+func (r *TypedRuntimePlugin) eventWorkerLoop() {
+	defer r.workerWg.Done()
+	for ev := range r.eventCh {
+		// 复制监听器快照，避免长时间持锁
+		r.mu.RLock()
+		listeners := make([]listenerEntry, len(r.listeners))
+		copy(listeners, r.listeners)
+		r.mu.RUnlock()
+
+		for _, entry := range listeners {
+			if entry.filter == nil || r.eventMatchesFilter(ev, *entry.filter) {
+				// 分发到监听器独立队列，避免头阻塞
+				select {
+				case entry.ch <- ev:
+				default:
+					if r.logger != nil {
+						_ = r.logger.Log(log.LevelDebug, "msg", "listener queue full, dropping event", "listener_id", entry.listener.GetListenerID(), "type", ev.Type)
+					}
+				}
+			}
+		}
+	}
+}
+
+// Close 关闭事件分发（可选调用）
+func (r *TypedRuntimePlugin) Close() {
+	r.closeOnce.Do(func() {
+		// Phase 1: 停止接收新事件并让 worker 自然退出
+		atomic.StoreInt32(&r.stopped, 1)
+		// 与生产者互斥，避免 send on closed channel
+		r.sendMu.Lock()
+		close(r.eventCh)
+		r.sendMu.Unlock()
+		r.workerWg.Wait()
+
+		// Phase 2: 通知监听器退出并等待其优雅退出
+		r.mu.RLock()
+		for _, entry := range r.listeners {
+			if entry.quit != nil {
+				close(entry.quit)
+			}
+		}
+		r.mu.RUnlock()
+		r.listenerWg.Wait()
+
+		// 最后标记 closed（可用于其他 select 信号）
+		close(r.closed)
+	})
 }
 
 // AddListener registers a new event listener with optional filters.
@@ -177,10 +315,39 @@ func (r *TypedRuntimePlugin) AddListener(listener plugins.EventListener, filter 
 	defer r.mu.Unlock()
 
 	// Add new listener with its filter
-	r.listeners = append(r.listeners, listenerEntry{
+	entry := listenerEntry{
 		listener: listener,
 		filter:   filter,
-	})
+		ch:       make(chan plugins.PluginEvent, r.listenerQueueSize),
+		quit:     make(chan struct{}),
+	}
+	r.listeners = append(r.listeners, entry)
+
+	// 启动监听器独立 goroutine
+	r.listenerWg.Add(1)
+	go func(le listenerEntry) {
+		defer r.listenerWg.Done()
+		for {
+			select {
+			case <-le.quit:
+				return
+			case ev, ok := <-le.ch:
+				if !ok {
+					return
+				}
+				func() {
+					defer func() {
+						if rec := recover(); rec != nil {
+							if r.logger != nil {
+								_ = r.logger.Log(log.LevelError, "msg", "panic in EventListener.HandleEvent", "listener_id", le.listener.GetListenerID(), "err", rec)
+							}
+						}
+					}()
+					le.listener.HandleEvent(ev)
+				}()
+			}
+		}
+	}(entry)
 }
 
 // RemoveListener unregisters an event listener.
@@ -200,6 +367,11 @@ func (r *TypedRuntimePlugin) RemoveListener(listener plugins.EventListener) {
 	for _, entry := range r.listeners {
 		if entry.listener != listener {
 			newListeners = append(newListeners, entry)
+		} else {
+			// 通知监听器退出，但不关闭其事件通道，避免 worker 向已关闭通道发送
+			if entry.quit != nil {
+				close(entry.quit)
+			}
 		}
 	}
 	r.listeners = newListeners

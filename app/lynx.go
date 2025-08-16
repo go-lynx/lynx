@@ -4,6 +4,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"sync/atomic"
 	"sync"
 
 	"github.com/go-lynx/lynx/app/conf"
@@ -22,7 +23,12 @@ var (
 	// initOnce 用于确保 Lynx 应用程序只初始化一次。
 	// 使用 sync.Once 保证在并发环境下初始化操作的原子性。
 	initOnce sync.Once
+	// 保护 lynxApp 读写的锁，避免未加锁读
+	lynxMu sync.RWMutex
 )
+
+// 系统内部用于配置相关事件的固定插件名，避免使用空字符串破坏基于 PluginID 的过滤
+const configEventPluginID = "lynx.config"
 
 // LynxApp represents the main application instance.
 // It serves as the central coordinator for all application components,
@@ -83,6 +89,9 @@ type LynxApp struct {
 
 	// grpcSubs 保存通过配置订阅的上游 gRPC 连接，key 为服务名
 	grpcSubs map[string]*grpc.ClientConn
+
+	// 配置版本号（单调递增），用于事件有序性与幂等处理
+	configVersion uint64
 }
 
 // Lynx returns the global LynxApp instance.
@@ -90,6 +99,8 @@ type LynxApp struct {
 // Lynx 返回全局的 LynxApp 实例。
 // 确保线程安全地访问单例实例。
 func Lynx() *LynxApp {
+	lynxMu.RLock()
+	defer lynxMu.RUnlock()
 	return lynxApp
 }
 
@@ -98,10 +109,11 @@ func Lynx() *LynxApp {
 // GetHost 获取当前应用程序实例的主机名。
 // 如果应用程序未初始化，则返回空字符串。
 func GetHost() string {
-	if lynxApp == nil {
+	a := Lynx()
+	if a == nil {
 		return ""
 	}
-	return lynxApp.host
+	return a.host
 }
 
 // GetName retrieves the application name.
@@ -109,10 +121,11 @@ func GetHost() string {
 // GetName 获取应用程序名称。
 // 如果应用程序未初始化，则返回空字符串。
 func GetName() string {
-	if lynxApp == nil {
+	a := Lynx()
+	if a == nil {
 		return ""
 	}
-	return lynxApp.name
+	return a.name
 }
 
 // GetVersion retrieves the application version.
@@ -120,10 +133,11 @@ func GetName() string {
 // GetVersion 获取应用程序版本。
 // 如果应用程序未初始化，则返回空字符串。
 func GetVersion() string {
-	if lynxApp == nil {
+	a := Lynx()
+	if a == nil {
 		return ""
 	}
-	return lynxApp.version
+	return a.version
 }
 
 // NewApp creates a new Lynx application instance with the provided configuration and plugins.
@@ -153,6 +167,11 @@ func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
 		return nil, fmt.Errorf("configuration cannot be nil")
 	}
 
+	// 如果已经初始化过，直接返回单例，避免返回 (nil, nil)
+	if existing := Lynx(); existing != nil {
+		return existing, nil
+	}
+
 	var app *LynxApp
 	var err error
 
@@ -166,6 +185,17 @@ func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
 		return nil, fmt.Errorf("failed to initialize application: %w", err)
 	}
 
+	// 兼容并发场景：若此时 app 为空但单例已被其他协程初始化，则返回单例
+	if app == nil {
+		if existing := Lynx(); existing != nil {
+			return existing, nil
+		}
+	}
+
+	// 正常返回新初始化的实例；若出现不期望的空实例，返回明确错误
+	if app == nil {
+		return nil, fmt.Errorf("application initialization resulted in nil instance")
+	}
 	return app, nil
 }
 
@@ -214,9 +244,11 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 		return nil, fmt.Errorf("application name cannot be empty")
 	}
 
-	// Set global singleton instance
-	// 设置全局单例实例
+	// Set global singleton instance（加锁发布）
+	// 设置全局单例实例（加锁发布）
+	lynxMu.Lock()
 	lynxApp = app
+	lynxMu.Unlock()
 
 	return app, nil
 }
@@ -258,11 +290,12 @@ func (a *LynxApp) GetGlobalConfig() config.Config {
 // GetTypedPlugin globally retrieves a type-safe plugin instance
 func GetTypedPlugin[T plugins.Plugin](name string) (T, error) {
 	var zero T
-	if lynxApp == nil {
+	a := Lynx()
+	if a == nil {
 		return zero, fmt.Errorf("lynx application not initialized")
 	}
 
-	manager := lynxApp.GetTypedPluginManager()
+	manager := a.GetTypedPluginManager()
 	if manager == nil {
 		return zero, fmt.Errorf("typed plugin manager not initialized")
 	}
@@ -304,28 +337,32 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 	// 更新全局配置
 	a.globalConf = cfg
 
-    // 将新配置注入插件管理器与运行时，并广播配置事件
-    if pm := a.GetPluginManager(); pm != nil {
-        pm.SetConfig(cfg)
-        if rt := pm.GetRuntime(); rt != nil {
-            // 注入配置
-            rt.SetConfig(cfg)
-            // 广播：配置正在更新
-            rt.EmitPluginEvent("", string(plugins.EventConfigurationChanged), map[string]any{
-                "app":      a.name,
-                "version":  a.version,
-                "host":     a.host,
-                "source":   "SetGlobalConfig",
-            })
-            // 广播：配置已应用
-            rt.EmitPluginEvent("", string(plugins.EventConfigurationApplied), map[string]any{
-                "app":      a.name,
-                "version":  a.version,
-                "host":     a.host,
-                "source":   "SetGlobalConfig",
-            })
-        }
-    }
+	// 将新配置注入插件管理器与运行时，并广播配置事件
+	if pm := a.GetPluginManager(); pm != nil {
+		pm.SetConfig(cfg)
+		if rt := pm.GetRuntime(); rt != nil {
+			// 注入配置
+			rt.SetConfig(cfg)
+			// 递增配置版本号
+			ver := atomic.AddUint64(&a.configVersion, 1)
+			// 广播：配置正在更新（使用固定的系统插件名）
+			rt.EmitPluginEvent(configEventPluginID, string(plugins.EventConfigurationChanged), map[string]any{
+				"app":          a.name,
+				"version":      a.version,
+				"host":         a.host,
+				"source":       "SetGlobalConfig",
+				"config_version": ver,
+			})
+			// 广播：配置已应用
+			rt.EmitPluginEvent(configEventPluginID, string(plugins.EventConfigurationApplied), map[string]any{
+				"app":          a.name,
+				"version":      a.version,
+				"host":         a.host,
+				"source":       "SetGlobalConfig",
+				"config_version": ver,
+			})
+		}
+	}
 
-    return nil
+	return nil
 }
