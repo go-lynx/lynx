@@ -19,6 +19,8 @@ const (
 	defaultListenerQueueSize = 256
 	// 历史事件默认 1000 条，<=0 表示不保留
 	defaultHistorySize = 1000
+	// 关闭时排空监听器队列的默认超时（毫秒）。默认 500ms，兼顾快速关停与尽量不丢事件
+	defaultDrainTimeoutMs = 500
 )
 
 // TypedRuntimePlugin 泛型运行时插件
@@ -71,6 +73,9 @@ type TypedRuntimePlugin struct {
 
 	// 生产者发送互斥，避免 Close 同步关闭 eventCh 时发生并发发送
 	sendMu sync.Mutex
+
+	// 排空监听器队列超时
+	drainTimeout time.Duration
 }
 
 // listenerEntry represents a registered event listener with its filter
@@ -82,18 +87,21 @@ type listenerEntry struct {
 	ch chan plugins.PluginEvent
 	// 监听器退出信号，不关闭 ch 以避免 worker 发送时的竞态
 	quit chan struct{}
+	// 监听器活跃标志（共享指针，便于在快照后仍能感知 Remove 的状态变更）1=active, 0=inactive
+	active *int32
 }
 
 // NewTypedRuntimePlugin creates a new TypedRuntimePlugin instance with default settings.
 // NewTypedRuntimePlugin 创建一个带有默认设置的 TypedRuntimePlugin 实例。
 func NewTypedRuntimePlugin() *TypedRuntimePlugin {
-	// 读取可配置的队列大小与 worker 数量（优先从 boot 配置，其次从全局 config 扫描）
+	// 读取可配置的队列大小与 worker 数量（仅从 boot 配置）
 	qsize := defaultEventQueueSize
 	wcount := defaultEventWorkerCount
 	lqsize := defaultListenerQueueSize
 	hsize := defaultHistorySize
+	drainMs := defaultDrainTimeoutMs
 	if app := Lynx(); app != nil {
-		// 优先使用引导配置（boot.pb.go）
+		// 仅使用引导配置（boot.pb.go）；未配置则使用默认值
 		if app.bootConfig != nil && app.bootConfig.Lynx != nil && app.bootConfig.Lynx.Runtime != nil && app.bootConfig.Lynx.Runtime.Event != nil {
 			if v := app.bootConfig.Lynx.Runtime.Event.QueueSize; v > 0 {
 				qsize = int(v)
@@ -108,22 +116,9 @@ func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 			if v := app.bootConfig.Lynx.Runtime.Event.HistorySize; v != 0 {
 				hsize = int(v)
 			}
-		} else if cfg := app.GetGlobalConfig(); cfg != nil {
-			// 兼容旧路径：从全局 config 扫描
-			var qs, wc int
-			if err := cfg.Value("lynx.runtime.event.queue_size").Scan(&qs); err == nil && qs > 0 {
-				qsize = qs
-			}
-			if err := cfg.Value("lynx.runtime.event.worker_count").Scan(&wc); err == nil && wc > 0 {
-				wcount = wc
-			}
-			var lqs int
-			if err := cfg.Value("lynx.runtime.event.listener_queue_size").Scan(&lqs); err == nil && lqs > 0 {
-				lqsize = lqs
-			}
-			var hs int
-			if err := cfg.Value("lynx.runtime.event.history_size").Scan(&hs); err == nil {
-				hsize = hs
+			// 关闭排空超时（毫秒）
+			if v := app.bootConfig.Lynx.Runtime.Event.DrainTimeoutMs; v > 0 {
+				drainMs = int(v)
 			}
 		}
 	}
@@ -137,6 +132,9 @@ func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 		workerCount:       wcount,
 		listenerQueueSize: lqsize,
 		closed:            make(chan struct{}),
+	}
+	if drainMs > 0 {
+		r.drainTimeout = time.Duration(drainMs) * time.Millisecond
 	}
 	// 启动固定数量的事件分发worker
 	for i := 0; i < r.workerCount; i++ {
@@ -275,6 +273,10 @@ func (r *TypedRuntimePlugin) eventWorkerLoop() {
 		r.mu.RUnlock()
 
 		for _, entry := range listeners {
+			// 若监听器已被标记为不活跃，则跳过
+			if entry.active != nil && atomic.LoadInt32(entry.active) == 0 {
+				continue
+			}
 			if entry.filter == nil || r.eventMatchesFilter(ev, *entry.filter) {
 				// 分发到监听器独立队列，避免头阻塞
 				select {
@@ -300,9 +302,32 @@ func (r *TypedRuntimePlugin) Close() {
 		r.sendMu.Unlock()
 		r.workerWg.Wait()
 
-		// Phase 2: 通知监听器退出并等待其优雅退出
+		// Phase 2.1: 可选排空监听器队列（仅等待，不再继续生产）
+		if r.drainTimeout > 0 {
+			deadline := time.Now().Add(r.drainTimeout)
+			for {
+				allEmpty := true
+				r.mu.RLock()
+				for _, entry := range r.listeners {
+					if entry.ch != nil && len(entry.ch) > 0 {
+						allEmpty = false
+						break
+					}
+				}
+				r.mu.RUnlock()
+				if allEmpty || time.Now().After(deadline) {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+
+		// Phase 2.2: 通知监听器退出并等待其优雅退出
 		r.mu.RLock()
 		for _, entry := range r.listeners {
+			if entry.active != nil {
+				atomic.StoreInt32(entry.active, 0)
+			}
 			if entry.quit != nil {
 				close(entry.quit)
 			}
@@ -328,11 +353,13 @@ func (r *TypedRuntimePlugin) AddListener(listener plugins.EventListener, filter 
 	defer r.mu.Unlock()
 
 	// Add new listener with its filter
+	var activeFlag int32 = 1
 	entry := listenerEntry{
 		listener: listener,
 		filter:   filter,
 		ch:       make(chan plugins.PluginEvent, r.listenerQueueSize),
 		quit:     make(chan struct{}),
+		active:   &activeFlag,
 	}
 	r.listeners = append(r.listeners, entry)
 
@@ -382,6 +409,9 @@ func (r *TypedRuntimePlugin) RemoveListener(listener plugins.EventListener) {
 			newListeners = append(newListeners, entry)
 		} else {
 			// 通知监听器退出，但不关闭其事件通道，避免 worker 向已关闭通道发送
+			if entry.active != nil {
+				atomic.StoreInt32(entry.active, 0)
+			}
 			if entry.quit != nil {
 				close(entry.quit)
 			}

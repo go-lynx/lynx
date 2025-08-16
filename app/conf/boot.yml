@@ -31,3 +31,5 @@ lynx:
       listener_queue_size: 256
       # 历史事件保留条数（<=0 表示不保留历史），默认 1000
       history_size: 1000
+      # 关闭时的排空超时（毫秒）。>0 表示在通知监听器退出前等待队列尽量清空
+      drain_timeout_ms: 0
