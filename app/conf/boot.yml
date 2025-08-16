@@ -29,3 +29,5 @@ lynx:
       worker_count: 10
       # 每个监听器的独立队列大小（>0），默认 256
       listener_queue_size: 256
+      # 历史事件保留条数（<=0 表示不保留历史），默认 1000
+      history_size: 1000
