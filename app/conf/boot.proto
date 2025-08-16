@@ -66,4 +66,6 @@ message Event {
   int32 listener_queue_size = 3;
   // history_size 历史事件保留条数（<=0 表示不保留历史）
   int32 history_size = 4;
+  // drain_timeout_ms 关闭 Phase 2 的排空超时（毫秒）。>0 则在通知退出前尽可能等待监听器队列清空
+  int32 drain_timeout_ms = 5;
 }

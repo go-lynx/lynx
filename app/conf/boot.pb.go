@@ -379,9 +379,11 @@ type Event struct {
 	// listener_queue_size 每个监听器的独立队列大小
 	ListenerQueueSize int32 `protobuf:"varint,3,opt,name=listener_queue_size,json=listenerQueueSize,proto3" json:"listener_queue_size,omitempty"`
 	// history_size 历史事件保留条数（<=0 表示不保留历史）
-	HistorySize   int32 `protobuf:"varint,4,opt,name=history_size,json=historySize,proto3" json:"history_size,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	HistorySize int32 `protobuf:"varint,4,opt,name=history_size,json=historySize,proto3" json:"history_size,omitempty"`
+	// drain_timeout_ms 关闭 Phase 2 的排空超时（毫秒）。>0 则在通知退出前尽可能等待监听器队列清空
+	DrainTimeoutMs int32 `protobuf:"varint,5,opt,name=drain_timeout_ms,json=drainTimeoutMs,proto3" json:"drain_timeout_ms,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Event) Reset() {
@@ -442,6 +444,13 @@ func (x *Event) GetHistorySize() int32 {
 	return 0
 }
 
+func (x *Event) GetDrainTimeoutMs() int32 {
+	if x != nil {
+		return x.DrainTimeoutMs
+	}
+	return 0
+}
+
 var File_boot_proto protoreflect.FileDescriptor
 
 const file_boot_proto_rawDesc = "" +
@@ -467,13 +476,14 @@ const file_boot_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12!\n" +
 	"\fclose_banner\x18\x03 \x01(\bR\vcloseBanner\">\n" +
 	"\aRuntime\x123\n" +
-	"\x05event\x18\x01 \x01(\v2\x1d.lynx.protobuf.app.conf.EventR\x05event\"\x9c\x01\n" +
+	"\x05event\x18\x01 \x01(\v2\x1d.lynx.protobuf.app.conf.EventR\x05event\"\xc6\x01\n" +
 	"\x05Event\x12\x1d\n" +
 	"\n" +
 	"queue_size\x18\x01 \x01(\x05R\tqueueSize\x12!\n" +
 	"\fworker_count\x18\x02 \x01(\x05R\vworkerCount\x12.\n" +
 	"\x13listener_queue_size\x18\x03 \x01(\x05R\x11listenerQueueSize\x12!\n" +
-	"\fhistory_size\x18\x04 \x01(\x05R\vhistorySizeB\x1eZ\x1cgithub.com/go-lynx/lynx/confb\x06proto3"
+	"\fhistory_size\x18\x04 \x01(\x05R\vhistorySize\x12(\n" +
+	"\x10drain_timeout_ms\x18\x05 \x01(\x05R\x0edrainTimeoutMsB\x1eZ\x1cgithub.com/go-lynx/lynx/confb\x06proto3"
 
 var (
 	file_boot_proto_rawDescOnce sync.Once
