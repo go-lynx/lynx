@@ -4,26 +4,26 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// HashEncryption 对明文进行加密操作，使用 bcrypt 算法。
-// 参数 plaintext 是需要加密的明文。
-// 返回值为加密后的字符串和可能出现的错误。
-func HashEncryption(plaintext string, cost int) (string, error) {
-	// 检查 cost 值是否在 bcrypt 的有效范围内
-	if cost < 4 || cost > 31 {
-		cost = 10
+// HashPassword 使用 bcrypt 生成密码哈希。
+// - 使用 bcrypt.MinCost / DefaultCost / MaxCost 管理 cost 边界，避免魔法数。
+// - 当 cost < MinCost 时采用 DefaultCost；当 cost > MaxCost 时采用 MaxCost。
+func HashPassword(password string, cost int) (string, error) {
+	if cost < bcrypt.MinCost {
+		cost = bcrypt.DefaultCost
+	} else if cost > bcrypt.MaxCost {
+		cost = bcrypt.MaxCost
 	}
-	// 使用 bcrypt.GenerateFromPassword 函数对明文进行加密，第二个参数 10 是 cost 值，控制加密的计算复杂度。
-	bytes, err := bcrypt.GenerateFromPassword([]byte(plaintext), cost)
-	// 将加密后的字节切片转换为字符串返回
-	return string(bytes), err
+	b, err := bcrypt.GenerateFromPassword([]byte(password), cost)
+	return string(b), err
 }
 
-// CheckCiphertext 对明文和密文进行校验，验证明文是否与密文匹配。
-// 参数 plaintext 是需要验证的明文，ciphertext 是用于比对的密文。
-// 返回值为布尔类型，表示校验是否通过。
-func CheckCiphertext(plaintext, ciphertext string) bool {
-	// 使用 bcrypt.CompareHashAndPassword 函数比较明文和密文是否匹配
-	err := bcrypt.CompareHashAndPassword([]byte(ciphertext), []byte(plaintext))
-	// 若 err 为 nil 则表示匹配成功，返回 true；否则返回 false
-	return err == nil
+// VerifyPassword 比较哈希与明文是否匹配。
+// - 匹配返回 nil；不匹配或哈希损坏返回 error。
+func VerifyPassword(hash, password string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+}
+
+// CheckPassword 是 VerifyPassword 的布尔包装器。
+func CheckPassword(hash, password string) bool {
+	return VerifyPassword(hash, password) == nil
 }
