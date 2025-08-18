@@ -4,8 +4,8 @@ package app
 import (
 	"fmt"
 	"os"
-	"sync/atomic"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-lynx/lynx/app/conf"
 	"github.com/go-lynx/lynx/app/log"
@@ -79,7 +79,7 @@ type LynxApp struct {
 	// Responsible for loading, unloading, and coordinating plugins.
 	// pluginManager 处理插件的生命周期和依赖关系。
 	// 负责加载、卸载和协调插件。
-	pluginManager LynxPluginManager
+	pluginManager TypedPluginManager
 
 	// typedPluginManager handles typed plugin lifecycle and dependencies.
 	// Provides type-safe plugin management with generic support.
@@ -226,14 +226,15 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 
 	// Create new application instance
 	// 创建新的应用程序实例
+	typedMgr := NewTypedPluginManager(plugins...)
 	app := &LynxApp{
 		host:               hostname,
 		name:               bConf.Lynx.Application.Name,
 		version:            bConf.Lynx.Application.Version,
 		bootConfig:         &bConf,
 		globalConf:         cfg,
-		pluginManager:      NewLynxPluginManager(plugins...),
-		typedPluginManager: NewTypedPluginManager(plugins...),
+		pluginManager:      typedMgr,
+		typedPluginManager: typedMgr,
 		controlPlane:       &DefaultControlPlane{},
 		grpcSubs:           make(map[string]*grpc.ClientConn),
 	}
@@ -257,7 +258,7 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 // Returns nil if the application is not initialized.
 // GetPluginManager 返回插件管理器实例。
 // 如果应用程序未初始化，则返回 nil。
-func (a *LynxApp) GetPluginManager() LynxPluginManager {
+func (a *LynxApp) GetPluginManager() TypedPluginManager {
 	if a == nil {
 		return nil
 	}
@@ -300,13 +301,8 @@ func GetTypedPlugin[T plugins.Plugin](name string) (T, error) {
 		return zero, fmt.Errorf("typed plugin manager not initialized")
 	}
 
-	// 类型断言为具体的管理器类型
-	typedManager, ok := manager.(*DefaultTypedPluginManager)
-	if !ok {
-		return zero, fmt.Errorf("invalid typed plugin manager type")
-	}
-
-	return GetTypedPluginFromManager[T](typedManager, name)
+	// 直接通过统一的 PluginManager 获取并做类型断言
+	return GetTypedPluginFromManager[T](manager, name)
 }
 
 // SetGlobalConfig updates the global configuration instance.
@@ -347,18 +343,18 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 			ver := atomic.AddUint64(&a.configVersion, 1)
 			// 广播：配置正在更新（使用固定的系统插件名）
 			rt.EmitPluginEvent(configEventPluginID, string(plugins.EventConfigurationChanged), map[string]any{
-				"app":          a.name,
-				"version":      a.version,
-				"host":         a.host,
-				"source":       "SetGlobalConfig",
+				"app":            a.name,
+				"version":        a.version,
+				"host":           a.host,
+				"source":         "SetGlobalConfig",
 				"config_version": ver,
 			})
 			// 广播：配置已应用
 			rt.EmitPluginEvent(configEventPluginID, string(plugins.EventConfigurationApplied), map[string]any{
-				"app":          a.name,
-				"version":      a.version,
-				"host":         a.host,
-				"source":       "SetGlobalConfig",
+				"app":            a.name,
+				"version":        a.version,
+				"host":           a.host,
+				"source":         "SetGlobalConfig",
 				"config_version": ver,
 			})
 		}

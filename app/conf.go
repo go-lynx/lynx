@@ -10,9 +10,9 @@ import (
 )
 
 // PreparePlug 方法通过远程或本地配置文件引导插件加载。
-// 它基于配置处理插件的初始化和注册操作。
-// 返回一个成功准备好的插件列表和错误信息。
-func (m *DefaultPluginManager) PreparePlug(config config.Config) ([]plugins.Plugin, error) {
+// 它基于配置处理插件的初始化和注册操作，遇到单个插件失败时会记录日志并跳过该插件，尽力返回其余成功项。
+// 返回一个成功准备好的插件列表（可能为空）和错误信息（仅在全局性错误时返回）。
+func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.Plugin, error) {
 	// 检查配置是否为 nil，如果为 nil 则记录错误日志并返回 nil
 	if config == nil {
 		log.Error("Configuration is nil")
@@ -59,6 +59,8 @@ func (m *DefaultPluginManager) PreparePlug(config config.Config) ([]plugins.Plug
 		}
 
 		// 处理每个插件名称
+		// 增强可观测性：统计该前缀下成功/失败的插件数
+		var successCount, failCount int
 		for _, name := range names {
 			// 检查插件名称是否为空，如果为空则记录警告日志并跳过当前循环
 			if name == "" {
@@ -68,8 +70,12 @@ func (m *DefaultPluginManager) PreparePlug(config config.Config) ([]plugins.Plug
 
 			// 检查插件是否已存在且能否创建
 			if err := m.preparePlugin(name); err != nil {
+				// 增强可观测性：记录具体插件的准备失败原因
+				log.Warnf("prepare plugin %s failed: %v", name, err)
+				failCount++
 				continue
 			}
+			successCount++
 
 			// 获取插件实例并添加到切片中
 			if value, ok := m.pluginInstances.Load(name); ok {
@@ -78,11 +84,24 @@ func (m *DefaultPluginManager) PreparePlug(config config.Config) ([]plugins.Plug
 				}
 			}
 		}
+
+		// 前缀级别汇总日志，便于定位配置问题
+		if successCount > 0 || failCount > 0 {
+			if failCount > 0 {
+				log.Warnf("confPrefix %s prepared summary: success=%d, failed=%d, total=%d", confPrefix, successCount, failCount, len(names))
+			} else {
+				log.Infof("confPrefix %s prepared summary: success=%d, failed=%d, total=%d", confPrefix, successCount, failCount, len(names))
+			}
+		} else {
+			log.Debugf("confPrefix %s has no matched plugin names in registry or no valid config", confPrefix)
+		}
 	}
 
-	// 检查是否有成功准备的插件，如果没有则记录警告日志，否则记录成功信息
+	// 检查是否有成功准备的插件，记录结果
 	if len(prepared) != 0 {
 		log.Infof("successfully prepared %d plugins", len(prepared))
+	} else {
+		log.Warn("no plugins prepared from config and registry")
 	}
 
 	return prepared, nil
@@ -91,7 +110,7 @@ func (m *DefaultPluginManager) PreparePlug(config config.Config) ([]plugins.Plug
 // preparePlugin 处理单个插件的准备工作。
 // 它会检查插件是否已存在，创建插件实例，并将其添加到管理器中。
 // 如果任何步骤失败，则返回错误。
-func (m *DefaultPluginManager) preparePlugin(name string) error {
+func (m *DefaultPluginManager[T]) preparePlugin(name string) error {
 	// 检查插件是否已经加载，如果已加载则返回错误信息
 	if _, exists := m.pluginInstances.Load(name); exists {
 		return fmt.Errorf("plugin %s is already loaded", name)

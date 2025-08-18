@@ -1,0 +1,273 @@
+// Package app: plugin manager operations (load/unload, resources, helpers).
+package app
+
+import (
+	"fmt"
+
+	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-kratos/kratos/v2/selector"
+	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/app/subscribe"
+	"github.com/go-lynx/lynx/plugins"
+)
+
+// LoadPlugins loads and starts all plugins.
+func (m *DefaultPluginManager[T]) LoadPlugins(conf config.Config) error {
+	m.SetConfig(conf)
+
+	preparedPlugins, err := m.PreparePlug(conf)
+	if err != nil {
+		return fmt.Errorf("failed to prepare plugins: %w", err)
+	}
+	if len(preparedPlugins) == 0 {
+		return fmt.Errorf("no plugins prepared")
+	}
+
+	sortedPlugins, err := m.TopologicalSort(preparedPlugins)
+	if err != nil {
+		return fmt.Errorf("failed to sort plugins: %w", err)
+	}
+
+	if err := m.loadSortedPluginsByLevel(sortedPlugins); err != nil {
+		return err
+	}
+
+	if Lynx() != nil && Lynx().bootConfig != nil && Lynx().bootConfig.Lynx != nil && Lynx().bootConfig.Lynx.Subscriptions != nil {
+		disc := Lynx().GetControlPlane().NewServiceDiscovery()
+		if disc != nil {
+			routerFactory := func(service string) selector.NodeFilter {
+				return Lynx().GetControlPlane().NewNodeRouter(service)
+			}
+			conns, err := subscribe.BuildGrpcSubscriptions(Lynx().bootConfig.Lynx.Subscriptions, disc, routerFactory)
+			if err != nil {
+				return fmt.Errorf("build grpc subscriptions failed: %w", err)
+			}
+			Lynx().grpcSubs = conns
+		} else {
+			log.Warnf("service discovery is nil, skip building grpc subscriptions")
+		}
+	}
+
+	return nil
+}
+
+// UnloadPlugins stops and unloads all plugins.
+func (m *DefaultPluginManager[T]) UnloadPlugins() {
+	if m == nil || len(m.pluginList) == 0 {
+		return
+	}
+
+	timeout := m.getStopTimeout()
+
+	var ordered []plugins.Plugin
+	if sorted, err := m.TopologicalSort(m.pluginList); err == nil {
+		tmp := make([]plugins.Plugin, 0, len(sorted))
+		for _, w := range sorted {
+			if w.Plugin != nil {
+				tmp = append(tmp, w.Plugin)
+			}
+		}
+		for i := len(tmp) - 1; i >= 0; i-- {
+			ordered = append(ordered, tmp[i])
+		}
+	} else {
+		log.Warnf("topological sort failed during unload, fallback to list order: %v", err)
+		ordered = append(ordered, m.pluginList...)
+	}
+
+	for _, plugin := range ordered {
+		p := plugin
+		if p == nil {
+			continue
+		}
+		if err := m.safeStopPlugin(p, timeout); err != nil {
+			log.Errorf("Failed to unload plugin %s: %v", p.Name(), err)
+		}
+		if err := m.runtime.CleanupResources(p.ID()); err != nil {
+			log.Errorf("Failed to cleanup resources for plugin %s: %v", p.Name(), err)
+		}
+		m.pluginInstances.Delete(p.Name())
+	}
+
+	m.mu.Lock()
+	m.pluginList = nil
+	m.mu.Unlock()
+}
+
+// LoadPluginsByName loads a subset of plugins by Name().
+func (m *DefaultPluginManager[T]) LoadPluginsByName(conf config.Config, pluginNames []string) error {
+	m.SetConfig(conf)
+
+	preparedPlugins, err := m.PreparePlug(conf)
+	if err != nil {
+		return err
+	}
+
+	var targetPlugins []plugins.Plugin
+	pluginMap := make(map[string]plugins.Plugin)
+	for _, plugin := range preparedPlugins {
+		pluginMap[plugin.Name()] = plugin
+	}
+
+	for _, name := range pluginNames {
+		if plugin, exists := pluginMap[name]; exists {
+			targetPlugins = append(targetPlugins, plugin)
+		} else {
+			return fmt.Errorf("plugin %s not found", name)
+		}
+	}
+
+	sortedPlugins, err := m.TopologicalSort(targetPlugins)
+	if err != nil {
+		return fmt.Errorf("failed to sort plugins: %w", err)
+	}
+
+	if err := m.loadSortedPluginsByLevel(sortedPlugins); err != nil {
+		return err
+	}
+	return nil
+}
+
+// UnloadPluginsByName unloads a subset of plugins by Name().
+func (m *DefaultPluginManager[T]) UnloadPluginsByName(names []string) {
+	if m == nil || len(names) == 0 {
+		return
+	}
+
+	timeout := m.getStopTimeout()
+
+	var subset []plugins.Plugin
+	nameSet := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		nameSet[n] = struct{}{}
+	}
+
+	m.pluginInstances.Range(func(key, value any) bool {
+		name, ok := key.(string)
+		if !ok {
+			return true
+		}
+		if _, wanted := nameSet[name]; !wanted {
+			return true
+		}
+		if p, ok2 := value.(plugins.Plugin); ok2 && p != nil {
+			subset = append(subset, p)
+		}
+		return true
+	})
+
+	if len(subset) == 0 {
+		for _, n := range names {
+			log.Infof("plugin %s not found, skip unload", n)
+		}
+		return
+	}
+
+	var ordered []plugins.Plugin
+	if sorted, err := m.TopologicalSort(subset); err == nil {
+		tmp := make([]plugins.Plugin, 0, len(sorted))
+		for _, w := range sorted {
+			if w.Plugin != nil {
+				tmp = append(tmp, w.Plugin)
+			}
+		}
+		for i := len(tmp) - 1; i >= 0; i-- {
+			ordered = append(ordered, tmp[i])
+		}
+	} else {
+		log.Warnf("topological sort failed for subset unload, fallback to given order: %v", err)
+		for _, n := range names {
+			if obj, ok := m.pluginInstances.Load(n); ok {
+				if p, ok2 := obj.(plugins.Plugin); ok2 && p != nil {
+					ordered = append(ordered, p)
+				}
+			}
+		}
+	}
+
+	for _, p := range ordered {
+		if p == nil {
+			continue
+		}
+		if err := m.safeStopPlugin(p, timeout); err != nil {
+			log.Errorf("Failed to unload plugin %s: %v", p.Name(), err)
+		}
+		if err := m.runtime.CleanupResources(p.ID()); err != nil {
+			log.Errorf("Failed to cleanup resources for plugin %s: %v", p.Name(), err)
+		}
+		m.pluginInstances.Delete(p.Name())
+	}
+
+	m.mu.Lock()
+	var newList []plugins.Plugin
+	for _, item := range m.pluginList {
+		if item != nil {
+			if _, removed := nameSet[item.Name()]; !removed {
+				newList = append(newList, item)
+			}
+		}
+	}
+	m.pluginList = newList
+	m.mu.Unlock()
+}
+
+// StopPlugin stops a single plugin by Name().
+func (m *DefaultPluginManager[T]) StopPlugin(pluginName string) error {
+	plugin, exists := m.pluginInstances.Load(pluginName)
+	if !exists {
+		log.Infof("plugin %s not found, skip stop", pluginName)
+		return fmt.Errorf("plugin %s not found", pluginName)
+	}
+
+	p, ok := plugin.(plugins.Plugin)
+	if !ok {
+		return fmt.Errorf("invalid plugin instance for %s", pluginName)
+	}
+	if p == nil {
+		_ = m.runtime.CleanupResources(pluginName)
+		m.pluginInstances.Delete(pluginName)
+		return nil
+	}
+
+	timeout := m.getStopTimeout()
+	if err := m.safeStopPlugin(p, timeout); err != nil {
+		return fmt.Errorf("failed to stop plugin %s: %w", pluginName, err)
+	}
+	if err := m.runtime.CleanupResources(p.ID()); err != nil {
+		return fmt.Errorf("failed to cleanup resources for plugin %s: %w", pluginName, err)
+	}
+	m.pluginInstances.Delete(pluginName)
+	return nil
+}
+
+// Resource helpers.
+func (m *DefaultPluginManager[T]) GetResourceStats() map[string]any {
+	return m.runtime.GetResourceStats()
+}
+
+func (m *DefaultPluginManager[T]) ListResources() []*plugins.ResourceInfo {
+	return m.runtime.ListResources()
+}
+
+// Public helpers for any PluginManager.
+func ListPluginNames(m PluginManager) []string {
+	if m == nil {
+		return nil
+	}
+	type nameLister interface{ listPluginNamesInternal() []string }
+	if l, ok := m.(nameLister); ok {
+		return l.listPluginNamesInternal()
+	}
+	return nil
+}
+
+func Plugins(m PluginManager) []plugins.Plugin {
+	if m == nil {
+		return nil
+	}
+	type pluginsLister interface{ listPluginsInternal() []plugins.Plugin }
+	if l, ok := m.(pluginsLister); ok {
+		return l.listPluginsInternal()
+	}
+	return nil
+}

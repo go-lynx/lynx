@@ -5,9 +5,8 @@ import (
 
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
-	kratosgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/app/log"
-	"github.com/go-lynx/lynx/conf"
+	"github.com/go-lynx/lynx/app/conf"
 	ggrpc "google.golang.org/grpc"
 )
 
@@ -64,9 +63,4 @@ func BuildGrpcSubscriptions(cfg *conf.Subscriptions, discovery registry.Discover
 	}
 
 	return conns, nil
-}
-
-// AsDialOption 可选：将已存在连接装配为 kratos 客户端选项（按需使用）
-func AsDialOption(conn *ggrpc.ClientConn) kratosgrpc.ClientOption {
-	return kratosgrpc.WithConn(conn)
 }

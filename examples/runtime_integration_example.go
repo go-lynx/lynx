@@ -12,8 +12,8 @@ import (
 // 示例：展示如何使用统一的 Runtime 进行插件间资源共享
 
 func main() {
-	// 创建插件管理器
-	manager := app.NewPluginManager()
+	// 创建插件管理器（Typed 版本）
+	manager := app.NewTypedPluginManager()
 
 	// 模拟配置
 	conf := createMockConfig()
