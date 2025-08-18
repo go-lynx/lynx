@@ -114,8 +114,8 @@ func (l *EventListener) GetListenerID() string {
 func main() {
 	fmt.Println("=== 分层 Runtime 设计示例 ===")
 	
-	// 创建插件管理器
-	manager := app.NewPluginManager()
+	    // 创建插件管理器（Typed 版本）
+    manager := app.NewTypedPluginManager()
 	
 	// 创建示例插件（简化版本）
 	fmt.Println("创建插件...")

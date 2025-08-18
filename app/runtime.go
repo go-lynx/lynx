@@ -309,7 +309,7 @@ func (r *TypedRuntimePlugin) Close() {
 				allEmpty := true
 				r.mu.RLock()
 				for _, entry := range r.listeners {
-					if entry.ch != nil && len(entry.ch) > 0 {
+					if len(entry.ch) > 0 {
 						allEmpty = false
 						break
 					}

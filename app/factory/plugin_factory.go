@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/plugins"
 )
 
@@ -80,6 +81,18 @@ func RegisterTypedPlugin[T plugins.Plugin](
 		panic(fmt.Errorf("plugin already registered: %s", name))
 	}
 
+	// 跨前缀重复名检测（防御性）：如果该 name 已经出现在其他前缀的映射中，记录告警
+	for prefix, names := range factory.configMapping {
+		if prefix == configPrefix {
+			continue
+		}
+		for _, n := range names {
+			if n == name {
+				log.Warnf("plugin name '%s' registered under multiple prefixes: existing='%s', new='%s'", name, prefix, configPrefix)
+			}
+		}
+	}
+
 	// 存储创建函数
 	factory.creators[name] = func() plugins.Plugin {
 		return creator()
@@ -89,7 +102,17 @@ func RegisterTypedPlugin[T plugins.Plugin](
 	if factory.configMapping[configPrefix] == nil {
 		factory.configMapping[configPrefix] = make([]string, 0)
 	}
-	factory.configMapping[configPrefix] = append(factory.configMapping[configPrefix], name)
+	// 前缀内去重，避免重复追加
+	exists := false
+	for _, n := range factory.configMapping[configPrefix] {
+		if n == name {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		factory.configMapping[configPrefix] = append(factory.configMapping[configPrefix], name)
+	}
 }
 
 // GetTypedPlugin 获取类型安全的插件实例
