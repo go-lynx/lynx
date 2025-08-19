@@ -36,3 +36,6 @@ bin/
 .vscode/
 .idea/
 *.swp
+
+# CLI binary (ensure not committed)
+cmd/lynx/lynx

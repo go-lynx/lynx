@@ -164,6 +164,63 @@ lynx:
 
 ---
 
+## 🧰 CLI Logging & I18n
+
+Lynx CLI provides a unified, level-based logger and internationalized messages.
+
+### Logging
+- Env vars
+  - `LYNX_LOG_LEVEL`: one of `error|warn|info|debug` (default: `info`)
+  - `LYNX_QUIET`: suppress non-error outputs when set to `1`/`true`
+  - `LYNX_VERBOSE`: enable verbose mode when set to `1`/`true`
+- Flags (override env for current command)
+  - `--log-level <level>`
+  - `--quiet` / `-q`
+  - `--verbose` / `-v`
+
+Examples:
+```bash
+# quiet mode
+LYNX_QUIET=1 lynx new demo
+
+# debug logs for one run
+lynx --log-level=debug new demo
+```
+
+### Internationalization (i18n)
+- Env var: `LYNX_LANG` with `zh` or `en`.
+- All user-facing messages respect this setting.
+
+Examples:
+```bash
+LYNX_LANG=en lynx new demo
+LYNX_LANG=zh lynx new demo
+```
+
+## 🧭 CLI: lynx new (tips)
+
+Common flags for `lynx new`:
+- `--repo-url, -r`: layout repository URL (env: `LYNX_LAYOUT_REPO`)
+- `--branch, -b`: branch name for layout repo
+- `--ref`: commit/tag/branch to checkout; takes precedence over `--branch`
+- `--module, -m`: go module path for the new project (e.g. `github.com/acme/foo`)
+- `--force, -f`: overwrite existing directory without prompt
+- `--post-tidy`: run `go mod tidy` after generation
+- `--timeout, -t`: creation timeout (e.g. `60s`)
+- `--concurrency, -c`: max concurrent project creations
+
+Examples:
+```bash
+# use a specific tag
+lynx new demo --ref v1.2.3
+
+# set module and run mod tidy automatically
+lynx new demo -m github.com/acme/demo --post-tidy
+
+# create multiple projects with concurrency 4
+lynx new svc-a svc-b svc-c svc-d -c 4
+```
+
 ## 🎯 Use Cases
 
 ### 🏢 Enterprise Applications

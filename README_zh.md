@@ -163,6 +163,63 @@ lynx:
 
 ---
 
+## 🧰 CLI 日志与多语言（i18n）
+
+Lynx CLI 提供统一分级日志与多语言消息输出。
+
+### 日志
+- 环境变量
+  - `LYNX_LOG_LEVEL`：`error|warn|info|debug`（默认 `info`）
+  - `LYNX_QUIET`：`1`/`true` 时仅输出错误
+  - `LYNX_VERBOSE`：`1`/`true` 时启用更详细输出
+- 命令行参数（优先于环境变量）
+  - `--log-level <level>`
+  - `--quiet` / `-q`
+  - `--verbose` / `-v`
+
+示例：
+```bash
+# 静默模式
+LYNX_QUIET=1 lynx new demo
+
+# 单次运行开启 debug 日志
+lynx --log-level=debug new demo
+```
+
+### 多语言（i18n）
+- 环境变量：`LYNX_LANG`，支持 `zh` 或 `en`
+- 所有面向用户的提示与错误均遵循该设置
+
+示例：
+```bash
+LYNX_LANG=en lynx new demo
+LYNX_LANG=zh lynx new demo
+```
+
+## 🧭 CLI：lynx new（常用参数）
+
+常用参数：
+- `--repo-url, -r`：模板仓库地址（可用环境变量 `LYNX_LAYOUT_REPO` 指定）
+- `--branch, -b`：模板仓库分支
+- `--ref`：统一指定 commit/tag/branch；优先级高于 `--branch`
+- `--module, -m`：新项目的 Go module（如 `github.com/acme/foo`）
+- `--force, -f`：覆盖已存在目录且不提示
+- `--post-tidy`：生成完成后自动执行 `go mod tidy`
+- `--timeout, -t`：创建超时时间（如 `60s`）
+- `--concurrency, -c`：并发创建项目的最大数量
+
+示例：
+```bash
+# 指定 tag 生成
+lynx new demo --ref v1.2.3
+
+# 指定 module 并自动 tidy
+lynx new demo -m github.com/acme/demo --post-tidy
+
+# 并发创建 4 个项目
+lynx new svc-a svc-b svc-c svc-d -c 4
+```
+
 ## 🎯 应用场景
 
 ### 🏢 企业应用
