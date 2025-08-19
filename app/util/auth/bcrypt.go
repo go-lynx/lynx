@@ -1,8 +1,6 @@
-package util
+package auth
 
-import (
-	"golang.org/x/crypto/bcrypt"
-)
+import "golang.org/x/crypto/bcrypt"
 
 // HashPassword 使用 bcrypt 生成密码哈希。
 // - 使用 bcrypt.MinCost / DefaultCost / MaxCost 管理 cost 边界，避免魔法数。
