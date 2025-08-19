@@ -5,10 +5,9 @@ package log
 import (
 	"context"
 	"fmt"
+
 	"github.com/go-kratos/kratos/v2/log"
-	"os"
-	"runtime"
-	"sync/atomic"
+	"github.com/rs/zerolog"
 )
 
 // LogLevel represents the logging level.
@@ -36,38 +35,49 @@ var (
 	// LHelper is a convenience wrapper around logger.
 	// Provides simplified logging methods with predefined fields.
 	LHelper log.Helper
-
-	// currentLevel is the atomic log level control
-	currentLevel LogLevel = InfoLevel
 )
 
 // SetLevel sets the global logging level.
 func SetLevel(level LogLevel) {
-	atomic.StoreInt32((*int32)(&currentLevel), int32(level))
+	switch level {
+	case DebugLevel:
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	case InfoLevel:
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	case WarnLevel:
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	case ErrorLevel:
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	case FatalLevel:
+		// map to ErrorLevel for runtime logging; Fatal is per-entry behavior
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	default:
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	}
 }
 
 // GetLevel returns the current global logging level.
 func GetLevel() LogLevel {
-	return LogLevel(atomic.LoadInt32((*int32)(&currentLevel)))
-}
-
-// shouldLog returns whether the given level should be logged based on the current level.
-func shouldLog(level LogLevel) bool {
-	return level >= GetLevel()
+	switch zerolog.GlobalLevel() {
+	case zerolog.DebugLevel:
+		return DebugLevel
+	case zerolog.InfoLevel:
+		return InfoLevel
+	case zerolog.WarnLevel:
+		return WarnLevel
+	case zerolog.ErrorLevel:
+		return ErrorLevel
+	case zerolog.FatalLevel:
+		return FatalLevel
+	default:
+		return InfoLevel
+	}
 }
 
 // helper returns the application's log helper instance.
 // The helper provides simplified logging methods.
 func helper() *log.Helper {
 	return &LHelper
-}
-
-// addCaller adds caller information to the log context.
-func addCaller(keyvals []interface{}) []interface{} {
-	if _, file, line, ok := runtime.Caller(2); ok {
-		keyvals = append(keyvals, "caller", fmt.Sprintf("%s:%d", file, line))
-	}
-	return keyvals
 }
 
 // Debug 使用日志辅助器记录调试级别的日志信息。
@@ -168,50 +178,33 @@ func ErrorwCtx(ctx context.Context, keyvals ...any) {
 	helper().WithContext(ctx).Errorw(keyvals...)
 }
 
-// Fatal logs a message at FatalLevel and then calls os.Exit(1).
+// Fatal logs a message at FatalLevel.
 func Fatal(a ...any) {
-	if shouldLog(FatalLevel) {
-		helper().Fatal(addCaller([]interface{}{"msg", fmt.Sprint(a...)})...)
-		os.Exit(1)
-	}
+	// avoid double exit: zerolog's Fatal will exit once
+	helper().Fatal("msg", fmt.Sprint(a...))
 }
 
-// FatalCtx logs a message at FatalLevel with context and then calls os.Exit(1).
+// FatalCtx logs a message at FatalLevel with context.
 func FatalCtx(ctx context.Context, a ...any) {
-	if shouldLog(FatalLevel) {
-		helper().WithContext(ctx).Fatal(addCaller([]interface{}{"msg", fmt.Sprint(a...)})...)
-		os.Exit(1)
-	}
+	helper().WithContext(ctx).Fatal("msg", fmt.Sprint(a...))
 }
 
-// Fatalf logs a formatted message at FatalLevel and then calls os.Exit(1).
+// Fatalf logs a formatted message at FatalLevel.
 func Fatalf(format string, a ...any) {
-	if shouldLog(FatalLevel) {
-		helper().Fatal(addCaller([]interface{}{"msg", fmt.Sprintf(format, a...)})...)
-		os.Exit(1)
-	}
+	helper().Fatal("msg", fmt.Sprintf(format, a...))
 }
 
-// FatalfCtx logs a formatted message at FatalLevel with context and then calls os.Exit(1).
+// FatalfCtx logs a formatted message at FatalLevel with context.
 func FatalfCtx(ctx context.Context, format string, a ...any) {
-	if shouldLog(FatalLevel) {
-		helper().WithContext(ctx).Fatal(addCaller([]interface{}{"msg", fmt.Sprintf(format, a...)})...)
-		os.Exit(1)
-	}
+	helper().WithContext(ctx).Fatal("msg", fmt.Sprintf(format, a...))
 }
 
-// Fatalw logs key-value pairs at FatalLevel and then calls os.Exit(1).
+// Fatalw logs key-value pairs at FatalLevel.
 func Fatalw(keyvals ...any) {
-	if shouldLog(FatalLevel) {
-		helper().Fatal(addCaller(keyvals)...)
-		os.Exit(1)
-	}
+	helper().Fatal(keyvals...)
 }
 
-// FatalwCtx logs key-value pairs at FatalLevel with context and then calls os.Exit(1).
+// FatalwCtx logs key-value pairs at FatalLevel with context.
 func FatalwCtx(ctx context.Context, keyvals ...any) {
-	if shouldLog(FatalLevel) {
-		helper().WithContext(ctx).Fatal(addCaller(keyvals)...)
-		os.Exit(1)
-	}
+	helper().WithContext(ctx).Fatal(keyvals...)
 }

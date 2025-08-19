@@ -45,7 +45,10 @@ type Log struct {
 	MaxAgeDays int32 `protobuf:"varint,6,opt,name=max_age_days,json=maxAgeDays,proto3" json:"max_age_days,omitempty"`
 	// Whether to compress rotated log files.
 	// 是否压缩轮转后的日志文件。
-	Compress      bool `protobuf:"varint,7,opt,name=compress,proto3" json:"compress,omitempty"`
+	Compress bool `protobuf:"varint,7,opt,name=compress,proto3" json:"compress,omitempty"`
+	// Stack trace config at top-level log config.
+	// 顶层日志配置中的堆栈采集配置。
+	Stack         *Log_Stack `protobuf:"bytes,8,opt,name=stack,proto3" json:"stack,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -129,11 +132,106 @@ func (x *Log) GetCompress() bool {
 	return false
 }
 
+func (x *Log) GetStack() *Log_Stack {
+	if x != nil {
+		return x.Stack
+	}
+	return nil
+}
+
+// Stack trace capture configuration.
+// 错误堆栈采集配置。
+type Log_Stack struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether to enable stack capture.
+	// 是否开启堆栈采集。
+	Enable bool `protobuf:"varint,1,opt,name=enable,proto3" json:"enable,omitempty"`
+	// Minimum level to capture stack: debug|info|warn|error|fatal
+	// 采集阈值级别。
+	Level string `protobuf:"bytes,2,opt,name=level,proto3" json:"level,omitempty"`
+	// Number of frames to skip from the top of the stack.
+	// 跳过的栈帧数量。
+	Skip int32 `protobuf:"varint,3,opt,name=skip,proto3" json:"skip,omitempty"`
+	// Maximum number of frames to capture.
+	// 最多采集的栈帧数。
+	MaxFrames int32 `protobuf:"varint,4,opt,name=max_frames,json=maxFrames,proto3" json:"max_frames,omitempty"`
+	// Frame prefixes to filter out (package/file prefixes).
+	// 需要过滤的帧前缀（包名/文件路径前缀）。
+	FilterPrefixes []string `protobuf:"bytes,5,rep,name=filter_prefixes,json=filterPrefixes,proto3" json:"filter_prefixes,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Log_Stack) Reset() {
+	*x = Log_Stack{}
+	mi := &file_log_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Log_Stack) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Log_Stack) ProtoMessage() {}
+
+func (x *Log_Stack) ProtoReflect() protoreflect.Message {
+	mi := &file_log_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Log_Stack.ProtoReflect.Descriptor instead.
+func (*Log_Stack) Descriptor() ([]byte, []int) {
+	return file_log_proto_rawDescGZIP(), []int{0, 0}
+}
+
+func (x *Log_Stack) GetEnable() bool {
+	if x != nil {
+		return x.Enable
+	}
+	return false
+}
+
+func (x *Log_Stack) GetLevel() string {
+	if x != nil {
+		return x.Level
+	}
+	return ""
+}
+
+func (x *Log_Stack) GetSkip() int32 {
+	if x != nil {
+		return x.Skip
+	}
+	return 0
+}
+
+func (x *Log_Stack) GetMaxFrames() int32 {
+	if x != nil {
+		return x.MaxFrames
+	}
+	return 0
+}
+
+func (x *Log_Stack) GetFilterPrefixes() []string {
+	if x != nil {
+		return x.FilterPrefixes
+	}
+	return nil
+}
+
 var File_log_proto protoreflect.FileDescriptor
 
 const file_log_proto_rawDesc = "" +
 	"\n" +
-	"\tlog.proto\x12\x17lynx.protobuf.plugin.db\"\xde\x01\n" +
+	"\tlog.proto\x12\x17lynx.protobuf.plugin.db\"\xac\x03\n" +
 	"\x03log\x12\x14\n" +
 	"\x05level\x18\x01 \x01(\tR\x05level\x12\x1b\n" +
 	"\tfile_path\x18\x02 \x01(\tR\bfilePath\x12%\n" +
@@ -143,7 +241,15 @@ const file_log_proto_rawDesc = "" +
 	"maxBackups\x12 \n" +
 	"\fmax_age_days\x18\x06 \x01(\x05R\n" +
 	"maxAgeDays\x12\x1a\n" +
-	"\bcompress\x18\a \x01(\bR\bcompressB\"Z github.com/go-lynx/lynx/log/confb\x06proto3"
+	"\bcompress\x18\a \x01(\bR\bcompress\x128\n" +
+	"\x05stack\x18\b \x01(\v2\".lynx.protobuf.plugin.db.log.StackR\x05stack\x1a\x91\x01\n" +
+	"\x05Stack\x12\x16\n" +
+	"\x06enable\x18\x01 \x01(\bR\x06enable\x12\x14\n" +
+	"\x05level\x18\x02 \x01(\tR\x05level\x12\x12\n" +
+	"\x04skip\x18\x03 \x01(\x05R\x04skip\x12\x1d\n" +
+	"\n" +
+	"max_frames\x18\x04 \x01(\x05R\tmaxFrames\x12'\n" +
+	"\x0ffilter_prefixes\x18\x05 \x03(\tR\x0efilterPrefixesB&Z$github.com/go-lynx/lynx/app/log/confb\x06proto3"
 
 var (
 	file_log_proto_rawDescOnce sync.Once
@@ -157,16 +263,18 @@ func file_log_proto_rawDescGZIP() []byte {
 	return file_log_proto_rawDescData
 }
 
-var file_log_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_log_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_log_proto_goTypes = []any{
-	(*Log)(nil), // 0: lynx.protobuf.plugin.db.log
+	(*Log)(nil),       // 0: lynx.protobuf.plugin.db.log
+	(*Log_Stack)(nil), // 1: lynx.protobuf.plugin.db.log.Stack
 }
 var file_log_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	1, // 0: lynx.protobuf.plugin.db.log.stack:type_name -> lynx.protobuf.plugin.db.log.Stack
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_log_proto_init() }
@@ -180,7 +288,7 @@ func file_log_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_log_proto_rawDesc), len(file_log_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
