@@ -1,4 +1,4 @@
-package util
+package jwt
 
 import (
 	"crypto/ecdsa"
@@ -8,7 +8,27 @@ import (
 	"encoding/pem"
 	"fmt"
 	"testing"
+
+	jwt "github.com/golang-jwt/jwt/v5"
 )
+
+// baseClaims 为测试提供最小实现，满足 CustomClaims 接口。
+type baseClaims struct{ jwt.RegisteredClaims }
+
+func (b *baseClaims) Init() error       { return nil }
+func (b *baseClaims) Valid() error      { return nil }
+func (b *baseClaims) Decoration() error { return nil }
+
+// TestClaims: 测试使用的 claims，避免在结构中出现接口字段导致的 JSON 反序列化问题。
+type TestClaims struct {
+	jwt.RegisteredClaims
+	ID       int64  `json:"id"`
+	Nickname string `json:"nickname"`
+}
+
+func (t *TestClaims) Init() error       { return nil }
+func (t *TestClaims) Valid() error      { return nil }
+func (t *TestClaims) Decoration() error { return nil }
 
 func TestJwtTokenSigning(t *testing.T) {
 	// Generate a key
@@ -53,9 +73,9 @@ func TestJwtTokenSigning(t *testing.T) {
 	fmt.Println("Public key:")
 	fmt.Println(string(pubKeyPem))
 
-	// Sign a JWT token
-	signing, err := Sign(&LoginClaims{
-		Id:       123,
+	// Sign a JWT token（使用不含接口字段的 TestClaims）
+	signing, err := Sign(&TestClaims{
+		ID:       123,
 		Nickname: "老王",
 	}, "ES256", privateKey)
 	if err != nil {
@@ -79,10 +99,10 @@ func TestJwtTokenSigning(t *testing.T) {
 	}
 
 	// Verify the JWT token
-	l := &LoginClaims{}
-	check, err := Check(signing, l, *pubKey)
+	parsed := &TestClaims{}
+	check, err := Verify(signing, parsed, *pubKey)
 	if check {
-		fmt.Printf("JWT public key verification: %d\n", l.Id)
+		fmt.Printf("JWT public key verification: %d\n", parsed.ID)
 	}
 	if err != nil {
 		panic(err)
