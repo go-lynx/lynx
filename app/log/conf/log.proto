@@ -62,5 +62,41 @@ message log {
   // Stack trace config at top-level log config.
   // 顶层日志配置中的堆栈采集配置。
   Stack stack = 8;
+
+  // Caller skip depth for caller() extraction.
+  // 日志调用者信息的栈深度偏移量。
+  int32 caller_skip = 9;
+
+  // Timezone name for logging timestamps, e.g. "Asia/Shanghai" or "UTC".
+  // 日志时间戳的时区名称，例如 "Asia/Shanghai" 或 "UTC"。
+  string timezone = 10;
+
+  // Sampling and rate limit configuration.
+  // 日志采样与限流配置。
+  message Sampling {
+    // Enable sampling/ratelimiting.
+    // 是否启用采样/限流。
+    bool enable = 1;
+
+    // Fraction 0..1 to keep info logs.
+    // info 级别采样比例（0..1）。
+    float info_ratio = 2;
+
+    // Fraction 0..1 to keep debug logs.
+    // debug 级别采样比例（0..1）。
+    float debug_ratio = 3;
+
+    // Max info logs per second (0 = unlimited).
+    // 每秒最大 info 日志条数（0 为不限制）。
+    int32 max_info_per_sec = 4;
+
+    // Max debug logs per second (0 = unlimited).
+    // 每秒最大 debug 日志条数（0 为不限制）。
+    int32 max_debug_per_sec = 5;
+  }
+
+  // Sampling config.
+  // 采样与限流配置。
+  Sampling sampling = 11;
 }
 

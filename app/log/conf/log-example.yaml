@@ -1,0 +1,30 @@
+lynx:
+  log:
+    level: info                # debug/info/warn/error
+    console_output: true
+    file_output: true
+    file_path: logs/lynx.log
+    max_size: 128              # MB
+    max_age: 7                 # days
+    max_backups: 5
+    compress: true
+
+    timezone: Asia/Shanghai    # 例如 Asia/Shanghai、UTC；不配置则为本地时区
+    caller_skip: 5
+
+    stack:
+      enable: true
+      skip: 6
+      max_frames: 32
+      level: error             # 达到该级别及以上输出堆栈
+      filter_prefixes:
+        - github.com/go-kratos/kratos
+        - github.com/rs/zerolog
+        - github.com/go-lynx/lynx/app/log
+
+    sampling:
+      enable: true
+      info_ratio: 0.5          # 50% 保留 info
+      debug_ratio: 0.2         # 20% 保留 debug
+      max_info_per_sec: 50     # 每秒最多 50 条 info（0=不限）
+      max_debug_per_sec: 20    # 每秒最多 20 条 debug（0=不限）

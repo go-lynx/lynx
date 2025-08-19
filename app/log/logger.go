@@ -3,10 +3,8 @@ package log
 
 import (
 	"context"
-	"embed"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,7 +13,6 @@ import (
 	"time"
 
 	kconf "github.com/go-kratos/kratos/v2/config"
-	"github.com/go-lynx/lynx/app/conf"
 	lconf "github.com/go-lynx/lynx/app/log/conf"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -25,22 +22,16 @@ import (
 )
 
 var (
-	// Embedded banner file for application startup
-	// 使用 //go:embed 指令将 banner.txt 文件嵌入到程序中
-	//
-	//go:embed banner.txt
-	bannerFS embed.FS
+	// unified level filtering (kratos + zerolog)
+	kratosMinLevel = log.LevelInfo
 
-	// stack trace configuration (can be overridden by config)
-	stackEnabled        = true
-	stackSkip           = 6
-	stackMaxFrames      = 32
-	stackMinLevel       = log.LevelError
-	stackFilterPrefixes = []string{
-		"github.com/go-kratos/kratos",
-		"github.com/rs/zerolog",
-		"github.com/go-lynx/lynx/app/log",
-	}
+	// caller depth configurable
+	callerSkipDefault = 5
+	callerSkipCurrent = 5
+
+	// timezone for logging
+	tzLoc  *time.Location
+	tzName string
 )
 
 // InitLogger initializes the application's logging system.
@@ -133,38 +124,68 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// 创建多输出写入器
 	output := zerolog.MultiLevelWriter(writers...)
 
-	// Set global time format for consistency
+	// Set global time format and timezone
 	zerolog.TimeFieldFormat = time.RFC3339Nano
+	// Prefer explicit timezone string: lynx.log.timezone (e.g., "Asia/Shanghai", "UTC")
+	if tz, err := cfg.Value("lynx.log.timezone").String(); err == nil && tz != "" {
+		if loc, e := time.LoadLocation(tz); e == nil {
+			tzLoc = loc
+			tzName = tz
+			zerolog.TimestampFunc = func() time.Time { return time.Now().In(tzLoc) }
+		} else {
+			// invalid timezone -> default to Local
+			tzLoc = time.Local
+			tzName = "Local"
+			zerolog.TimestampFunc = func() time.Time { return time.Now().In(tzLoc) }
+		}
+	} else {
+		// no timezone configured -> default to Local
+		tzLoc = time.Local
+		tzName = "Local"
+		zerolog.TimestampFunc = func() time.Time { return time.Now().In(tzLoc) }
+	}
 
-	// 设置全局日志级别
+	// 设置全局日志级别（统一 zerolog + kratos）
 	logLevel := strings.ToLower(logConfig.GetLevel())
 	switch logLevel {
 	case "debug":
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		kratosMinLevel = log.LevelDebug
 	case "info":
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		kratosMinLevel = log.LevelInfo
 	case "warn":
 		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+		kratosMinLevel = log.LevelWarn
 	case "error":
 		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+		kratosMinLevel = log.LevelError
 	default:
 		// 默认使用 Info 级别
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		kratosMinLevel = log.LevelInfo
+	}
+
+	// callerSkip 可配置
+	callerSkipCurrent = callerSkipDefault
+	if v := logConfig.GetCallerSkip(); v > 0 {
+		callerSkipCurrent = int(v)
 	}
 
 	// 用 zeroLogger 初始化底层日志器
 	zeroLogger := zerolog.New(output).With().Timestamp().Logger()
 
-	// Initialize the main logger with standard output and default fields
-	// 初始化主日志记录器，将日志输出到标准输出，并设置默认日志字段
+	// Initialize the main logger with level filter and default fields
+	base := zeroLogLogger{zeroLogger}
+	filtered := log.NewFilter(base, log.FilterLevel(kratosMinLevel))
 	logger := log.With(
-		zeroLogLogger{zeroLogger},
-		"caller", Caller(5), // 记录日志调用者信息
-		"service.id", host, // 记录服务 ID，由 GetHost 函数提供
-		"service.name", name, // 记录服务名称，由 GetName 函数提供
-		"service.version", version, // 记录服务版本，由 GetVersion 函数提供
-		"trace.id", tracing.TraceID(), // 记录追踪 ID
-		"span.id", tracing.SpanID(), // 记录跨度 ID
+		filtered,
+		"caller", Caller(callerSkipCurrent),
+		"service.id", host,
+		"service.name", name,
+		"service.version", version,
+		"trace.id", tracing.TraceID(),
+		"span.id", tracing.SpanID(),
 	)
 
 	// 检查日志记录器是否创建失败，如果为 nil 则返回错误
@@ -184,6 +205,8 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// 将日志记录器和日志辅助对象存储到 LynxApp 实例中
 	Logger = logger
 	LHelper = *lHelper
+	// 更新原子 helper，避免热更新期间的数据竞争
+	helperStore.Store(lHelper)
 
 	// Initialize and display the application banner
 	// 初始化并显示应用启动横幅
@@ -193,31 +216,98 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		// Continue execution as banner display is not critical
 	}
 
-    // load stack trace configuration from protobuf-only (lconf.Log.Stack)
-    if sc := logConfig.GetStack(); sc != nil {
-        stackEnabled = sc.GetEnable()
-        if v := sc.GetSkip(); v >= 0 { stackSkip = int(v) }
-        if v := sc.GetMaxFrames(); v > 0 { stackMaxFrames = int(v) }
-        switch strings.ToLower(sc.GetLevel()) {
-        case "debug":
-            stackMinLevel = log.LevelDebug
-        case "info":
-            stackMinLevel = log.LevelInfo
-        case "warn", "warning":
-            stackMinLevel = log.LevelWarn
-        case "error":
-            stackMinLevel = log.LevelError
-        case "fatal":
-            stackMinLevel = log.LevelFatal
-        case "":
-            // keep default
-        default:
-            // unknown: keep default
-        }
-        if fps := sc.GetFilterPrefixes(); len(fps) > 0 {
-            stackFilterPrefixes = fps
-        }
-    }
+	// 先尝试基于配置源的 Watch 机制（例如本地文件、Polaris 等可能支持）
+	apply := func(nc *lconf.Log) {
+		// 应用更新：优先使用 timezone 字符串，否则默认 Local
+		if tz, err := cfg.Value("lynx.log.timezone").String(); err == nil && tz != "" {
+			if loc, e := time.LoadLocation(tz); e == nil {
+				tzLoc = loc
+				tzName = tz
+			} else {
+				tzLoc = time.Local
+				tzName = "Local"
+			}
+		} else {
+			tzLoc = time.Local
+			tzName = "Local"
+		}
+
+		switch strings.ToLower(nc.GetLevel()) {
+		case "debug":
+			zerolog.SetGlobalLevel(zerolog.DebugLevel)
+			kratosMinLevel = log.LevelDebug
+		case "info":
+			zerolog.SetGlobalLevel(zerolog.InfoLevel)
+			kratosMinLevel = log.LevelInfo
+		case "warn":
+			zerolog.SetGlobalLevel(zerolog.WarnLevel)
+			kratosMinLevel = log.LevelWarn
+		case "error":
+			zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+			kratosMinLevel = log.LevelError
+		}
+
+		callerSkipCurrent = callerSkipDefault
+		if v := nc.GetCallerSkip(); v > 0 {
+			callerSkipCurrent = int(v)
+		}
+
+		// 重建 logger
+		newLogger := log.With(
+			log.NewFilter(base, log.FilterLevel(kratosMinLevel)),
+			"caller", Caller(callerSkipCurrent),
+			"service.id", host,
+			"service.name", name,
+			"service.version", version,
+			"trace.id", tracing.TraceID(),
+			"span.id", tracing.SpanID(),
+		)
+		if newLogger != nil {
+			Logger = newLogger
+			newHelper := log.NewHelper(newLogger)
+			LHelper = *newHelper
+		}
+	}
+
+	// 使用 Watch，如果不支持则回退到轮询
+	if err := cfg.Watch("lynx.log", func(key string, v kconf.Value) {
+		var nc lconf.Log
+		if err := v.Scan(&nc); err != nil {
+			return
+		}
+		apply(&nc)
+	}); err != nil {
+		// 轻量轮询热更新（后端不支持 Watch 时的降级方案）
+		// 每 2s 读取一次 lynx.log，配置变化则应用
+		go func() {
+			// 生成签名函数
+			signature := func(c *lconf.Log) string {
+				if c == nil {
+					return ""
+				}
+				var sb strings.Builder
+				// include timezone name if present
+				fmt.Fprintf(&sb, "lvl=%s;tz=%s;caller=%d;", strings.ToLower(c.GetLevel()), tzName, c.GetCallerSkip())
+				return sb.String()
+			}
+
+			prevSig := signature(&logConfig)
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				var nc lconf.Log
+				if err := cfg.Value("lynx.log").Scan(&nc); err != nil {
+					continue
+				}
+				sig := signature(&nc)
+				if sig == prevSig {
+					continue
+				}
+				prevSig = sig
+				apply(&nc)
+			}
+		}()
+	}
 
 	// Log successful initialization
 	// 记录日志组件初始化成功的信息
@@ -276,195 +366,4 @@ func trimFilePath(file string, depth int) string {
 	// Return the path from the last found slash
 	start := slashPos[len(slashPos)-1] + 1
 	return file[start:]
-}
-
-// initBanner initializes and displays the application banner.
-// It first attempts to read from a local banner file, then falls back to an embedded banner.
-// The banner display can be disabled through application configuration.
-//
-// Parameters:
-//   - cfg: The configuration instance containing banner display preferences
-//
-// Returns:
-//   - error: An error if banner initialization fails, nil otherwise
-func initBanner(cfg kconf.Config) error {
-	const (
-		localBannerPath    = "configs/banner.txt"
-		embeddedBannerPath = "banner.txt"
-	)
-
-	// Try to read banner data, with fallback options
-	bannerData, err := loadBannerData(localBannerPath)
-	if err != nil {
-		// Log the local file read failure and try embedded banner
-		log.Debugf("could not read local banner: %v, falling back to embedded banner", err)
-		bannerData, err = fs.ReadFile(bannerFS, embeddedBannerPath)
-		if err != nil {
-			return fmt.Errorf("failed to read embedded banner: %v", err)
-		}
-	}
-
-	// Parse application configuration
-	var bootConfig conf.Bootstrap
-	if err := cfg.Scan(&bootConfig); err != nil {
-		return fmt.Errorf("failed to parse configuration: %v", err)
-	}
-
-	// Validate configuration structure
-	app := bootConfig.GetLynx().GetApplication()
-	if app == nil {
-		return fmt.Errorf("invalid configuration: application settings not found")
-	}
-
-	// Display banner unless explicitly disabled
-	if !app.GetCloseBanner() {
-		if err := displayBanner(bannerData); err != nil {
-			return fmt.Errorf("failed to display banner: %v", err)
-		}
-	}
-
-	return nil
-}
-
-// loadBannerData attempts to read banner data from the specified file.
-// It returns the banner content as bytes or an error if the read fails.
-func loadBannerData(path string) ([]byte, error) {
-	// Check if file exists
-	if _, err := os.Stat(path); err != nil {
-		return nil, err
-	}
-
-	// Read file contents
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read banner file: %v", err)
-	}
-
-	return data, nil
-}
-
-// displayBanner writes the banner data to standard output.
-// It returns an error if the write operation fails.
-func displayBanner(data []byte) error {
-	_, err := fmt.Fprintln(os.Stdout, string(data))
-	return err
-}
-
-type zeroLogLogger struct {
-	logger zerolog.Logger
-}
-
-// Log implements the log.Logger interface.
-// It converts Kratos log levels to zerolog levels and handles structured logging.
-func (l zeroLogLogger) Log(level log.Level, keyvals ...interface{}) error {
-	// Tolerate odd number of keyvals by appending a placeholder value
-	if len(keyvals)%2 != 0 {
-		keyvals = append(keyvals, "BAD_VALUE")
-	}
-
-	// Map Kratos log levels to zerolog levels
-	var event *zerolog.Event
-	switch level {
-	case log.LevelDebug:
-		event = l.logger.Debug()
-	case log.LevelInfo:
-		event = l.logger.Info()
-	case log.LevelWarn:
-		event = l.logger.Warn()
-	case log.LevelError:
-		event = l.logger.Error()
-	case log.LevelFatal:
-		event = l.logger.Fatal()
-	default:
-		// Log unknown levels as warnings and include the original level
-		event = l.logger.Warn().Interface("original_level", level)
-	}
-
-	// Add structured key-value fields
-	var msg string
-	for i := 0; i < len(keyvals); i += 2 {
-		key, ok := keyvals[i].(string)
-		if !ok {
-			key = fmt.Sprintf("BAD_KEY_%d", i)
-			event = event.Interface("original_key", keyvals[i])
-		}
-
-		val := keyvals[i+1]
-
-		// Special handling for message field
-		if key == "msg" {
-			if str, ok := val.(string); ok {
-				msg = str
-			} else {
-				msg = fmt.Sprint(val)
-			}
-			continue
-		}
-
-		// Error value handling
-		if key == "err" || key == "error" {
-			if e, ok := val.(error); ok {
-				event = event.Err(e)
-				continue
-			}
-		}
-
-		// Add the field to the event
-		event = event.Interface(key, val)
-	}
-
-	// Attach stack trace if enabled and level reaches threshold
-	if stackEnabled && level >= stackMinLevel {
-		stack := captureStack(stackSkip, stackMaxFrames, stackFilterPrefixes)
-		if stack != "" {
-			event = event.Str("stack", stack)
-		}
-	}
-
-	// Output the log entry
-	event.Msg(msg)
-	return nil
-}
-
-// captureStack collects a simple stack trace string with up to maxFrames frames, skipping 'skip' frames.
-// Frames with Function or File starting with any of 'filterPrefixes' will be skipped.
-// Format: FuncName file:line per line, joined by '\n'.
-func captureStack(skip int, maxFrames int, filterPrefixes []string) string {
-	if skip < 0 {
-		skip = 0
-	}
-	if maxFrames <= 0 {
-		maxFrames = 16
-	}
-	pcs := make([]uintptr, maxFrames)
-	n := runtime.Callers(skip, pcs)
-	if n == 0 {
-		return ""
-	}
-	frames := runtime.CallersFrames(pcs[:n])
-	var b strings.Builder
-	for {
-		fr, more := frames.Next()
-		// Avoid empty frames
-		if fr.Function != "" || fr.File != "" {
-			// filter internal prefixes
-			if !hasAnyPrefix(fr.Function, filterPrefixes) && !hasAnyPrefix(fr.File, filterPrefixes) {
-				fmt.Fprintf(&b, "%s %s:%d\n", fr.Function, fr.File, fr.Line)
-			}
-		}
-		if !more {
-			break
-		}
-	}
-	return b.String()
-}
-
-// hasAnyPrefix reports whether s starts with any prefix in the list.
-func hasAnyPrefix(s string, prefixes []string) bool {
-	for _, p := range prefixes {
-		if strings.HasPrefix(s, p) {
-			return true
-		}
-	}
-	return false
 }

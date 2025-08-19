@@ -48,7 +48,16 @@ type Log struct {
 	Compress bool `protobuf:"varint,7,opt,name=compress,proto3" json:"compress,omitempty"`
 	// Stack trace config at top-level log config.
 	// 顶层日志配置中的堆栈采集配置。
-	Stack         *Log_Stack `protobuf:"bytes,8,opt,name=stack,proto3" json:"stack,omitempty"`
+	Stack *Log_Stack `protobuf:"bytes,8,opt,name=stack,proto3" json:"stack,omitempty"`
+	// Caller skip depth for caller() extraction.
+	// 日志调用者信息的栈深度偏移量。
+	CallerSkip int32 `protobuf:"varint,9,opt,name=caller_skip,json=callerSkip,proto3" json:"caller_skip,omitempty"`
+	// Timezone name for logging timestamps, e.g. "Asia/Shanghai" or "UTC".
+	// 日志时间戳的时区名称，例如 "Asia/Shanghai" 或 "UTC"。
+	Timezone string `protobuf:"bytes,10,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	// Sampling config.
+	// 采样与限流配置。
+	Sampling      *Log_Sampling `protobuf:"bytes,11,opt,name=sampling,proto3" json:"sampling,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -135,6 +144,27 @@ func (x *Log) GetCompress() bool {
 func (x *Log) GetStack() *Log_Stack {
 	if x != nil {
 		return x.Stack
+	}
+	return nil
+}
+
+func (x *Log) GetCallerSkip() int32 {
+	if x != nil {
+		return x.CallerSkip
+	}
+	return 0
+}
+
+func (x *Log) GetTimezone() string {
+	if x != nil {
+		return x.Timezone
+	}
+	return ""
+}
+
+func (x *Log) GetSampling() *Log_Sampling {
+	if x != nil {
+		return x.Sampling
 	}
 	return nil
 }
@@ -227,11 +257,99 @@ func (x *Log_Stack) GetFilterPrefixes() []string {
 	return nil
 }
 
+// Sampling and rate limit configuration.
+// 日志采样与限流配置。
+type Log_Sampling struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Enable sampling/ratelimiting.
+	// 是否启用采样/限流。
+	Enable bool `protobuf:"varint,1,opt,name=enable,proto3" json:"enable,omitempty"`
+	// Fraction 0..1 to keep info logs.
+	// info 级别采样比例（0..1）。
+	InfoRatio float32 `protobuf:"fixed32,2,opt,name=info_ratio,json=infoRatio,proto3" json:"info_ratio,omitempty"`
+	// Fraction 0..1 to keep debug logs.
+	// debug 级别采样比例（0..1）。
+	DebugRatio float32 `protobuf:"fixed32,3,opt,name=debug_ratio,json=debugRatio,proto3" json:"debug_ratio,omitempty"`
+	// Max info logs per second (0 = unlimited).
+	// 每秒最大 info 日志条数（0 为不限制）。
+	MaxInfoPerSec int32 `protobuf:"varint,4,opt,name=max_info_per_sec,json=maxInfoPerSec,proto3" json:"max_info_per_sec,omitempty"`
+	// Max debug logs per second (0 = unlimited).
+	// 每秒最大 debug 日志条数（0 为不限制）。
+	MaxDebugPerSec int32 `protobuf:"varint,5,opt,name=max_debug_per_sec,json=maxDebugPerSec,proto3" json:"max_debug_per_sec,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Log_Sampling) Reset() {
+	*x = Log_Sampling{}
+	mi := &file_log_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Log_Sampling) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Log_Sampling) ProtoMessage() {}
+
+func (x *Log_Sampling) ProtoReflect() protoreflect.Message {
+	mi := &file_log_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Log_Sampling.ProtoReflect.Descriptor instead.
+func (*Log_Sampling) Descriptor() ([]byte, []int) {
+	return file_log_proto_rawDescGZIP(), []int{0, 1}
+}
+
+func (x *Log_Sampling) GetEnable() bool {
+	if x != nil {
+		return x.Enable
+	}
+	return false
+}
+
+func (x *Log_Sampling) GetInfoRatio() float32 {
+	if x != nil {
+		return x.InfoRatio
+	}
+	return 0
+}
+
+func (x *Log_Sampling) GetDebugRatio() float32 {
+	if x != nil {
+		return x.DebugRatio
+	}
+	return 0
+}
+
+func (x *Log_Sampling) GetMaxInfoPerSec() int32 {
+	if x != nil {
+		return x.MaxInfoPerSec
+	}
+	return 0
+}
+
+func (x *Log_Sampling) GetMaxDebugPerSec() int32 {
+	if x != nil {
+		return x.MaxDebugPerSec
+	}
+	return 0
+}
+
 var File_log_proto protoreflect.FileDescriptor
 
 const file_log_proto_rawDesc = "" +
 	"\n" +
-	"\tlog.proto\x12\x17lynx.protobuf.plugin.db\"\xac\x03\n" +
+	"\tlog.proto\x12\x17lynx.protobuf.plugin.db\"\xe5\x05\n" +
 	"\x03log\x12\x14\n" +
 	"\x05level\x18\x01 \x01(\tR\x05level\x12\x1b\n" +
 	"\tfile_path\x18\x02 \x01(\tR\bfilePath\x12%\n" +
@@ -242,14 +360,27 @@ const file_log_proto_rawDesc = "" +
 	"\fmax_age_days\x18\x06 \x01(\x05R\n" +
 	"maxAgeDays\x12\x1a\n" +
 	"\bcompress\x18\a \x01(\bR\bcompress\x128\n" +
-	"\x05stack\x18\b \x01(\v2\".lynx.protobuf.plugin.db.log.StackR\x05stack\x1a\x91\x01\n" +
+	"\x05stack\x18\b \x01(\v2\".lynx.protobuf.plugin.db.log.StackR\x05stack\x12\x1f\n" +
+	"\vcaller_skip\x18\t \x01(\x05R\n" +
+	"callerSkip\x12\x1a\n" +
+	"\btimezone\x18\n" +
+	" \x01(\tR\btimezone\x12A\n" +
+	"\bsampling\x18\v \x01(\v2%.lynx.protobuf.plugin.db.log.SamplingR\bsampling\x1a\x91\x01\n" +
 	"\x05Stack\x12\x16\n" +
 	"\x06enable\x18\x01 \x01(\bR\x06enable\x12\x14\n" +
 	"\x05level\x18\x02 \x01(\tR\x05level\x12\x12\n" +
 	"\x04skip\x18\x03 \x01(\x05R\x04skip\x12\x1d\n" +
 	"\n" +
 	"max_frames\x18\x04 \x01(\x05R\tmaxFrames\x12'\n" +
-	"\x0ffilter_prefixes\x18\x05 \x03(\tR\x0efilterPrefixesB&Z$github.com/go-lynx/lynx/app/log/confb\x06proto3"
+	"\x0ffilter_prefixes\x18\x05 \x03(\tR\x0efilterPrefixes\x1a\xb6\x01\n" +
+	"\bSampling\x12\x16\n" +
+	"\x06enable\x18\x01 \x01(\bR\x06enable\x12\x1d\n" +
+	"\n" +
+	"info_ratio\x18\x02 \x01(\x02R\tinfoRatio\x12\x1f\n" +
+	"\vdebug_ratio\x18\x03 \x01(\x02R\n" +
+	"debugRatio\x12'\n" +
+	"\x10max_info_per_sec\x18\x04 \x01(\x05R\rmaxInfoPerSec\x12)\n" +
+	"\x11max_debug_per_sec\x18\x05 \x01(\x05R\x0emaxDebugPerSecB&Z$github.com/go-lynx/lynx/app/log/confb\x06proto3"
 
 var (
 	file_log_proto_rawDescOnce sync.Once
@@ -263,18 +394,20 @@ func file_log_proto_rawDescGZIP() []byte {
 	return file_log_proto_rawDescData
 }
 
-var file_log_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_log_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_log_proto_goTypes = []any{
-	(*Log)(nil),       // 0: lynx.protobuf.plugin.db.log
-	(*Log_Stack)(nil), // 1: lynx.protobuf.plugin.db.log.Stack
+	(*Log)(nil),          // 0: lynx.protobuf.plugin.db.log
+	(*Log_Stack)(nil),    // 1: lynx.protobuf.plugin.db.log.Stack
+	(*Log_Sampling)(nil), // 2: lynx.protobuf.plugin.db.log.Sampling
 }
 var file_log_proto_depIdxs = []int32{
 	1, // 0: lynx.protobuf.plugin.db.log.stack:type_name -> lynx.protobuf.plugin.db.log.Stack
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 1: lynx.protobuf.plugin.db.log.sampling:type_name -> lynx.protobuf.plugin.db.log.Sampling
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_log_proto_init() }
@@ -288,7 +421,7 @@ func file_log_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_log_proto_rawDesc), len(file_log_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
