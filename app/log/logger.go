@@ -30,6 +30,17 @@ var (
 	//
 	//go:embed banner.txt
 	bannerFS embed.FS
+
+	// stack trace configuration (can be overridden by config)
+	stackEnabled        = true
+	stackSkip           = 6
+	stackMaxFrames      = 32
+	stackMinLevel       = log.LevelError
+	stackFilterPrefixes = []string{
+		"github.com/go-kratos/kratos",
+		"github.com/rs/zerolog",
+		"github.com/go-lynx/lynx/app/log",
+	}
 )
 
 // InitLogger initializes the application's logging system.
@@ -182,6 +193,32 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		// Continue execution as banner display is not critical
 	}
 
+    // load stack trace configuration from protobuf-only (lconf.Log.Stack)
+    if sc := logConfig.GetStack(); sc != nil {
+        stackEnabled = sc.GetEnable()
+        if v := sc.GetSkip(); v >= 0 { stackSkip = int(v) }
+        if v := sc.GetMaxFrames(); v > 0 { stackMaxFrames = int(v) }
+        switch strings.ToLower(sc.GetLevel()) {
+        case "debug":
+            stackMinLevel = log.LevelDebug
+        case "info":
+            stackMinLevel = log.LevelInfo
+        case "warn", "warning":
+            stackMinLevel = log.LevelWarn
+        case "error":
+            stackMinLevel = log.LevelError
+        case "fatal":
+            stackMinLevel = log.LevelFatal
+        case "":
+            // keep default
+        default:
+            // unknown: keep default
+        }
+        if fps := sc.GetFilterPrefixes(); len(fps) > 0 {
+            stackFilterPrefixes = fps
+        }
+    }
+
 	// Log successful initialization
 	// 记录日志组件初始化成功的信息
 	lHelper.Info("lynx application logging component initialized successfully")
@@ -320,9 +357,9 @@ type zeroLogLogger struct {
 // Log implements the log.Logger interface.
 // It converts Kratos log levels to zerolog levels and handles structured logging.
 func (l zeroLogLogger) Log(level log.Level, keyvals ...interface{}) error {
-	// Validate input parameters
+	// Tolerate odd number of keyvals by appending a placeholder value
 	if len(keyvals)%2 != 0 {
-		return fmt.Errorf("number of keyvals must be even")
+		keyvals = append(keyvals, "BAD_VALUE")
 	}
 
 	// Map Kratos log levels to zerolog levels
@@ -352,19 +389,82 @@ func (l zeroLogLogger) Log(level log.Level, keyvals ...interface{}) error {
 			event = event.Interface("original_key", keyvals[i])
 		}
 
-		// Special handling for "msg" field
+		val := keyvals[i+1]
+
+		// Special handling for message field
 		if key == "msg" {
-			if str, ok := keyvals[i+1].(string); ok {
+			if str, ok := val.(string); ok {
 				msg = str
+			} else {
+				msg = fmt.Sprint(val)
+			}
+			continue
+		}
+
+		// Error value handling
+		if key == "err" || key == "error" {
+			if e, ok := val.(error); ok {
+				event = event.Err(e)
 				continue
 			}
 		}
 
 		// Add the field to the event
-		event = event.Interface(key, keyvals[i+1])
+		event = event.Interface(key, val)
+	}
+
+	// Attach stack trace if enabled and level reaches threshold
+	if stackEnabled && level >= stackMinLevel {
+		stack := captureStack(stackSkip, stackMaxFrames, stackFilterPrefixes)
+		if stack != "" {
+			event = event.Str("stack", stack)
+		}
 	}
 
 	// Output the log entry
 	event.Msg(msg)
 	return nil
+}
+
+// captureStack collects a simple stack trace string with up to maxFrames frames, skipping 'skip' frames.
+// Frames with Function or File starting with any of 'filterPrefixes' will be skipped.
+// Format: FuncName file:line per line, joined by '\n'.
+func captureStack(skip int, maxFrames int, filterPrefixes []string) string {
+	if skip < 0 {
+		skip = 0
+	}
+	if maxFrames <= 0 {
+		maxFrames = 16
+	}
+	pcs := make([]uintptr, maxFrames)
+	n := runtime.Callers(skip, pcs)
+	if n == 0 {
+		return ""
+	}
+	frames := runtime.CallersFrames(pcs[:n])
+	var b strings.Builder
+	for {
+		fr, more := frames.Next()
+		// Avoid empty frames
+		if fr.Function != "" || fr.File != "" {
+			// filter internal prefixes
+			if !hasAnyPrefix(fr.Function, filterPrefixes) && !hasAnyPrefix(fr.File, filterPrefixes) {
+				fmt.Fprintf(&b, "%s %s:%d\n", fr.Function, fr.File, fr.Line)
+			}
+		}
+		if !more {
+			break
+		}
+	}
+	return b.String()
+}
+
+// hasAnyPrefix reports whether s starts with any prefix in the list.
+func hasAnyPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
 }

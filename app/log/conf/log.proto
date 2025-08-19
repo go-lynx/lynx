@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package lynx.protobuf.plugin.db;
 
-option go_package = "github.com/go-lynx/lynx/log/conf";
+option go_package = "github.com/go-lynx/lynx/app/log/conf";
 
 // Defines a message type for log system configuration.
 // 定义一个用于日志系统配置的消息类型。
@@ -34,5 +34,33 @@ message log {
   // Whether to compress rotated log files.
   // 是否压缩轮转后的日志文件。
   bool compress = 7;
+
+  // Stack trace capture configuration.
+  // 错误堆栈采集配置。
+  message Stack {
+    // Whether to enable stack capture.
+    // 是否开启堆栈采集。
+    bool enable = 1;
+
+    // Minimum level to capture stack: debug|info|warn|error|fatal
+    // 采集阈值级别。
+    string level = 2;
+
+    // Number of frames to skip from the top of the stack.
+    // 跳过的栈帧数量。
+    int32 skip = 3;
+
+    // Maximum number of frames to capture.
+    // 最多采集的栈帧数。
+    int32 max_frames = 4;
+
+    // Frame prefixes to filter out (package/file prefixes).
+    // 需要过滤的帧前缀（包名/文件路径前缀）。
+    repeated string filter_prefixes = 5;
+  }
+
+  // Stack trace config at top-level log config.
+  // 顶层日志配置中的堆栈采集配置。
+  Stack stack = 8;
 }
 
