@@ -87,47 +87,90 @@ func (r *Repo) Path() string {
 // 参数 ctx 是上下文，用于控制操作的生命周期。
 // 返回值为操作过程中可能出现的错误。
 func (r *Repo) Pull(ctx context.Context) error {
-	// 检查本地仓库是否为有效的 Git 仓库
-	cmd := exec.CommandContext(ctx, "git", "symbolic-ref", "HEAD")
-	cmd.Dir = r.Path()
-	_, err := cmd.CombinedOutput()
-	if err != nil {
-		return err
+	// 确保 git 可用
+	if _, err := exec.LookPath("git"); err != nil {
+		return fmt.Errorf("git not found in PATH: %w", err)
 	}
-	// 执行 git pull 命令拉取最新代码
-	cmd = exec.CommandContext(ctx, "git", "pull")
-	cmd.Dir = r.Path()
-	out, err := cmd.CombinedOutput()
-	// 打印命令执行输出
-	fmt.Println(string(out))
-	if err != nil {
-		return err
+	// 确保目录存在
+	if _, err := os.Stat(r.Path()); os.IsNotExist(err) {
+		return fmt.Errorf("repo path does not exist: %s", r.Path())
 	}
-	return err
+	// fetch 所有远端与 tags（带重试），并 prune 过期引用
+	if _, err := RunCMD(ctx, r.Path(), "git", []string{"fetch", "--all", "--tags", "--prune"}, 2); err != nil {
+		return fmt.Errorf("git fetch failed (check network/proxy or git auth): %w", err)
+	}
+	// 目标 ref：优先 r.branch（其实是 ref），为空则维持当前 HEAD
+	ref := strings.TrimSpace(r.branch)
+	if ref == "" {
+		// 无特定 ref，保持当前分支并与远端同步（若在分离头指针则跳过）
+		if bOut, bErr := RunCMD(ctx, r.Path(), "git", []string{"rev-parse", "--abbrev-ref", "HEAD"}, 0); bErr == nil {
+			cur := strings.TrimSpace(bOut)
+			if cur != "HEAD" && cur != "" {
+				if _, err := RunCMD(ctx, r.Path(), "git", []string{"reset", "--hard", fmt.Sprintf("origin/%s", cur)}, 1); err != nil {
+					return fmt.Errorf("git reset --hard origin/%s failed: %w", cur, err)
+				}
+			}
+		}
+		return nil
+	}
+	// 有 ref：优先当作远程分支，否则当作 tag/commit（分离头指针）
+	if _, err := RunCMD(ctx, r.Path(), "git", []string{"show-ref", "--verify", fmt.Sprintf("refs/remotes/origin/%s", ref)}, 0); err == nil {
+		// 远程分支存在：切到该分支并强制同步远端
+		if _, err := RunCMD(ctx, r.Path(), "git", []string{"checkout", "-B", ref, fmt.Sprintf("origin/%s", ref)}, 0); err != nil {
+			return fmt.Errorf("git checkout branch %s failed: %w", ref, err)
+		}
+		if _, err := RunCMD(ctx, r.Path(), "git", []string{"reset", "--hard", fmt.Sprintf("origin/%s", ref)}, 1); err != nil {
+			return fmt.Errorf("git reset --hard origin/%s failed: %w", ref, err)
+		}
+		return nil
+	}
+	// 视为 tag/commit：分离头指针检出
+	if _, err := RunCMD(ctx, r.Path(), "git", []string{"checkout", "--detach", ref}, 0); err != nil {
+		return fmt.Errorf("git checkout %s failed (tag/commit?): %w", ref, err)
+	}
+	return nil
 }
 
 // Clone 将远程仓库克隆到本地缓存路径。如果本地缓存路径已存在，则尝试拉取最新代码。
 // 参数 ctx 是上下文，用于控制操作的生命周期。
 // 返回值为操作过程中可能出现的错误。
 func (r *Repo) Clone(ctx context.Context) error {
+	// 确保 git 可用
+	if _, err := exec.LookPath("git"); err != nil {
+		return fmt.Errorf("git not found in PATH: %w", err)
+	}
+	// 确保父目录存在
+	if err := os.MkdirAll(filepath.Dir(r.Path()), 0o755); err != nil {
+		return fmt.Errorf("prepare repo parent dir failed: %w", err)
+	}
 	// 检查本地缓存路径是否已存在
 	if _, err := os.Stat(r.Path()); !os.IsNotExist(err) {
 		// 若存在，尝试拉取最新代码
 		return r.Pull(ctx)
 	}
-	var cmd *exec.Cmd
-	if r.branch == "" {
-		// 若分支名为空，克隆默认分支
-		cmd = exec.CommandContext(ctx, "git", "clone", r.url, r.Path())
-	} else {
-		// 否则，克隆指定分支
-		cmd = exec.CommandContext(ctx, "git", "clone", "-b", r.branch, r.url, r.Path())
+	var err error
+	// 优先浅克隆默认分支，之后再切换到 ref（更通用）
+	_, err = RunCMD(ctx, filepath.Dir(r.Path()), "git", []string{"clone", "--depth", "1", r.url, r.Path()}, 2)
+	if err != nil { return fmt.Errorf("git clone failed: %w", err) }
+	// 获取 tags 与所有远端引用
+	if _, err := RunCMD(ctx, r.Path(), "git", []string{"fetch", "--all", "--tags", "--prune"}, 2); err != nil {
+		return fmt.Errorf("git fetch after clone failed: %w", err)
 	}
-	out, err := cmd.CombinedOutput()
-	// 打印命令执行输出
-	fmt.Println(string(out))
-	if err != nil {
-		return err
+	// 若指定 ref，则尝试切换
+	ref := strings.TrimSpace(r.branch)
+	if ref == "" {
+		return nil
+	}
+	// 优先作为远程分支
+	if _, err := RunCMD(ctx, r.Path(), "git", []string{"show-ref", "--verify", fmt.Sprintf("refs/remotes/origin/%s", ref)}, 0); err == nil {
+		if _, err := RunCMD(ctx, r.Path(), "git", []string{"checkout", "-B", ref, fmt.Sprintf("origin/%s", ref)}, 0); err != nil {
+			return fmt.Errorf("git checkout branch %s failed: %w", ref, err)
+		}
+		return nil
+	}
+	// 作为 tag/commit 分离头指针
+	if _, err := RunCMD(ctx, r.Path(), "git", []string{"checkout", "--detach", ref}, 0); err != nil {
+		return fmt.Errorf("git checkout %s failed (tag/commit?): %w", ref, err)
 	}
 	return nil
 }
@@ -162,8 +205,10 @@ func (r *Repo) CopyToV2(ctx context.Context, to string, modPath string, ignores,
 	if err != nil {
 		return err
 	}
-	// 将模块路径和 modPath 添加到替换列表
-	replaces = append([]string{mod, modPath}, replaces...)
+	// 当提供了 modPath 时，才将模块路径替换加入列表；若为空则不替换模板 module
+	if strings.TrimSpace(modPath) != "" {
+		replaces = append([]string{mod, modPath}, replaces...)
+	}
 	// 复制目录内容
 	return copyDir(r.Path(), to, replaces, ignores)
 }

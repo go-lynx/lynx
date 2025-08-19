@@ -66,16 +66,19 @@ func copyFile(src, dst string, replaces []string) error {
 	if err != nil {
 		return err
 	}
-	var old string
-	// 遍历替换规则列表
-	for i, next := range replaces {
-		if i%2 == 0 {
-			// 偶数索引的元素为旧字符串
-			old = next
-			continue
+	// 简单启发式：如果包含 NUL，视为二进制，跳过替换
+	if bytes.IndexByte(buf, 0) == -1 && len(replaces) > 0 {
+		var old string
+		// 遍历替换规则列表
+		for i, next := range replaces {
+			if i%2 == 0 {
+				// 偶数索引的元素为旧字符串
+				old = next
+				continue
+			}
+			// 奇数索引的元素为新字符串，进行全局替换
+			buf = bytes.ReplaceAll(buf, []byte(old), []byte(next))
 		}
-		// 奇数索引的元素为新字符串，进行全局替换
-		buf = bytes.ReplaceAll(buf, []byte(old), []byte(next))
 	}
 	// 将替换后的内容写入目标文件，并保持文件权限不变
 	return os.WriteFile(dst, buf, srcInfo.Mode())
