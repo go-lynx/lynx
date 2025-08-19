@@ -25,22 +25,22 @@ var CmdNew = &cobra.Command{
 	RunE:  run, // 执行命令时调用的函数
 }
 
-// repoURL 存储布局仓库的 URL。
-// branch 存储仓库的分支名称。
-// ref 存储仓库的引用（优先于 branch）。
-// timeout 存储项目创建操作的超时时间。
-// module 存储生成项目的 Go module 路径。
-// force 存储是否强制覆盖已存在目录的标志。
-// postTidy 存储是否在创建后执行 go mod tidy 的标志。
-// concurrency 存储并发上限。
 var (
-	repoURL     string
-	branch      string
-	ref         string
-	timeout     string
-	module      string
-	force       bool
-	postTidy    bool
+	// repoURL 存储布局仓库的 URL。
+	repoURL string
+	// branch 存储仓库的分支名称。
+	branch string
+	// ref 存储仓库的引用（优先于 branch）。
+	ref string
+	// timeout 存储项目创建操作的超时时间。
+	timeout string
+	// module 存储生成项目的 Go module 路径。
+	module string
+	// force 存储是否强制覆盖已存在目录的标志。
+	force bool
+	// postTidy 存储是否在创建后执行 go mod tidy 的标志。
+	postTidy bool
+	// concurrency 存储并发上限。
 	concurrency int
 )
 
