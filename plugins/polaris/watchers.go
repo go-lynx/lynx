@@ -10,38 +10,38 @@ import (
 	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
-// ServiceWatcher 和 ConfigWatcher 模块
-// 职责：底层服务变更监听和配置变更监听
-// 与 registry_impl.go 的区别：
-// - watchers.go: 底层监听能力，直接与 Polaris SDK 交互
-// - registry_impl.go: Kratos 框架适配，实现 registry 接口
+// ServiceWatcher and ConfigWatcher modules
+// Responsibility: underlying service change monitoring and configuration change monitoring
+// Difference from registry_impl.go:
+// - watchers.go: underlying monitoring capabilities, directly interacts with Polaris SDK
+// - registry_impl.go: Kratos framework adaptation, implements registry interface
 
-// ServiceWatcher 服务监听器
-// 监听服务实例变更
+// ServiceWatcher service watcher
+// Monitors service instance changes
 type ServiceWatcher struct {
 	consumer    api.ConsumerAPI
 	serviceName string
 	namespace   string
 
-	// 监听控制
+	// Monitoring control
 	ctx    context.Context
 	cancel context.CancelFunc
 	mu     sync.RWMutex
-	wg     sync.WaitGroup // 添加 WaitGroup 确保 goroutine 正确退出
+	wg     sync.WaitGroup // Add WaitGroup to ensure goroutine exits correctly
 
-	// 回调函数
+	// Callback functions
 	onInstancesChanged func(instances []model.Instance)
 	onError            func(error)
 
-	// 状态
+	// State
 	isRunning     bool
 	lastInstances []model.Instance
 
-	// 监控指标
+	// Monitoring metrics
 	metrics *Metrics
 }
 
-// NewServiceWatcher 创建新的服务监听器
+// NewServiceWatcher creates new service watcher
 func NewServiceWatcher(consumer api.ConsumerAPI, serviceName, namespace string) *ServiceWatcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ServiceWatcher{
@@ -50,25 +50,25 @@ func NewServiceWatcher(consumer api.ConsumerAPI, serviceName, namespace string) 
 		namespace:   namespace,
 		ctx:         ctx,
 		cancel:      cancel,
-		metrics:     nil, // 将在使用时设置
+		metrics:     nil, // Will be set when used
 	}
 }
 
-// SetOnInstancesChanged 设置实例变更回调
+// SetOnInstancesChanged sets instance change callback
 func (sw *ServiceWatcher) SetOnInstancesChanged(callback func(instances []model.Instance)) {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 	sw.onInstancesChanged = callback
 }
 
-// SetOnError 设置错误回调
+// SetOnError sets error callback
 func (sw *ServiceWatcher) SetOnError(callback func(error)) {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 	sw.onError = callback
 }
 
-// Start 启动监听
+// Start starts monitoring
 func (sw *ServiceWatcher) Start() {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
@@ -77,22 +77,22 @@ func (sw *ServiceWatcher) Start() {
 		return
 	}
 
-	// 记录监听启动指标
+	// Record monitoring start metrics
 	if sw.metrics != nil {
 		sw.metrics.RecordSDKOperation("service_watch_start", "success")
 	}
 
 	sw.isRunning = true
-	sw.wg.Add(1) // 增加 WaitGroup 计数
+	sw.wg.Add(1) // Increment WaitGroup count
 	go func() {
-		defer sw.wg.Done() // 确保在 goroutine 退出时减少计数
+		defer sw.wg.Done() // Ensure count is decremented when goroutine exits
 		sw.watchLoop()
 	}()
 
 	log.Infof("Started watching service: %s in namespace: %s", sw.serviceName, sw.namespace)
 }
 
-// Stop 停止监听
+// Stop stops monitoring
 func (sw *ServiceWatcher) Stop() {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
@@ -101,7 +101,7 @@ func (sw *ServiceWatcher) Stop() {
 		return
 	}
 
-	// 记录监听停止指标
+	// Record monitoring stop metrics
 	if sw.metrics != nil {
 		sw.metrics.RecordSDKOperation("service_watch_stop", "success")
 	}
@@ -109,15 +109,15 @@ func (sw *ServiceWatcher) Stop() {
 	sw.cancel()
 	sw.isRunning = false
 
-	// 等待 goroutine 完全退出
+	// Wait for goroutine to completely exit
 	sw.wg.Wait()
 
 	log.Infof("Stopped watching service: %s", sw.serviceName)
 }
 
-// watchLoop 监听循环
+// watchLoop monitoring loop
 func (sw *ServiceWatcher) watchLoop() {
-	ticker := time.NewTicker(10 * time.Second) // 每10秒检查一次
+	ticker := time.NewTicker(10 * time.Second) // Check every 10 seconds
 	defer ticker.Stop()
 
 	for {
@@ -131,7 +131,7 @@ func (sw *ServiceWatcher) watchLoop() {
 	}
 }
 
-// checkInstances 检查实例变更
+// checkInstances checks instance changes
 func (sw *ServiceWatcher) checkInstances() {
 	req := &api.GetInstancesRequest{
 		GetInstancesRequest: model.GetInstancesRequest{
@@ -147,7 +147,7 @@ func (sw *ServiceWatcher) checkInstances() {
 		return
 	}
 
-	// 检查实例是否发生变化
+	// Check if instances have changed
 	if sw.hasInstancesChanged(resp.Instances) {
 		sw.lastInstances = resp.Instances
 		sw.notifyInstancesChanged(resp.Instances)
@@ -157,51 +157,51 @@ func (sw *ServiceWatcher) checkInstances() {
 	}
 }
 
-// hasInstancesChanged 检查实例是否发生变化
+// hasInstancesChanged checks if instances have changed
 func (sw *ServiceWatcher) hasInstancesChanged(newInstances []model.Instance) bool {
-	// 如果实例数量不同，认为有变化
+	// If instance count is different, consider it changed
 	if len(sw.lastInstances) != len(newInstances) {
 		return true
 	}
 
-	// 如果之前没有实例，现在有实例，认为有变化
+	// If there were no instances before, but now there are, consider it changed
 	if len(sw.lastInstances) == 0 && len(newInstances) > 0 {
 		return true
 	}
 
-	// 如果之前有实例，现在没有实例，认为有变化
+	// If there were instances before, but now there are none, consider it changed
 	if len(sw.lastInstances) > 0 && len(newInstances) == 0 {
 		return true
 	}
 
-	// 如果实例数量相同，进行详细比较
+	// If instance count is the same, perform detailed comparison
 	lastInstancesMap := make(map[string]model.Instance)
 	for _, instance := range sw.lastInstances {
 		key := instance.GetId()
 		lastInstancesMap[key] = instance
 	}
 
-	// 检查每个新实例
+	// Check each new instance
 	for _, newInstance := range newInstances {
 		key := newInstance.GetId()
 		lastInstance, exists := lastInstancesMap[key]
 
 		if !exists {
-			// 发现新实例
+			// Found new instance
 			return true
 		}
 
-		// 比较实例属性
+		// Compare instance properties
 		if !sw.compareInstance(lastInstance, newInstance) {
-			// 实例属性发生变化
+			// Instance properties have changed
 			return true
 		}
 
-		// 从映射中移除已比较的实例
+		// Remove compared instance from map
 		delete(lastInstancesMap, key)
 	}
 
-	// 如果还有剩余的旧实例，说明有实例被移除
+	// If there are remaining old instances, it means instances were removed
 	if len(lastInstancesMap) > 0 {
 		return true
 	}
@@ -209,9 +209,9 @@ func (sw *ServiceWatcher) hasInstancesChanged(newInstances []model.Instance) boo
 	return false
 }
 
-// notifyInstancesChanged 通知实例变更
+// notifyInstancesChanged notifies instance changes
 func (sw *ServiceWatcher) notifyInstancesChanged(instances []model.Instance) {
-	// 记录实例变更指标
+	// Record instance change metrics
 	if sw.metrics != nil {
 		sw.metrics.RecordServiceDiscovery(sw.serviceName, sw.namespace, "changed")
 	}
@@ -224,7 +224,7 @@ func (sw *ServiceWatcher) notifyInstancesChanged(instances []model.Instance) {
 	}
 }
 
-// notifyError 通知错误
+// notifyError notifies error
 func (sw *ServiceWatcher) notifyError(err error) {
 	sw.mu.RLock()
 	defer sw.mu.RUnlock()
@@ -234,47 +234,47 @@ func (sw *ServiceWatcher) notifyError(err error) {
 	}
 }
 
-// GetLastInstances 获取最后的实例列表
+// GetLastInstances gets the last instance list
 func (sw *ServiceWatcher) GetLastInstances() []model.Instance {
 	sw.mu.RLock()
 	defer sw.mu.RUnlock()
 	return sw.lastInstances
 }
 
-// IsRunning 检查是否正在运行
+// IsRunning checks if it's running
 func (sw *ServiceWatcher) IsRunning() bool {
 	sw.mu.RLock()
 	defer sw.mu.RUnlock()
 	return sw.isRunning
 }
 
-// ConfigWatcher 配置监听器
-// 监听配置变更
+// ConfigWatcher configuration watcher
+// Monitors configuration changes
 type ConfigWatcher struct {
 	configAPI api.ConfigFileAPI
 	fileName  string
 	group     string
 	namespace string
 
-	// 监听控制
+	// Monitoring control
 	ctx    context.Context
 	cancel context.CancelFunc
 	mu     sync.RWMutex
-	wg     sync.WaitGroup // 添加 WaitGroup 确保 goroutine 正确退出
+	wg     sync.WaitGroup // Add WaitGroup to ensure goroutine exits correctly
 
-	// 回调函数
+	// Callback functions
 	onConfigChanged func(config model.ConfigFile)
 	onError         func(error)
 
-	// 状态
+	// State
 	isRunning  bool
 	lastConfig model.ConfigFile
 
-	// 监控指标
+	// Monitoring metrics
 	metrics *Metrics
 }
 
-// NewConfigWatcher 创建新的配置监听器
+// NewConfigWatcher creates new configuration watcher
 func NewConfigWatcher(configAPI api.ConfigFileAPI, fileName, group, namespace string) *ConfigWatcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ConfigWatcher{
@@ -284,25 +284,25 @@ func NewConfigWatcher(configAPI api.ConfigFileAPI, fileName, group, namespace st
 		namespace: namespace,
 		ctx:       ctx,
 		cancel:    cancel,
-		metrics:   nil, // 将在使用时设置
+		metrics:   nil, // Will be set when used
 	}
 }
 
-// SetOnConfigChanged 设置配置变更回调
+// SetOnConfigChanged sets configuration change callback
 func (cw *ConfigWatcher) SetOnConfigChanged(callback func(config model.ConfigFile)) {
 	cw.mu.Lock()
 	defer cw.mu.Unlock()
 	cw.onConfigChanged = callback
 }
 
-// SetOnError 设置错误回调
+// SetOnError sets error callback
 func (cw *ConfigWatcher) SetOnError(callback func(error)) {
 	cw.mu.Lock()
 	defer cw.mu.Unlock()
 	cw.onError = callback
 }
 
-// Start 启动监听
+// Start starts monitoring
 func (cw *ConfigWatcher) Start() {
 	cw.mu.Lock()
 	defer cw.mu.Unlock()
@@ -311,22 +311,22 @@ func (cw *ConfigWatcher) Start() {
 		return
 	}
 
-	// 记录监听启动指标
+	// Record monitoring start metrics
 	if cw.metrics != nil {
 		cw.metrics.RecordSDKOperation("config_watch_start", "success")
 	}
 
 	cw.isRunning = true
-	cw.wg.Add(1) // 增加 WaitGroup 计数
+	cw.wg.Add(1) // Increment WaitGroup count
 	go func() {
-		defer cw.wg.Done() // 确保在 goroutine 退出时减少计数
+		defer cw.wg.Done() // Ensure count is decremented when goroutine exits
 		cw.watchLoop()
 	}()
 
 	log.Infof("Started watching config: %s:%s in namespace: %s", cw.fileName, cw.group, cw.namespace)
 }
 
-// Stop 停止监听
+// Stop stops monitoring
 func (cw *ConfigWatcher) Stop() {
 	cw.mu.Lock()
 	defer cw.mu.Unlock()
@@ -335,7 +335,7 @@ func (cw *ConfigWatcher) Stop() {
 		return
 	}
 
-	// 记录监听停止指标
+	// Record monitoring stop metrics
 	if cw.metrics != nil {
 		cw.metrics.RecordSDKOperation("config_watch_stop", "success")
 	}
@@ -343,15 +343,15 @@ func (cw *ConfigWatcher) Stop() {
 	cw.cancel()
 	cw.isRunning = false
 
-	// 等待 goroutine 完全退出
+	// Wait for goroutine to completely exit
 	cw.wg.Wait()
 
 	log.Infof("Stopped watching config: %s:%s", cw.fileName, cw.group)
 }
 
-// watchLoop 监听循环
+// watchLoop monitoring loop
 func (cw *ConfigWatcher) watchLoop() {
-	ticker := time.NewTicker(10 * time.Second) // 每10秒检查一次
+	ticker := time.NewTicker(10 * time.Second) // Check every 10 seconds
 	defer ticker.Stop()
 
 	for {
@@ -365,9 +365,9 @@ func (cw *ConfigWatcher) watchLoop() {
 	}
 }
 
-// checkConfig 检查配置变更
+// checkConfig checks configuration changes
 func (cw *ConfigWatcher) checkConfig() {
-	// 记录配置检查操作指标
+	// Record configuration check operation metrics
 	if cw.metrics != nil {
 		cw.metrics.RecordConfigOperation("check", cw.fileName, cw.group, "start")
 		defer func() {
@@ -387,7 +387,7 @@ func (cw *ConfigWatcher) checkConfig() {
 		return
 	}
 
-	// 检查配置是否发生变化
+	// Check if configuration has changed
 	if cw.hasConfigChanged(config) {
 		cw.lastConfig = config
 		cw.notifyConfigChanged(config)
@@ -397,44 +397,44 @@ func (cw *ConfigWatcher) checkConfig() {
 	}
 }
 
-// hasConfigChanged 检查配置是否发生变化
+// hasConfigChanged checks if configuration has changed
 func (cw *ConfigWatcher) hasConfigChanged(newConfig model.ConfigFile) bool {
-	// 如果之前没有配置，现在有配置，认为有变化
+	// If there was no configuration before, but now there is, consider it changed
 	if cw.lastConfig == nil && newConfig != nil {
 		return true
 	}
 
-	// 如果之前有配置，现在没有配置，认为有变化
+	// If there was configuration before, but now there is none, consider it changed
 	if cw.lastConfig != nil && newConfig == nil {
 		return true
 	}
 
-	// 如果两个配置都是 nil，认为没有变化
+	// If both configurations are nil, consider it unchanged
 	if cw.lastConfig == nil && newConfig == nil {
 		return false
 	}
 
-	// 比较配置的命名空间
+	// Compare configuration namespace
 	if cw.lastConfig.GetNamespace() != newConfig.GetNamespace() {
 		return true
 	}
 
-	// 比较配置的文件组
+	// Compare configuration file group
 	if cw.lastConfig.GetFileGroup() != newConfig.GetFileGroup() {
 		return true
 	}
 
-	// 比较配置的文件名
+	// Compare configuration file name
 	if cw.lastConfig.GetFileName() != newConfig.GetFileName() {
 		return true
 	}
 
-	// 比较配置的内容
+	// Compare configuration content
 	if cw.lastConfig.GetContent() != newConfig.GetContent() {
 		return true
 	}
 
-	// 比较是否有内容
+	// Compare if there is content
 	if cw.lastConfig.HasContent() != newConfig.HasContent() {
 		return true
 	}
@@ -442,9 +442,9 @@ func (cw *ConfigWatcher) hasConfigChanged(newConfig model.ConfigFile) bool {
 	return false
 }
 
-// notifyConfigChanged 通知配置变更
+// notifyConfigChanged notifies configuration changes
 func (cw *ConfigWatcher) notifyConfigChanged(config model.ConfigFile) {
-	// 记录配置变更指标
+	// Record configuration change metrics
 	if cw.metrics != nil {
 		cw.metrics.RecordConfigChange(cw.fileName, cw.group)
 	}
@@ -457,7 +457,7 @@ func (cw *ConfigWatcher) notifyConfigChanged(config model.ConfigFile) {
 	}
 }
 
-// notifyError 通知错误
+// notifyError notifies error
 func (cw *ConfigWatcher) notifyError(err error) {
 	cw.mu.RLock()
 	defer cw.mu.RUnlock()
@@ -467,23 +467,23 @@ func (cw *ConfigWatcher) notifyError(err error) {
 	}
 }
 
-// GetLastConfig 获取最后的配置
+// GetLastConfig gets the last configuration
 func (cw *ConfigWatcher) GetLastConfig() model.ConfigFile {
 	cw.mu.RLock()
 	defer cw.mu.RUnlock()
 	return cw.lastConfig
 }
 
-// IsRunning 检查是否正在运行
+// IsRunning checks if it's running
 func (cw *ConfigWatcher) IsRunning() bool {
 	cw.mu.RLock()
 	defer cw.mu.RUnlock()
 	return cw.isRunning
 }
 
-// compareInstance 比较两个实例是否相同
+// compareInstance compares if two instances are the same
 func (sw *ServiceWatcher) compareInstance(instance1, instance2 model.Instance) bool {
-	// 比较基本信息
+	// Compare basic information
 	if instance1.GetId() != instance2.GetId() ||
 		instance1.GetHost() != instance2.GetHost() ||
 		instance1.GetPort() != instance2.GetPort() ||
@@ -492,22 +492,22 @@ func (sw *ServiceWatcher) compareInstance(instance1, instance2 model.Instance) b
 		return false
 	}
 
-	// 比较权重
+	// Compare weight
 	if instance1.GetWeight() != instance2.GetWeight() {
 		return false
 	}
 
-	// 比较健康状态
+	// Compare health status
 	if instance1.IsHealthy() != instance2.IsHealthy() {
 		return false
 	}
 
-	// 比较隔离状态
+	// Compare isolation status
 	if instance1.IsIsolated() != instance2.IsIsolated() {
 		return false
 	}
 
-	// 比较元数据
+	// Compare metadata
 	metadata1 := instance1.GetMetadata()
 	metadata2 := instance2.GetMetadata()
 

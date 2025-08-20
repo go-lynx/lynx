@@ -11,97 +11,88 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// 默认事件队列与worker参数
+// Default event queue and worker parameters
 const (
 	defaultEventQueueSize   = 1024
 	defaultEventWorkerCount = 10
-	// 每个监听器的独立队列大小，避免单个慢监听器阻塞全局
+	// Per-listener queue size to prevent a single slow listener from blocking the system
 	defaultListenerQueueSize = 256
-	// 历史事件默认 1000 条，<=0 表示不保留
+	// Default history size 1000; <=0 means no history kept
 	defaultHistorySize = 1000
-	// 关闭时排空监听器队列的默认超时（毫秒）。默认 500ms，兼顾快速关停与尽量不丢事件
+	// Default timeout (ms) to drain listener queues on shutdown. 500ms balances fast shutdown with minimal event loss
 	defaultDrainTimeoutMs = 500
 )
 
-// TypedRuntimePlugin 泛型运行时插件
+// TypedRuntimePlugin generic runtime plugin
 type TypedRuntimePlugin struct {
 	// resources stores shared resources between plugins
-	// resources 存储插件之间共享的资源
 	resources sync.Map
 
 	// eventListeners stores registered event listeners with their filters
-	// eventListeners 存储已注册的事件监听器及其过滤器
 	listeners []listenerEntry
 
 	// eventHistory stores historical events for querying
-	// eventHistory 存储用于查询的历史事件
 	eventHistory []plugins.PluginEvent
 
 	// maxHistorySize is the maximum number of events to keep in history
-	// maxHistorySize 是历史记录中保留的最大事件数
 	maxHistorySize int
 
 	// mu protects the listeners and eventHistory
-	// mu 保护 listeners 和 eventHistory
 	mu sync.RWMutex
 
 	// logger is the plugin's logger instance
-	// logger 是插件的日志记录器实例
 	logger log.Logger
 
 	// config is the plugin's configuration
-	// config 是插件的配置
 	config config.Config
 
-	// 事件队列与worker
-	// eventCh 承载事件的缓冲通道，提供背压
+	// Event queue and workers
+	// eventCh is a buffered channel carrying events, providing backpressure
 	eventCh chan plugins.PluginEvent
-	// workerCount 工作协程数量
+	// workerCount number of worker goroutines
 	workerCount int
-	// 每个监听器的独立队列大小
+	// Independent queue size per listener
 	listenerQueueSize int
-	// 关闭控制
+	// Shutdown control
 	closeOnce sync.Once
 	closed    chan struct{}
 
-	// goroutine 跟踪
+	// Goroutine tracking
 	workerWg   sync.WaitGroup
 	listenerWg sync.WaitGroup
 
-	// 停止标记，Emit 阶段快速丢弃
+	// Stop flag; quickly drop events during Emit when stopped
 	stopped int32
 
-	// 生产者发送互斥，避免 Close 同步关闭 eventCh 时发生并发发送
+	// Mutex for producers to avoid concurrent sends when Close synchronously closes eventCh
 	sendMu sync.Mutex
 
-	// 排空监听器队列超时
+	// Timeout for draining listener queues
 	drainTimeout time.Duration
 }
 
 // listenerEntry represents a registered event listener with its filter
-// listenerEntry 表示一个已注册的事件监听器及其过滤器
 type listenerEntry struct {
 	listener plugins.EventListener
 	filter   *plugins.EventFilter
-	// 每个监听器的独立事件队列
+	// Independent event queue per listener
 	ch chan plugins.PluginEvent
-	// 监听器退出信号，不关闭 ch 以避免 worker 发送时的竞态
+	// Listener quit signal; do not close ch to avoid races with worker sends
 	quit chan struct{}
-	// 监听器活跃标志（共享指针，便于在快照后仍能感知 Remove 的状态变更）1=active, 0=inactive
+	// Active flag (shared pointer to observe Remove state changes even after snapshot). 1=active, 0=inactive
 	active *int32
 }
 
 // NewTypedRuntimePlugin creates a new TypedRuntimePlugin instance with default settings.
-// NewTypedRuntimePlugin 创建一个带有默认设置的 TypedRuntimePlugin 实例。
 func NewTypedRuntimePlugin() *TypedRuntimePlugin {
-	// 读取可配置的队列大小与 worker 数量（仅从 boot 配置）
+	// Read configurable queue sizes and worker counts (from bootstrap config only)
 	qsize := defaultEventQueueSize
 	wcount := defaultEventWorkerCount
 	lqsize := defaultListenerQueueSize
 	hsize := defaultHistorySize
 	drainMs := defaultDrainTimeoutMs
 	if app := Lynx(); app != nil {
-		// 仅使用引导配置（boot.pb.go）；未配置则使用默认值
+		// Use bootstrap config (boot.pb.go) only; fall back to defaults if not set
 		if app.bootConfig != nil && app.bootConfig.Lynx != nil && app.bootConfig.Lynx.Runtime != nil && app.bootConfig.Lynx.Runtime.Event != nil {
 			if v := app.bootConfig.Lynx.Runtime.Event.QueueSize; v > 0 {
 				qsize = int(v)
@@ -112,11 +103,11 @@ func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 			if v := app.bootConfig.Lynx.Runtime.Event.ListenerQueueSize; v > 0 {
 				lqsize = int(v)
 			}
-			// 历史事件大小（<=0 表示不保留）
+			// History size (<=0 means disabled)
 			if v := app.bootConfig.Lynx.Runtime.Event.HistorySize; v != 0 {
 				hsize = int(v)
 			}
-			// 关闭排空超时（毫秒）
+			// Drain timeout on close (milliseconds)
 			if v := app.bootConfig.Lynx.Runtime.Event.DrainTimeoutMs; v > 0 {
 				drainMs = int(v)
 			}
@@ -124,7 +115,7 @@ func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 	}
 
 	r := &TypedRuntimePlugin{
-		maxHistorySize:    hsize, // 历史事件保留条数（<=0 表示不保留）
+		maxHistorySize:    hsize, // Number of historical events to retain (<=0 disables history)
 		listeners:         make([]listenerEntry, 0),
 		eventHistory:      make([]plugins.PluginEvent, 0),
 		logger:            log.DefaultLogger,
@@ -136,7 +127,7 @@ func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 	if drainMs > 0 {
 		r.drainTimeout = time.Duration(drainMs) * time.Millisecond
 	}
-	// 启动固定数量的事件分发worker
+	// Start a fixed number of event dispatch workers
 	for i := 0; i < r.workerCount; i++ {
 		r.workerWg.Add(1)
 		go r.eventWorkerLoop()
@@ -144,10 +135,8 @@ func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 	return r
 }
 
-// GetResource retrieves a shared plugin resource by name
-// Returns the resource and any error encountered
-// GetResource 根据名称获取插件共享资源。
-// 返回资源和可能遇到的错误。
+// GetResource retrieves a shared plugin resource by name.
+// Returns the resource and any error encountered.
 func (r *TypedRuntimePlugin) GetResource(name string) (any, error) {
 	if value, ok := r.resources.Load(name); ok {
 		return value, nil
@@ -155,10 +144,8 @@ func (r *TypedRuntimePlugin) GetResource(name string) (any, error) {
 	return nil, fmt.Errorf("resource not found: %s", name)
 }
 
-// RegisterResource registers a resource to be shared with other plugins
-// Returns error if registration fails
-// RegisterResource 注册一个资源，以便与其他插件共享。
-// 如果注册失败，则返回错误。
+// RegisterResource registers a resource to be shared with other plugins.
+// Returns an error if registration fails.
 func (r *TypedRuntimePlugin) RegisterResource(name string, resource any) error {
 	if name == "" {
 		return fmt.Errorf("resource name cannot be empty")
@@ -172,7 +159,7 @@ func (r *TypedRuntimePlugin) RegisterResource(name string, resource any) error {
 	return nil
 }
 
-// GetTypedResource 获取类型安全的资源（独立函数）
+// GetTypedResource retrieves a type-safe resource (standalone helper)
 func GetTypedResource[T any](r *TypedRuntimePlugin, name string) (T, error) {
 	var zero T
 	resource, err := r.GetResource(name)
@@ -188,15 +175,13 @@ func GetTypedResource[T any](r *TypedRuntimePlugin, name string) (T, error) {
 	return typed, nil
 }
 
-// RegisterTypedResource 注册类型安全的资源（独立函数）
+// RegisterTypedResource registers a type-safe resource (standalone helper)
 func RegisterTypedResource[T any](r *TypedRuntimePlugin, name string, resource T) error {
 	return r.RegisterResource(name, resource)
 }
 
-// GetConfig returns the plugin configuration manager
-// Provides access to configuration values and updates
-// GetConfig 返回插件配置管理器。
-// 提供对配置值和更新的访问。
+// GetConfig returns the plugin configuration manager.
+// Provides access to configuration values and updates.
 func (r *TypedRuntimePlugin) GetConfig() config.Config {
 	if r.config == nil {
 		if app := Lynx(); app != nil {
@@ -208,10 +193,8 @@ func (r *TypedRuntimePlugin) GetConfig() config.Config {
 	return r.config
 }
 
-// GetLogger returns the plugin logger instance
-// Provides structured logging capabilities
-// GetLogger 返回插件日志记录器实例。
-// 提供结构化的日志记录功能。
+// GetLogger returns the plugin logger instance.
+// Provides structured logging capabilities.
 func (r *TypedRuntimePlugin) GetLogger() log.Logger {
 	if r.logger == nil {
 		// Initialize with a default logger if not set
@@ -222,8 +205,6 @@ func (r *TypedRuntimePlugin) GetLogger() log.Logger {
 
 // EmitEvent broadcasts a plugin event to all registered listeners.
 // Event will be processed according to its priority and any active filters.
-// EmitEvent 向所有注册的监听器广播一个插件事件。
-// 事件将根据其优先级和任何活动的过滤器进行处理。
 func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 	if event.Type == "" { // Check for zero value of EventType
 		return
@@ -233,12 +214,12 @@ func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 		event.Timestamp = time.Now().Unix()
 	}
 
-	// 已停止则直接丢弃
+	// If already stopped, drop immediately
 	if atomic.LoadInt32(&r.stopped) == 1 {
 		return
 	}
 
-	// 先写入历史（可关闭），后入队
+	// Write to history first (if enabled), then enqueue
 	if r.maxHistorySize > 0 {
 		r.mu.Lock()
 		// Add to history
@@ -250,7 +231,7 @@ func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 		r.mu.Unlock()
 	}
 
-	// 将事件写入队列；队列满时丢弃并记录debug日志，避免无背压的goroutine泛滥
+	// Enqueue the event; if the queue is full, drop and log at debug level to avoid goroutine explosion
 	r.sendMu.Lock()
 	select {
 	case r.eventCh <- event:
@@ -262,23 +243,23 @@ func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 	r.sendMu.Unlock()
 }
 
-// eventWorkerLoop 顺序处理事件并派发给符合过滤条件的监听器
+// eventWorkerLoop processes events and dispatches them to listeners matching the filter
 func (r *TypedRuntimePlugin) eventWorkerLoop() {
 	defer r.workerWg.Done()
 	for ev := range r.eventCh {
-		// 复制监听器快照，避免长时间持锁
+		// Copy a snapshot of listeners to avoid holding the lock for long
 		r.mu.RLock()
 		listeners := make([]listenerEntry, len(r.listeners))
 		copy(listeners, r.listeners)
 		r.mu.RUnlock()
 
 		for _, entry := range listeners {
-			// 若监听器已被标记为不活跃，则跳过
+			// Skip if the listener has been marked inactive
 			if entry.active != nil && atomic.LoadInt32(entry.active) == 0 {
 				continue
 			}
 			if entry.filter == nil || r.eventMatchesFilter(ev, *entry.filter) {
-				// 分发到监听器独立队列，避免头阻塞
+				// Dispatch to the listener's independent queue to avoid head-of-line blocking
 				select {
 				case entry.ch <- ev:
 				default:
@@ -291,18 +272,18 @@ func (r *TypedRuntimePlugin) eventWorkerLoop() {
 	}
 }
 
-// Close 关闭事件分发（可选调用）
+// Close stops event dispatching (optional to call)
 func (r *TypedRuntimePlugin) Close() {
 	r.closeOnce.Do(func() {
-		// Phase 1: 停止接收新事件并让 worker 自然退出
+		// Phase 1: stop receiving new events and let workers exit naturally
 		atomic.StoreInt32(&r.stopped, 1)
-		// 与生产者互斥，避免 send on closed channel
+		// Mutex with producers to avoid "send on closed channel"
 		r.sendMu.Lock()
 		close(r.eventCh)
 		r.sendMu.Unlock()
 		r.workerWg.Wait()
 
-		// Phase 2.1: 可选排空监听器队列（仅等待，不再继续生产）
+		// Phase 2.1: optionally drain listener queues (wait only; no further production)
 		if r.drainTimeout > 0 {
 			deadline := time.Now().Add(r.drainTimeout)
 			for {
@@ -322,7 +303,7 @@ func (r *TypedRuntimePlugin) Close() {
 			}
 		}
 
-		// Phase 2.2: 通知监听器退出并等待其优雅退出
+		// Phase 2.2: notify listeners to quit and wait for graceful exit
 		r.mu.RLock()
 		for _, entry := range r.listeners {
 			if entry.active != nil {
@@ -335,15 +316,13 @@ func (r *TypedRuntimePlugin) Close() {
 		r.mu.RUnlock()
 		r.listenerWg.Wait()
 
-		// 最后标记 closed（可用于其他 select 信号）
+		// Finally mark closed (can be used in other select statements)
 		close(r.closed)
 	})
 }
 
 // AddListener registers a new event listener with optional filters.
 // Listener will only receive events that match its filter criteria.
-// AddListener 使用可选的过滤器注册一个新的事件监听器。
-// 监听器将仅接收符合其过滤条件的事件。
 func (r *TypedRuntimePlugin) AddListener(listener plugins.EventListener, filter *plugins.EventFilter) {
 	if listener == nil {
 		return
@@ -363,7 +342,7 @@ func (r *TypedRuntimePlugin) AddListener(listener plugins.EventListener, filter 
 	}
 	r.listeners = append(r.listeners, entry)
 
-	// 启动监听器独立 goroutine
+	// Start independent goroutine for this listener
 	r.listenerWg.Add(1)
 	go func(le listenerEntry) {
 		defer r.listenerWg.Done()
@@ -392,8 +371,6 @@ func (r *TypedRuntimePlugin) AddListener(listener plugins.EventListener, filter 
 
 // RemoveListener unregisters an event listener.
 // After removal, the listener will no longer receive any events.
-// RemoveListener 注销一个事件监听器。
-// 删除后，该监听器将不再接收任何事件。
 func (r *TypedRuntimePlugin) RemoveListener(listener plugins.EventListener) {
 	if listener == nil {
 		return
@@ -408,7 +385,7 @@ func (r *TypedRuntimePlugin) RemoveListener(listener plugins.EventListener) {
 		if entry.listener != listener {
 			newListeners = append(newListeners, entry)
 		} else {
-			// 通知监听器退出，但不关闭其事件通道，避免 worker 向已关闭通道发送
+			// Notify the listener to quit, but do not close its event channel to avoid worker sends to a closed channel
 			if entry.active != nil {
 				atomic.StoreInt32(entry.active, 0)
 			}
@@ -422,8 +399,6 @@ func (r *TypedRuntimePlugin) RemoveListener(listener plugins.EventListener) {
 
 // GetEventHistory retrieves historical events based on filter criteria.
 // Returns events that match the specified filter parameters.
-// GetEventHistory 根据过滤条件检索历史事件。
-// 返回符合指定过滤参数的事件。
 func (r *TypedRuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugins.PluginEvent {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -449,11 +424,8 @@ func (r *TypedRuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugi
 
 // eventMatchesFilter checks if an event matches a specific filter.
 // This implements the detailed filter matching logic.
-// eventMatchesFilter 检查一个事件是否匹配特定的过滤器。
-// 这实现了详细的过滤器匹配逻辑。
 func (r *TypedRuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plugins.EventFilter) bool {
 	// Check event type
-	// 检查事件类型
 	if len(filter.Types) > 0 {
 		typeMatch := false
 		for _, t := range filter.Types {
@@ -468,7 +440,6 @@ func (r *TypedRuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filte
 	}
 
 	// Check priority
-	// 检查优先级
 	if len(filter.Priorities) > 0 {
 		priorityMatch := false
 		for _, p := range filter.Priorities {
@@ -483,7 +454,6 @@ func (r *TypedRuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filte
 	}
 
 	// Check plugin ID
-	// 检查插件 ID
 	if len(filter.PluginIDs) > 0 {
 		idMatch := false
 		for _, id := range filter.PluginIDs {
@@ -498,7 +468,6 @@ func (r *TypedRuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filte
 	}
 
 	// Check category
-	// 检查类别
 	if len(filter.Categories) > 0 {
 		categoryMatch := false
 		for _, c := range filter.Categories {
@@ -513,7 +482,6 @@ func (r *TypedRuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filte
 	}
 
 	// Check time range
-	// 检查时间范围
 	if filter.FromTime > 0 && event.Timestamp < filter.FromTime {
 		return false
 	}
@@ -524,10 +492,10 @@ func (r *TypedRuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filte
 	return true
 }
 
-// RuntimePlugin 保持向后兼容的运行时插件
+// RuntimePlugin backward-compatible alias of TypedRuntimePlugin
 type RuntimePlugin = TypedRuntimePlugin
 
-// NewRuntimePlugin 创建运行时插件（向后兼容）
+// NewRuntimePlugin creates a runtime plugin (backward-compatible)
 func NewRuntimePlugin() *RuntimePlugin {
 	return NewTypedRuntimePlugin()
 }

@@ -1,4 +1,4 @@
-// Package http 实现了 HTTP 相关的功能，包括响应编码和中间件。
+// Package http implements HTTP-related features, including response encoding and middleware.
 package http
 
 import (
@@ -9,32 +9,32 @@ import (
 	nhttp "net/http"
 )
 
-// Response 表示标准化的 HTTP 响应结构。
-// 它包含状态码、消息和可选的数据负载。
+// Response represents a standardized HTTP response structure.
+// It contains the status code, message, and an optional data payload.
 type Response struct {
-	// state 是 protobuf 消息的状态，用于内部处理。
+	// state is the status of the protobuf message for internal handling.
 	state protoimpl.MessageState
-	// sizeCache 缓存消息的大小，用于优化序列化性能。
+	// sizeCache caches the message size to optimize serialization performance.
 	sizeCache protoimpl.SizeCache
-	// unknownFields 存储解析过程中遇到的未知字段。
+	// unknownFields stores unknown fields encountered during parsing.
 	unknownFields protoimpl.UnknownFields
 
-	// Code 是响应的状态码。
+	// Code is the response status code.
 	Code int `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
-	// Message 是响应的描述消息。
+	// Message is the descriptive message of the response.
 	Message string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
-	// Data 是响应携带的具体数据。
+	// Data is the payload carried by the response.
 	Data interface{} `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
 }
 
-// ResponseEncoder 将响应数据编码为标准化的 JSON 格式。
-// 它将数据封装在一个状态码为 200、消息为 "success" 的 Response 结构体中。
-// w 是 HTTP 响应写入器，用于向客户端发送响应。
-// r 是 HTTP 请求对象，当前未使用。
-// data 是要编码的响应数据。
-// 返回编码过程中可能出现的错误。
+// ResponseEncoder encodes response data into a standardized JSON format.
+// It wraps the data in a Response struct with code=200 and message="success".
+// w is the HTTP response writer used to send the response to the client.
+// r is the HTTP request object (currently unused).
+// data is the response payload to encode.
+// Returns an error if encoding fails.
 func ResponseEncoder(w http.ResponseWriter, r *http.Request, data interface{}) error {
-	// 创建一个标准化的响应结构体
+	// Create a standardized response structure
 	res := &Response{
 		Code:    200,
 		Message: "success",
@@ -46,17 +46,17 @@ func ResponseEncoder(w http.ResponseWriter, r *http.Request, data interface{}) e
 		w.WriteHeader(nhttp.StatusInternalServerError)
 		return err
 	}
-	// 将 JSON 数据写入 HTTP 响应
+	// Write the JSON data to the HTTP response
 	_, err = w.Write(body)
 	if err != nil {
-		// 写入失败，返回错误
+		// Writing failed; return the error
 		return err
 	}
 	return nil
 }
 
 func EncodeErrorFunc(w http.ResponseWriter, r *http.Request, err error) {
-	// 拿到error并转换成kratos Error实体
+	// Convert the error to a Kratos Error entity
 	se := errors.FromError(err)
 	res := &Response{
 		Code:    int(se.Code),
@@ -69,7 +69,7 @@ func EncodeErrorFunc(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	// 设置HTTP Status Code
+	// Set HTTP Status Code
 	w.WriteHeader(nhttp.StatusInternalServerError)
 	_, wErr := w.Write(body)
 	if wErr != nil {

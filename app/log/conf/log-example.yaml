@@ -9,14 +9,14 @@ lynx:
     max_backups: 5
     compress: true
 
-    timezone: Asia/Shanghai    # 例如 Asia/Shanghai、UTC；不配置则为本地时区
+    timezone: Asia/Shanghai    # e.g. Asia/Shanghai, UTC; if not configured, use local timezone
     caller_skip: 5
 
     stack:
       enable: true
       skip: 6
       max_frames: 32
-      level: error             # 达到该级别及以上输出堆栈
+      level: error             # Output stack trace when reaching this level or above
       filter_prefixes:
         - github.com/go-kratos/kratos
         - github.com/rs/zerolog
@@ -24,7 +24,7 @@ lynx:
 
     sampling:
       enable: true
-      info_ratio: 0.5          # 50% 保留 info
-      debug_ratio: 0.2         # 20% 保留 debug
-      max_info_per_sec: 50     # 每秒最多 50 条 info（0=不限）
-      max_debug_per_sec: 20    # 每秒最多 20 条 debug（0=不限）
+      info_ratio: 0.5          # 50% keep info
+      debug_ratio: 0.2         # 20% keep debug
+      max_info_per_sec: 50     # Max 50 info logs per second (0=no limit)
+      max_debug_per_sec: 20    # Max 20 debug logs per second (0=no limit)

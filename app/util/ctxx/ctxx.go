@@ -5,12 +5,12 @@ import (
 	"time"
 )
 
-// WithTimeout 直接代理 context.WithTimeout，便于统一入口与可替换。
+// WithTimeout proxies context.WithTimeout to keep a unified/replaceable entry.
 func WithTimeout(parent context.Context, d time.Duration) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, d)
 }
 
-// Value 从 context 中以类型安全方式取值。
+// Value fetches a value from context in a type-safe way.
 func Value[T any](ctx context.Context, key any) (T, bool) {
 	var zero T
 	v := ctx.Value(key)
@@ -21,7 +21,7 @@ func Value[T any](ctx context.Context, key any) (T, bool) {
 	return t, ok
 }
 
-// Detach 丢弃取消和截止信息，仅保留值（Go 1.21+ 提供 WithoutCancel）。
+// Detach drops cancel/deadline info while preserving values (Go 1.21+ provides WithoutCancel).
 func Detach(parent context.Context) context.Context {
 	return context.WithoutCancel(parent)
 }

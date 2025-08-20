@@ -7,9 +7,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// Handler 返回统一 /metrics 的 HTTP 处理器
+// Handler returns unified /metrics HTTP handler
 func Handler() http.Handler {
-	// 聚合本包 registry + 默认全局（多数插件直接使用 prometheus.MustRegister）+ 可选额外 gatherers
+	// Aggregate this package's registry + default global (most plugins use prometheus.MustRegister directly) + optional extra gatherers
 	g := prometheus.Gatherers{registry, prometheus.DefaultGatherer}
 	if len(extraGatherers) > 0 {
 		g = append(g, extraGatherers...)

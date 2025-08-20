@@ -1,77 +1,77 @@
-// 指定本 Protocol Buffers 文件使用的语法版本
+// Specify the syntax version used by this Protocol Buffers file
 syntax = "proto3";
 
-// 生成代码所使用的包名
+// Package name used for generated code
 package lynx.protobuf.plugin.redis;
 
-// 为生成的 Go 代码设置 go_package
+// Set go_package for generated Go code
 option go_package = "github.com/go-lynx/lynx/plugins/nosql/redis/conf;conf";
 
-// 引入 google/protobuf/duration.proto 中的 Duration 类型
+// Import Duration type from google/protobuf/duration.proto
 import "google/protobuf/duration.proto";
 
-// 定义 Redis 配置消息类型
+// Define Redis configuration message type
 message redis {
-  // —— 基础连接 ——
-  // 网络类型（如：tcp）
+  // —— Basic Connection ——
+  // Network type (e.g.: tcp)
   string network = 1;
-  // 地址列表，支持单机/集群/哨兵
+  // Address list, supports standalone/cluster/sentinel
   repeated string addrs = 2;
-  // ACL 用户名
+  // ACL username
   string username = 3;
-  // 访问 Redis 的密码
+  // Password to access Redis
   string password = 4;
-  // 使用的数据库编号
+  // Database number to use
   int32 db = 5;
-  // 客户端名称（在 Redis CLIENT LIST 中可见）
+  // Client name (visible in Redis CLIENT LIST)
   string client_name = 6;
 
-  // —— 连接池与连接生命周期 ——
-  // 连接池最小空闲连接数
+  // —— Connection Pool and Connection Lifecycle ——
+  // Minimum idle connections in connection pool
   int32 min_idle_conns = 7;
-  // 连接池最大空闲连接数
+  // Maximum idle connections in connection pool
   int32 max_idle_conns = 8;
-  // 连接池最大活跃连接数（映射为 go-redis 的 PoolSize）
+  // Maximum active connections in connection pool (mapped to go-redis PoolSize)
   int32 max_active_conns = 9;
-  // 连接最大空闲时间
+  // Maximum idle time for connections
   google.protobuf.Duration conn_max_idle_time = 10;
-  // 连接空闲超时
+  // Connection idle timeout
   google.protobuf.Duration idle_timeout = 11;
-  // 连接最大存活时间
+  // Maximum connection lifetime
   google.protobuf.Duration max_conn_age = 12;
-  // 当所有连接都繁忙时的等待超时（连接池超时）
+  // Wait timeout when all connections are busy (connection pool timeout)
   google.protobuf.Duration pool_timeout = 13;
 
-  // —— 超时配置 ——
-  // 建连超时时间
+  // —— Timeout Configuration ——
+  // Connection timeout
   google.protobuf.Duration dial_timeout = 14;
-  // 读超时时间
+  // Read timeout
   google.protobuf.Duration read_timeout = 15;
-  // 写超时时间
+  // Write timeout
   google.protobuf.Duration write_timeout = 16;
 
-  // —— 重试配置 ——
-  // 最大重试次数
+  // —— Retry Configuration ——
+  // Maximum number of retries
   int32 max_retries = 17;
-  // 最小重试退避
+  // Minimum retry backoff
   google.protobuf.Duration min_retry_backoff = 18;
-  // 最大重试退避
+  // Maximum retry backoff
   google.protobuf.Duration max_retry_backoff = 19;
 
-  // TLS 选项
+  // TLS options
   message TLS {
-    // 是否启用 TLS
+    // Whether to enable TLS
     bool enabled = 1;
-    // 是否跳过证书校验（仅用于测试环境）
+    // Whether to skip certificate verification (for test environment only)
     bool insecure_skip_verify = 2;
   }
   TLS tls = 20;
 
-  // 哨兵模式选项
+  // Sentinel mode options
   message Sentinel {
-    // 主节点名称（哨兵监控的 master 名称）
+    // Master node name (sentinel monitored master name)
     string master_name = 1;
-    // 可选：专用的哨兵地址列表；为空时使用 addrs
+    // Optional: dedicated sentinel address list; uses addrs when empty
     repeated string addrs = 2;
   }
   Sentinel sentinel = 21;

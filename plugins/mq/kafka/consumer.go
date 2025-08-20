@@ -13,20 +13,20 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// MessageHandler 消息处理器接口
+// MessageHandler message handler interface
 type MessageHandler interface {
 	Handle(ctx context.Context, topic string, partition int32, offset int64, key, value []byte) error
 }
 
-// MessageHandlerFunc 消息处理器函数类型
+// MessageHandlerFunc message handler function type
 type MessageHandlerFunc func(ctx context.Context, topic string, partition int32, offset int64, key, value []byte) error
 
-// Handle 实现 MessageHandler 接口
+// Handle implements MessageHandler interface
 func (f MessageHandlerFunc) Handle(ctx context.Context, topic string, partition int32, offset int64, key, value []byte) error {
 	return f(ctx, topic, partition, offset, key, value)
 }
 
-// ConsumerGroup 消费者组
+// ConsumerGroup consumer group
 type ConsumerGroup struct {
 	client        *kgo.Client
 	groupID       string
@@ -41,14 +41,14 @@ type ConsumerGroup struct {
 	errorChan     chan error
 	rebalanceChan chan RebalanceEvent
 	autoCommit    bool
-	// per-partition 串行处理通道，确保同一分区严格顺序
+	// per-partition serial processing channels, ensuring strict order for the same partition
 	partChans map[string]chan []*kgo.Record
 	partMu    sync.Mutex
 }
 
-// ConsumerGroupOptions 创建消费者组的可选参数
+// ConsumerGroupOptions optional parameters for creating consumer group
 type ConsumerGroupOptions struct {
-	// MaxConcurrency 并发上限。优先级：Options.MaxConcurrency > conf.Consumer.MaxConcurrency > DefaultPoolConfig().Size
+	// MaxConcurrency concurrency limit. Priority: Options.MaxConcurrency > conf.Consumer.MaxConcurrency > DefaultPoolConfig().Size
 	MaxConcurrency int
 }
 

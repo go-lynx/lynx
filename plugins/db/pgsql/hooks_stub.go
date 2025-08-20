@@ -1,15 +1,16 @@
 package pgsql
 
 import (
-    "time"
-    "github.com/go-lynx/lynx/plugins/db/pgsql/conf"
+	"time"
+
+	"github.com/go-lynx/lynx/plugins/db/pgsql/conf"
 )
 
-// 本文件为默认构建的占位实现，提供全局变量以避免未启用 hooks 时的编译错误。
-// 真正的 hooks 实现在 hooks.go 中（需要使用 -tags lynx_pgsql_hooks 构建）。
+// This file is a placeholder implementation for default builds, providing global variables to avoid compilation errors when hooks are not enabled.
+// The real hooks implementation is in hooks.go (requires building with -tags lynx_pgsql_hooks).
 
 var (
-    globalPgsqlMetrics *PrometheusMetrics
-    globalSlowThreshold = 200 * time.Millisecond
-    globalPgsqlConf     *conf.Pgsql
+	globalPgsqlMetrics  *PrometheusMetrics
+	globalSlowThreshold = 200 * time.Millisecond
+	globalPgsqlConf     *conf.Pgsql
 )

@@ -1,6 +1,6 @@
 package kafka
 
-// 插件元数据
+// Plugin metadata
 const (
 	pluginName        = "kafka.client"
 	pluginVersion     = "v2.0.0"
@@ -8,7 +8,7 @@ const (
 	confPrefix        = "lynx.kafka"
 )
 
-// 压缩类型常量
+// Compression type constants
 const (
 	CompressionNone   = "none"
 	CompressionGzip   = "gzip"
@@ -17,14 +17,14 @@ const (
 	CompressionZstd   = "zstd"
 )
 
-// SASL 机制常量
+// SASL mechanism constants
 const (
 	SASLPlain       = "PLAIN"
 	SASLScramSHA256 = "SCRAM-SHA-256"
 	SASLScramSHA512 = "SCRAM-SHA-512"
 )
 
-// 消费起始位置常量
+// Consumer start offset constants
 const (
 	StartOffsetEarliest = "earliest"
 	StartOffsetLatest   = "latest"

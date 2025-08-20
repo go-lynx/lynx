@@ -9,19 +9,19 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 )
 
-// SASLMechanism SASL 认证机制
+// SASLMechanism SASL authentication mechanism
 type SASLMechanism struct {
 	config *conf.SASL
 }
 
-// NewSASLMechanism 创建新的 SASL 认证机制
+// NewSASLMechanism creates a new SASL authentication mechanism
 func NewSASLMechanism(config *conf.SASL) *SASLMechanism {
 	return &SASLMechanism{
 		config: config,
 	}
 }
 
-// getSASLMechanism 获取 SASL 认证机制
+// getSASLMechanism gets SASL authentication mechanism
 func (k *Client) getSASLMechanism() sasl.Mechanism {
 	if k.conf.Sasl == nil || !k.conf.Sasl.Enabled {
 		return nil
@@ -31,7 +31,7 @@ func (k *Client) getSASLMechanism() sasl.Mechanism {
 	return mechanism.getMechanism()
 }
 
-// getMechanism 根据配置获取对应的 SASL 机制
+// getMechanism gets the corresponding SASL mechanism based on configuration
 func (sm *SASLMechanism) getMechanism() sasl.Mechanism {
 	if sm.config == nil {
 		return nil
@@ -45,12 +45,12 @@ func (sm *SASLMechanism) getMechanism() sasl.Mechanism {
 	case SASLScramSHA512:
 		return sm.getScramSHA512Mechanism()
 	default:
-		// 对于不支持的机制，返回 nil 而不是记录警告
+		// For unsupported mechanisms, return nil instead of logging warnings
 		return nil
 	}
 }
 
-// getPlainMechanism 获取 PLAIN 认证机制
+// getPlainMechanism gets PLAIN authentication mechanism
 func (sm *SASLMechanism) getPlainMechanism() sasl.Mechanism {
 	return plain.Plain(func(ctx context.Context) (plain.Auth, error) {
 		return plain.Auth{
@@ -60,7 +60,7 @@ func (sm *SASLMechanism) getPlainMechanism() sasl.Mechanism {
 	})
 }
 
-// getScramSHA256Mechanism 获取 SCRAM-SHA-256 认证机制
+// getScramSHA256Mechanism gets SCRAM-SHA-256 authentication mechanism
 func (sm *SASLMechanism) getScramSHA256Mechanism() sasl.Mechanism {
 	return scram.Sha256(func(ctx context.Context) (scram.Auth, error) {
 		return scram.Auth{
@@ -70,7 +70,7 @@ func (sm *SASLMechanism) getScramSHA256Mechanism() sasl.Mechanism {
 	})
 }
 
-// getScramSHA512Mechanism 获取 SCRAM-SHA-512 认证机制
+// getScramSHA512Mechanism gets SCRAM-SHA-512 authentication mechanism
 func (sm *SASLMechanism) getScramSHA512Mechanism() sasl.Mechanism {
 	return scram.Sha512(func(ctx context.Context) (scram.Auth, error) {
 		return scram.Auth{
@@ -80,7 +80,7 @@ func (sm *SASLMechanism) getScramSHA512Mechanism() sasl.Mechanism {
 	})
 }
 
-// SASLConfig SASL 配置结构
+// SASLConfig SASL configuration structure
 type SASLConfig struct {
 	Enabled   bool   `json:"enabled" yaml:"enabled"`
 	Mechanism string `json:"mechanism" yaml:"mechanism"`
@@ -88,7 +88,7 @@ type SASLConfig struct {
 	Password  string `json:"password" yaml:"password"`
 }
 
-// DefaultSASLConfig 默认 SASL 配置
+// DefaultSASLConfig default SASL configuration
 func DefaultSASLConfig() *SASLConfig {
 	return &SASLConfig{
 		Enabled:   false,

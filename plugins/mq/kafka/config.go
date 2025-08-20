@@ -7,13 +7,13 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
-// validateConfiguration 验证配置
+// validateConfiguration validates the configuration
 func (k *Client) validateConfiguration() error {
 	if len(k.conf.Brokers) == 0 {
 		return ErrNoBrokersConfigured
 	}
 
-	// 验证生产者配置（多实例）
+	// Validate producer configurations (multiple instances)
 	for _, p := range k.conf.Producers {
 		if p != nil && p.Enabled {
 			if err := k.validateProducerConfig(p); err != nil {
@@ -22,7 +22,7 @@ func (k *Client) validateConfiguration() error {
 		}
 	}
 
-	// 验证消费者配置（多实例）
+	// Validate consumer configurations (multiple instances)
 	for _, c := range k.conf.Consumers {
 		if c != nil && c.Enabled {
 			if err := k.validateConsumerConfig(c); err != nil {
@@ -31,14 +31,14 @@ func (k *Client) validateConfiguration() error {
 		}
 	}
 
-	// 验证 SASL 配置
+	// Validate SASL configuration
 	if k.conf.Sasl != nil && k.conf.Sasl.Enabled {
 		if err := k.validateSASLConfig(); err != nil {
 			return fmt.Errorf("SASL config validation failed: %w", err)
 		}
 	}
 
-	// 验证 TLS 配置
+	// Validate TLS configuration
 	if k.conf.Tls != nil && k.conf.Tls.Enabled {
 		if err := k.validateTLSConfig(); err != nil {
 			return fmt.Errorf("TLS config validation failed: %w", err)
@@ -48,7 +48,7 @@ func (k *Client) validateConfiguration() error {
 	return nil
 }
 
-// validateProducerConfig 验证生产者配置
+// validateProducerConfig validates producer configuration
 func (k *Client) validateProducerConfig(p *conf.Producer) error {
 	if p.Compression != "" {
 		validCompressions := map[string]bool{
@@ -62,14 +62,14 @@ func (k *Client) validateProducerConfig(p *conf.Producer) error {
 			return fmt.Errorf("%w: %s", ErrInvalidCompression, p.Compression)
 		}
 	}
-	// 校验 RequiredAcks 取值范围：允许 -1, 0, 1
+	// Validate RequiredAcks value range: allowed -1, 0, 1
 	if p.RequiredAcks != -1 && p.RequiredAcks != 0 && p.RequiredAcks != 1 {
 		return fmt.Errorf("invalid required_acks: %d (allowed: -1,0,1)", p.RequiredAcks)
 	}
 	return nil
 }
 
-// validateConsumerConfig 验证消费者配置
+// validateConsumerConfig validates consumer configuration
 func (k *Client) validateConsumerConfig(c *conf.Consumer) error {
 	if c.GroupId == "" {
 		return ErrNoGroupID
@@ -92,17 +92,17 @@ func (k *Client) validateConsumerConfig(c *conf.Consumer) error {
 	return nil
 }
 
-// validateSASLConfig 验证 SASL 配置
+// validateSASLConfig validates SASL configuration
 func (k *Client) validateSASLConfig() error {
 	if k.conf.Sasl == nil {
 		return fmt.Errorf("SASL configuration is nil")
 	}
 
 	if !k.conf.Sasl.Enabled {
-		return nil // SASL 未启用，不需要验证
+		return nil // SASL not enabled, no validation needed
 	}
 
-	// 验证机制类型
+	// Validate mechanism type
 	validMechanisms := map[string]bool{
 		SASLPlain:       true,
 		SASLScramSHA256: true,
@@ -113,7 +113,7 @@ func (k *Client) validateSASLConfig() error {
 		return fmt.Errorf("%w: %s", ErrInvalidSASLMechanism, k.conf.Sasl.Mechanism)
 	}
 
-	// 验证用户名和密码
+	// Validate username and password
 	if k.conf.Sasl.Username == "" {
 		return fmt.Errorf("SASL username is required when SASL is enabled")
 	}
@@ -124,17 +124,17 @@ func (k *Client) validateSASLConfig() error {
 	return nil
 }
 
-// validateTLSConfig 验证 TLS 配置
+// validateTLSConfig validates TLS configuration
 func (k *Client) validateTLSConfig() error {
 	if k.conf.Tls == nil {
 		return fmt.Errorf("TLS configuration is nil")
 	}
 
 	if !k.conf.Tls.Enabled {
-		return nil // TLS 未启用，不需要验证
+		return nil // TLS not enabled, no validation needed
 	}
 
-	// 验证证书和密钥
+	// Validate certificate and key
 	if k.conf.Tls.CertFile == "" {
 		return fmt.Errorf("TLS certificate is required when TLS is enabled")
 	}
@@ -145,7 +145,7 @@ func (k *Client) validateTLSConfig() error {
 	return nil
 }
 
-// setDefaultValues 设置默认值
+// setDefaultValues sets default values
 func (k *Client) setDefaultValues() {
 	defaultConf := &conf.Kafka{
 		DialTimeout: &durationpb.Duration{Seconds: 10},
@@ -173,11 +173,11 @@ func (k *Client) setDefaultValues() {
 		},
 	}
 
-	// 应用默认值
+	// Apply default values
 	if k.conf.DialTimeout == nil {
 		k.conf.DialTimeout = defaultConf.DialTimeout
 	}
-	// 多生产者默认
+	// Multiple producer defaults
 	for _, p := range k.conf.Producers {
 		if p == nil {
 			continue
@@ -197,9 +197,9 @@ func (k *Client) setDefaultValues() {
 		if p.Compression == "" {
 			p.Compression = defaultConf.Producers[0].Compression
 		}
-		// required_acks: 不覆盖 0
+		// required_acks: don't override 0
 	}
-	// 多消费者默认
+	// Multiple consumer defaults
 	for _, c := range k.conf.Consumers {
 		if c == nil {
 			continue

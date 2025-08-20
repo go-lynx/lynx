@@ -23,17 +23,13 @@ const (
 )
 
 // Http defines the configuration for the HTTP server plugin
-// Http 定义了 HTTP 服务器插件的配置信息。
 type Http struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Network specifies the network type (e.g., "tcp", "unix")
-	// Network 指定网络类型（例如 "tcp"、"unix"）。
 	Network string `protobuf:"bytes,1,opt,name=network,proto3" json:"network,omitempty"`
 	// Addr specifies the address to listen on (e.g., ":8080", "localhost:8080")
-	// Addr 指定 HTTP 服务器监听的地址（例如 ":8080"、"localhost:8080"）。
 	Addr string `protobuf:"bytes,2,opt,name=addr,proto3" json:"addr,omitempty"`
 	// Tls indicates whether TLS/HTTPS is enabled
-	// Tls 指示是否启用 TLS/HTTPS 加密。
 	TlsEnable bool `protobuf:"varint,3,opt,name=tls_enable,json=tlsEnable,proto3" json:"tls_enable,omitempty"`
 	// TlsAuthType specifies the TLS authentication type:
 	// 0: No client auth
@@ -41,30 +37,18 @@ type Http struct {
 	// 2: Require client cert
 	// 3: Verify client cert
 	// 4: Verify client cert if given
-	// TlsAuthType 指定 TLS 客户端认证类型，具体含义如下：
-	// 0: 不进行客户端认证
-	// 1: 请求客户端证书，但不强制要求
-	// 2: 强制要求客户端提供证书
-	// 3: 验证客户端证书
-	// 4: 若客户端提供证书，则进行验证
 	TlsAuthType int32 `protobuf:"varint,4,opt,name=tls_auth_type,json=tlsAuthType,proto3" json:"tls_auth_type,omitempty"`
 	// Timeout specifies the maximum duration for handling HTTP requests
-	// Timeout 指定处理 HTTP 请求的最大时长。
 	Timeout *durationpb.Duration `protobuf:"bytes,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
 	// Monitoring configuration
-	// 监控配置
 	Monitoring *MonitoringConfig `protobuf:"bytes,6,opt,name=monitoring,proto3" json:"monitoring,omitempty"`
 	// Security configuration
-	// 安全配置
 	Security *SecurityConfig `protobuf:"bytes,7,opt,name=security,proto3" json:"security,omitempty"`
 	// Performance configuration
-	// 性能配置
 	Performance *PerformanceConfig `protobuf:"bytes,8,opt,name=performance,proto3" json:"performance,omitempty"`
 	// Middleware configuration
-	// 中间件配置
 	Middleware *MiddlewareConfig `protobuf:"bytes,9,opt,name=middleware,proto3" json:"middleware,omitempty"`
 	// Graceful shutdown configuration
-	// 优雅关闭配置
 	GracefulShutdown *GracefulShutdownConfig `protobuf:"bytes,10,opt,name=graceful_shutdown,json=gracefulShutdown,proto3" json:"graceful_shutdown,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -171,23 +155,17 @@ func (x *Http) GetGracefulShutdown() *GracefulShutdownConfig {
 }
 
 // Monitoring configuration
-// 监控配置
 type MonitoringConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable Prometheus metrics
-	// 是否启用 Prometheus 指标
 	EnableMetrics bool `protobuf:"varint,1,opt,name=enable_metrics,json=enableMetrics,proto3" json:"enable_metrics,omitempty"`
 	// Metrics endpoint path
-	// 指标端点路径
 	MetricsPath string `protobuf:"bytes,2,opt,name=metrics_path,json=metricsPath,proto3" json:"metrics_path,omitempty"`
 	// Health check endpoint path
-	// 健康检查端点路径
 	HealthPath string `protobuf:"bytes,3,opt,name=health_path,json=healthPath,proto3" json:"health_path,omitempty"`
 	// Whether to enable request logging
-	// 是否启用请求日志
 	EnableRequestLogging bool `protobuf:"varint,4,opt,name=enable_request_logging,json=enableRequestLogging,proto3" json:"enable_request_logging,omitempty"`
 	// Whether to enable error logging
-	// 是否启用错误日志
 	EnableErrorLogging bool `protobuf:"varint,5,opt,name=enable_error_logging,json=enableErrorLogging,proto3" json:"enable_error_logging,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -259,20 +237,15 @@ func (x *MonitoringConfig) GetEnableErrorLogging() bool {
 }
 
 // Security configuration
-// 安全配置
 type SecurityConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// CORS configuration
-	// CORS 配置
 	Cors *CorsConfig `protobuf:"bytes,1,opt,name=cors,proto3" json:"cors,omitempty"`
 	// Request size limit in bytes
-	// 请求大小限制（字节）
 	MaxRequestSize int64 `protobuf:"varint,2,opt,name=max_request_size,json=maxRequestSize,proto3" json:"max_request_size,omitempty"`
 	// Rate limiting configuration
-	// 限流配置
 	RateLimit *RateLimitConfig `protobuf:"bytes,3,opt,name=rate_limit,json=rateLimit,proto3" json:"rate_limit,omitempty"`
 	// Security headers configuration
-	// 安全头配置
 	SecurityHeaders *SecurityHeadersConfig `protobuf:"bytes,4,opt,name=security_headers,json=securityHeaders,proto3" json:"security_headers,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -337,29 +310,21 @@ func (x *SecurityConfig) GetSecurityHeaders() *SecurityHeadersConfig {
 }
 
 // CORS configuration
-// CORS 配置
 type CorsConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable CORS
-	// 是否启用 CORS
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// Allowed origins
-	// 允许的源
 	AllowedOrigins []string `protobuf:"bytes,2,rep,name=allowed_origins,json=allowedOrigins,proto3" json:"allowed_origins,omitempty"`
 	// Allowed methods
-	// 允许的方法
 	AllowedMethods []string `protobuf:"bytes,3,rep,name=allowed_methods,json=allowedMethods,proto3" json:"allowed_methods,omitempty"`
 	// Allowed headers
-	// 允许的头
 	AllowedHeaders []string `protobuf:"bytes,4,rep,name=allowed_headers,json=allowedHeaders,proto3" json:"allowed_headers,omitempty"`
 	// Exposed headers
-	// 暴露的头
 	ExposedHeaders []string `protobuf:"bytes,5,rep,name=exposed_headers,json=exposedHeaders,proto3" json:"exposed_headers,omitempty"`
 	// Whether to allow credentials
-	// 是否允许凭据
 	AllowCredentials bool `protobuf:"varint,6,opt,name=allow_credentials,json=allowCredentials,proto3" json:"allow_credentials,omitempty"`
 	// Max age for preflight requests
-	// 预检请求的最大年龄
 	MaxAge        int32 `protobuf:"varint,7,opt,name=max_age,json=maxAge,proto3" json:"max_age,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -445,17 +410,13 @@ func (x *CorsConfig) GetMaxAge() int32 {
 }
 
 // Rate limiting configuration
-// 限流配置
 type RateLimitConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable rate limiting
-	// 是否启用限流
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// Rate limit per second
-	// 每秒限流数
 	RatePerSecond int32 `protobuf:"varint,2,opt,name=rate_per_second,json=ratePerSecond,proto3" json:"rate_per_second,omitempty"`
 	// Burst limit
-	// 突发限制
 	BurstLimit    int32 `protobuf:"varint,3,opt,name=burst_limit,json=burstLimit,proto3" json:"burst_limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -513,23 +474,17 @@ func (x *RateLimitConfig) GetBurstLimit() int32 {
 }
 
 // Security headers configuration
-// 安全头配置
 type SecurityHeadersConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable security headers
-	// 是否启用安全头
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// Content Security Policy
-	// 内容安全策略
 	ContentSecurityPolicy string `protobuf:"bytes,2,opt,name=content_security_policy,json=contentSecurityPolicy,proto3" json:"content_security_policy,omitempty"`
 	// X-Frame-Options
-	// X-Frame-Options 头
 	XFrameOptions string `protobuf:"bytes,3,opt,name=x_frame_options,json=xFrameOptions,proto3" json:"x_frame_options,omitempty"`
 	// X-Content-Type-Options
-	// X-Content-Type-Options 头
 	XContentTypeOptions string `protobuf:"bytes,4,opt,name=x_content_type_options,json=xContentTypeOptions,proto3" json:"x_content_type_options,omitempty"`
 	// X-XSS-Protection
-	// X-XSS-Protection 头
 	XXssProtection string `protobuf:"bytes,5,opt,name=x_xss_protection,json=xXssProtection,proto3" json:"x_xss_protection,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -601,23 +556,17 @@ func (x *SecurityHeadersConfig) GetXXssProtection() string {
 }
 
 // Performance configuration
-// 性能配置
 type PerformanceConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Connection pool size
-	// 连接池大小
 	ConnectionPoolSize int32 `protobuf:"varint,1,opt,name=connection_pool_size,json=connectionPoolSize,proto3" json:"connection_pool_size,omitempty"`
 	// Read buffer size
-	// 读取缓冲区大小
 	ReadBufferSize int32 `protobuf:"varint,2,opt,name=read_buffer_size,json=readBufferSize,proto3" json:"read_buffer_size,omitempty"`
 	// Write buffer size
-	// 写入缓冲区大小
 	WriteBufferSize int32 `protobuf:"varint,3,opt,name=write_buffer_size,json=writeBufferSize,proto3" json:"write_buffer_size,omitempty"`
 	// Idle timeout
-	// 空闲超时
 	IdleTimeout *durationpb.Duration `protobuf:"bytes,4,opt,name=idle_timeout,json=idleTimeout,proto3" json:"idle_timeout,omitempty"`
 	// Keep alive timeout
-	// 保持连接超时
 	KeepAliveTimeout *durationpb.Duration `protobuf:"bytes,5,opt,name=keep_alive_timeout,json=keepAliveTimeout,proto3" json:"keep_alive_timeout,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -689,23 +638,17 @@ func (x *PerformanceConfig) GetKeepAliveTimeout() *durationpb.Duration {
 }
 
 // Middleware configuration
-// 中间件配置
 type MiddlewareConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable tracing middleware
-	// 是否启用追踪中间件
 	EnableTracing bool `protobuf:"varint,1,opt,name=enable_tracing,json=enableTracing,proto3" json:"enable_tracing,omitempty"`
 	// Whether to enable logging middleware
-	// 是否启用日志中间件
 	EnableLogging bool `protobuf:"varint,2,opt,name=enable_logging,json=enableLogging,proto3" json:"enable_logging,omitempty"`
 	// Whether to enable recovery middleware
-	// 是否启用恢复中间件
 	EnableRecovery bool `protobuf:"varint,3,opt,name=enable_recovery,json=enableRecovery,proto3" json:"enable_recovery,omitempty"`
 	// Whether to enable validation middleware
-	// 是否启用验证中间件
 	EnableValidation bool `protobuf:"varint,4,opt,name=enable_validation,json=enableValidation,proto3" json:"enable_validation,omitempty"`
 	// Custom middleware configuration
-	// 自定义中间件配置
 	CustomMiddleware []string `protobuf:"bytes,5,rep,name=custom_middleware,json=customMiddleware,proto3" json:"custom_middleware,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -777,17 +720,13 @@ func (x *MiddlewareConfig) GetCustomMiddleware() []string {
 }
 
 // Graceful shutdown configuration
-// 优雅关闭配置
 type GracefulShutdownConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Shutdown timeout
-	// 关闭超时
 	ShutdownTimeout *durationpb.Duration `protobuf:"bytes,1,opt,name=shutdown_timeout,json=shutdownTimeout,proto3" json:"shutdown_timeout,omitempty"`
 	// Whether to wait for ongoing requests
-	// 是否等待正在进行的请求
 	WaitForOngoingRequests bool `protobuf:"varint,2,opt,name=wait_for_ongoing_requests,json=waitForOngoingRequests,proto3" json:"wait_for_ongoing_requests,omitempty"`
 	// Maximum wait time for ongoing requests
-	// 等待正在进行的请求的最大时间
 	MaxWaitTime   *durationpb.Duration `protobuf:"bytes,3,opt,name=max_wait_time,json=maxWaitTime,proto3" json:"max_wait_time,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

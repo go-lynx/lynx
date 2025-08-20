@@ -13,30 +13,30 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 )
 
-// 进程级别的锁标识前缀，在进程启动时生成
+// Process-level lock identifier prefix, generated at process startup
 var lockValuePrefix string
 
-// 原子计数器，用于生成唯一序列号
+// Atomic counter, used to generate unique sequence numbers
 var sequenceNum uint64
 
-// init 初始化锁标识前缀
+// init initializes the lock identifier prefix
 func init() {
 	lockValuePrefix = generateLockValuePrefix()
 }
 
-// generateLockValuePrefix 生成锁值前缀，带重试机制
+// generateLockValuePrefix generates lock value prefix with retry mechanism
 func generateLockValuePrefix() string {
-	// 获取主机名
+	// Get hostname
 	hostname := getHostnameWithRetry()
 
-	// 获取本机 IP
+	// Get local IP
 	ip := getLocalIPWithRetry()
 
-	// 生成进程级别的唯一标识前缀
+	// Generate process-level unique identifier prefix
 	return fmt.Sprintf("%s-%s-%d-", hostname, ip, os.Getpid())
 }
 
-// getHostnameWithRetry 获取主机名，带重试机制
+// getHostnameWithRetry gets hostname with retry mechanism
 func getHostnameWithRetry() string {
 	const maxRetries = 3
 	for i := 0; i < maxRetries; i++ {
@@ -52,7 +52,7 @@ func getHostnameWithRetry() string {
 	return "unknown-host"
 }
 
-// getLocalIPWithRetry 获取本机IP，带重试机制
+// getLocalIPWithRetry gets local IP with retry mechanism
 func getLocalIPWithRetry() string {
 	const maxRetries = 3
 	for i := 0; i < maxRetries; i++ {
@@ -75,17 +75,17 @@ func getLocalIPWithRetry() string {
 	return "unknown-ip"
 }
 
-// generateLockValue 生成锁的唯一标识值
+// generateLockValue generates unique identifier value for the lock
 func generateLockValue() string {
-	// 使用原子操作获取递增的序列号
+	// Use atomic operation to get incrementing sequence number
 	seq := atomic.AddUint64(&sequenceNum, 1)
-	// 使用 crypto/rand 生成 16 字节高熵随机数，并 hex 编码
+	// Use crypto/rand to generate 16-byte high-entropy random number and hex encode it
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// 极端情况下读取熵失败，回退到时间戳，仍保留前缀与序列号，避免阻塞
+		// In extreme cases where entropy reading fails, fall back to timestamp, still retaining prefix and sequence number to avoid blocking
 		return fmt.Sprintf("%s%d-%d", lockValuePrefix, seq, time.Now().UnixNano())
 	}
 	token := hex.EncodeToString(b[:])
-	// 生成唯一标识：进程前缀 + 序列号 + 随机 token
+	// Generate unique identifier: process prefix + sequence number + random token
 	return fmt.Sprintf("%s%d-%s", lockValuePrefix, seq, token)
 }

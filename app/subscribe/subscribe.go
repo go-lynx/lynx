@@ -2,9 +2,10 @@ package subscribe
 
 import (
 	"context"
+
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
-	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
@@ -12,137 +13,137 @@ import (
 	gGrpc "google.golang.org/grpc"
 )
 
-// GrpcSubscribe 表示一个用于订阅 GRPC 服务的结构体。
-// 包含服务名称、服务发现实例、是否启用 TLS、根 CA 文件名和文件组等信息。
+// GrpcSubscribe represents a struct for subscribing to GRPC services.
+// Contains service name, service discovery instance, TLS enablement, root CA filename and file group information.
 type GrpcSubscribe struct {
-	svcName   string             // 要订阅的 GRPC 服务的名称
-	discovery registry.Discovery // 服务发现实例，用于发现服务节点
-	tls       bool               // 是否启用 TLS 加密
-	caName    string             // 根 CA 证书的文件名
-	caGroup   string             // 根 CA 证书文件所属的组
-	required  bool               // 是否强依赖的上游服务，启动时会做检查
-	// 可选：节点路由器工厂，由上层注入，避免直接依赖 app 包
+	svcName   string             // Name of the GRPC service to subscribe to
+	discovery registry.Discovery // Service discovery instance for discovering service nodes
+	tls       bool               // Whether TLS encryption is enabled
+	caName    string             // Root CA certificate filename
+	caGroup   string             // Group that the root CA certificate file belongs to
+	required  bool               // Whether it's a strongly dependent upstream service, will be checked at startup
+	// Optional: Node router factory, injected by upper layer to avoid direct dependency on app package
 	routerFactory func(service string) selector.NodeFilter
-	// 可选：配置源提供者，由上层注入，用于按 name/group 获取配置源
+	// Optional: Configuration source provider, injected by upper layer for getting config source by name/group
 	configProvider func(name, group string) (config.Source, error)
-	// 可选：默认 RootCA 提供者，由上层注入，用于直接获得应用 RootCA
+	// Optional: Default RootCA provider, injected by upper layer for directly obtaining application RootCA
 	defaultRootCA func() []byte
 }
 
-// Option 定义一个函数类型，用于配置 GrpcSubscribe 实例。
+// Option defines a function type for configuring GrpcSubscribe instances.
 type Option func(o *GrpcSubscribe)
 
-// WithServiceName 返回一个 Option 函数，用于设置要订阅的 GRPC 服务的名称。
+// WithServiceName returns an Option function for setting the name of the GRPC service to subscribe to.
 func WithServiceName(svcName string) Option {
 	return func(o *GrpcSubscribe) {
 		o.svcName = svcName
 	}
 }
 
-// WithDiscovery 返回一个 Option 函数，用于设置服务发现实例。
+// WithDiscovery returns an Option function for setting the service discovery instance.
 func WithDiscovery(discovery registry.Discovery) Option {
 	return func(o *GrpcSubscribe) {
 		o.discovery = discovery
 	}
 }
 
-// EnableTls 返回一个 Option 函数，用于启用 TLS 加密。
+// EnableTls returns an Option function for enabling TLS encryption.
 func EnableTls() Option {
 	return func(o *GrpcSubscribe) {
 		o.tls = true
 	}
 }
 
-// WithRootCAFileName 返回一个 Option 函数，用于设置根 CA 证书的文件名。
+// WithRootCAFileName returns an Option function for setting the root CA certificate filename.
 func WithRootCAFileName(caName string) Option {
 	return func(o *GrpcSubscribe) {
 		o.caName = caName
 	}
 }
 
-// WithRootCAFileGroup 返回一个 Option 函数，用于设置根 CA 证书文件所属的组。
+// WithRootCAFileGroup returns an Option function for setting the group that the root CA certificate file belongs to.
 func WithRootCAFileGroup(caGroup string) Option {
 	return func(o *GrpcSubscribe) {
 		o.caGroup = caGroup
 	}
 }
 
-// Required 返回一个 Option 函数，用于设置服务为强依赖的上游服务。
+// Required returns an Option function for setting the service as a strongly dependent upstream service.
 func Required() Option {
 	return func(o *GrpcSubscribe) {
 		o.required = true
 	}
 }
 
-// WithNodeRouterFactory 注入节点路由器工厂（可选）
+// WithNodeRouterFactory injects node router factory (optional)
 func WithNodeRouterFactory(f func(string) selector.NodeFilter) Option {
 	return func(o *GrpcSubscribe) {
 		o.routerFactory = f
 	}
 }
 
-// WithConfigProvider 注入配置源提供者（name, group) -> config.Source
+// WithConfigProvider injects configuration source provider (name, group) -> config.Source
 func WithConfigProvider(f func(name, group string) (config.Source, error)) Option {
 	return func(o *GrpcSubscribe) {
 		o.configProvider = f
 	}
 }
 
-// WithDefaultRootCA 注入默认 RootCA 提供者
+// WithDefaultRootCA injects default RootCA provider
 func WithDefaultRootCA(f func() []byte) Option {
 	return func(o *GrpcSubscribe) {
 		o.defaultRootCA = f
 	}
 }
 
-// NewGrpcSubscribe 使用提供的选项创建一个新的 GrpcSubscribe 实例。
-// 如果没有提供选项，将使用默认配置。
+// NewGrpcSubscribe creates a new GrpcSubscribe instance using the provided options.
+// If no options are provided, default configuration will be used.
 func NewGrpcSubscribe(opts ...Option) *GrpcSubscribe {
 	gs := &GrpcSubscribe{
-		tls: false, // 默认不启用 TLS 加密
+		tls: false, // Default to not enabling TLS encryption
 	}
-	// 应用提供的选项配置
+	// Apply provided option configurations
 	for _, o := range opts {
 		o(gs)
 	}
 	return gs
 }
 
-// Subscribe 订阅指定的 GRPC 服务，并返回一个 gGrpc.ClientConn 连接实例。
-// 如果服务名称为空，则返回 nil。
+// Subscribe subscribes to the specified GRPC service and returns a gGrpc.ClientConn connection instance.
+// Returns nil if service name is empty.
 func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 	if g.svcName == "" {
 		return nil
 	}
-	// 配置 gRPC 客户端选项
+	// Configure gRPC client options
 	opts := []grpc.ClientOption{
-		grpc.WithEndpoint("discovery:///" + g.svcName), // 设置服务发现的端点
-		grpc.WithDiscovery(g.discovery),                // 设置服务发现实例
+		grpc.WithEndpoint("discovery:///" + g.svcName), // Set service discovery endpoint
+		grpc.WithDiscovery(g.discovery),                // Set service discovery instance
 		grpc.WithMiddleware(
-			logging.Client(log.Logger), // 添加日志中间件
-			tracing.Client(),           // 添加链路追踪中间件
+			logging.Client(log.Logger), // Add logging middleware
+			tracing.Client(),           // Add tracing middleware
 		),
-		grpc.WithTLSConfig(g.tlsLoad()),     // 设置 TLS 配置
-		grpc.WithNodeFilter(g.nodeFilter()), // 设置节点过滤器
+		grpc.WithTLSConfig(g.tlsLoad()),     // Set TLS configuration
+		grpc.WithNodeFilter(g.nodeFilter()), // Set node filter
 	}
 	var conn *gGrpc.ClientConn
 	var err error
 	if g.tls {
-		// 启用 TLS 时，使用安全连接
+		// When TLS is enabled, use secure connection
 		conn, err = grpc.Dial(context.Background(), opts...)
 	} else {
-		// 未启用 TLS 时，使用非安全连接
+		// When TLS is not enabled, use insecure connection
 		conn, err = grpc.DialInsecure(context.Background(), opts...)
 	}
 	if err != nil {
-		// 记录错误日志并抛出异常
+		// Log error and throw exception
 		log.Error(err)
 		panic(err)
 	}
 	return conn
 }
 
-// 内部：基于注入的工厂创建节点过滤器
+// Internal: Create node filter based on injected factory
 func (g *GrpcSubscribe) nodeFilter() selector.NodeFilter {
 	if g.routerFactory == nil {
 		return nil

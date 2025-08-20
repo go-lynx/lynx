@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// IsTemporary 判断是否为临时性网络错误。
+// IsTemporary reports whether the error is a temporary network error.
 func IsTemporary(err error) bool {
 	var ne net.Error
 	if errors.As(err, &ne) {
@@ -15,7 +15,7 @@ func IsTemporary(err error) bool {
 	return false
 }
 
-// IsTimeout 判断是否为超时错误。
+// IsTimeout reports whether the error is a timeout.
 func IsTimeout(err error) bool {
 	var ne net.Error
 	if errors.As(err, &ne) {
@@ -24,10 +24,10 @@ func IsTimeout(err error) bool {
 	return false
 }
 
-// WaitPort 在指定超时时间内尝试连接 addr（host:port），直到成功或超时。
+// WaitPort keeps trying to connect to addr (host:port) until success or timeout.
 func WaitPort(addr string, timeout time.Duration) error {
 	if timeout <= 0 {
-		// 直接尝试一次
+		// Try once immediately
 		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
 		if err == nil {
 			conn.Close()

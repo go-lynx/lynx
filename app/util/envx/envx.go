@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Get 读取字符串环境变量，若为空则返回默认值。
+// Get reads a string env var; returns default if empty.
 func Get(key, def string) string {
 	v := os.Getenv(key)
 	if v == "" {
@@ -16,7 +16,7 @@ func Get(key, def string) string {
 	return v
 }
 
-// GetInt 读取整型环境变量；解析失败返回默认值。
+// GetInt reads an int env var; returns default on parse failure.
 func GetInt(key string, def int) int {
 	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {
@@ -29,7 +29,7 @@ func GetInt(key string, def int) int {
 	return i
 }
 
-// GetBool 读取布尔环境变量；解析失败返回默认值。
+// GetBool reads a bool env var; returns default on parse failure.
 func GetBool(key string, def bool) bool {
 	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {
@@ -42,7 +42,7 @@ func GetBool(key string, def bool) bool {
 	return b
 }
 
-// GetDuration 读取 duration；支持 time.ParseDuration 与纯数字（按秒）。
+// GetDuration reads a duration; supports time.ParseDuration and plain numbers (seconds).
 func GetDuration(key string, def time.Duration) time.Duration {
 	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {

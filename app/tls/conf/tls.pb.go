@@ -21,12 +21,12 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Tls 消息定义了 TLS 相关配置信息。
+// Tls message defines TLS related configuration information.
 type Tls struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// file_name 表示 TLS 配置文件的名称，用于指定配置文件的存储位置。
+	// file_name represents the name of the TLS configuration file, used to specify the storage location of the configuration file.
 	FileName string `protobuf:"bytes,1,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
-	// group 表示 TLS 配置所属的组，可用于对不同的 TLS 配置进行分类管理。
+	// group represents the group to which the TLS configuration belongs, which can be used to classify and manage different TLS configurations.
 	Group         string `protobuf:"bytes,2,opt,name=group,proto3" json:"group,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -76,14 +76,14 @@ func (x *Tls) GetGroup() string {
 	return ""
 }
 
-// Cert 消息定义了 TLS 证书相关信息。
+// Cert message defines TLS certificate related information.
 type Cert struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// crt 表示 X.509 证书文件的路径，通常为 PEM 格式。
+	// crt represents the path to the X.509 certificate file, usually in PEM format.
 	Crt string `protobuf:"bytes,1,opt,name=crt,proto3" json:"crt,omitempty"`
-	// key 表示与证书对应的私钥文件的路径，通常为 PEM 格式。
+	// key represents the path to the private key file corresponding to the certificate, usually in PEM format.
 	Key string `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	// rootCA 表示根证书颁发机构（CA）的证书文件路径，用于验证客户端或服务器身份。
+	// rootCA represents the path to the root certificate authority (CA) certificate file, used to verify client or server identity.
 	RootCA        string `protobuf:"bytes,3,opt,name=rootCA,proto3" json:"rootCA,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

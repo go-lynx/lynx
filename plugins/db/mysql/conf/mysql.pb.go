@@ -23,26 +23,19 @@ const (
 )
 
 // Defines a message type for MySQL configuration.
-// 定义一个用于 MySQL 数据库配置的消息类型。
 type Mysql struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The driver name for the MySQL database.
-	// MySQL 数据库的驱动名称。
 	Driver string `protobuf:"bytes,1,opt,name=driver,proto3" json:"driver,omitempty"`
 	// The data source name (DSN) for the MySQL database.
-	// MySQL 数据库的数据源名称（DSN），用于连接数据库。
 	Source string `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
 	// The minimum number of connections to maintain in the connection pool.
-	// 连接池中需要维持的最小连接数。
 	MinConn int32 `protobuf:"varint,3,opt,name=min_conn,json=minConn,proto3" json:"min_conn,omitempty"`
 	// The maximum number of connections to maintain in the connection pool.
-	// 连接池中需要维持的最大连接数。
 	MaxConn int32 `protobuf:"varint,4,opt,name=max_conn,json=maxConn,proto3" json:"max_conn,omitempty"`
 	// The maximum lifetime for a connection in the connection pool.
-	// 连接池中连接的最大生命时间，超过该时间的连接可能会被关闭。
 	MaxLifeTime *durationpb.Duration `protobuf:"bytes,5,opt,name=max_life_time,json=maxLifeTime,proto3" json:"max_life_time,omitempty"`
 	// The maximum idle time for a connection in the connection pool.
-	// 连接池中连接的最大空闲时间，超过该时间的连接可能会被关闭。
 	MaxIdleTime   *durationpb.Duration `protobuf:"bytes,6,opt,name=max_idle_time,json=maxIdleTime,proto3" json:"max_idle_time,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -1,25 +1,25 @@
-# PgSQL 数据库插件
+# PgSQL Database Plugin
 
-这是 Lynx 框架的 PgSQL 数据库连接插件，提供了完整的数据库连接管理功能。
+This is a PgSQL database connection plugin for the Lynx framework, providing complete database connection management functionality.
 
-## 功能特性
+## Features
 
-### ✅ 已实现的功能
+### ✅ Implemented Features
 
-1. **配置验证**: 自动验证配置参数的有效性
-2. **错误处理**: 优雅的错误处理，避免 panic
-3. **重试机制**: 连接失败时自动重试
-4. **连接池监控**: 实时监控连接池状态
-5. **健康检查**: 全面的数据库健康检查
-6. **优雅关闭**: 安全的连接关闭机制
-7. **配置更新**: 支持运行时配置更新
-8. **详细日志**: 提供详细的调试和监控日志
-9. **统计信息**: 提供连接池统计信息
-10. **状态查询**: 提供连接状态查询接口
+1. **Configuration Validation**: Automatic validation of configuration parameter validity
+2. **Error Handling**: Graceful error handling to avoid panics
+3. **Retry Mechanism**: Automatic retry on connection failure
+4. **Connection Pool Monitoring**: Real-time monitoring of connection pool status
+5. **Health Check**: Comprehensive database health check
+6. **Graceful Shutdown**: Safe connection closing mechanism
+7. **Configuration Updates**: Support for runtime configuration updates
+8. **Detailed Logging**: Provides detailed debugging and monitoring logs
+9. **Statistics**: Provides connection pool statistics
+10. **Status Query**: Provides connection status query interface
 
-## 配置说明
+## Configuration Guide
 
-### 基本配置
+### Basic Configuration
 
 ```yaml
 lynx:
@@ -32,32 +32,34 @@ lynx:
     max_life_time: "300s"
 ```
 
-### 配置参数说明
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `driver` | string | "postgres" | 数据库驱动名称 |
-| `source` | string | "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable" | 数据库连接字符串 |
-| `min_conn` | int | 10 | 最小连接数（空闲连接数） |
-| `max_conn` | int | 20 | 最大连接数 |
-| `max_idle_time` | duration | "10s" | 连接最大空闲时间 |
-| `max_life_time` | duration | "300s" | 连接最大生命周期 |
+### Configuration Parameters
 
-### 连接字符串格式
+| Parameter | Type | Default Value | Description |
+|-----------|------|---------------|-------------|
+| `driver` | string | "postgres" | Database driver name |
+| `source` | string | "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable" | Database connection string |
+| `min_conn` | int | 10 | Minimum number of connections (idle connections) |
+| `max_conn` | int | 20 | Maximum number of connections |
+| `max_idle_time` | duration | "10s" | Maximum idle time for connections |
+| `max_life_time` | duration | "300s" | Maximum lifetime for connections |
+
+### Connection String Format
 
 ```
 postgres://username:password@host:port/database?param1=value1&param2=value2
 ```
 
-常用参数：
-- `sslmode`: SSL 模式 (disable, require, verify-ca, verify-full)
-- `connect_timeout`: 连接超时时间
-- `statement_timeout`: 语句超时时间
-- `application_name`: 应用名称
 
-## 使用方法
+Common parameters:
+- `sslmode`: SSL mode (disable, require, verify-ca, verify-full)
+- `connect_timeout`: Connection timeout
+- `statement_timeout`: Statement timeout
+- `application_name`: Application name
 
-### 1. 获取数据库驱动
+## Usage
+
+### 1. Getting Database Driver
 
 ```go
 import (
@@ -65,31 +67,33 @@ import (
     "entgo.io/ent/dialect/sql"
 )
 
-// 获取数据库驱动
+// Get database driver
 driver := pgsql.GetDriver()
 if driver == nil {
-    // 处理错误
+    // Handle error
     return
 }
 
-// 使用 ent 创建客户端
+// Create client using ent
 client := ent.NewClient(ent.Driver(driver))
 ```
 
-### 2. 健康检查
+
+### 2. Health Check
 
 ```go
-// 执行健康检查
+// Perform health check
 err := pgsql.CheckHealth()
 if err != nil {
     log.Errorf("Database health check failed: %v", err)
 }
 ```
 
-### 3. 获取连接池统计信息
+
+### 3. Getting Connection Pool Statistics
 
 ```go
-// 获取连接池统计信息
+// Get connection pool statistics
 stats := pgsql.GetStats()
 if stats != nil {
     log.Infof("Connection pool stats: open=%d, in_use=%d, idle=%d", 
@@ -97,10 +101,11 @@ if stats != nil {
 }
 ```
 
-### 4. 检查连接状态
+
+### 4. Checking Connection Status
 
 ```go
-// 检查是否已连接
+// Check if connected
 if pgsql.IsConnected() {
     log.Info("Database is connected")
 } else {
@@ -108,10 +113,11 @@ if pgsql.IsConnected() {
 }
 ```
 
-### 5. 获取配置信息
+
+### 5. Getting Configuration Information
 
 ```go
-// 获取当前配置
+// Get current configuration
 config := pgsql.GetConfig()
 if config != nil {
     log.Infof("Current config: driver=%s, max_conn=%d", 
@@ -119,21 +125,23 @@ if config != nil {
 }
 ```
 
-### 6. Prometheus 监控
+
+### 6. Prometheus Monitoring
 
 ```go
-// 获取 Prometheus 指标处理器
+// Get Prometheus metrics handler
 handler := pgsql.GetPrometheusHandler()
 
-// 在 HTTP 服务器中注册指标端点
+// Register metrics endpoint in HTTP server
 http.Handle("/metrics", handler)
 ```
 
-## Prometheus 监控配置
 
-### 启用监控
+## Prometheus Monitoring Configuration
 
-在配置文件中启用 Prometheus 监控：
+### Enabling Monitoring
+
+Enable Prometheus monitoring in the configuration file:
 
 ```yaml
 lynx:
@@ -153,49 +161,51 @@ lynx:
         service: "myapp"
 ```
 
-### 监控指标
 
-插件提供以下 Prometheus 指标：
+### Monitoring Metrics
 
-#### 连接池指标
-- `lynx_pgsql_max_open_connections`: 最大连接数
-- `lynx_pgsql_open_connections`: 当前连接数
-- `lynx_pgsql_in_use_connections`: 使用中的连接数
-- `lynx_pgsql_idle_connections`: 空闲连接数
-- `lynx_pgsql_max_idle_connections`: 最大空闲连接数
+The plugin provides the following Prometheus metrics:
 
-#### 等待指标
-- `lynx_pgsql_wait_count_total`: 等待连接的总次数
-- `lynx_pgsql_wait_duration_seconds_total`: 等待连接的总时间
+#### Connection Pool Metrics
+- `lynx_pgsql_max_open_connections`: Maximum number of connections
+- `lynx_pgsql_open_connections`: Current number of connections
+- `lynx_pgsql_in_use_connections`: Number of connections in use
+- `lynx_pgsql_idle_connections`: Number of idle connections
+- `lynx_pgsql_max_idle_connections`: Maximum number of idle connections
 
-#### 连接关闭指标
-- `lynx_pgsql_max_idle_closed_total`: 因空闲超时关闭的连接数
-- `lynx_pgsql_max_lifetime_closed_total`: 因生命周期关闭的连接数
+#### Wait Metrics
+- `lynx_pgsql_wait_count_total`: Total number of connection waits
+- `lynx_pgsql_wait_duration_seconds_total`: Total time waiting for connections
 
-#### 健康检查指标
-- `lynx_pgsql_health_check_total`: 健康检查总次数
-- `lynx_pgsql_health_check_success_total`: 成功健康检查次数
-- `lynx_pgsql_health_check_failure_total`: 失败健康检查次数
+#### Connection Close Metrics
+- `lynx_pgsql_max_idle_closed_total`: Number of connections closed due to idle timeout
+- `lynx_pgsql_max_lifetime_closed_total`: Number of connections closed due to lifetime expiration
 
-#### 配置指标
-- `lynx_pgsql_config_min_connections`: 配置的最小连接数
-- `lynx_pgsql_config_max_connections`: 配置的最大连接数
+#### Health Check Metrics
+- `lynx_pgsql_health_check_total`: Total number of health checks
+- `lynx_pgsql_health_check_success_total`: Number of successful health checks
+- `lynx_pgsql_health_check_failure_total`: Number of failed health checks
 
-### 访问监控指标
+#### Configuration Metrics
+- `lynx_pgsql_config_min_connections`: Configured minimum number of connections
+- `lynx_pgsql_config_max_connections`: Configured maximum number of connections
 
-启动应用后，可以通过以下方式访问监控指标：
+### Accessing Monitoring Metrics
+
+After starting the application, you can access monitoring metrics in the following ways:
 
 ```bash
-# 访问指标端点
+# Access metrics endpoint
 curl http://localhost:9090/metrics
 
-# 查看特定指标
+# View specific metrics
 curl http://localhost:9090/metrics | grep lynx_pgsql
 ```
 
-### Prometheus 配置
 
-在 Prometheus 配置文件中添加抓取目标：
+### Prometheus Configuration
+
+Add scrape targets in the Prometheus configuration file:
 
 ```yaml
 scrape_configs:
@@ -206,32 +216,33 @@ scrape_configs:
     scrape_interval: 15s
 ```
 
-### Grafana 仪表板
 
-可以创建 Grafana 仪表板来可视化监控指标：
+### Grafana Dashboard
+
+You can create Grafana dashboards to visualize monitoring metrics:
 
 ```json
 {
   "dashboard": {
-    "title": "Lynx PgSQL 监控",
+    "title": "Lynx PgSQL Monitoring",
     "panels": [
       {
-        "title": "连接池状态",
+        "title": "Connection Pool Status",
         "type": "stat",
         "targets": [
           {
             "expr": "lynx_pgsql_open_connections",
-            "legendFormat": "当前连接数"
+            "legendFormat": "Current Connections"
           }
         ]
       },
       {
-        "title": "连接池利用率",
+        "title": "Connection Pool Utilization",
         "type": "gauge",
         "targets": [
           {
             "expr": "lynx_pgsql_in_use_connections / lynx_pgsql_max_open_connections * 100",
-            "legendFormat": "利用率 %"
+            "legendFormat": "Utilization %"
           }
         ]
       }
@@ -240,78 +251,82 @@ scrape_configs:
 }
 ```
 
-## 监控和调试
 
-### 连接池统计信息
+## Monitoring and Debugging
 
-插件提供以下统计信息：
+### Connection Pool Statistics
 
-- `MaxOpenConnections`: 最大打开连接数
-- `OpenConnections`: 当前打开连接数
-- `InUse`: 正在使用的连接数
-- `Idle`: 空闲连接数
-- `MaxIdleConnections`: 最大空闲连接数
-- `WaitCount`: 等待连接的次数
-- `WaitDuration`: 等待连接的总时间
-- `MaxIdleClosed`: 因超过最大空闲时间而关闭的连接数
-- `MaxLifetimeClosed`: 因超过最大生命周期而关闭的连接数
+The plugin provides the following statistics:
 
-### 日志信息
+- [MaxOpenConnections](file:///Users/claire/GolandProjects/lynx/lynx/plugins/db/pgsql/prometheus.go#L116-L116): Maximum open connections
+- [OpenConnections](file:///Users/claire/GolandProjects/lynx/lynx/plugins/db/pgsql/prometheus.go#L117-L117): Current open connections
+- [InUse](file:///Users/claire/GolandProjects/lynx/lynx/plugins/db/pgsql/pgsql.go#L63-L63): Connections in use
+- [Idle](file:///Users/claire/GolandProjects/lynx/lynx/plugins/db/pgsql/pgsql.go#L64-L64): Idle connections
+- [MaxIdleConnections](file:///Users/claire/GolandProjects/lynx/lynx/plugins/db/pgsql/prometheus.go#L120-L120): Maximum idle connections
+- [WaitCount](file:///Users/claire/GolandProjects/lynx/lynx/plugins/db/pgsql/prometheus.go#L123-L123): Number of connection waits
+- [WaitDuration](file:///Users/claire/GolandProjects/lynx/lynx/plugins/db/pgsql/prometheus.go#L124-L124): Total time waiting for connections
+- [MaxIdleClosed](file:///Users/claire/GolandProjects/lynx/lynx/plugins/db/pgsql/prometheus.go#L127-L127): Number of connections closed due to idle timeout
+- [MaxLifetimeClosed](file:///Users/claire/GolandProjects/lynx/lynx/plugins/db/pgsql/prometheus.go#L128-L128): Number of connections closed due to lifetime expiration
 
-插件会输出详细的日志信息：
+### Log Information
 
-- 配置加载和验证
-- 连接建立过程
-- 重试尝试
-- 健康检查结果
-- 连接池状态
-- 错误和警告信息
+The plugin outputs detailed log information:
 
-## 错误处理
+- Configuration loading and validation
+- Connection establishment process
+- Retry attempts
+- Health check results
+- Connection pool status
+- Error and warning messages
 
-插件实现了完善的错误处理机制：
+## Error Handling
 
-1. **配置验证错误**: 在初始化阶段验证配置有效性
-2. **连接错误**: 连接失败时自动重试
-3. **健康检查错误**: 提供详细的健康检查错误信息
-4. **关闭错误**: 优雅处理连接关闭错误
+The plugin implements comprehensive error handling mechanisms:
 
-## 最佳实践
+1. **Configuration Validation Errors**: Validate configuration validity during initialization
+2. **Connection Errors**: Automatic retry on connection failure
+3. **Health Check Errors**: Provide detailed health check error information
+4. **Shutdown Errors**: Gracefully handle connection closing errors
 
-### 1. 连接池配置
+## Best Practices
+
+### 1. Connection Pool Configuration
 
 ```yaml
-# 开发环境
+# Development environment
 min_conn: 5
 max_conn: 20
 
-# 生产环境
+# Production environment
 min_conn: 20
 max_conn: 200
 ```
 
-### 2. 超时配置
+
+### 2. Timeout Configuration
 
 ```yaml
-# 合理的超时配置
-max_idle_time: "300s"    # 5分钟
-max_life_time: "3600s"   # 1小时
+# Reasonable timeout configuration
+max_idle_time: "300s"    # 5 minutes
+max_life_time: "3600s"   # 1 hour
 ```
 
-### 3. SSL 配置
+
+### 3. SSL Configuration
 
 ```yaml
-# 开发环境
+# Development environment
 source: "postgres://user:pass@localhost:5432/db?sslmode=disable"
 
-# 生产环境
+# Production environment
 source: "postgres://user:pass@db.example.com:5432/db?sslmode=require"
 ```
 
-### 4. 监控集成
+
+### 4. Monitoring Integration
 
 ```go
-// 定期检查连接池状态
+// Periodically check connection pool status
 go func() {
     ticker := time.NewTicker(30 * time.Second)
     defer ticker.Stop()
@@ -321,7 +336,7 @@ go func() {
         case <-ticker.C:
             stats := pgsql.GetStats()
             if stats != nil {
-                // 发送监控指标
+                // Send monitoring metrics
                 metrics.RecordConnectionPoolStats(stats)
             }
         }
@@ -329,33 +344,34 @@ go func() {
 }()
 ```
 
-## 故障排除
 
-### 常见问题
+## Troubleshooting
 
-1. **连接失败**
-   - 检查连接字符串格式
-   - 验证数据库服务是否运行
-   - 检查网络连接
+### Common Issues
 
-2. **连接池耗尽**
-   - 增加 `max_conn` 配置
-   - 检查是否有连接泄漏
-   - 优化查询性能
+1. **Connection Failure**
+   - Check connection string format
+   - Verify database service is running
+   - Check network connection
 
-3. **健康检查失败**
-   - 检查数据库服务状态
-   - 验证网络连接
-   - 查看详细错误日志
+2. **Connection Pool Exhaustion**
+   - Increase `max_conn` configuration
+   - Check for connection leaks
+   - Optimize query performance
 
-### 调试技巧
+3. **Health Check Failure**
+   - Check database service status
+   - Verify network connection
+   - Check detailed error logs
 
-1. 启用详细日志
-2. 监控连接池统计信息
-3. 定期执行健康检查
-4. 使用连接池监控工具
+### Debugging Tips
 
-## 版本历史
+1. Enable detailed logging
+2. Monitor connection pool statistics
+3. Perform regular health checks
+4. Use connection pool monitoring tools
 
-- **v2.0.0**: 重构版本，添加了完整的错误处理、重试机制、监控功能等
-- **v1.x.x**: 基础版本，提供基本的数据库连接功能 
+## Version History
+
+- **v2.0.0**: Refactored version, added complete error handling, retry mechanism, monitoring functions, etc.
+- **v1.x.x**: Basic version, provides fundamental database connection functionality

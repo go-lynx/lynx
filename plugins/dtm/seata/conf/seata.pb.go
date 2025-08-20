@@ -21,14 +21,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Seata 消息定义了 Seata 插件的配置信息。
+// The Seata message defines the configuration information for the Seata plugin.
 type Seata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// enabled 表示是否启用 Seata 插件。
-	// 设置为 true 时启用插件，设置为 false 时禁用插件。
+	// enabled indicates whether the Seata plugin is enabled.
+	// Set to true to enable the plugin, set to false to disable the plugin.
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// config_file_path 表示 Seata 配置文件的路径。
-	// 该路径指向包含 Seata 客户端所需配置信息的文件。
+	// config_file_path represents the path to the Seata configuration file.
+	// This path points to the file containing the configuration information required by the Seata client.
 	ConfigFilePath string `protobuf:"bytes,2,opt,name=config_file_path,json=configFilePath,proto3" json:"config_file_path,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache

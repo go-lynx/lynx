@@ -9,20 +9,20 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 )
 
-// 全局锁管理器
-// 说明：
-// - 续期服务采用工作池限制并发，避免续期风暴；
-// - 续期调用支持 per-call 超时（options.RenewalConfig.CallTimeout）；
-// - 统计数据通过原子变量维护，避免高频加锁；
-// - 所有 Script.Run 调用后均立即 cancel 对应 context，防止资源泄漏。
+// Global lock manager
+// Description:
+// - Renewal service uses worker pool to limit concurrency and avoid renewal storms;
+// - Renewal calls support per-call timeout (options.RenewalConfig.CallTimeout);
+// - Statistics are maintained through atomic variables to avoid high-frequency locking;
+// - All Script.Run calls immediately cancel the corresponding context to prevent resource leaks.
 var globalLockManager = &lockManager{
 	locks: make(map[string]*RedisLock),
 }
 
-// 全局回调实例
+// Global callback instance
 var globalCallback LockCallback = NoOpCallback{}
 
-// SetCallback 设置全局回调
+// SetCallback sets the global callback
 func SetCallback(callback LockCallback) {
 	if callback == nil {
 		callback = NoOpCallback{}
@@ -30,7 +30,7 @@ func SetCallback(callback LockCallback) {
 	globalCallback = callback
 }
 
-// startRenewalService 启动续期服务（改进版）
+// startRenewalService starts the renewal service (improved version)
 func (lm *lockManager) startRenewalService(options LockOptions) {
 	lm.mutex.Lock()
 	if lm.running {
@@ -39,7 +39,7 @@ func (lm *lockManager) startRenewalService(options LockOptions) {
 	}
 	lm.renewCtx, lm.renewCancel = context.WithCancel(context.Background())
 	lm.running = true
-	// 初始化工作池，限制并发 goroutine 数量，防止因集中续期导致的资源争抢
+	// Initialize worker pool to limit concurrent goroutine count, preventing resource contention due to concentrated renewal
 	workerPoolSize := options.WorkerPoolSize
 	if workerPoolSize <= 0 {
 		workerPoolSize = DefaultLockOptions.WorkerPoolSize
@@ -66,7 +66,7 @@ func (lm *lockManager) startRenewalService(options LockOptions) {
 	}()
 }
 
-// stopRenewalService 停止续期服务
+// stopRenewalService stops the renewal service
 func (lm *lockManager) stopRenewalService() {
 	lm.mutex.Lock()
 	defer lm.mutex.Unlock()
@@ -77,25 +77,25 @@ func (lm *lockManager) stopRenewalService() {
 
 	lm.renewCancel()
 	lm.running = false
-	// 不关闭 workerPool，避免其他 goroutine 发送时发生 panic。
+	// Do not close workerPool to avoid panic when other goroutines send to it.
 }
 
-// processRenewals 处理锁续期（使用工作池模式）
+// processRenewals processes lock renewals (using worker pool pattern)
 func (lm *lockManager) processRenewals(options LockOptions) {
 	lm.mutex.RLock()
 
-	// 预分配切片容量，减少内存分配
+	// Pre-allocate slice capacity to reduce memory allocation
 	locksToRenew := make([]*RedisLock, 0, len(lm.locks))
 
 	for _, lock := range lm.locks {
-		// 读取锁的快照（expiresAt/expiration/threshold），避免数据竞争
+		// Read lock snapshots (expiresAt/expiration/threshold) to avoid data race
 		lock.mutex.Lock()
 		expiresAtSnap := lock.expiresAt
 		expirationSnap := lock.expiration
 		thresholdSnap := lock.renewalThreshold
 		lock.mutex.Unlock()
 
-		// 只处理需要续期的锁（基于快照判断），阈值=expiration*threshold
+		// Only process locks that need renewal (based on snapshot), threshold = expiration * threshold
 		thresholdDur := time.Duration(float64(expirationSnap) * thresholdSnap)
 		if time.Until(expiresAtSnap) <= thresholdDur {
 			locksToRenew = append(locksToRenew, lock)
@@ -103,7 +103,7 @@ func (lm *lockManager) processRenewals(options LockOptions) {
 	}
 	lm.mutex.RUnlock()
 
-	// 使用工作池限制并发数；当池满时跳过当前轮次（累计 SkippedRenewals）
+	// Use worker pool to limit concurrency; skip current round when pool is full (accumulate SkippedRenewals)
 	for _, lock := range locksToRenew {
 		select {
 		case <-lm.renewCtx.Done():
@@ -114,14 +114,14 @@ func (lm *lockManager) processRenewals(options LockOptions) {
 				lm.renewLockWithRetry(l, options)
 			}(lock)
 		default:
-			// 工作池已满，本轮跳过，避免阻塞主循环
+			// Worker pool is full, skip this round to avoid blocking main loop
 			atomic.AddInt64(&lm.stats.SkippedRenewals, 1)
 			incSkippedRenewal()
 		}
 	}
 }
 
-// renewLockWithRetry 带重试的锁续期
+// renewLockWithRetry lock renewal with retry
 func (lm *lockManager) renewLockWithRetry(lock *RedisLock, options LockOptions) {
 	config := options.RenewalConfig
 	maxRetries := config.MaxRetries
@@ -130,7 +130,7 @@ func (lm *lockManager) renewLockWithRetry(lock *RedisLock, options LockOptions) 
 	}
 
 	for i := 0; i < maxRetries; i++ {
-		// 为单次续期调用设置超时（如配置），Run 后立即 cancel 释放资源
+		// Set timeout for single renewal call (if configured), cancel immediately after Run to release resources
 		ctx := lm.renewCtx
 		var cancel context.CancelFunc
 		if to := config.CallTimeout; to > 0 {
@@ -148,10 +148,10 @@ func (lm *lockManager) renewLockWithRetry(lock *RedisLock, options LockOptions) 
 
 		atomic.AddInt64(&lm.stats.RenewalErrors, 1)
 
-		// 指数退避重试 + 抖动（50%~150%），降低集中竞争
+		// Exponential backoff retry + jitter (50%~150%) to reduce concentrated competition
 		if i < maxRetries-1 {
 			delay := config.BaseDelay * time.Duration(1<<i)
-			// 加入抖动 50%~150%
+			// Add jitter 50%~150%
 			if delay > 0 {
 				jitter := time.Duration(float64(delay) * (0.5 + randFloat64()))
 				if jitter > 0 {
@@ -165,7 +165,7 @@ func (lm *lockManager) renewLockWithRetry(lock *RedisLock, options LockOptions) 
 		}
 	}
 
-	// 重试失败：从管理器中移除锁并减少活动计数，避免无效续期
+	// Retry failed: remove lock from manager and decrease active count to avoid invalid renewal
 	lm.mutex.Lock()
 	delete(lm.locks, lock.key)
 	atomic.AddInt64(&lm.stats.ActiveLocks, -1)
@@ -175,25 +175,25 @@ func (lm *lockManager) renewLockWithRetry(lock *RedisLock, options LockOptions) 
 		"key", lock.key, "retries", maxRetries)
 }
 
-// renewLock 续期单个锁（改进版）
+// renewLock renew a single lock (improved version)
 func (lm *lockManager) renewLock(ctx context.Context, lock *RedisLock) error {
-	// 读取快照，避免并发读写冲突
+	// Read snapshot to avoid concurrent read-write conflicts
 	lock.mutex.Lock()
 	expiresAtSnap := lock.expiresAt
 	expirationSnap := lock.expiration
 	thresholdSnap := lock.renewalThreshold
 	lock.mutex.Unlock()
 
-	// 检查是否需要续期（基于快照）
+	// Check if renewal is needed (based on snapshot)
 	if time.Until(expiresAtSnap) > time.Duration(float64(expirationSnap)*thresholdSnap) {
 		return nil
 	}
 
-	// 执行续期脚本（使用可取消上下文）
+	// Execute renewal script (using cancellable context)
 	start := time.Now()
 	result, err := renewScript.Run(ctx, lock.client, []string{lock.ownerKey, lock.countKey},
 		lock.value, expirationSnap.Milliseconds()).Result()
-	// 记录续期时延
+	// Record renewal latency
 	latency := time.Since(start)
 	atomic.AddInt64(&lm.stats.RenewLatencyNs, latency.Nanoseconds())
 	atomic.AddInt64(&lm.stats.RenewLatencyCount, 1)
@@ -208,19 +208,19 @@ func (lm *lockManager) renewLock(ctx context.Context, lock *RedisLock) error {
 		return fmt.Errorf("unknown renewal result type: %T", result)
 	}
 	switch n {
-	case 1: // 续期成功
+	case 1: // Renewal successful
 		lock.mutex.Lock()
 		lock.expiresAt = time.Now().Add(lock.expiration)
 		lock.mutex.Unlock()
 		incRenew("success")
 		return nil
-	case 0, -1, -2: // 锁不存在或不是当前持有者
+	case 0, -1, -2: // Lock does not exist or not current holder
 		lm.mutex.Lock()
 		delete(lm.locks, lock.key)
 		atomic.AddInt64(&lm.stats.ActiveLocks, -1)
 		lm.mutex.Unlock()
 		activeLocksDec()
-		// 更细致的区分
+		// More detailed distinction
 		switch n {
 		case 0:
 			incRenew("not_exist")
@@ -235,7 +235,7 @@ func (lm *lockManager) renewLock(ctx context.Context, lock *RedisLock) error {
 	}
 }
 
-// GetStats 获取锁管理器统计信息
+// GetStats gets lock manager statistics
 func GetStats() map[string]int64 {
 	m := map[string]int64{
 		"total_locks":         atomic.LoadInt64(&globalLockManager.stats.TotalLocks),
@@ -246,8 +246,8 @@ func GetStats() map[string]int64 {
 		"renew_latency_ns":    atomic.LoadInt64(&globalLockManager.stats.RenewLatencyNs),
 		"renew_latency_count": atomic.LoadInt64(&globalLockManager.stats.RenewLatencyCount),
 	}
-	// 追加当前工作池队列使用量（读取 len/cap 为原子快照，不需加锁）
-	// worker_queue_len 表示当前占用的令牌数；worker_queue_cap 表示最大并发能力。
+	// Append current worker pool queue usage (reading len/cap as atomic snapshot, no locking required)
+	// worker_queue_len represents currently occupied tokens; worker_queue_cap represents maximum concurrency capability.
 	if globalLockManager.workerPool != nil {
 		m["worker_queue_len"] = int64(len(globalLockManager.workerPool))
 		m["worker_queue_cap"] = int64(cap(globalLockManager.workerPool))
@@ -255,11 +255,11 @@ func GetStats() map[string]int64 {
 	return m
 }
 
-// Shutdown 优雅关闭锁管理器
+// Shutdown gracefully shuts down the lock manager
 func Shutdown(ctx context.Context) error {
 	globalLockManager.stopRenewalService()
 
-	// 等待所有锁释放或超时
+	// Wait for all locks to be released or timeout
 	timeout := time.After(10 * time.Second)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()

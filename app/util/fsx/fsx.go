@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-// Exists 判断文件或目录是否存在。
+// Exists reports whether the file or directory exists.
 func Exists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
@@ -20,7 +20,7 @@ func Exists(path string) (bool, error) {
 	return false, err
 }
 
-// WriteFileMkdirAll 写文件，若父目录不存在则自动创建。
+// WriteFileMkdirAll writes a file, creating parent directories if needed.
 func WriteFileMkdirAll(path string, data []byte, perm fs.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -29,7 +29,7 @@ func WriteFileMkdirAll(path string, data []byte, perm fs.FileMode) error {
 	return os.WriteFile(path, data, perm)
 }
 
-// ReadFileLimit 读取文件并限制最大字节数，超过返回错误，避免 OOM。
+// ReadFileLimit reads a file with a maximum byte limit; returns error if exceeded to avoid OOM.
 func ReadFileLimit(path string, max int64) ([]byte, error) {
 	if max <= 0 {
 		return nil, errors.New("ReadFileLimit: non-positive max")
@@ -38,7 +38,12 @@ func ReadFileLimit(path string, max int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			return
+		}
+	}(f)
 
 	lr := &io.LimitedReader{R: f, N: max + 1}
 	b, err := io.ReadAll(lr)
@@ -51,7 +56,7 @@ func ReadFileLimit(path string, max int64) ([]byte, error) {
 	return b, nil
 }
 
-// AtomicWrite 以原子方式写入文件：写到临时文件后 rename 替换。
+// AtomicWrite writes a file atomically: write to a temp file then rename to replace.
 func AtomicWrite(path string, data []byte, perm fs.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -63,8 +68,14 @@ func AtomicWrite(path string, data []byte, perm fs.FileMode) error {
 	}
 	tmpPath := tmp.Name()
 	defer func() {
-		tmp.Close()
-		os.Remove(tmpPath)
+		err := tmp.Close()
+		if err != nil {
+			return
+		}
+		err = os.Remove(tmpPath)
+		if err != nil {
+			return
+		}
 	}()
 	if _, err := tmp.Write(data); err != nil {
 		return err

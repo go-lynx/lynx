@@ -10,7 +10,7 @@ import (
 
 var plugin *PlugPolaris
 
-// GetPolarisPlugin 获取 Polaris 插件实例
+// GetPolarisPlugin returns the Polaris plugin instance.
 func GetPolarisPlugin() (*PlugPolaris, error) {
 	if plugin == nil {
 		return nil, fmt.Errorf("polaris plugin not found")
@@ -18,7 +18,7 @@ func GetPolarisPlugin() (*PlugPolaris, error) {
 	return plugin, nil
 }
 
-// GetServiceInstances 获取服务实例
+// GetServiceInstances returns service instances.
 func GetServiceInstances(serviceName string) ([]model.Instance, error) {
 	if plugin == nil {
 		return nil, fmt.Errorf("polaris plugin not found")
@@ -26,8 +26,8 @@ func GetServiceInstances(serviceName string) ([]model.Instance, error) {
 	return plugin.GetServiceInstances(serviceName)
 }
 
-// GetConfig 获取配置
-// 全局 API：通过文件名和组名获取配置内容
+// GetConfig fetches configuration by file name and group.
+// Global API: retrieve config content by file name and group.
 func GetConfig(fileName, group string) (string, error) {
 	if plugin == nil {
 		return "", fmt.Errorf("polaris plugin not found")
@@ -35,8 +35,8 @@ func GetConfig(fileName, group string) (string, error) {
 	return plugin.GetConfigValue(fileName, group)
 }
 
-// WatchService 监听服务变更
-// 全局 API：监听指定服务的变更事件
+// WatchService watches service changes.
+// Global API: watch change events of the specified service.
 func WatchService(serviceName string) (*ServiceWatcher, error) {
 	if plugin == nil {
 		return nil, fmt.Errorf("polaris plugin not found")
@@ -44,8 +44,8 @@ func WatchService(serviceName string) (*ServiceWatcher, error) {
 	return plugin.WatchService(serviceName)
 }
 
-// WatchConfig 监听配置变更
-// 全局 API：监听指定配置的变更事件
+// WatchConfig watches configuration changes.
+// Global API: watch change events of the specified configuration.
 func WatchConfig(fileName, group string) (*ConfigWatcher, error) {
 	if plugin == nil {
 		return nil, fmt.Errorf("polaris plugin not found")
@@ -53,8 +53,8 @@ func WatchConfig(fileName, group string) (*ConfigWatcher, error) {
 	return plugin.WatchConfig(fileName, group)
 }
 
-// CheckRateLimit 检查限流
-// 全局 API：检查指定服务的限流状态
+// CheckRateLimit checks rate limit status for a service.
+// Global API: check the rate limit status of the specified service.
 func CheckRateLimit(serviceName string, labels map[string]string) (bool, error) {
 	if plugin == nil {
 		return false, fmt.Errorf("polaris plugin not found")
@@ -62,8 +62,8 @@ func CheckRateLimit(serviceName string, labels map[string]string) (bool, error) 
 	return plugin.CheckRateLimit(serviceName, labels)
 }
 
-// GetMetrics 获取监控指标
-// 全局 API：获取插件的监控指标
+// GetMetrics returns plugin metrics.
+// Global API: get metrics exposed by the plugin.
 func GetMetrics() *Metrics {
 	if plugin == nil {
 		return nil
@@ -71,8 +71,8 @@ func GetMetrics() *Metrics {
 	return plugin.GetMetrics()
 }
 
-// IsHealthy 检查插件健康状态
-// 全局 API：检查插件是否健康
+// IsHealthy checks plugin health status.
+// Global API: verify whether the plugin is healthy.
 func IsHealthy() error {
 	if plugin == nil {
 		return fmt.Errorf("polaris plugin not found")
@@ -80,12 +80,12 @@ func IsHealthy() error {
 	return plugin.CheckHealth()
 }
 
-// GetPolaris 函数用于从应用的插件管理器中获取 Polaris 实例。
-// 该实例可用于与 Polaris 服务进行交互，如服务发现、配置管理等。
-// 返回值为 *polaris.Polaris 类型的指针，指向获取到的 Polaris 实例。
+// GetPolaris obtains the Polaris instance from the application's plugin manager.
+// The instance can be used to interact with Polaris services (service discovery, config management, etc.).
+// It returns a *polaris.Polaris pointing to the instance.
 func GetPolaris() *polaris.Polaris {
-	// 从应用的插件管理器中获取指定名称的插件实例，
-	// 并将其类型断言为 *PlugPolaris，然后返回其内部的 polaris 字段。
+	// Fetch the plugin by name from the application's plugin manager,
+	// cast it to *PlugPolaris and return its internal `polaris` field.
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
 	if plugin == nil {
 		return nil
@@ -93,12 +93,12 @@ func GetPolaris() *polaris.Polaris {
 	return plugin.(*PlugPolaris).polaris
 }
 
-// GetPlugin 函数用于从应用的插件管理器中获取 PlugPolaris 插件实例。
-// 该实例可用于调用插件提供的各种方法。
-// 返回值为 *PlugPolaris 类型的指针，指向获取到的插件实例。
+// GetPlugin obtains the PlugPolaris plugin instance from the application's plugin manager.
+// The instance can be used to invoke methods provided by the plugin.
+// It returns a *PlugPolaris pointing to the instance.
 func GetPlugin() *PlugPolaris {
-	// 从应用的插件管理器中获取指定名称的插件实例，
-	// 并将其类型断言为 *PlugPolaris 后返回。
+	// Fetch the plugin by name from the application's plugin manager,
+	// cast it to *PlugPolaris and return it.
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
 	if plugin == nil {
 		return nil

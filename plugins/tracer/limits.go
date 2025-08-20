@@ -1,43 +1,43 @@
 package tracer
 
 import (
-    "github.com/go-lynx/lynx/plugins/tracer/conf"
-    traceSdk "go.opentelemetry.io/otel/sdk/trace"
+	"github.com/go-lynx/lynx/plugins/tracer/conf"
+	traceSdk "go.opentelemetry.io/otel/sdk/trace"
 )
 
-// buildSpanLimits 根据配置构建 OpenTelemetry SpanLimits。
-// 仅设置当前 SDK 版本支持的字段：
+// buildSpanLimits builds OpenTelemetry SpanLimits based on configuration.
+// Only sets fields supported by the current SDK version:
 // - AttributeCountLimit
 // - AttributeValueLengthLimit
 // - EventCountLimit
 // - LinkCountLimit
-// 未配置或值 <= 0 的字段将被忽略，返回 nil 表示不覆盖默认限额。
+// Unconfigured or value <= 0 fields will be ignored, returning nil indicates not to override default limits.
 func buildSpanLimits(c *conf.Tracer) *traceSdk.SpanLimits {
-    // 读取 modular 配置；若未提供 limits 则返回 nil，表示沿用 SDK 默认限额
-    cfg := c.GetConfig()
-    if cfg == nil || cfg.Limits == nil {
-        return nil
-    }
-    // 取出限额配置
-    l := cfg.GetLimits()
-    // 初始化空的 SpanLimits；仅对 >0 的值进行赋值
-    limits := &traceSdk.SpanLimits{}
-    // 每个 Span 允许的最大 attribute 数量
-    if v := l.GetAttributeCountLimit(); v > 0 {
-        limits.AttributeCountLimit = int(v)
-    }
-    // 单个 attribute 的最大值长度（字符）
-    if v := l.GetAttributeValueLengthLimit(); v > 0 {
-        limits.AttributeValueLengthLimit = int(v)
-    }
-    // 每个 Span 允许的最大 event 数量
-    if v := l.GetEventCountLimit(); v > 0 {
-        limits.EventCountLimit = int(v)
-    }
-    // 每个 Span 允许的最大 link 数量
-    if v := l.GetLinkCountLimit(); v > 0 {
-        limits.LinkCountLimit = int(v)
-    }
-    // 注意：若以上字段均未设置（保持 0），SDK 会采用其默认值；返回空结构即可
-    return limits
+	// Read modular configuration; if limits not provided, return nil to indicate using SDK default limits
+	cfg := c.GetConfig()
+	if cfg == nil || cfg.Limits == nil {
+		return nil
+	}
+	// Extract limit configuration
+	l := cfg.GetLimits()
+	// Initialize empty SpanLimits; only assign values >0
+	limits := &traceSdk.SpanLimits{}
+	// Maximum number of attributes allowed per Span
+	if v := l.GetAttributeCountLimit(); v > 0 {
+		limits.AttributeCountLimit = int(v)
+	}
+	// Maximum value length (characters) for a single attribute
+	if v := l.GetAttributeValueLengthLimit(); v > 0 {
+		limits.AttributeValueLengthLimit = int(v)
+	}
+	// Maximum number of events allowed per Span
+	if v := l.GetEventCountLimit(); v > 0 {
+		limits.EventCountLimit = int(v)
+	}
+	// Maximum number of links allowed per Span
+	if v := l.GetLinkCountLimit(); v > 0 {
+		limits.LinkCountLimit = int(v)
+	}
+	// Note: If none of the above fields are set (remain 0), SDK will use its default values; returning empty structure is sufficient
+	return limits
 }

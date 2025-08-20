@@ -5,17 +5,17 @@ import (
 	"time"
 )
 
-// Metrics Kafka 监控指标
+// Metrics Kafka monitoring metrics
 type Metrics struct {
 	mu sync.RWMutex
 
-	// 生产者指标
+	// Producer metrics
 	ProducedMessages int64
 	ProducedBytes    int64
 	ProducerErrors   int64
 	ProducerLatency  time.Duration
 
-	// 消费者指标
+	// Consumer metrics
 	ConsumedMessages   int64
 	ConsumedBytes      int64
 	ConsumerErrors     int64
@@ -23,101 +23,101 @@ type Metrics struct {
 	OffsetCommits      int64
 	OffsetCommitErrors int64
 
-	// 连接指标
+	// Connection metrics
 	ConnectionErrors int64
 	Reconnections    int64
 }
 
-// NewMetrics 创建新的监控指标实例
+// NewMetrics creates a new monitoring metrics instance
 func NewMetrics() *Metrics {
 	return &Metrics{}
 }
 
-// IncrementProducedMessages 增加生产消息计数
+// IncrementProducedMessages increments produced message count
 func (m *Metrics) IncrementProducedMessages(count int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ProducedMessages += count
 }
 
-// IncrementProducedBytes 增加生产字节计数
+// IncrementProducedBytes increments produced byte count
 func (m *Metrics) IncrementProducedBytes(bytes int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ProducedBytes += bytes
 }
 
-// IncrementProducerErrors 增加生产者错误计数
+// IncrementProducerErrors increments producer error count
 func (m *Metrics) IncrementProducerErrors() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ProducerErrors++
 }
 
-// IncrementConsumedMessages 增加消费消息计数
+// IncrementConsumedMessages increments consumed message count
 func (m *Metrics) IncrementConsumedMessages(count int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ConsumedMessages += count
 }
 
-// IncrementConsumedBytes 增加消费字节计数
+// IncrementConsumedBytes increments consumed byte count
 func (m *Metrics) IncrementConsumedBytes(bytes int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ConsumedBytes += bytes
 }
 
-// IncrementConsumerErrors 增加消费者错误计数
+// IncrementConsumerErrors increments consumer error count
 func (m *Metrics) IncrementConsumerErrors() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ConsumerErrors++
 }
 
-// IncrementOffsetCommits 增加偏移量提交计数
+// IncrementOffsetCommits increments offset commit count
 func (m *Metrics) IncrementOffsetCommits() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.OffsetCommits++
 }
 
-// IncrementOffsetCommitErrors 增加偏移量提交错误计数
+// IncrementOffsetCommitErrors increments offset commit error count
 func (m *Metrics) IncrementOffsetCommitErrors() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.OffsetCommitErrors++
 }
 
-// IncrementConnectionErrors 增加连接错误计数
+// IncrementConnectionErrors increments connection error count
 func (m *Metrics) IncrementConnectionErrors() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ConnectionErrors++
 }
 
-// IncrementReconnections 增加重连计数
+// IncrementReconnections increments reconnection count
 func (m *Metrics) IncrementReconnections() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.Reconnections++
 }
 
-// SetProducerLatency 设置生产者延迟
+// SetProducerLatency sets producer latency
 func (m *Metrics) SetProducerLatency(latency time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ProducerLatency = latency
 }
 
-// SetConsumerLatency 设置消费者延迟
+// SetConsumerLatency sets consumer latency
 func (m *Metrics) SetConsumerLatency(latency time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ConsumerLatency = latency
 }
 
-// GetStats 获取统计信息
+// GetStats gets statistics
 func (m *Metrics) GetStats() map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -138,7 +138,7 @@ func (m *Metrics) GetStats() map[string]interface{} {
 	}
 }
 
-// Reset 重置所有指标
+// Reset resets all metrics
 func (m *Metrics) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -13,87 +13,87 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 )
 
-// 插件元数据，定义 Tracer 插件的基本信息
+// Plugin metadata, defines basic information of Tracer plugin
 const (
-	// pluginName 是 Tracer 插件在 Lynx 插件系统中的唯一标识符。
+	// pluginName is the unique identifier of Tracer plugin in Lynx plugin system.
 	pluginName = "tracer.server"
 
-	// pluginVersion 表示 Tracer 插件的当前版本。
+	// pluginVersion represents the current version of Tracer plugin.
 	pluginVersion = "v2.0.0"
 
-	// pluginDescription 简要描述 Tracer 插件的用途。
+	// pluginDescription briefly describes the purpose of Tracer plugin.
 	pluginDescription = "OpenTelemetry tracer plugin for Lynx framework"
 
-	// confPrefix 是加载 Tracer 配置时使用的配置前缀。
+	// confPrefix is the configuration prefix used when loading Tracer configuration.
 	confPrefix = "lynx.tracer"
 )
 
-// PlugTracer 实现了 Lynx 框架的 Tracer 插件功能。
-// 它嵌入了 plugins.BasePlugin 以继承通用的插件功能，并维护 Tracer 链路追踪的配置和实例。
+// PlugTracer implements the Tracer plugin functionality for Lynx framework.
+// It embeds plugins.BasePlugin to inherit common plugin functionality and maintains Tracer tracing configuration and instances.
 type PlugTracer struct {
-	// 嵌入基础插件，继承插件的通用属性和方法
+	// Embed base plugin, inheriting common plugin properties and methods
 	*plugins.BasePlugin
-	// Tracer 的配置信息（支持模块化配置与向后兼容的旧字段）
+	// Tracer configuration information (supports modular configuration and backward-compatible old fields)
 	conf *conf.Tracer
 }
 
-// NewPlugTracer 创建一个新的 Tracer 插件实例。
-// 该函数初始化插件的基础信息（ID、名称、描述、版本、配置前缀、权重）并返回实例。
+// NewPlugTracer creates a new Tracer plugin instance.
+// This function initializes the plugin's basic information (ID, name, description, version, configuration prefix, weight) and returns the instance.
 func NewPlugTracer() *PlugTracer {
 	return &PlugTracer{
 		BasePlugin: plugins.NewBasePlugin(
-			// 生成插件的唯一 ID
+			// Generate unique plugin ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
-			// 插件名称
+			// Plugin name
 			pluginName,
-			// 插件描述
+			// Plugin description
 			pluginDescription,
-			// 插件版本
+			// Plugin version
 			pluginVersion,
-			// 配置前缀
+			// Configuration prefix
 			confPrefix,
-			// 权重
+			// Weight
 			9999,
 		),
 		conf: &conf.Tracer{},
 	}
 }
 
-// InitializeResources 从运行时加载并校验 Tracer 配置，同时填充默认值。
-// - 先从 runtime 配置树中扫描 "lynx.tracer" 到 t.conf
-// - 校验必要参数（采样率范围、启用但未配置地址等）
-// - 设置合理默认值（addr、ratio）
+// InitializeResources loads and validates Tracer configuration from runtime, while filling default values.
+// - First scan "lynx.tracer" from runtime configuration tree to t.conf
+// - Validate necessary parameters (sampling ratio range, enabled but unconfigured address, etc.)
+// - Set reasonable default values (addr, ratio)
 func (t *PlugTracer) InitializeResources(rt plugins.Runtime) error {
-	// 初始化一个空的配置结构
+	// Initialize an empty configuration structure
 	t.conf = &conf.Tracer{}
 
-	// 从运行时配置中扫描并加载 Tracer 配置
+	// Scan and load Tracer configuration from runtime configuration
 	err := rt.GetConfig().Value(confPrefix).Scan(t.conf)
 	if err != nil {
 		return fmt.Errorf("failed to load tracer configuration: %w", err)
 	}
 
-	// 验证配置
+	// Validate configuration
 	if err := t.validateConfiguration(); err != nil {
 		return fmt.Errorf("tracer configuration validation failed: %w", err)
 	}
 
-	// 设置默认值
+	// Set default values
 	t.setDefaultValues()
 
 	return nil
 }
 
-// validateConfiguration 验证配置合法性：
-// - ratio 必须在 [0,1]
-// - 当 enable=true 时必须提供有效的 addr
+// validateConfiguration validates configuration legality:
+// - ratio must be in [0,1]
+// - when enable=true, valid addr must be provided
 func (t *PlugTracer) validateConfiguration() error {
-	// 验证采样率
+	// Validate sampling ratio
 	if t.conf.Ratio < 0 || t.conf.Ratio > 1 {
 		return fmt.Errorf("sampling ratio must be between 0 and 1, got %f", t.conf.Ratio)
 	}
 
-	// 验证地址配置
+	// Validate address configuration
 	if t.conf.Enable && t.conf.Addr == "" {
 		return fmt.Errorf("tracer address is required when tracing is enabled")
 	}
@@ -101,9 +101,9 @@ func (t *PlugTracer) validateConfiguration() error {
 	return nil
 }
 
-// setDefaultValues 为未配置项设置默认值：
-// - addr 默认为 localhost:4317（OTLP/gRPC 默认端口）
-// - ratio 默认为 1.0（全量采样）
+// setDefaultValues sets default values for unconfigured items:
+// - addr defaults to localhost:4317 (OTLP/gRPC default port)
+// - ratio defaults to 1.0 (full sampling)
 func (t *PlugTracer) setDefaultValues() {
 	if t.conf.Addr == "" {
 		t.conf.Addr = "localhost:4317"
@@ -113,17 +113,17 @@ func (t *PlugTracer) setDefaultValues() {
 	}
 }
 
-// StartupTasks 完成 OpenTelemetry TracerProvider 的初始化：
-// - 构建采样器、资源、Span 限额
-// - 根据配置创建 OTLP 导出器（gRPC/HTTP），并选择批处理或同步处理器
-// - 设置全局 TracerProvider 与 TextMapPropagator
-// - 打印初始化日志
+// StartupTasks completes OpenTelemetry TracerProvider initialization:
+// - Build sampler, resource, Span limits
+// - Create OTLP exporter (gRPC/HTTP) based on configuration, and choose batch or sync processor
+// - Set global TracerProvider and TextMapPropagator
+// - Print initialization logs
 func (t *PlugTracer) StartupTasks() error {
 	if !t.conf.Enable {
 		return nil
 	}
 
-	// 使用 Lynx 应用的 Helper 记录日志，指示正在初始化链路监控组件
+	// Use Lynx application Helper to log, indicating that link monitoring component is being initialized
 	log.Infof("Initializing link monitoring component")
 
 	var tracerProviderOptions []trace.TracerProviderOption
@@ -141,8 +141,8 @@ func (t *PlugTracer) StartupTasks() error {
 		tracerProviderOptions = append(tracerProviderOptions, trace.WithSpanLimits(*limits))
 	}
 
-	// 如果配置中指定了地址，则设置导出器
-	// 否则，不设置导出器
+	// If address is specified in configuration, set exporter
+	// Otherwise, don't set exporter
 	if t.conf.GetAddr() != "None" {
 		exp, batchOpts, useBatch, err := buildExporter(context.Background(), t.conf)
 		if err != nil {
@@ -155,45 +155,45 @@ func (t *PlugTracer) StartupTasks() error {
 		}
 	}
 
-	// 创建一个新的跟踪提供者，用于生成和处理跟踪数据
+	// Create a new trace provider for generating and processing trace data
 	tp := trace.NewTracerProvider(tracerProviderOptions...)
 
-	// 设置全局跟踪提供者，用于后续的跟踪数据生成和处理
+	// Set global trace provider for subsequent trace data generation and processing
 	otel.SetTracerProvider(tp)
 
 	// Propagators
 	var propagator propagation.TextMapPropagator = buildPropagator(t.conf)
 	otel.SetTextMapPropagator(propagator)
 
-	// 验证 TracerProvider 是否成功创建
+	// Verify that TracerProvider was successfully created
 	if tp == nil {
 		return fmt.Errorf("failed to create tracer provider")
 	}
 
-	// 使用 Lynx 应用的 Helper 记录日志，指示链路监控组件初始化成功
+	// Use Lynx application Helper to log, indicating that link monitoring component initialization was successful
 	log.Infof("link monitoring component successfully initialized")
 	return nil
 }
 
-// ShutdownTasks 优雅关闭 TracerProvider：
-// - 在 30s 超时内调用 SDK 的 Shutdown
-// - 捕获并记录错误
+// ShutdownTasks gracefully shuts down TracerProvider:
+// - Call SDK's Shutdown within 30s timeout
+// - Catch and log errors
 func (t *PlugTracer) ShutdownTasks() error {
-	// 获取全局 TracerProvider
+	// Get global TracerProvider
 	tp := otel.GetTracerProvider()
 	if tp != nil {
-		// 检查是否为 SDK TracerProvider
+		// Check if it's SDK TracerProvider
 		if sdkTp, ok := tp.(*trace.TracerProvider); ok {
-			// 创建带超时的上下文
+			// Create context with timeout
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			// 在关闭前尽力刷新缓冲中的 span，减少数据丢失
+			// Try to flush buffered spans before shutdown to reduce data loss
 			if err := sdkTp.ForceFlush(ctx); err != nil {
 				log.Errorf("Failed to force flush tracer provider: %v", err)
 			}
 
-			// 优雅关闭 TracerProvider
+			// Gracefully shutdown TracerProvider
 			if err := sdkTp.Shutdown(ctx); err != nil {
 				log.Errorf("Failed to shutdown tracer provider: %v", err)
 				return fmt.Errorf("failed to shutdown tracer provider: %w", err)

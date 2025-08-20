@@ -6,19 +6,19 @@ import (
 	appmetrics "github.com/go-lynx/lynx/app/observability/metrics"
 )
 
-// hcProvider 适配 kafka 的 HealthChecker 到平台 HealthProvider
+// hcProvider adapts kafka's HealthChecker to platform HealthProvider
 type hcProvider struct {
 	hc *HealthChecker
-	// 额外标签（暂不下发为动态标签，仅预留）
+	// Additional labels (not yet distributed as dynamic labels, reserved only)
 	labels map[string]string
 }
 
-func (p *hcProvider) IsHealthy() bool              { return p.hc.IsHealthy() }
-func (p *hcProvider) ErrorCount() int              { return p.hc.GetErrorCount() }
-func (p *hcProvider) LastCheck() time.Time         { return p.hc.GetLastCheck() }
-func (p *hcProvider) Labels() map[string]string    { return p.labels }
+func (p *hcProvider) IsHealthy() bool           { return p.hc.IsHealthy() }
+func (p *hcProvider) ErrorCount() int           { return p.hc.GetErrorCount() }
+func (p *hcProvider) LastCheck() time.Time      { return p.hc.GetLastCheck() }
+func (p *hcProvider) Labels() map[string]string { return p.labels }
 
-// registerHealthForProducer 在全局注册表注册生产者实例的健康指标
+// registerHealthForProducer registers producer instance health metrics in global registry
 func (k *Client) registerHealthForProducer(instance string) {
 	k.mu.RLock()
 	cm := k.prodConnMgrs[instance]
@@ -28,11 +28,11 @@ func (k *Client) registerHealthForProducer(instance string) {
 	}
 	provider := &hcProvider{hc: cm.healthChecker, labels: map[string]string{"role": "producer"}}
 	collector := appmetrics.NewHealthCollector("kafka", "producer:"+instance, pluginVersion, provider)
-	// 使用 MustRegister，重复注册会 panic；保证仅在首次启动连接管理器后注册
+	// Use MustRegister, duplicate registration will panic; ensure registration only after first connection manager startup
 	appmetrics.MustRegister(collector)
 }
 
-// registerHealthForConsumer 在全局注册表注册消费者实例的健康指标
+// registerHealthForConsumer registers consumer instance health metrics in global registry
 func (k *Client) registerHealthForConsumer(instance string) {
 	k.mu.RLock()
 	cm := k.consConnMgrs[instance]

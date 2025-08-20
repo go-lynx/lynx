@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// All 将多个错误聚合为一个（过滤 nil）。当所有输入均为 nil 时返回 nil。
+// All aggregates multiple errors into one (filters nil). Returns nil if all inputs are nil.
 func All(errs ...error) error {
 	filtered := make([]error, 0, len(errs))
 	for _, e := range errs {
@@ -19,7 +19,7 @@ func All(errs ...error) error {
 	return errors.Join(filtered...)
 }
 
-// First 返回第一个非 nil 错误。
+// First returns the first non-nil error.
 func First(errs ...error) error {
 	for _, e := range errs {
 		if e != nil {
@@ -29,7 +29,7 @@ func First(errs ...error) error {
 	return nil
 }
 
-// Wrap 使用 fmt.Errorf 追加上下文并保留可解包的原错误。
+// Wrap adds context using fmt.Errorf and preserves the original error for unwrapping.
 func Wrap(err error, msg string) error {
 	if err == nil {
 		return nil
@@ -40,8 +40,8 @@ func Wrap(err error, msg string) error {
 	return fmt.Errorf("%s: %w", msg, err)
 }
 
-// DeferRecover 用于 defer，捕获 panic 并交给 handler 处理。
-// 示例：
+// DeferRecover is used in defer to catch panics and pass them to handler.
+// Example:
 //   defer util.DeferRecover(func(e any){ logger.Error().Any("panic", e).Msg("recovered") })
 func DeferRecover(handler func(any)) {
 	if r := recover(); r != nil {

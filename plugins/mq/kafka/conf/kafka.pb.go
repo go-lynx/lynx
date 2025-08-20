@@ -22,21 +22,21 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Kafka 消息定义了 Kafka 客户端的配置信息
+// Kafka message defines the configuration information for Kafka client
 type Kafka struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// brokers 表示 Kafka 集群的地址列表
+	// brokers represents the address list of Kafka cluster
 	Brokers []string `protobuf:"bytes,1,rep,name=brokers,proto3" json:"brokers,omitempty"`
-	// producers 多生产者实例配置
+	// producers multiple producer instance configurations
 	Producers []*Producer `protobuf:"bytes,2,rep,name=producers,proto3" json:"producers,omitempty"`
-	// consumers 多消费者实例配置
+	// consumers multiple consumer instance configurations
 	Consumers []*Consumer `protobuf:"bytes,3,rep,name=consumers,proto3" json:"consumers,omitempty"`
-	// 通用配置
-	// sasl 认证配置
+	// Common configurations
+	// sasl authentication configuration
 	Sasl *SASL `protobuf:"bytes,4,opt,name=sasl,proto3" json:"sasl,omitempty"`
-	// tls 配置对象
+	// tls configuration object
 	Tls *TLS `protobuf:"bytes,5,opt,name=tls,proto3" json:"tls,omitempty"`
-	// 连接超时时间
+	// Connection timeout
 	DialTimeout   *durationpb.Duration `protobuf:"bytes,6,opt,name=dial_timeout,json=dialTimeout,proto3" json:"dial_timeout,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -114,26 +114,26 @@ func (x *Kafka) GetDialTimeout() *durationpb.Duration {
 	return nil
 }
 
-// Producer 生产者配置
+// Producer configuration
 type Producer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 是否启用生产者
+	// Whether to enable producer
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// 确认级别：-1=all ISR, 1=leader only, 0=无需确认
+	// Acknowledgment level: -1=all ISR, 1=leader only, 0=no acknowledgment required
 	RequiredAcks int32 `protobuf:"varint,2,opt,name=required_acks,json=requiredAcks,proto3" json:"required_acks,omitempty"`
-	// 最大重试次数
+	// Maximum number of retries
 	MaxRetries int32 `protobuf:"varint,3,opt,name=max_retries,json=maxRetries,proto3" json:"max_retries,omitempty"`
-	// 重试间隔
+	// Retry interval
 	RetryBackoff *durationpb.Duration `protobuf:"bytes,4,opt,name=retry_backoff,json=retryBackoff,proto3" json:"retry_backoff,omitempty"`
-	// 批量发送大小
+	// Batch send size
 	BatchSize int32 `protobuf:"varint,5,opt,name=batch_size,json=batchSize,proto3" json:"batch_size,omitempty"`
-	// 批量发送等待时间
+	// Batch send waiting time
 	BatchTimeout *durationpb.Duration `protobuf:"bytes,6,opt,name=batch_timeout,json=batchTimeout,proto3" json:"batch_timeout,omitempty"`
-	// 压缩类型：none, gzip, snappy, lz4, zstd
+	// Compression type: none, gzip, snappy, lz4, zstd
 	Compression string `protobuf:"bytes,7,opt,name=compression,proto3" json:"compression,omitempty"`
-	// 实例名（用于区分、路由），不重用已占用的 tag
+	// Instance name (for differentiation, routing), do not reuse occupied tags
 	Name string `protobuf:"bytes,8,opt,name=name,proto3" json:"name,omitempty"`
-	// 可选：允许发送的 topic 列表，用于路由/权限
+	// Optional: list of allowed topics to send, for routing/permissions
 	Topics        []string `protobuf:"bytes,9,rep,name=topics,proto3" json:"topics,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -232,32 +232,32 @@ func (x *Producer) GetTopics() []string {
 	return nil
 }
 
-// Consumer 消费者配置
+// Consumer configuration
 type Consumer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 是否启用消费者
+	// Whether to enable consumer
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// 消费组 ID
+	// Consumer group ID
 	GroupId string `protobuf:"bytes,2,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
-	// 自动提交间隔
+	// Auto commit interval
 	AutoCommitInterval *durationpb.Duration `protobuf:"bytes,3,opt,name=auto_commit_interval,json=autoCommitInterval,proto3" json:"auto_commit_interval,omitempty"`
-	// 是否自动提交
+	// Whether to auto commit
 	AutoCommit bool `protobuf:"varint,4,opt,name=auto_commit,json=autoCommit,proto3" json:"auto_commit,omitempty"`
-	// 消费起始位置：latest, earliest
+	// Consumption start position: latest, earliest
 	StartOffset string `protobuf:"bytes,5,opt,name=start_offset,json=startOffset,proto3" json:"start_offset,omitempty"`
-	// 最大处理并发数
+	// Maximum processing concurrency
 	MaxConcurrency int32 `protobuf:"varint,6,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"`
-	// 最小批量大小
+	// Minimum batch size
 	MinBatchSize int32 `protobuf:"varint,7,opt,name=min_batch_size,json=minBatchSize,proto3" json:"min_batch_size,omitempty"`
-	// 最大批量大小
+	// Maximum batch size
 	MaxBatchSize int32 `protobuf:"varint,8,opt,name=max_batch_size,json=maxBatchSize,proto3" json:"max_batch_size,omitempty"`
-	// 最大等待时间
+	// Maximum waiting time
 	MaxWaitTime *durationpb.Duration `protobuf:"bytes,9,opt,name=max_wait_time,json=maxWaitTime,proto3" json:"max_wait_time,omitempty"`
-	// 重平衡超时时间
+	// Rebalance timeout
 	RebalanceTimeout *durationpb.Duration `protobuf:"bytes,10,opt,name=rebalance_timeout,json=rebalanceTimeout,proto3" json:"rebalance_timeout,omitempty"`
-	// 实例名（用于区分/路由）
+	// Instance name (for differentiation/routing)
 	Name string `protobuf:"bytes,11,opt,name=name,proto3" json:"name,omitempty"`
-	// 订阅的 topic 列表（或后续扩展为 pattern）
+	// Subscribed topic list (or extended to pattern in the future)
 	Topics        []string `protobuf:"bytes,12,rep,name=topics,proto3" json:"topics,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -377,16 +377,16 @@ func (x *Consumer) GetTopics() []string {
 	return nil
 }
 
-// SASL 认证配置
+// SASL authentication configuration
 type SASL struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 是否启用 SASL
+	// Whether to enable SASL
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// 认证机制：PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
+	// Authentication mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
 	Mechanism string `protobuf:"bytes,2,opt,name=mechanism,proto3" json:"mechanism,omitempty"`
-	// 用户名
+	// Username
 	Username string `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
-	// 密码
+	// Password
 	Password      string `protobuf:"bytes,4,opt,name=password,proto3" json:"password,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -450,20 +450,20 @@ func (x *SASL) GetPassword() string {
 	return ""
 }
 
-// TLS 配置
+// TLS configuration
 type TLS struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 是否启用 TLS
+	// Whether to enable TLS
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// 根 CA 证书文件路径
+	// Root CA certificate file path
 	CaFile string `protobuf:"bytes,2,opt,name=ca_file,json=caFile,proto3" json:"ca_file,omitempty"`
-	// 客户端证书文件路径（可选，用于双向认证）
+	// Client certificate file path (optional, for mutual authentication)
 	CertFile string `protobuf:"bytes,3,opt,name=cert_file,json=certFile,proto3" json:"cert_file,omitempty"`
-	// 客户端私钥文件路径（可选，用于双向认证）
+	// Client private key file path (optional, for mutual authentication)
 	KeyFile string `protobuf:"bytes,4,opt,name=key_file,json=keyFile,proto3" json:"key_file,omitempty"`
-	// 是否跳过服务端证书校验（不建议开启）
+	// Whether to skip server certificate verification (not recommended)
 	InsecureSkipVerify bool `protobuf:"varint,5,opt,name=insecure_skip_verify,json=insecureSkipVerify,proto3" json:"insecure_skip_verify,omitempty"`
-	// 指定 SNI/证书校验域名
+	// Specify SNI/certificate verification domain name
 	ServerName    string `protobuf:"bytes,6,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

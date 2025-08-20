@@ -9,13 +9,13 @@ import (
 	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
-// GetServiceInstances 获取服务实例
+// GetServiceInstances gets service instances
 func (p *PlugPolaris) GetServiceInstances(serviceName string) ([]model.Instance, error) {
 	if err := p.checkInitialized(); err != nil {
 		return nil, err
 	}
 
-	// 记录服务发现操作指标
+	// Record service discovery operation metrics
 	if p.metrics != nil {
 		p.metrics.RecordServiceDiscovery(serviceName, p.conf.Namespace, "start")
 		defer func() {
@@ -27,20 +27,20 @@ func (p *PlugPolaris) GetServiceInstances(serviceName string) ([]model.Instance,
 
 	log.Infof("Getting service instances for: %s", serviceName)
 
-	// 使用熔断器和重试机制执行操作
+	// Execute operation with circuit breaker and retry mechanism
 	var instances []model.Instance
 	var lastErr error
 
-	// 使用熔断器包装重试操作
+	// Wrap retry operation with circuit breaker
 	err := p.circuitBreaker.Do(func() error {
 		return p.retryManager.DoWithRetry(func() error {
-			// 创建 Consumer API 客户端
+			// Create Consumer API client
 			consumerAPI := api.NewConsumerAPIByContext(p.sdk)
 			if consumerAPI == nil {
 				return NewInitError("failed to create consumer API")
 			}
 
-			// 构建服务发现请求
+			// Build service discovery request
 			req := &api.GetInstancesRequest{
 				GetInstancesRequest: model.GetInstancesRequest{
 					Service:   serviceName,
@@ -48,7 +48,7 @@ func (p *PlugPolaris) GetServiceInstances(serviceName string) ([]model.Instance,
 				},
 			}
 
-			// 调用 SDK API 获取服务实例
+			// Call SDK API to get service instances
 			resp, err := consumerAPI.GetInstances(req)
 			if err != nil {
 				lastErr = err
@@ -73,13 +73,13 @@ func (p *PlugPolaris) GetServiceInstances(serviceName string) ([]model.Instance,
 	return instances, nil
 }
 
-// WatchService 监听服务变更 - 使用双重检查锁定模式提高并发安全性
+// WatchService watches service changes - uses double-checked locking pattern to improve concurrency safety
 func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) {
 	if err := p.checkInitialized(); err != nil {
 		return nil, err
 	}
 
-	// 记录服务监听操作指标
+	// Record service watch operation metrics
 	if p.metrics != nil {
 		p.metrics.RecordSDKOperation("watch_service", "start")
 		defer func() {
@@ -91,7 +91,7 @@ func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) 
 
 	log.Infof("Watching service: %s", serviceName)
 
-	// 第一次检查（读锁）
+	// First check (read lock)
 	p.watcherMutex.RLock()
 	if existingWatcher, exists := p.activeWatchers[serviceName]; exists {
 		p.watcherMutex.RUnlock()
@@ -100,29 +100,29 @@ func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) 
 	}
 	p.watcherMutex.RUnlock()
 
-	// 创建 Consumer API 客户端
+	// Create Consumer API client
 	consumerAPI := api.NewConsumerAPIByContext(p.sdk)
 	if consumerAPI == nil {
 		return nil, NewInitError("failed to create consumer API")
 	}
 
-	// 创建服务监听器并连接到 SDK
+	// Create service watcher and connect to SDK
 	watcher := NewServiceWatcher(consumerAPI, serviceName, p.conf.Namespace)
 
-	// 第二次检查（写锁）- 双重检查锁定模式
+	// Second check (write lock) - double-checked locking pattern
 	p.watcherMutex.Lock()
 	defer p.watcherMutex.Unlock()
 
-	// 再次检查是否已经有其他 goroutine 创建了监听器
+	// Check again if another goroutine has already created the watcher
 	if existingWatcher, exists := p.activeWatchers[serviceName]; exists {
 		log.Infof("Service %s watcher was created by another goroutine", serviceName)
 		return existingWatcher, nil
 	}
 
-	// 注册监听器
+	// Register watcher
 	p.activeWatchers[serviceName] = watcher
 
-	// 设置回调函数
+	// Set callback functions
 	watcher.SetOnInstancesChanged(func(instances []model.Instance) {
 		p.handleServiceInstancesChanged(serviceName, instances)
 	})
@@ -131,14 +131,14 @@ func (p *PlugPolaris) WatchService(serviceName string) (*ServiceWatcher, error) 
 		p.handleServiceWatchError(serviceName, err)
 	})
 
-	// 启动监听
+	// Start watching
 	watcher.Start()
 
 	log.Infof("Started watching service: %s", serviceName)
 	return watcher, nil
 }
 
-// checkServiceHealth 检查服务健康状态
+// checkServiceHealth checks service health status
 func (p *PlugPolaris) checkServiceHealth(serviceName string, instances []model.Instance) {
 	healthyCount := 0
 	unhealthyCount := 0
@@ -154,14 +154,14 @@ func (p *PlugPolaris) checkServiceHealth(serviceName string, instances []model.I
 		}
 	}
 
-	// 记录健康状态指标
+	// Record health status metrics
 	if p.metrics != nil {
-		// 记录健康实例数量
+		// Record healthy instance count
 		log.Infof("Service health metrics: %s - Healthy: %d, Unhealthy: %d, Isolated: %d",
 			serviceName, healthyCount, unhealthyCount, isolatedCount)
 	}
 
-	// 如果健康实例太少，发出警告
+	// Issue warning if too few healthy instances
 	if healthyCount == 0 && len(instances) > 0 {
 		log.Warnf("Service %s has no healthy instances! Total: %d, Unhealthy: %d, Isolated: %d",
 			serviceName, len(instances), unhealthyCount, isolatedCount)
@@ -171,15 +171,15 @@ func (p *PlugPolaris) checkServiceHealth(serviceName string, instances []model.I
 	}
 }
 
-// retryServiceWatch 重试服务监听
+// retryServiceWatch retries service watch
 func (p *PlugPolaris) retryServiceWatch(serviceName string) {
-	// 实现重试逻辑
+	// Implement retry logic
 	log.Infof("Retrying service watch for %s", serviceName)
 
-	// 等待一段时间后重试
+	// Wait for a while before retrying
 	time.Sleep(5 * time.Second)
 
-	// 重新创建监听器
+	// Recreate watcher
 	if _, err := p.WatchService(serviceName); err == nil {
 		log.Infof("Successfully recreated service watcher for %s", serviceName)
 	} else {
@@ -187,25 +187,25 @@ func (p *PlugPolaris) retryServiceWatch(serviceName string) {
 	}
 }
 
-// useCachedServiceInstances 使用缓存的服务实例
+// useCachedServiceInstances uses cached service instances
 func (p *PlugPolaris) useCachedServiceInstances(serviceName string) {
 	log.Infof("Using cached service instances for %s", serviceName)
-	// 这里可以实现从缓存获取服务实例的逻辑
+	// Here you can implement logic to get service instances from cache
 }
 
-// switchToBackupDiscovery 切换到备用服务发现
+// switchToBackupDiscovery switches to backup service discovery
 func (p *PlugPolaris) switchToBackupDiscovery(serviceName string) {
 	log.Infof("Switching to backup discovery for %s", serviceName)
-	// 这里可以实现切换到备用服务发现的逻辑
+	// Here you can implement logic to switch to backup service discovery
 }
 
-// notifyDegradationMode 通知降级模式
+// notifyDegradationMode notifies degradation mode
 func (p *PlugPolaris) notifyDegradationMode(serviceName string, info map[string]interface{}) {
 	log.Infof("Notifying degradation mode for %s: %+v", serviceName, info)
-	// 这里可以实现通知降级模式的逻辑
+	// Here you can implement logic to notify degradation mode
 }
 
-// getServiceDiscoveryStats 获取服务发现统计信息
+// getServiceDiscoveryStats gets service discovery statistics
 func (p *PlugPolaris) getServiceDiscoveryStats() map[string]interface{} {
 	stats := map[string]interface{}{
 		"timestamp": time.Now().Unix(),
@@ -219,14 +219,14 @@ func (p *PlugPolaris) getServiceDiscoveryStats() map[string]interface{} {
 	return stats
 }
 
-// validateServiceInstance 验证服务实例
+// validateServiceInstance validates service instance
 func (p *PlugPolaris) validateServiceInstance(instance model.Instance) bool {
-	// 验证服务实例的有效性
+	// Validate service instance validity
 	if instance == nil {
 		return false
 	}
 
-	// 检查必要字段
+	// Check required fields
 	if instance.GetId() == "" {
 		return false
 	}
@@ -242,7 +242,7 @@ func (p *PlugPolaris) validateServiceInstance(instance model.Instance) bool {
 	return true
 }
 
-// filterHealthyInstances 过滤健康实例
+// filterHealthyInstances filters healthy instances
 func (p *PlugPolaris) filterHealthyInstances(instances []model.Instance) []model.Instance {
 	healthyInstances := make([]model.Instance, 0, len(instances))
 
@@ -255,7 +255,7 @@ func (p *PlugPolaris) filterHealthyInstances(instances []model.Instance) []model
 	return healthyInstances
 }
 
-// getServiceInstanceCount 获取服务实例数量统计
+// getServiceInstanceCount gets service instance count statistics
 func (p *PlugPolaris) getServiceInstanceCount(instances []model.Instance) map[string]int {
 	counts := map[string]int{
 		"total":     len(instances),

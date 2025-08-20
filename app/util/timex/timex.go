@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-// NowUTC 返回当前 UTC 时间。
+// NowUTC returns the current time in UTC.
 func NowUTC() time.Time { return time.Now().UTC() }
 
-// ParseAny 依次尝试使用 layouts 解析时间字符串。
+// ParseAny tries layouts in order to parse the time string.
 func ParseAny(layouts []string, s string) (time.Time, error) {
 	var lastErr error
 	for _, l := range layouts {
@@ -25,18 +25,19 @@ func ParseAny(layouts []string, s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("ParseAny: no layouts provided for input %q", s)
 }
 
-// Align 将时间向下对齐到给定的间隔边界（如 5m、1h）。
+// Align floors time t to the nearest lower multiple of d (e.g., 5m, 1h).
 func Align(t time.Time, d time.Duration) time.Time {
 	if d <= 0 {
 		return t
 	}
-	// 转为自 Unix 纪元的纳秒数进行对齐
+	// Align using nanoseconds since Unix epoch
 	unixNano := t.UnixNano()
 	aligned := unixNano - (unixNano % int64(d))
 	return time.Unix(0, aligned).In(t.Location())
 }
 
-// Jitter 在 [0, ratio] 范围内对时长做乘法抖动，ratio<0 时按 0 处理，ratio>1 时上限为 1。
+// Jitter multiplies duration by a random factor in [1, 1+ratio].
+// ratio<0 is treated as 0; ratio>1 is capped at 1.
 func Jitter(d time.Duration, ratio float64) time.Duration {
 	if d <= 0 || ratio == 0 {
 		return d
@@ -46,12 +47,12 @@ func Jitter(d time.Duration, ratio float64) time.Duration {
 	} else if ratio > 1 {
 		ratio = 1
 	}
-	// 生成 [0, ratio] 区间的随机浮点
+	// Generate a random float in [0, ratio]
 	f := rand.Float64() * ratio
 	return time.Duration(float64(d) * (1 + f))
 }
 
-// Within 判断 t 是否在 [start, end] 闭区间内。
+// Within reports whether t is within the closed interval [start, end].
 func Within(t, start, end time.Time) bool {
 	if end.Before(start) {
 		start, end = end, start

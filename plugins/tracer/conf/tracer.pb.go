@@ -22,14 +22,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// 协议类型（导出通道）。
-// - PROTOCOL_UNSPECIFIED：未指定时，默认按 OTLP gRPC 处理。
-// - OTLP_GRPC：通过 OTLP gRPC 导出（通常端口 4317）。
-// - OTLP_HTTP：通过 OTLP HTTP 导出（通常端口 4318，路径一般为 /v1/traces）。
+// Protocol type (export channel).
+// - PROTOCOL_UNSPECIFIED: When unspecified, defaults to OTLP gRPC processing.
+// - OTLP_GRPC: Export via OTLP gRPC (typically port 4317).
+// - OTLP_HTTP: Export via OTLP HTTP (typically port 4318, path usually /v1/traces).
 type Protocol int32
 
 const (
-	Protocol_PROTOCOL_UNSPECIFIED Protocol = 0 // 默认使用 OTLP gRPC
+	Protocol_PROTOCOL_UNSPECIFIED Protocol = 0 // Default to OTLP gRPC
 	Protocol_OTLP_GRPC            Protocol = 1
 	Protocol_OTLP_HTTP            Protocol = 2
 )
@@ -75,9 +75,9 @@ func (Protocol) EnumDescriptor() ([]byte, []int) {
 	return file_tracer_proto_rawDescGZIP(), []int{0}
 }
 
-// 压缩方式。
-// - COMPRESSION_NONE：不压缩（默认）。
-// - COMPRESSION_GZIP：使用 gzip 压缩。
+// Compression method.
+// - COMPRESSION_NONE: No compression (default).
+// - COMPRESSION_GZIP: Use gzip compression.
 type Compression int32
 
 const (
@@ -124,8 +124,8 @@ func (Compression) EnumDescriptor() ([]byte, []int) {
 	return file_tracer_proto_rawDescGZIP(), []int{1}
 }
 
-// 上下文传播器类型，用于跨进程/服务传递 Trace 上下文。
-// 生产常用组合：W3C_TRACE_CONTEXT + W3C_BAGGAGE；也可根据系统选用 B3/B3_MULTI/Jaeger。
+// Context propagator type, used to pass Trace context across processes/services.
+// Common production combinations: W3C_TRACE_CONTEXT + W3C_BAGGAGE; can also use B3/B3_MULTI/Jaeger based on system.
 type Propagator int32
 
 const (
@@ -187,10 +187,10 @@ func (Propagator) EnumDescriptor() ([]byte, []int) {
 type Sampler_Type int32
 
 const (
-	Sampler_SAMPLER_UNSPECIFIED        Sampler_Type = 0 // 等同于 ALWAYS_ON 或沿用外层 ratio
+	Sampler_SAMPLER_UNSPECIFIED        Sampler_Type = 0 // Equivalent to ALWAYS_ON or using outer ratio
 	Sampler_ALWAYS_ON                  Sampler_Type = 1
 	Sampler_ALWAYS_OFF                 Sampler_Type = 2
-	Sampler_TRACEID_RATIO              Sampler_Type = 3 // 使用 Tracer.ratio 或本消息 ratio
+	Sampler_TRACEID_RATIO              Sampler_Type = 3 // Use Tracer.ratio or this message ratio
 	Sampler_PARENT_BASED_TRACEID_RATIO Sampler_Type = 4
 )
 
@@ -239,16 +239,16 @@ func (Sampler_Type) EnumDescriptor() ([]byte, []int) {
 	return file_tracer_proto_rawDescGZIP(), []int{3, 0}
 }
 
-// TLS 配置。
-// - ca_file：CA 根证书路径；用于验证对端证书；HTTPS/gRPCs 通常需要。
-// - cert_file/key_file：客户端证书与私钥；配置后启用 mTLS；留空则为单向 TLS。
-// - insecure_skip_verify：是否跳过服务器证书校验（仅测试环境使用，生产不建议）。
+// TLS configuration.
+// - ca_file: CA root certificate path; used to verify peer certificates; typically required for HTTPS/gRPCs.
+// - cert_file/key_file: Client certificate and private key; enables mTLS when configured; empty for one-way TLS.
+// - insecure_skip_verify: Whether to skip server certificate verification (for test environment only, not recommended for production).
 type TLS struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	CaFile   string                 `protobuf:"bytes,1,opt,name=ca_file,json=caFile,proto3" json:"ca_file,omitempty"`
 	CertFile string                 `protobuf:"bytes,2,opt,name=cert_file,json=certFile,proto3" json:"cert_file,omitempty"`
 	KeyFile  string                 `protobuf:"bytes,3,opt,name=key_file,json=keyFile,proto3" json:"key_file,omitempty"`
-	// 是否跳过证书校验（仅测试环境使用）
+	// Whether to skip certificate verification (for test environment only)
 	InsecureSkipVerify bool `protobuf:"varint,4,opt,name=insecure_skip_verify,json=insecureSkipVerify,proto3" json:"insecure_skip_verify,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -312,17 +312,17 @@ func (x *TLS) GetInsecureSkipVerify() bool {
 	return false
 }
 
-// 重试配置（gRPC 导出器使用指数退避参数）。
-// - enabled：是否启用重试。
-// - max_attempts：最大重试次数（包含首次）；>0 生效；建议 3-10。
-// - initial_interval：初始退避间隔；如 10ms/100ms。
-// - max_interval：最大退避间隔上限；建议不超过 1m。
+// Retry configuration (gRPC exporter uses exponential backoff parameters).
+// - enabled: Whether to enable retry.
+// - max_attempts: Maximum retry attempts (including first attempt); >0 to take effect; recommended 3-10.
+// - initial_interval: Initial backoff interval; such as 10ms/100ms.
+// - max_interval: Maximum backoff interval upper limit; recommended not to exceed 1m.
 type Retry struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Enabled         bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	MaxAttempts     int32                  `protobuf:"varint,2,opt,name=max_attempts,json=maxAttempts,proto3" json:"max_attempts,omitempty"`            // 最大重试次数（包含首次）
-	InitialInterval *durationpb.Duration   `protobuf:"bytes,3,opt,name=initial_interval,json=initialInterval,proto3" json:"initial_interval,omitempty"` // 初始退避
-	MaxInterval     *durationpb.Duration   `protobuf:"bytes,4,opt,name=max_interval,json=maxInterval,proto3" json:"max_interval,omitempty"`             // 最大退避
+	MaxAttempts     int32                  `protobuf:"varint,2,opt,name=max_attempts,json=maxAttempts,proto3" json:"max_attempts,omitempty"`            // Maximum retry attempts (including first attempt)
+	InitialInterval *durationpb.Duration   `protobuf:"bytes,3,opt,name=initial_interval,json=initialInterval,proto3" json:"initial_interval,omitempty"` // Initial backoff
+	MaxInterval     *durationpb.Duration   `protobuf:"bytes,4,opt,name=max_interval,json=maxInterval,proto3" json:"max_interval,omitempty"`             // Maximum backoff
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -385,19 +385,19 @@ func (x *Retry) GetMaxInterval() *durationpb.Duration {
 	return nil
 }
 
-// 批处理配置（BatchSpanProcessor）。开启可显著降低导出开销、提高吞吐。
-// - enabled：是否启用批处理。
-// - max_queue_size：队列最大 span 数（>0）；建议 1k-10k。
-// - scheduled_delay：批调度周期；越小延迟越低、吞吐也可能降低。
-// - export_timeout：单次导出超时。
-// - max_batch_size：单批最大 span 数（>0，通常不超过 max_queue_size）。
+// Batch processing configuration (BatchSpanProcessor). Enabling can significantly reduce export overhead and improve throughput.
+// - enabled: Whether to enable batch processing.
+// - max_queue_size: Maximum number of spans in queue (>0); recommended 1k-10k.
+// - scheduled_delay: Batch scheduling period; smaller delay means lower latency but throughput may also decrease.
+// - export_timeout: Single export timeout.
+// - max_batch_size: Maximum number of spans per batch (>0, usually not exceeding max_queue_size).
 type Batch struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	Enabled        bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`                                    // 是否启用批处理
-	MaxQueueSize   int32                  `protobuf:"varint,2,opt,name=max_queue_size,json=maxQueueSize,proto3" json:"max_queue_size,omitempty"`    // 队列最大 span 数
-	ScheduledDelay *durationpb.Duration   `protobuf:"bytes,3,opt,name=scheduled_delay,json=scheduledDelay,proto3" json:"scheduled_delay,omitempty"` // 批调度间隔
-	ExportTimeout  *durationpb.Duration   `protobuf:"bytes,4,opt,name=export_timeout,json=exportTimeout,proto3" json:"export_timeout,omitempty"`    // 单次导出超时
-	MaxBatchSize   int32                  `protobuf:"varint,5,opt,name=max_batch_size,json=maxBatchSize,proto3" json:"max_batch_size,omitempty"`    // 单批最大 span 数
+	Enabled        bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`                                    // Whether to enable batch processing
+	MaxQueueSize   int32                  `protobuf:"varint,2,opt,name=max_queue_size,json=maxQueueSize,proto3" json:"max_queue_size,omitempty"`    // Maximum number of spans in queue
+	ScheduledDelay *durationpb.Duration   `protobuf:"bytes,3,opt,name=scheduled_delay,json=scheduledDelay,proto3" json:"scheduled_delay,omitempty"` // Batch scheduling interval
+	ExportTimeout  *durationpb.Duration   `protobuf:"bytes,4,opt,name=export_timeout,json=exportTimeout,proto3" json:"export_timeout,omitempty"`    // Single export timeout
+	MaxBatchSize   int32                  `protobuf:"varint,5,opt,name=max_batch_size,json=maxBatchSize,proto3" json:"max_batch_size,omitempty"`    // Maximum number of spans per batch
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -467,17 +467,17 @@ func (x *Batch) GetMaxBatchSize() int32 {
 	return 0
 }
 
-// 采样器配置（类型 + 比例）。
-// Type 说明：
-// - ALWAYS_ON：全量采样；开发/调试友好，但成本最高。
-// - ALWAYS_OFF：不采样；仅保留上下文开销。
-// - TRACEID_RATIO：按比例采样根 Span（ratio 0.0-1.0），同一 Trace 子 Span 跟随。
-// - PARENT_BASED_TRACEID_RATIO：父级优先；有父则严格跟随父决策，无父按 ratio 采样。
+// Sampler configuration (type + ratio).
+// Type description:
+// - ALWAYS_ON: Full sampling; developer/debugging friendly, but highest cost.
+// - ALWAYS_OFF: No sampling; only context overhead retained.
+// - TRACEID_RATIO: Sample root Spans by ratio (ratio 0.0-1.0), child Spans in same Trace follow.
+// - PARENT_BASED_TRACEID_RATIO: Parent-based; with parent strictly follows parent decision, without parent samples by ratio.
 type Sampler struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Type  Sampler_Type           `protobuf:"varint,1,opt,name=type,proto3,enum=lynx.protobuf.plugin.tracer.Sampler_Type" json:"type,omitempty"`
-	// 采样率；取值范围 0.0-1.0；当 type 为 TRACEID_RATIO 或 PARENT_BASED_TRACEID_RATIO 时使用。
-	// 生产环境常用 0.1-0.3；0.0 表示不采样，1.0 表示全量采样。
+	// Sampling rate; value range 0.0-1.0; used when type is TRACEID_RATIO or PARENT_BASED_TRACEID_RATIO.
+	// Common in production: 0.1-0.3; 0.0 means no sampling, 1.0 means full sampling.
 	Ratio         float32 `protobuf:"fixed32,2,opt,name=ratio,proto3" json:"ratio,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -527,13 +527,13 @@ func (x *Sampler) GetRatio() float32 {
 	return 0
 }
 
-// 资源信息（如 service.name、部署/团队等维度标签）。
-// - service_name：服务名，等价于 Resource(service.name)；建议与应用标识一致。
-// - attributes：附加资源属性键值对（如 deployment.environment=prod）。
+// Resource information (such as service.name, deployment/team dimension labels).
+// - service_name: Service name, equivalent to Resource(service.name); recommended to be consistent with application identifier.
+// - attributes: Additional resource attribute key-value pairs (such as deployment.environment=prod).
 type Resource struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServiceName   string                 `protobuf:"bytes,1,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
-	Attributes    map[string]string      `protobuf:"bytes,2,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 如 deployment.environment=prod
+	Attributes    map[string]string      `protobuf:"bytes,2,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Such as deployment.environment=prod
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -582,10 +582,10 @@ func (x *Resource) GetAttributes() map[string]string {
 	return nil
 }
 
-// Span 限制（SpanLimits）。
-// 说明：当前 OpenTelemetry Go SDK 的 SpanLimits 主要支持下列字段：
+// Span limits (SpanLimits).
+// Note: Current OpenTelemetry Go SDK SpanLimits mainly supports the following fields:
 // - attribute_count_limit, attribute_value_length_limit, event_count_limit, link_count_limit
-// 其余 *_attribute_count_limit 字段在当前实现中会被忽略，仅为兼容/预留。
+// Other *_attribute_count_limit fields are ignored in current implementation, only for compatibility/reservation.
 type Limits struct {
 	state                     protoimpl.MessageState `protogen:"open.v1"`
 	AttributeCountLimit       int32                  `protobuf:"varint,1,opt,name=attribute_count_limit,json=attributeCountLimit,proto3" json:"attribute_count_limit,omitempty"`
@@ -670,35 +670,35 @@ func (x *Limits) GetLinkAttributeCountLimit() int32 {
 	return 0
 }
 
-// 组合的导出与运行配置（Exporter/Processor/Sampler/Propagator/Resource/Limits）。
-// 建议优先使用本消息进行模块化配置；旧版顶层 ratio 仅作回退用途。
+// Combined export and runtime configuration (Exporter/Processor/Sampler/Propagator/Resource/Limits).
+// Recommended to use this message for modular configuration; legacy top-level ratio only for fallback.
 type Config struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 导出协议：OTLP gRPC 或 OTLP HTTP（默认 gRPC）。
+	// Export protocol: OTLP gRPC or OTLP HTTP (default gRPC).
 	Protocol Protocol `protobuf:"varint,1,opt,name=protocol,proto3,enum=lynx.protobuf.plugin.tracer.Protocol" json:"protocol,omitempty"`
-	// 是否禁用 TLS（明文传输）。与 tls 互斥：当配置 tls 时，应将 insecure 设为 false。
+	// Whether to disable TLS (plaintext transmission). Mutually exclusive with tls: when tls is configured, insecure should be set to false.
 	Insecure bool `protobuf:"varint,2,opt,name=insecure,proto3" json:"insecure,omitempty"`
-	// TLS 配置（单向 TLS 或双向 mTLS）。
+	// TLS configuration (one-way TLS or mutual mTLS).
 	Tls *TLS `protobuf:"bytes,3,opt,name=tls,proto3" json:"tls,omitempty"`
-	// 自定义请求头（如认证 Token、租户信息等）；将透传给 Collector。
+	// Custom request headers (such as auth Token, tenant info, etc.); will be passed through to Collector.
 	Headers map[string]string `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// 压缩方式（NONE/GZIP）。
+	// Compression method (NONE/GZIP).
 	Compression Compression `protobuf:"varint,5,opt,name=compression,proto3,enum=lynx.protobuf.plugin.tracer.Compression" json:"compression,omitempty"`
-	// 导出超时（请求级超时），如 10s/30s/1m。
+	// Export timeout (request-level timeout), such as 10s/30s/1m.
 	Timeout *durationpb.Duration `protobuf:"bytes,6,opt,name=timeout,proto3" json:"timeout,omitempty"`
-	// 重试配置（仅 gRPC 导出器使用）。
+	// Retry configuration (only used by gRPC exporter).
 	Retry *Retry `protobuf:"bytes,7,opt,name=retry,proto3" json:"retry,omitempty"`
-	// 批处理配置（强烈建议开启以提升吞吐）。
+	// Batch processing configuration (strongly recommended to enable for improved throughput).
 	Batch *Batch `protobuf:"bytes,8,opt,name=batch,proto3" json:"batch,omitempty"`
-	// 采样器配置（推荐使用 PARENT_BASED_TRACEID_RATIO + 合理 ratio）。
+	// Sampler configuration (recommended to use PARENT_BASED_TRACEID_RATIO + reasonable ratio).
 	Sampler *Sampler `protobuf:"bytes,9,opt,name=sampler,proto3" json:"sampler,omitempty"`
-	// 上下文传播器列表（建议至少包含 W3C_TRACE_CONTEXT + W3C_BAGGAGE）。
+	// Context propagator list (recommended to include at least W3C_TRACE_CONTEXT + W3C_BAGGAGE).
 	Propagators []Propagator `protobuf:"varint,10,rep,packed,name=propagators,proto3,enum=lynx.protobuf.plugin.tracer.Propagator" json:"propagators,omitempty"`
-	// 资源信息（service.name 与附加属性）。
+	// Resource information (service.name and additional attributes).
 	Resource *Resource `protobuf:"bytes,11,opt,name=resource,proto3" json:"resource,omitempty"`
-	// span 限制（见 Limits）。
+	// Span limits (see Limits).
 	Limits *Limits `protobuf:"bytes,12,opt,name=limits,proto3" json:"limits,omitempty"`
-	// 仅在 OTLP HTTP 模式下生效；默认 "/v1/traces"。
+	// Only effective in OTLP HTTP mode; default "/v1/traces".
 	HttpPath      string `protobuf:"bytes,13,opt,name=http_path,json=httpPath,proto3" json:"http_path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -825,19 +825,19 @@ func (x *Config) GetHttpPath() string {
 	return ""
 }
 
-// Tracer 定义了链路跟踪插件的配置信息。
+// Tracer defines the configuration information for the tracing plugin.
 type Tracer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 是否启用链路跟踪功能（true/false）。关闭时将不初始化 TracerProvider。
+	// Whether to enable tracing functionality (true/false). When disabled, TracerProvider will not be initialized.
 	Enable bool `protobuf:"varint,1,opt,name=enable,proto3" json:"enable,omitempty"`
-	// 导出端点地址；通常为 OpenTelemetry Collector 地址，格式 "host:port"。
-	// - gRPC 常用 4317，例如 "otel-collector:4317"
-	// - HTTP 常用 4318（需配合 config.http_path），例如 "otel-collector:4318"
+	// Export endpoint address; typically OpenTelemetry Collector address, format "host:port".
+	// - gRPC commonly uses 4317, for example "otel-collector:4317"
+	// - HTTP commonly uses 4318 (requires config.http_path), for example "otel-collector:4318"
 	Addr string `protobuf:"bytes,2,opt,name=addr,proto3" json:"addr,omitempty"`
-	// 模块化 OpenTelemetry 配置，包含协议/TLS/重试/压缩/批处理/传播器/资源/限额/采样器。
+	// Modular OpenTelemetry configuration, including protocol/TLS/retry/compression/batch/propagator/resource/limit/sampler.
 	Config *Config `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`
-	// 采样率（legacy 回退字段）：0.0-1.0。
-	// 说明：为兼容旧版而保留。推荐改用 config.sampler（TRACEID_RATIO 或 PARENT_BASED_TRACEID_RATIO）。
+	// Sampling rate (legacy fallback field): 0.0-1.0.
+	// Note: Retained for compatibility with legacy versions. Recommended to use config.sampler (TRACEID_RATIO or PARENT_BASED_TRACEID_RATIO).
 	Ratio         float32 `protobuf:"fixed32,3,opt,name=ratio,proto3" json:"ratio,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

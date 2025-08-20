@@ -10,19 +10,19 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// LockOptions 锁的配置选项
+// LockOptions lock configuration options
 type LockOptions struct {
-	Expiration       time.Duration // 锁过期时间
-	RetryStrategy    RetryStrategy // 重试策略
-	RenewalEnabled   bool          // 是否启用自动续期
-	RenewalThreshold float64       // 续期阈值（相对于过期时间的比例，默认1/3）
-	WorkerPoolSize   int           // 续期工作池大小，默认50
-	RenewalConfig    RenewalConfig // 续期配置
-	// ScriptCallTimeout 单次脚本调用的超时控制（获取/释放）。为0则不单独设置超时。
+	Expiration       time.Duration // Lock expiration time
+	RetryStrategy    RetryStrategy // Retry strategy
+	RenewalEnabled   bool          // Whether to enable auto renewal
+	RenewalThreshold float64       // Renewal threshold (proportion relative to expiration time, default 1/3)
+	WorkerPoolSize   int           // Renewal worker pool size, default 50
+	RenewalConfig    RenewalConfig // Renewal configuration
+	// ScriptCallTimeout timeout control for single script call (acquire/release). 0 means no separate timeout.
 	ScriptCallTimeout time.Duration
 }
 
-// Validate 验证配置选项
+// Validate validates configuration options
 func (lo *LockOptions) Validate() error {
 	if lo.Expiration <= 0 {
 		return fmt.Errorf("expiration must be positive, got %v", lo.Expiration)
@@ -39,7 +39,7 @@ func (lo *LockOptions) Validate() error {
 	return lo.RetryStrategy.Validate()
 }
 
-// ValidateKey 验证锁键名的有效性
+// ValidateKey validates the validity of lock key name
 func ValidateKey(key string) error {
 	if key == "" {
 		return fmt.Errorf("lock key cannot be empty")
@@ -49,7 +49,7 @@ func ValidateKey(key string) error {
 		return fmt.Errorf("lock key too long, max length is 255, got %d", len(key))
 	}
 
-	// 检查是否包含非法字符
+	// Check for invalid characters
 	for _, char := range key {
 		if char < 32 || char > 126 {
 			return fmt.Errorf("lock key contains invalid character: %c", char)
@@ -62,7 +62,7 @@ func ValidateKey(key string) error {
 	return nil
 }
 
-// Validate 验证重试策略
+// Validate validates retry strategy
 func (rs *RetryStrategy) Validate() error {
 	if rs.MaxRetries < 0 {
 		return fmt.Errorf("max retries must be non-negative, got %d", rs.MaxRetries)
@@ -75,23 +75,23 @@ func (rs *RetryStrategy) Validate() error {
 	return nil
 }
 
-// RetryStrategy 定义锁重试策略
+// RetryStrategy defines lock retry strategy
 type RetryStrategy struct {
-	MaxRetries int           // 最大重试次数
-	RetryDelay time.Duration // 重试间隔
+	MaxRetries int           // Maximum retry attempts
+	RetryDelay time.Duration // Retry interval
 }
 
-// RenewalConfig 续期配置
+// RenewalConfig renewal configuration
 type RenewalConfig struct {
-	MaxRetries    int           // 续期最大重试次数
-	BaseDelay     time.Duration // 基础重试延迟
-	MaxDelay      time.Duration // 最大重试延迟
-	CheckInterval time.Duration // 续期检查间隔
-	// CallTimeout 单次续期脚本调用超时。为0则不单独设置超时。
+	MaxRetries    int           // Maximum renewal retry attempts
+	BaseDelay     time.Duration // Base retry delay
+	MaxDelay      time.Duration // Maximum retry delay
+	CheckInterval time.Duration // Renewal check interval
+	// CallTimeout single renewal script call timeout. 0 means no separate timeout.
 	CallTimeout time.Duration
 }
 
-// LockCallback 锁操作回调接口
+// LockCallback lock operation callback interface
 type LockCallback interface {
 	OnLockAcquired(key string, duration time.Duration)
 	OnLockReleased(key string, duration time.Duration)
@@ -100,7 +100,7 @@ type LockCallback interface {
 	OnLockAcquireFailed(key string, error error)
 }
 
-// NoOpCallback 空实现回调
+// NoOpCallback empty implementation callback
 type NoOpCallback struct{}
 
 func (NoOpCallback) OnLockAcquired(key string, duration time.Duration) {}
@@ -109,22 +109,22 @@ func (NoOpCallback) OnLockRenewed(key string, duration time.Duration)  {}
 func (NoOpCallback) OnLockRenewalFailed(key string, error error)       {}
 func (NoOpCallback) OnLockAcquireFailed(key string, error error)       {}
 
-// RedisLock 实现了基于 Redis 的分布式锁
+// RedisLock implements Redis-based distributed lock
 type RedisLock struct {
-	client           *redis.Client // Redis 客户端
-	key              string        // 锁的键名
-	value            string        // 锁的值（用于识别持有者）
-	expiration       time.Duration // 锁的过期时间
-	expiresAt        time.Time     // 锁的过期时间点
-	mutex            sync.Mutex    // 保护内部状态
-	renewalThreshold float64       // 续期阈值
-	acquiredAt       time.Time     // 获取锁的时间
+	client           *redis.Client // Redis client
+	key              string        // Lock key name
+	value            string        // Lock value (used to identify holder)
+	expiration       time.Duration // Lock expiration time
+	expiresAt        time.Time     // Lock expiration time point
+	mutex            sync.Mutex    // Protect internal state
+	renewalThreshold float64       // Renewal threshold
+	acquiredAt       time.Time     // Time when lock was acquired
 
-	// 实际在 Redis 中使用的两个键（使用相同 hash tag，保证在集群中同槽位）
-	ownerKey string // 保存持有者标识的键
-	countKey string // 保存重入计数的键
-	// fencing token 键与最近一次获取到的 token 值
-	// 注意：token 仅在第一次获取（非重入）时递增并记录。
+	// Two keys actually used in Redis (using same hash tag to ensure same slot in cluster)
+	ownerKey string // Key storing holder identifier
+	countKey string // Key storing reentry count
+	// fencing token key and most recently acquired token value
+	// Note: token is only incremented and recorded on first acquisition (non-reentrant).
 	tokenKey string
 	token    int64
 }
@@ -143,32 +143,32 @@ func randFloat64() float64 {
 	return v
 }
 
-// lockManager 管理所有的分布式锁实例
+// lockManager manages all distributed lock instances
 type lockManager struct {
 	mutex sync.RWMutex
 	locks map[string]*RedisLock
-	// 续期服务
+	// Renewal service
 	renewCtx    context.Context
 	renewCancel context.CancelFunc
 	running     bool
-	// 工作池
+	// Worker pool
 	workerPool chan struct{}
-	// 统计信息
+	// Statistics
 	stats struct {
 		TotalLocks    int64
 		ActiveLocks   int64
 		RenewalCount  int64
 		RenewalErrors int64
-		// 当工作池满载时被跳过的续期次数
+		// Number of renewals skipped when worker pool is full
 		SkippedRenewals int64
-		// 续期时延累计（纳秒）与次数，用于计算平均时延
+		// Accumulated renewal latency (nanoseconds) and count for calculating average latency
 		RenewLatencyNs    int64
 		RenewLatencyCount int64
 		WorkerPoolCap     int
 	}
 }
 
-// 默认配置
+// Default configurations
 var (
 	DefaultRetryStrategy = RetryStrategy{
 		MaxRetries: 3,
@@ -176,7 +176,7 @@ var (
 	}
 
 	DefaultRenewalConfig = RenewalConfig{
-		// 更保守的续期策略，覆盖短时 Redis 延迟尖刺
+		// More conservative renewal strategy to cover short Redis latency spikes
 		MaxRetries:    4,
 		BaseDelay:     100 * time.Millisecond,
 		MaxDelay:      800 * time.Millisecond,
@@ -187,35 +187,35 @@ var (
 	DefaultLockOptions LockOptions
 )
 
-// init 初始化默认配置，避免循环依赖
+// init initializes default configurations to avoid circular dependencies
 func init() {
 	DefaultLockOptions = LockOptions{
 		Expiration:     30 * time.Second,
 		RetryStrategy:  DefaultRetryStrategy,
 		RenewalEnabled: true,
-		// 提前在 30% TTL 进入续期窗口，给重试与抖动留足余量
+		// Enter renewal window at 30% TTL in advance, leaving enough margin for retries and jitter
 		RenewalThreshold: 0.3,
-		// 提升默认工作池容量，降低跳过概率（视业务压测可再调）
+		// Increase default worker pool capacity to reduce skip probability (can be adjusted based on business load testing)
 		WorkerPoolSize: 50,
 		RenewalConfig:  DefaultRenewalConfig,
-		// 获取/释放脚本单次超时，略高于 Redis P99
+		// Single timeout for acquire/release scripts, slightly higher than Redis P99
 		ScriptCallTimeout: 600 * time.Millisecond,
 	}
 }
 
-// buildLockKeys 基于业务 key 生成实际用于 Redis 的 ownerKey 与 countKey。
-// 使用相同的 hash tag，确保在 Redis Cluster 下两个键落在同一槽位。
+// buildLockKeys generates actual Redis ownerKey and countKey based on business key.
+// Uses the same hash tag to ensure both keys fall in the same slot under Redis Cluster.
 func buildLockKeys(base string) (ownerKey, countKey string) {
-	// 使用 per-key hashtag 分散槽位，同时保证 owner/count 同槽位：{lynx:lock:<base>}
-	// 例如：{lynx:lock:order123}:owner 与 {lynx:lock:order123}:count
+	// Use per-key hashtag to distribute slots while ensuring owner/count are in the same slot: {lynx:lock:<base>}
+	// For example: {lynx:lock:order123}:owner and {lynx:lock:order123}:count
 	hashtag := "{lynx:lock:" + base + "}"
 	ownerKey = hashtag + ":owner"
 	countKey = hashtag + ":count"
 	return
 }
 
-// buildTokenKey 基于业务 key 生成 fencing token 计数器键。
-// 与 owner/count 使用相同 hashtag，确保在 Redis Cluster 下落在同一槽位。
+// buildTokenKey generates fencing token counter key based on business key.
+// Uses the same hashtag as owner/count to ensure it falls in the same slot under Redis Cluster.
 func buildTokenKey(base string) (tokenKey string) {
 	hashtag := "{lynx:lock:" + base + "}"
 	tokenKey = hashtag + ":token"

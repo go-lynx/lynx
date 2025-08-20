@@ -10,8 +10,8 @@ import (
 	"github.com/qustavo/sqlhooks/v2"
 )
 
-// 在启用 hooks 的构建下，使用 sqlhooks 包装 pgx 驱动并注册
+// In builds with hooks enabled, wrap pgx driver with sqlhooks and register
 func registerDriver() {
-	// 注册名保持为 "postgres"，与 p.conf.Driver 默认一致
+	// Registration name remains "postgres", consistent with p.conf.Driver default
 	sql.Register("postgres", sqlhooks.Wrap(stdlib.GetDefaultDriver(), NewMetricsHooks()))
 }

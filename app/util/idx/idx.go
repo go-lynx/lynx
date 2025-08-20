@@ -2,8 +2,8 @@ package idx
 
 import "github.com/go-lynx/lynx/app/util/randx"
 
-// NanoID 生成 URL 安全的短 ID，长度为 n。默认字符集与 RandString 相同。
-// 典型长度为 21（~128bit 熵）。
+// NanoID generates a URL-safe short ID of length n. The default alphabet matches RandString.
+// A typical length is 21 (~128-bit entropy).
 func NanoID(n int) (string, error) {
 	if n <= 0 {
 		return "", nil
@@ -11,5 +11,5 @@ func NanoID(n int) (string, error) {
 	return randx.RandString(n, "")
 }
 
-// DefaultNanoID 生成长度为 21 的短 ID。
+// DefaultNanoID generates a short ID of length 21.
 func DefaultNanoID() (string, error) { return NanoID(21) }

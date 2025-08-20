@@ -1,4 +1,4 @@
-// Package http 实现了 Lynx 框架的 HTTP 服务器插件功能。
+// Package http implements the HTTP server plugin for the Lynx framework.
 package http
 
 import (
@@ -14,14 +14,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// initMonitoringDefaults 初始化监控默认配置
+// initMonitoringDefaults initializes monitoring defaults.
 func (h *ServiceHttp) initMonitoringDefaults() {
-	// 监控配置可以通过环境变量或配置文件设置
-	// 暂时使用默认配置
+	// Monitoring settings can be configured via environment variables or config files.
+	// For now, use default settings.
 }
 
-// initMetrics 初始化 Prometheus 监控指标
-// 全局单例指标，避免多实例重复注册导致 panic
+// initMetrics initializes Prometheus metrics.
+// Use global singletons to avoid duplicate registrations across instances.
 var (
 	metricsInitOnce     sync.Once
 	httpRequestCounter  *prometheus.CounterVec
@@ -33,7 +33,7 @@ var (
 	httpInflight        *prometheus.GaugeVec
 )
 
-// ensureGlobalMetrics 初始化并在统一注册表注册一次
+// ensureGlobalMetrics initializes metrics and registers them once in the unified registry.
 func ensureGlobalMetrics() {
 	metricsInitOnce.Do(func() {
 		httpRequestCounter = prometheus.NewCounterVec(
@@ -109,7 +109,7 @@ func ensureGlobalMetrics() {
 			[]string{"path"},
 		)
 
-		// 使用统一注册表注册，避免多实例重复注册
+		// Register with the unified registry to avoid duplicate registrations across instances.
 		obsmetrics.MustRegister(
 			httpRequestCounter,
 			httpRequestDuration,
@@ -123,10 +123,10 @@ func ensureGlobalMetrics() {
 }
 
 func (h *ServiceHttp) initMetrics() {
-	// 确保全局指标已初始化并注册一次
+	// Ensure global metrics are initialized and registered once.
 	ensureGlobalMetrics()
 
-	// 各实例复用同一组 Collector
+	// Reuse the same set of collectors for each instance.
 	h.requestCounter = httpRequestCounter
 	h.requestDuration = httpRequestDuration
 	h.responseSize = httpResponseSize
@@ -136,13 +136,13 @@ func (h *ServiceHttp) initMetrics() {
 	h.inflightRequests = httpInflight
 }
 
-// CheckHealth 对 HTTP 服务器进行全面的健康检查。
+// CheckHealth performs a comprehensive health check for the HTTP server.
 func (h *ServiceHttp) CheckHealth() error {
 	if h.server == nil {
 		return fmt.Errorf("HTTP server is not initialized")
 	}
 
-	// 检查监听端口
+	// Check if the listen address is accepting connections.
 	if h.conf.Addr != "" {
 		conn, err := net.DialTimeout("tcp", h.conf.Addr, 5*time.Second)
 		if err != nil {
@@ -151,7 +151,7 @@ func (h *ServiceHttp) CheckHealth() error {
 		conn.Close()
 	}
 
-	// 记录健康检查指标
+	// Record health check metrics
 	if h.healthCheckTotal != nil {
 		h.healthCheckTotal.WithLabelValues("success").Inc()
 	}
@@ -160,12 +160,12 @@ func (h *ServiceHttp) CheckHealth() error {
 	return nil
 }
 
-// healthCheckHandler 健康检查处理器
+// healthCheckHandler returns the health check handler.
 func (h *ServiceHttp) healthCheckHandler() nhttp.Handler {
 	return nhttp.HandlerFunc(func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		// 执行健康检查
+		// Execute health check
 		err := h.CheckHealth()
 
 		var response map[string]interface{}
@@ -194,7 +194,7 @@ func (h *ServiceHttp) healthCheckHandler() nhttp.Handler {
 			}
 		}
 
-		// 序列化并写入响应
+		// Serialize and write the response
 		w.WriteHeader(statusCode)
 		if data, err := json.Marshal(response); err == nil {
 			w.Write(data)

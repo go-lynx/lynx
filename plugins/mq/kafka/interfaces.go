@@ -8,128 +8,128 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// Producer Kafka 生产者接口
+// Producer Kafka producer interface
 type Producer interface {
-	// Produce 发送单条消息到指定主题
+	// Produce sends a single message to the specified topic
 	Produce(ctx context.Context, topic string, key, value []byte) error
 
-	// ProduceBatch 批量发送消息到指定主题
+	// ProduceBatch sends messages in batch to the specified topic
 	ProduceBatch(ctx context.Context, topic string, records []*kgo.Record) error
 
-	// ProduceWith 按生产者实例名发送单条消息
+	// ProduceWith sends a single message by producer instance name
 	ProduceWith(ctx context.Context, producerName, topic string, key, value []byte) error
 
-	// ProduceBatchWith 按生产者实例名批量发送
+	// ProduceBatchWith sends messages in batch by producer instance name
 	ProduceBatchWith(ctx context.Context, producerName string, topic string, records []*kgo.Record) error
 
-	// GetProducer 获取底层生产者客户端
+	// GetProducer gets the underlying producer client
 	GetProducer() *kgo.Client
 
-	// IsProducerReady 检查生产者是否就绪
+	// IsProducerReady checks if the producer is ready
 	IsProducerReady() bool
 }
 
-// Consumer Kafka 消费者接口
+// Consumer Kafka consumer interface
 type Consumer interface {
-	// Subscribe 订阅主题并设置消息处理器
+	// Subscribe subscribes to topics and sets message handler
 	Subscribe(ctx context.Context, topics []string, handler MessageHandler) error
 
-	// SubscribeWith 按消费者实例名订阅
+	// SubscribeWith subscribes by consumer instance name
 	SubscribeWith(ctx context.Context, consumerName string, topics []string, handler MessageHandler) error
 
-	// GetConsumer 获取底层消费者客户端
+	// GetConsumer gets the underlying consumer client
 	GetConsumer() *kgo.Client
 
-	// IsConsumerReady 检查消费者是否就绪
+	// IsConsumerReady checks if the consumer is ready
 	IsConsumerReady() bool
 }
 
-// ClientInterface Kafka 客户端接口
+// ClientInterface Kafka client interface
 type ClientInterface interface {
 	Producer
 	Consumer
 
-	// InitializeResources 初始化资源
+	// InitializeResources initializes resources
 	InitializeResources(rt plugins.Runtime) error
 
-	// StartupTasks 启动任务
+	// StartupTasks startup tasks
 	StartupTasks() error
 
-	// ShutdownTasks 关闭任务
+	// ShutdownTasks shutdown tasks
 	ShutdownTasks() error
 
-	// GetMetrics 获取监控指标
+	// GetMetrics gets monitoring metrics
 	GetMetrics() *Metrics
 }
 
-// MetricsProvider 监控指标提供者接口
+// MetricsProvider monitoring metrics provider interface
 type MetricsProvider interface {
-	// GetStats 获取统计信息
+	// GetStats gets statistics
 	GetStats() map[string]interface{}
 
-	// Reset 重置指标
+	// Reset resets metrics
 	Reset()
 }
 
-// HealthCheckerInterface 健康检查器接口
+// HealthCheckerInterface health checker interface
 type HealthCheckerInterface interface {
-	// Start 启动健康检查
+	// Start starts health check
 	Start()
 
-	// Stop 停止健康检查
+	// Stop stops health check
 	Stop()
 
-	// IsHealthy 检查是否健康
+	// IsHealthy checks if healthy
 	IsHealthy() bool
 
-	// GetLastCheck 获取最后检查时间
+	// GetLastCheck gets last check time
 	GetLastCheck() time.Time
 
-	// GetErrorCount 获取错误计数
+	// GetErrorCount gets error count
 	GetErrorCount() int
 }
 
-// ConnectionManagerInterface 连接管理器接口
+// ConnectionManagerInterface connection manager interface
 type ConnectionManagerInterface interface {
-	// Start 启动连接管理器
+	// Start starts connection manager
 	Start()
 
-	// Stop 停止连接管理器
+	// Stop stops connection manager
 	Stop()
 
-	// IsConnected 检查是否已连接
+	// IsConnected checks if connected
 	IsConnected() bool
 
-	// GetHealthChecker 获取健康检查器
+	// GetHealthChecker gets health checker
 	GetHealthChecker() HealthCheckerInterface
 
-	// ForceReconnect 强制重连
+	// ForceReconnect forces reconnection
 	ForceReconnect()
 }
 
-// BatchProcessorInterface 批量处理器接口
+// BatchProcessorInterface batch processor interface
 type BatchProcessorInterface interface {
-	// AddRecord 添加记录
+	// AddRecord adds record
 	AddRecord(ctx context.Context, record *kgo.Record) error
 
-	// Flush 强制处理
+	// Flush forces processing
 	Flush(ctx context.Context) error
 
-	// Close 关闭处理器
+	// Close closes processor
 	Close()
 }
 
-// RetryHandlerInterface 重试处理器接口
+// RetryHandlerInterface retry handler interface
 type RetryHandlerInterface interface {
-	// DoWithRetry 执行带重试的操作
+	// DoWithRetry executes operation with retry
 	DoWithRetry(ctx context.Context, operation func() error) error
 }
 
-// GoroutinePoolInterface 协程池接口
+// GoroutinePoolInterface goroutine pool interface
 type GoroutinePoolInterface interface {
-	// Submit 提交任务
+	// Submit submits task
 	Submit(task func())
 
-	// Wait 等待完成
+	// Wait waits for completion
 	Wait()
 }

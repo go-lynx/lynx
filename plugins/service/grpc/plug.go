@@ -7,28 +7,28 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// init 函数用于将 gRPC 服务器插件注册到全局插件工厂中。
-// 当该包被导入时，此函数会自动调用。
-// 它创建一个新的 ServiceGrpc 实例，并使用配置好的插件名称和配置前缀将其注册到插件工厂。
+// init function registers the gRPC server plugin to the global plugin factory.
+// This function is automatically called when the package is imported.
+// It creates a new ServiceGrpc instance and registers it to the plugin factory with the configured plugin name and configuration prefix.
 func init() {
-	// 调用全局插件工厂的 RegisterPlugin 方法进行插件注册
-	// 传入插件名称、配置前缀和一个返回 plugins.Plugin 接口实例的函数
+	// Call the RegisterPlugin method of the global plugin factory for plugin registration
+	// Pass in the plugin name, configuration prefix, and a function that returns a plugins.Plugin interface instance
 	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
-		// 创建并返回一个新的 ServiceGrpc 实例
+		// Create and return a new ServiceGrpc instance
 		return NewServiceGrpc()
 	})
 }
 
-// GetGrpcServer 从插件管理器中获取 gRPC 服务器实例。
-// 该函数为应用程序的其他部分提供对底层 gRPC 服务器的访问，
-// 这些部分可能需要注册服务或使用服务器功能。
+// GetGrpcServer gets the gRPC server instance from the plugin manager.
+// This function provides access to the underlying gRPC server for other parts of the application
+// that may need to register services or use server functionality.
 //
-// 返回值:
-//   - *grpc.Server: 配置好的 gRPC 服务器实例
+// Returns:
+//   - *grpc.Server: Configured gRPC server instance
 //
-// 注意: 如果插件未正确初始化，或者插件管理器找不到 gRPC 插件，此函数会触发 panic。
+// Note: This function will panic if the plugin is not properly initialized or if the plugin manager cannot find the gRPC plugin.
 func GetGrpcServer() *grpc.Server {
-	// 从应用程序的插件管理器中获取指定名称的插件，
-	// 并将其转换为 *ServiceGrpc 类型，然后返回其 server 字段
+	// Get the plugin with the specified name from the application's plugin manager,
+	// convert it to *ServiceGrpc type, and return its server field
 	return app.Lynx().GetPluginManager().GetPlugin(pluginName).(*ServiceGrpc).server
 }

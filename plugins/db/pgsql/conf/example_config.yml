@@ -1,31 +1,31 @@
-# PgSQL 插件配置示例
-# 这个文件展示了如何正确配置 PgSQL 数据库连接
+# PgSQL Plugin Configuration Example
+# This file demonstrates how to properly configure PgSQL database connections
 
 lynx:
   pgsql:
-    # 数据库驱动名称
+    # Database driver name
     driver: "postgres"
-    
-    # 数据库连接字符串
-    # 格式: postgres://username:password@host:port/database?sslmode=disable
+
+    # Database connection string
+    # Format: postgres://username:password@host:port/database?sslmode=disable
     source: "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable"
-    
-    # 连接池配置
-    # 最小连接数（空闲连接数）
+
+    # Connection pool configuration
+    # Minimum number of connections (idle connections)
     min_conn: 10
-    
-    # 最大连接数
+
+    # Maximum number of connections
     max_conn: 50
-    
-    # 连接最大空闲时间
-    # 超过此时间的空闲连接将被关闭
+
+    # Maximum idle time for connections
+    # Idle connections exceeding this time will be closed
     max_idle_time: "30s"
-    
-    # 连接最大生命周期
-    # 超过此时间的连接将被关闭并重新创建
+
+    # Maximum connection lifetime
+    # Connections exceeding this time will be closed and recreated
     max_life_time: "300s"
 
-# 高级配置示例
+# Advanced configuration example
 #  lynx:
 #   pgsql:
 #     driver: "postgres"
@@ -35,7 +35,7 @@ lynx:
 #     max_idle_time: "60s"
 #     max_life_time: "600s"
 
-# 生产环境配置示例
+# Production environment configuration example
 #  lynx:
 #   pgsql:
 #     driver: "postgres"
@@ -54,7 +54,7 @@ lynx:
 #         environment: "production"
 #         region: "us-west-2"
 
-# 启用 Prometheus 监控的配置示例
+# Configuration example with Prometheus monitoring enabled
 #  lynx:
 #    pgsql:
 #      driver: "postgres"

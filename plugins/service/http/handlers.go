@@ -1,19 +1,19 @@
-// Package http 实现了 Lynx 框架的 HTTP 服务器插件功能。
+// Package http implements the HTTP server plugin for the Lynx framework.
 package http
 
 import (
 	"encoding/json"
-	nhttp "net/http"
+	"net/http"
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
 )
 
-// notFoundHandler 404 处理器
-func (h *ServiceHttp) notFoundHandler() nhttp.Handler {
-	return nhttp.HandlerFunc(func(w nhttp.ResponseWriter, r *nhttp.Request) {
+// notFoundHandler returns a 404 handler.
+func (h *ServiceHttp) notFoundHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(nhttp.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
 
 		response := map[string]interface{}{
 			"code":    404,
@@ -23,7 +23,7 @@ func (h *ServiceHttp) notFoundHandler() nhttp.Handler {
 			"time":    time.Now().Format(time.RFC3339),
 		}
 
-		// 序列化并写入响应
+		// Serialize and write the response
 		if data, err := json.Marshal(response); err == nil {
 			w.Write(data)
 		} else {
@@ -31,7 +31,7 @@ func (h *ServiceHttp) notFoundHandler() nhttp.Handler {
 			w.Write([]byte(`{"error": "Failed to serialize response"}`))
 		}
 
-		// 记录 404 错误
+		// Record 404 errors
 		if h.errorCounter != nil {
 			h.errorCounter.WithLabelValues(r.Method, r.URL.Path, "not_found").Inc()
 		}
@@ -40,11 +40,11 @@ func (h *ServiceHttp) notFoundHandler() nhttp.Handler {
 	})
 }
 
-// methodNotAllowedHandler 405 处理器
-func (h *ServiceHttp) methodNotAllowedHandler() nhttp.Handler {
-	return nhttp.HandlerFunc(func(w nhttp.ResponseWriter, r *nhttp.Request) {
+// methodNotAllowedHandler returns a 405 handler.
+func (h *ServiceHttp) methodNotAllowedHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(nhttp.StatusMethodNotAllowed)
+		w.WriteHeader(http.StatusMethodNotAllowed)
 
 		response := map[string]interface{}{
 			"code":    405,
@@ -54,7 +54,7 @@ func (h *ServiceHttp) methodNotAllowedHandler() nhttp.Handler {
 			"time":    time.Now().Format(time.RFC3339),
 		}
 
-		// 序列化并写入响应
+		// Serialize and write the response
 		if data, err := json.Marshal(response); err == nil {
 			w.Write(data)
 		} else {
@@ -62,7 +62,7 @@ func (h *ServiceHttp) methodNotAllowedHandler() nhttp.Handler {
 			w.Write([]byte(`{"error": "Failed to serialize response"}`))
 		}
 
-		// 记录 405 错误
+		// Record 405 errors
 		if h.errorCounter != nil {
 			h.errorCounter.WithLabelValues(r.Method, r.URL.Path, "method_not_allowed").Inc()
 		}
@@ -71,13 +71,13 @@ func (h *ServiceHttp) methodNotAllowedHandler() nhttp.Handler {
 	})
 }
 
-// enhancedErrorEncoder 增强的错误编码器
-func (h *ServiceHttp) enhancedErrorEncoder(w nhttp.ResponseWriter, r *nhttp.Request, err error) {
-	// 记录错误指标
+// enhancedErrorEncoder is an enhanced error encoder.
+func (h *ServiceHttp) enhancedErrorEncoder(w http.ResponseWriter, r *http.Request, err error) {
+	// Record error metrics
 	if h.errorCounter != nil {
 		h.errorCounter.WithLabelValues(r.Method, r.URL.Path, "server_error").Inc()
 	}
 
-	// 调用原始错误编码器
+	// Delegate to the original error encoder
 	EncodeErrorFunc(w, r, err)
 }

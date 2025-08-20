@@ -1,50 +1,50 @@
-# Redis 插件（UniversalClient）
+# Redis Plugin (UniversalClient)
 
-本插件基于 go-redis v9 的 UniversalClient，统一支持单机、Cluster、Sentinel 拓扑，并内置 Prometheus 指标、启动健康检查、命令级别埋点、连接池统计与 TLS 支持。
+This plugin is based on go-redis v9's UniversalClient, providing unified support for standalone, Cluster, and Sentinel topologies, with built-in Prometheus metrics, startup health checks, command-level instrumentation, connection pool statistics, and TLS support.
 
-注意：配置通过 protobuf（`conf/redis.proto`）下发，已移除废弃字段 `addr`，仅保留 `addrs`。所有注释均为中文。
+Note: Configuration is delivered through protobuf (`conf/redis.proto`), and the deprecated field `addr` has been removed, keeping only `addrs`. All comments are in Chinese.
 
-## 功能概览
-- 支持三种拓扑：single / cluster / sentinel（自动检测，或依据 `sentinel.master_name` 判定）
-- TLS 支持：`tls.enabled` 与 `tls.insecure_skip_verify`，同时支持 `rediss://` 地址前缀自动启用 TLS
-- 命令级别 Prometheus 指标：延迟直方图、错误计数
-- 连接池指标：命中、未命中、等待超时、空闲/活动/陈旧连接数
-- 启动与健康检查：启动 Ping、延迟日志；增强就绪检查（cluster 状态、role/connected_slaves）
-- 兼容 API：`GetRedis()`（返回 redis.UniversalClient）与 `GetUniversalRedis()`
-- **配置验证**：完整的配置验证逻辑，确保配置的正确性和合理性
+## Feature Overview
+- Supports three topologies: single / cluster / sentinel (auto-detection, or determined by `sentinel.master_name`)
+- TLS support: `tls.enabled` and `tls.insecure_skip_verify`, with automatic TLS enablement for `rediss://` address prefixes
+- Command-level Prometheus metrics: latency histograms, error counts
+- Connection pool metrics: hits, misses, wait timeouts, idle/active/stale connection counts
+- Startup and health checks: startup Ping, latency logging; enhanced readiness checks (cluster status, role/connected_slaves)
+- Compatible API: `GetRedis()` (returns redis.UniversalClient) and `GetUniversalRedis()`
+- **Configuration Validation**: Complete configuration validation logic to ensure correctness and reasonableness
 
-## 配置说明（protobuf）
-见 `plugins/nosql/redis/conf/redis.proto`，核心字段如下（保持原编号，按领域分组）：
-- 基础连接
-  - `network` (1): 一般为 `tcp`
-  - `addrs` (12): 地址列表，支持单机/集群/哨兵
+## Configuration Description (protobuf)
+See `plugins/nosql/redis/conf/redis.proto`, core fields as follows (maintaining original numbering, grouped by domain):
+- Basic Connection
+  - `network` (1): generally `tcp`
+  - `addrs` (12): address list, supports standalone/cluster/sentinel
   - `username` (13), `password` (3), `db` (4), `client_name` (20)
-- 连接池/生命周期
+- Connection Pool/Lifecycle
   - `min_idle_conns` (5)
-  - `max_idle_conns` (6) 注：go-redis 未使用该值，仅预留
-  - `max_active_conns` (7) 映射为 go-redis `PoolSize`
+  - `max_idle_conns` (6) Note: go-redis doesn't use this value, only reserved
+  - `max_active_conns` (7) maps to go-redis `PoolSize`
   - `conn_max_idle_time` (8)
-  - `idle_timeout` (15) 注：go-redis v9 已不建议，当前未映射
-  - `max_conn_age` (16) 注：UniversalOptions 无该字段，当前未映射
+  - `idle_timeout` (15) Note: go-redis v9 no longer recommends, currently not mapped
+  - `max_conn_age` (16) Note: UniversalOptions has no such field, currently not mapped
   - `pool_timeout` (14)
-- 超时
+- Timeouts
   - `dial_timeout` (9), `read_timeout` (10), `write_timeout` (11)
-- 重试
+- Retry
   - `max_retries` (17), `min_retry_backoff` (18), `max_retry_backoff` (19)
 - TLS
   - `tls.enabled`, `tls.insecure_skip_verify`
 - Sentinel
   - `sentinel.master_name`, `sentinel.addrs`
 
-已知限制：
-- `max_idle_conns` 当前未被 go-redis 使用
-- `idle_timeout`、`max_conn_age` 暂无对应 UniversalOptions 字段，未生效（后续如切换到 Options 构造或扩展将补齐）
+Known Limitations:
+- `max_idle_conns` is currently not used by go-redis
+- `idle_timeout`, `max_conn_age` have no corresponding UniversalOptions fields, not effective (will be supplemented if switching to Options construction or extension later)
 
-## 使用示例
+## Usage Examples
 
-假设在运行时配置中（env/文件/配置中心）以 protobuf 对应结构下发 `redis` 段。
+Assuming the runtime configuration (env/file/config center) delivers the `redis` section in protobuf corresponding structure.
 
-- 单机
+- Standalone
 ```yaml
 redis:
   network: tcp
@@ -66,7 +66,7 @@ redis:
   pool_timeout: { seconds: 2 }
 ```
 
-- Sentinel（推荐单独配置 sentinel.addrs；未提供时将复用 addrs）
+- Sentinel (recommended to configure sentinel.addrs separately; will reuse addrs if not provided)
 ```yaml
 redis:
   addrs: ["10.0.0.10:26379","10.0.0.11:26379","10.0.0.12:26379"]
@@ -75,30 +75,30 @@ redis:
     # addrs: ["10.0.0.10:26379","10.0.0.11:26379","10.0.0.12:26379"]
 ```
 
-- TLS（两种方式其一即可）
+- TLS (either of two methods)
 ```yaml
 redis:
   addrs: ["rediss://10.0.0.1:6379"]
   tls:
     enabled: true
-    insecure_skip_verify: true  # 仅测试环境
+    insecure_skip_verify: true  # testing environment only
 ```
 
-## 配置验证
+## Configuration Validation
 
-Redis 插件现在包含了完整的配置验证功能，确保在插件启动前配置的正确性。验证包括：
+The Redis plugin now includes complete configuration validation functionality to ensure configuration correctness before plugin startup. Validation includes:
 
-- **基础连接验证**：地址格式、网络类型等
-- **连接池配置验证**：连接数量关系、超时时间等
-- **超时配置验证**：各种超时时间的合理性和关系
-- **重试配置验证**：重试次数和退避时间的合理性
-- **TLS配置验证**：TLS启用与地址格式的匹配
-- **Sentinel配置验证**：哨兵模式的必要参数
+- **Basic Connection Validation**: address format, network type, etc.
+- **Connection Pool Configuration Validation**: connection count relationships, timeout times, etc.
+- **Timeout Configuration Validation**: reasonableness and relationships of various timeout times
+- **Retry Configuration Validation**: reasonableness of retry counts and backoff times
+- **TLS Configuration Validation**: matching of TLS enablement and address format
+- **Sentinel Configuration Validation**: necessary parameters for sentinel mode
 
-配置验证会在插件初始化时自动执行，如果验证失败，插件将无法启动。详细的验证规则和配置模板请参考 [VALIDATION.md](./VALIDATION.md)。
+Configuration validation will be automatically executed during plugin initialization. If validation fails, the plugin will not start. For detailed validation rules and configuration templates, please refer to [VALIDATION.md](./VALIDATION.md).
 
-## 代码中使用
-- 推荐使用包级方法获取客户端（无需持有 *PlugRedis 实例）：
+## Usage in Code
+- Recommended to use package-level methods to get clients (no need to hold *PlugRedis instance):
 ```go
 import (
     "context"
@@ -107,7 +107,7 @@ import (
 )
 
 func useRedis() error {
-    cli := rplug.GetUniversalRedis() // redis.UniversalClient：单机/集群/哨兵通用
+    cli := rplug.GetUniversalRedis() // redis.UniversalClient: universal for standalone/cluster/sentinel
     if cli == nil {
         return fmt.Errorf("redis plugin not initialized")
     }
@@ -115,50 +115,50 @@ func useRedis() error {
     return cli.Set(ctx, "k", "v", 0).Err()
 }
 
-// 若仅在单机模式下需要底层 *redis.Client：
+// If only need underlying *redis.Client in standalone mode:
 func useSingleClient() error {
-    c := rplug.GetRedis() // *redis.Client（Cluster/Sentinel 下为 nil）
+    c := rplug.GetRedis() // *redis.Client (nil under Cluster/Sentinel)
     if c == nil {
-        return nil // 或根据需要返回错误
+        return nil // or return error as needed
     }
     return c.Ping(context.Background()).Err()
 }
 ```
 
-## 文件结构与职责
-- `plug.go`：
-  - 完成插件注册（init 注册到全局工厂）
-  - 提供包级便捷方法 `GetUniversalRedis()`、`GetRedis()` 用于获取客户端
-- `plugin_meta.go`：插件元数据常量（名称、配置前缀）与工厂函数 `NewRedisClient`
-- `types.go`：定义插件实例 `PlugRedis` 的结构体与内部字段（配置、UniversalClient、采集协程控制等）
-- `options.go`：将 protobuf 配置构建为 go-redis `redis.UniversalOptions` 的逻辑
-- `hooks.go`：实现 go-redis v9 Hook（命令级别埋点：延迟直方图、错误计数）
-- `health.go`：
-  - 拓扑检测（single/cluster/sentinel）与地址解析
-  - 启动/就绪检查（解析 INFO cluster/replication），并同步指标
-  - 读取版本、运行信息、后台信息采集协程
-- `lifecycle.go`：插件生命周期（初始化资源、启动任务、清理、配置注入、健康检查）
-- `metrics.go`：Prometheus 指标定义与注册（连接池、命令、运行信息等）
-- `pool_stats.go`：定时拉取并上报连接池统计（hits/misses/timeouts/idle/total/stale）
-- `conf/redis.proto`：配置定义（protobuf），生成到 `plugins/nosql/redis/conf` 目录
+## File Structure and Responsibilities
+- `plug.go`:
+  - Complete plugin registration (init registers to global factory)
+  - Provide package-level convenience methods `GetUniversalRedis()`, `GetRedis()` for getting clients
+- `plugin_meta.go`: Plugin metadata constants (name, config prefix) and factory function `NewRedisClient`
+- `types.go`: Define plugin instance `PlugRedis` struct and internal fields (config, UniversalClient, collection goroutine control, etc.)
+- `options.go`: Logic to build go-redis `redis.UniversalOptions` from protobuf configuration
+- `hooks.go`: Implement go-redis v9 Hook (command-level instrumentation: latency histograms, error counts)
+- `health.go`:
+  - Topology detection (single/cluster/sentinel) and address resolution
+  - Startup/readiness checks (parse INFO cluster/replication), and sync metrics
+  - Read version, runtime info, background info collection goroutine
+- `lifecycle.go`: Plugin lifecycle (initialize resources, start tasks, cleanup, config injection, health checks)
+- `metrics.go`: Prometheus metrics definition and registration (connection pool, commands, runtime info, etc.)
+- `pool_stats.go`: Timed pull and report connection pool statistics (hits/misses/timeouts/idle/total/stale)
+- `conf/redis.proto`: Configuration definition (protobuf), generated to `plugins/nosql/redis/conf` directory
 
-## 健康检查与指标
-- 启动时进行 Ping 并记录延迟；失败会计数并返回错误
-- 就绪检查：
-  - Cluster：解析 `INFO cluster` 判定 `cluster_state:ok`
-  - 单机/哨兵：解析 `INFO replication` 判定 `role`、`connected_slaves`
-- 指标：
-  - 连接池：hits/misses/timeouts/idle/total/stale
-  - 命令：延迟直方图、错误计数（按命令名标记）
-  - 运行信息：redis_version、role、connected_slaves、cluster_state
+## Health Checks and Metrics
+- Ping on startup and record latency; failures will be counted and return errors
+- Readiness checks:
+  - Cluster: parse `INFO cluster` to determine `cluster_state:ok`
+  - Standalone/sentinel: parse `INFO replication` to determine `role`, `connected_slaves`
+- Metrics:
+  - Connection pool: hits/misses/timeouts/idle/total/stale
+  - Commands: latency histograms, error counts (tagged by command name)
+  - Runtime info: redis_version, role, connected_slaves, cluster_state
 
-## 常见问题
-- 未找到 `protoc-gen-go`
-  - 方案一：临时追加 PATH 后执行生成
+## Common Issues
+- `protoc-gen-go` not found
+  - Solution 1: Temporarily append PATH before execution
     ```bash
     PATH="$(go env GOPATH)/bin:$PATH" make config
     ```
-  - 方案二：仅对本插件执行显式插件路径
+  - Solution 2: Execute explicit plugin path only for this plugin
     ```bash
     cd lynx
     protoc -I plugins/nosql/redis/conf -I third_party -I boot -I app \
@@ -166,30 +166,30 @@ func useSingleClient() error {
       --go_out=paths=source_relative:plugins/nosql/redis/conf \
       plugins/nosql/redis/conf/redis.proto
     ```
-- `addr` 字段相关编译错误
-  - 说明：本插件已移除 `addr`（string），统一使用 `addrs`（repeated string）。
-  - 现象：编译/生成代码时报找不到 `addr` 字段或结构体无该字段。
-  - 处理：将单地址改为数组写法；应用代码中读取位置无需更改。
-  - 迁移示例：
-    - 旧：
+- `addr` field related compilation errors
+  - Description: This plugin has removed `addr` (string), uniformly using `addrs` (repeated string).
+  - Phenomenon: Compilation/generated code reports cannot find `addr` field or struct has no such field.
+  - Handling: Change single address to array syntax; no changes needed in application code reading locations.
+  - Migration example:
+    - Old:
       ```yaml
       redis:
         addr: "127.0.0.1:6379"
       ```
-    - 新：
+    - New:
       ```yaml
       redis:
         addrs: ["127.0.0.1:6379"]
       ```
-  - 已移除 `addr`，请改用 `addrs`（可配置单个地址）
-- `MaxConnAge` / `IdleTimeout` 不生效
-  - 当前 go-redis UniversalOptions 无对应字段，暂未映射（README 已标注）
+  - `addr` has been removed, please use `addrs` instead (can configure single address)
+- `MaxConnAge` / `IdleTimeout` not effective
+  - Current go-redis UniversalOptions has no corresponding fields, not mapped (README has noted)
 
-## 版本与兼容性
+## Version and Compatibility
 - go-redis v9
-- Prometheus client_golang v1.18+（已在 go.mod）
-- 通过 `redis.UniversalClient` 同时支持单机/集群/哨兵
+- Prometheus client_golang v1.18+ (already in go.mod)
+- Supports standalone/cluster/sentinel simultaneously through `redis.UniversalClient`
 
-## 开发者提示
-- 若需要进一步区分 Cluster 与 Failover 行为，可在 `detectMode()` 与 `enhancedReadinessCheck()` 中扩展
-- 如果后续切换为更细粒度的客户端（Options/ClusterOptions/FailoverOptions），可补齐 `max_conn_age`、`idle_timeout` 的映射
+## Developer Tips
+- If further distinction between Cluster and Failover behavior is needed, can extend in `detectMode()` and `enhancedReadinessCheck()`
+- If switching to more granular clients later (Options/ClusterOptions/FailoverOptions), can supplement mapping of `max_conn_age`, `idle_timeout`

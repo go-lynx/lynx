@@ -22,7 +22,7 @@ const (
 	httpResponseLogFormat = "[HTTP Response] api=%s endpoint=%s duration=%v error=%v headers=%s body=%s"
 )
 
-// getClientIP 获取客户端 IP 地址
+// getClientIP returns the client IP address.
 func getClientIP(header transport.Header) string {
 	for _, key := range []string{"X-Forwarded-For", "X-Real-IP"} {
 		if ip := header.Get(key); ip != "" {
@@ -32,7 +32,7 @@ func getClientIP(header transport.Header) string {
 	return "unknown"
 }
 
-// safeProtoToJSON 安全地将 proto 消息转换为 JSON
+// safeProtoToJSON safely marshals a proto message to JSON.
 func safeProtoToJSON(msg proto.Message) (string, error) {
 	body, err := protojson.Marshal(msg)
 	if err != nil {
@@ -44,12 +44,12 @@ func safeProtoToJSON(msg proto.Message) (string, error) {
 	return string(body), nil
 }
 
-// TracerLogPack 返回一个中间件，用于向响应添加跟踪 ID 和内容类型头。
-// 它从上下文提取跟踪 ID，并将其作为 "TraceID" 设置到响应头中。
+// TracerLogPack returns middleware that adds trace IDs and Content-Type headers to the response.
+// It extracts trace information from context and sets "Trace-Id" and "Span-Id" in response headers.
 func TracerLogPack() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
-			// 检查上下文是否已取消
+			// Check if the context has been canceled
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
@@ -62,9 +62,9 @@ func TracerLogPack() middleware.Middleware {
 			var tr transport.Transporter
 			var ok bool
 
-			// 提取请求信息
+			// Extract request information
 			if tr, ok = transport.FromServerContext(ctx); !ok {
-				// 无法获取 transport，但仍然记录基本信息
+				// Transport not available; still log basic information
 				log.WarnfCtx(ctx, "Failed to get transport from context, proceeding without tracing")
 				return handler(ctx, req)
 			}
@@ -73,19 +73,19 @@ func TracerLogPack() middleware.Middleware {
 			clientIP := getClientIP(tr.RequestHeader())
 			api := tr.Operation()
 
-			// 设置响应头
+			// Set response headers
 			defer func() {
 				header := tr.ReplyHeader()
 				header.Set("Trace-Id", traceID)
 				header.Set("Span-Id", spanID)
 
-				// 安全地检查响应类型并设置 Content-Type
+				// Safely check response type and set Content-Type
 				if _, ok := reply.(proto.Message); ok {
 					header.Set(contentTypeKey, jsonContentType)
 				}
 			}()
 
-			// 记录请求日志
+			// Log the request
 			var reqBody string
 			if msg, ok := req.(proto.Message); ok {
 				if body, err := safeProtoToJSON(msg); err == nil {
@@ -97,20 +97,20 @@ func TracerLogPack() middleware.Middleware {
 				reqBody = fmt.Sprintf("%#v", req)
 			}
 
-			// 获取所有请求头
+			// Collect all request headers
 			headers := make(map[string]string)
 			for _, key := range tr.RequestHeader().Keys() {
 				headers[key] = tr.RequestHeader().Get(key)
 			}
 			headersStr := fmt.Sprintf("%#v", headers)
 
-			// 使用 Info 级别记录请求日志，便于生产环境监控
+			// Log with Info level for production monitoring
 			log.InfofCtx(ctx, httpRequestLogFormat, api, endpoint, clientIP, headersStr, reqBody)
 
-			// 处理请求
+			// Handle the request
 			reply, err = handler(ctx, req)
 
-			// 记录响应日志
+			// Log the response
 			var respBody string
 			if msg, ok := reply.(proto.Message); ok {
 				if body, err := safeProtoToJSON(msg); err == nil {
@@ -122,14 +122,14 @@ func TracerLogPack() middleware.Middleware {
 				respBody = fmt.Sprintf("%#v", reply)
 			}
 
-			// 获取所有响应头
+			// Collect all response headers
 			respHeaders := make(map[string]string)
 			for _, key := range tr.ReplyHeader().Keys() {
 				respHeaders[key] = tr.ReplyHeader().Get(key)
 			}
 			respHeadersStr := fmt.Sprintf("%#v", respHeaders)
 
-			// 根据是否有错误选择日志级别
+			// Choose log level based on presence of error
 			duration := time.Since(start)
 			if err != nil {
 				log.ErrorfCtx(ctx, httpResponseLogFormat,
@@ -144,11 +144,11 @@ func TracerLogPack() middleware.Middleware {
 	}
 }
 
-// TracerLogPackWithMetrics 返回一个增强的中间件，集成了追踪、日志和监控指标
+// TracerLogPackWithMetrics returns an enhanced middleware that integrates tracing, logging, and monitoring metrics.
 func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
-			// 检查上下文是否已取消
+			// Check if the context has been canceled
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
@@ -161,9 +161,9 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 			var tr transport.Transporter
 			var ok bool
 
-			// 提取请求信息
+			// Extract request information
 			if tr, ok = transport.FromServerContext(ctx); !ok {
-				// 无法获取 transport，但仍然记录基本信息
+				// Transport not available; still log basic information
 				log.WarnfCtx(ctx, "Failed to get transport from context, proceeding without tracing")
 				return handler(ctx, req)
 			}
@@ -172,19 +172,19 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 			clientIP := getClientIP(tr.RequestHeader())
 			api := tr.Operation()
 
-			// 设置响应头
+			// Set response headers
 			defer func() {
 				header := tr.ReplyHeader()
 				header.Set("Trace-Id", traceID)
 				header.Set("Span-Id", spanID)
 
-				// 安全地检查响应类型并设置 Content-Type
+				// Safely check response type and set Content-Type
 				if _, ok := reply.(proto.Message); ok {
 					header.Set(contentTypeKey, jsonContentType)
 				}
 			}()
 
-			// 记录请求日志
+			// Log the request
 			var reqBody string
 			if msg, ok := req.(proto.Message); ok {
 				if body, err := safeProtoToJSON(msg); err == nil {
@@ -196,17 +196,17 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 				reqBody = fmt.Sprintf("%#v", req)
 			}
 
-			// 获取所有请求头
+			// Collect all request headers
 			headers := make(map[string]string)
 			for _, key := range tr.RequestHeader().Keys() {
 				headers[key] = tr.RequestHeader().Get(key)
 			}
 			headersStr := fmt.Sprintf("%#v", headers)
 
-			// 使用 Info 级别记录请求日志，便于生产环境监控
+			// Log with Info level for production monitoring
 			log.InfofCtx(ctx, httpRequestLogFormat, api, endpoint, clientIP, headersStr, reqBody)
 
-			// Inflight + 请求大小埋点
+			// Inflight counter and request size metrics
 			if service != nil && service.inflightRequests != nil {
 				service.inflightRequests.WithLabelValues(api).Inc()
 				defer service.inflightRequests.WithLabelValues(api).Dec()
@@ -220,10 +220,10 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 				}
 			}
 
-			// 处理请求
+			// Handle the request
 			reply, err = handler(ctx, req)
 
-			// 记录响应日志
+			// Log the response
 			var respBody string
 			if msg, ok := reply.(proto.Message); ok {
 				if body, err := safeProtoToJSON(msg); err == nil {
@@ -235,14 +235,14 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 				respBody = fmt.Sprintf("%#v", reply)
 			}
 
-			// 获取所有响应头
+			// Collect all response headers
 			respHeaders := make(map[string]string)
 			for _, key := range tr.ReplyHeader().Keys() {
 				respHeaders[key] = tr.ReplyHeader().Get(key)
 			}
 			respHeadersStr := fmt.Sprintf("%#v", respHeaders)
 
-			// 根据是否有错误选择日志级别
+			// Choose log level based on presence of error
 			duration := time.Since(start)
 			if err != nil {
 				log.ErrorfCtx(ctx, httpResponseLogFormat,
@@ -252,14 +252,14 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 					api, endpoint, duration, err, respHeadersStr, respBody)
 			}
 
-			// 记录监控指标（如果服务实例可用）
+			// Record monitoring metrics (if the service instance is available)
 			if service != nil {
-				// 记录请求持续时间
+				// Record request duration
 				if service.requestDuration != nil {
 					service.requestDuration.WithLabelValues("POST", api).Observe(duration.Seconds())
 				}
 
-				// 记录请求计数
+				// Record request count
 				if service.requestCounter != nil {
 					status := "success"
 					if err != nil {
@@ -268,7 +268,7 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 					service.requestCounter.WithLabelValues("POST", api, status).Inc()
 				}
 
-				// 记录响应大小
+				// Record response size
 				if service.responseSize != nil && reply != nil {
 					if msg, ok := reply.(proto.Message); ok {
 						if data, err := proto.Marshal(msg); err == nil {
@@ -277,7 +277,7 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 					}
 				}
 
-				// 记录错误
+				// Record errors
 				if err != nil && service.errorCounter != nil {
 					service.errorCounter.WithLabelValues("POST", api, "tracer_error").Inc()
 				}

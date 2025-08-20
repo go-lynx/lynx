@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Lang 返回当前语言代码，默认 zh。
+// Lang returns the current language code, default is zh.
 func Lang() string {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("LYNX_LANG")))
 	if v == "en" {
@@ -15,10 +15,10 @@ func Lang() string {
 	return "zh"
 }
 
-// IsZH 表示当前是否中文环境。
+// IsZH indicates whether the current environment is Chinese.
 func IsZH() bool { return Lang() != "en" }
 
-// Choose 根据当前语言返回对应文案。
+// Choose returns the corresponding text based on the current language.
 func Choose(zhMsg, enMsg string) string {
 	if IsZH() {
 		return zhMsg
@@ -26,7 +26,7 @@ func Choose(zhMsg, enMsg string) string {
 	return enMsg
 }
 
-// 内置消息字典，按语言存储
+// Built-in message dictionary, stored by language
 var messages = map[string]map[string]string{
 	"zh": {
 		"project_names":      "项目名称是什么？",
@@ -76,7 +76,7 @@ var messages = map[string]map[string]string{
 	},
 }
 
-// T 根据 key 与当前语言返回格式化后的消息
+// T returns formatted message based on key and current language
 func T(key string, args ...any) string {
 	lang := Lang()
 	if dict, ok := messages[lang]; ok {
@@ -84,7 +84,7 @@ func T(key string, args ...any) string {
 			return fmt.Sprintf(tmpl, args...)
 		}
 	}
-	// fallback: 返回 key 本身或简单拼接
+	// fallback: return key itself or simple concatenation
 	if len(args) == 0 {
 		return key
 	}

@@ -9,24 +9,24 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 )
 
-// RetryManager 重试管理器
-// 提供指数退避重试机制
+// RetryManager retry manager
+// Provides exponential backoff retry mechanism
 type RetryManager struct {
 	maxRetries    int
 	retryInterval time.Duration
 	backoffFactor float64
 }
 
-// NewRetryManager 创建新的重试管理器
+// NewRetryManager creates new retry manager
 func NewRetryManager(maxRetries int, retryInterval time.Duration) *RetryManager {
 	return &RetryManager{
 		maxRetries:    maxRetries,
 		retryInterval: retryInterval,
-		backoffFactor: 2.0, // 指数退避因子
+		backoffFactor: 2.0, // Exponential backoff factor
 	}
 }
 
-// DoWithRetry 执行带重试的操作
+// DoWithRetry executes operation with retry
 func (r *RetryManager) DoWithRetry(operation func() error) error {
 	var lastErr error
 
@@ -39,7 +39,7 @@ func (r *RetryManager) DoWithRetry(operation func() error) error {
 		} else {
 			lastErr = err
 			if attempt < r.maxRetries {
-				// 计算退避时间
+				// Calculate backoff time
 				backoffTime := r.calculateBackoff(attempt)
 				log.Warnf("Operation failed (attempt %d/%d): %v, retrying in %v",
 					attempt+1, r.maxRetries+1, err, backoffTime)
@@ -51,7 +51,7 @@ func (r *RetryManager) DoWithRetry(operation func() error) error {
 	return fmt.Errorf("operation failed after %d attempts, last error: %w", r.maxRetries+1, lastErr)
 }
 
-// DoWithRetryContext 执行带重试的操作（支持上下文）
+// DoWithRetryContext executes operation with retry (supports context)
 func (r *RetryManager) DoWithRetryContext(ctx context.Context, operation func() error) error {
 	var lastErr error
 
@@ -86,12 +86,12 @@ func (r *RetryManager) DoWithRetryContext(ctx context.Context, operation func() 
 	return fmt.Errorf("operation failed after %d attempts, last error: %w", r.maxRetries+1, lastErr)
 }
 
-// calculateBackoff 计算退避时间
+// calculateBackoff calculates backoff time
 func (r *RetryManager) calculateBackoff(attempt int) time.Duration {
-	// 指数退避：base * factor^attempt
+	// Exponential backoff: base * factor^attempt
 	backoffSeconds := float64(r.retryInterval) * math.Pow(r.backoffFactor, float64(attempt))
 
-	// 限制最大退避时间为 30 秒
+	// Limit maximum backoff time to 30 seconds
 	maxBackoff := 30 * time.Second
 	if time.Duration(backoffSeconds) > maxBackoff {
 		return maxBackoff
@@ -100,45 +100,45 @@ func (r *RetryManager) calculateBackoff(attempt int) time.Duration {
 	return time.Duration(backoffSeconds)
 }
 
-// CircuitBreaker 熔断器
-// 实现简单的熔断保护机制
+// CircuitBreaker circuit breaker
+// Implements simple circuit breaker protection mechanism
 type CircuitBreaker struct {
 	threshold    float64
 	failureCount int
 	successCount int
 	lastFailure  time.Time
 	state        CircuitState
-	mu           chan struct{} // 用作互斥锁
+	mu           chan struct{} // Used as mutex lock
 }
 
-// CircuitState 熔断器状态
+// CircuitState circuit breaker state
 type CircuitState int
 
 const (
-	CircuitStateClosed   CircuitState = iota // 关闭状态：正常
-	CircuitStateOpen                         // 开启状态：熔断
-	CircuitStateHalfOpen                     // 半开状态：尝试恢复
+	CircuitStateClosed   CircuitState = iota // Closed state: normal
+	CircuitStateOpen                         // Open state: circuit broken
+	CircuitStateHalfOpen                     // Half-open state: attempting recovery
 )
 
-// NewCircuitBreaker 创建新的熔断器
+// NewCircuitBreaker creates new circuit breaker
 func NewCircuitBreaker(threshold float64) *CircuitBreaker {
 	return &CircuitBreaker{
 		threshold: threshold,
 		state:     CircuitStateClosed,
-		mu:        make(chan struct{}, 1), // 缓冲通道用作互斥锁
+		mu:        make(chan struct{}, 1), // Buffered channel used as mutex lock
 	}
 }
 
-// Do 执行带熔断保护的操作
+// Do executes operation with circuit breaker protection
 func (cb *CircuitBreaker) Do(operation func() error) error {
-	// 获取锁
+	// Acquire lock
 	cb.mu <- struct{}{}
 	defer func() { <-cb.mu }()
 
-	// 检查熔断器状态
+	// Check circuit breaker state
 	switch cb.state {
 	case CircuitStateOpen:
-		// 检查是否应该尝试恢复
+		// Check if should attempt recovery
 		if time.Since(cb.lastFailure) > 30*time.Second {
 			cb.state = CircuitStateHalfOpen
 			log.Infof("Circuit breaker transitioning to half-open state")
@@ -146,16 +146,16 @@ func (cb *CircuitBreaker) Do(operation func() error) error {
 			return fmt.Errorf("circuit breaker is open")
 		}
 	case CircuitStateHalfOpen:
-		// 半开状态，允许一次尝试
+		// Half-open state, allow one attempt
 		log.Infof("Circuit breaker in half-open state, allowing one attempt")
 	default:
 		return fmt.Errorf("circuit breaker is closed")
 	}
 
-	// 执行操作
+	// Execute operation
 	err := operation()
 
-	// 更新状态
+	// Update state
 	if err != nil {
 		cb.recordFailure()
 	} else {
@@ -165,12 +165,12 @@ func (cb *CircuitBreaker) Do(operation func() error) error {
 	return err
 }
 
-// recordFailure 记录失败
+// recordFailure records failure
 func (cb *CircuitBreaker) recordFailure() {
 	cb.failureCount++
 	cb.lastFailure = time.Now()
 
-	// 计算失败率
+	// Calculate failure rate
 	failureRate := float64(cb.failureCount) / float64(cb.failureCount+cb.successCount)
 
 	if cb.state == CircuitStateClosed && failureRate >= cb.threshold {
@@ -183,32 +183,32 @@ func (cb *CircuitBreaker) recordFailure() {
 	}
 }
 
-// recordSuccess 记录成功
+// recordSuccess records success
 func (cb *CircuitBreaker) recordSuccess() {
 	cb.successCount++
 
 	if cb.state == CircuitStateHalfOpen {
-		// 半开状态下成功，重置为关闭状态
+		// Success in half-open state, reset to closed state
 		cb.state = CircuitStateClosed
 		cb.resetCounters()
 		log.Infof("Circuit breaker closed after successful attempt")
 	}
 }
 
-// resetCounters 重置计数器
+// resetCounters resets counters
 func (cb *CircuitBreaker) resetCounters() {
 	cb.failureCount = 0
 	cb.successCount = 0
 }
 
-// GetState 获取熔断器状态
+// GetState gets circuit breaker state
 func (cb *CircuitBreaker) GetState() CircuitState {
 	cb.mu <- struct{}{}
 	defer func() { <-cb.mu }()
 	return cb.state
 }
 
-// GetFailureRate 获取失败率
+// GetFailureRate gets failure rate
 func (cb *CircuitBreaker) GetFailureRate() float64 {
 	cb.mu <- struct{}{}
 	defer func() { <-cb.mu }()
@@ -220,7 +220,7 @@ func (cb *CircuitBreaker) GetFailureRate() float64 {
 	return float64(cb.failureCount) / float64(total)
 }
 
-// ForceOpen 强制开启熔断器
+// ForceOpen forces circuit breaker to open
 func (cb *CircuitBreaker) ForceOpen() {
 	cb.mu <- struct{}{}
 	defer func() { <-cb.mu }()
@@ -228,7 +228,7 @@ func (cb *CircuitBreaker) ForceOpen() {
 	log.Warnf("Circuit breaker forced open")
 }
 
-// ForceClose 强制关闭熔断器
+// ForceClose forces circuit breaker to close
 func (cb *CircuitBreaker) ForceClose() {
 	cb.mu <- struct{}{}
 	defer func() { <-cb.mu }()

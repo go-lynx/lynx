@@ -9,7 +9,7 @@ import (
 	"github.com/go-lynx/lynx/plugins/mq/kafka/conf"
 )
 
-// buildTLSConfig 根据配置构建 tls.Config
+// buildTLSConfig builds tls.Config based on configuration
 func buildTLSConfig(t *conf.TLS) (*tls.Config, error) {
 	if t == nil || !t.Enabled {
 		return nil, nil
@@ -22,7 +22,7 @@ func buildTLSConfig(t *conf.TLS) (*tls.Config, error) {
 		cfg.ServerName = t.ServerName
 	}
 
-	// 加载 CA
+	// Load CA
 	if t.CaFile != "" {
 		caPEM, err := os.ReadFile(t.CaFile)
 		if err != nil {
@@ -35,7 +35,7 @@ func buildTLSConfig(t *conf.TLS) (*tls.Config, error) {
 		cfg.RootCAs = pool
 	}
 
-	// 加载客户端证书
+	// Load client certificate
 	if t.CertFile != "" && t.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
 		if err != nil {

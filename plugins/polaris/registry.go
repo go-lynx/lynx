@@ -13,46 +13,46 @@ import (
 	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
-// RegistryAdapter Polaris Registry 适配器
-// 职责：实现 Kratos registry 接口，提供服务注册发现功能
+// RegistryAdapter Polaris Registry adapter
+// Responsibility: implements Kratos registry interface, provides service registration and discovery functionality
 
-// NewServiceRegistry 实现 ServiceRegistry 接口
+// NewServiceRegistry implements ServiceRegistry interface
 func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
 	if err := p.checkInitialized(); err != nil {
 		log.Warnf("Polaris plugin not initialized, returning nil registrar: %v", err)
 		return nil
 	}
 
-	// 创建 Provider API 客户端
+	// Create Provider API client
 	providerAPI := api.NewProviderAPIByContext(p.sdk)
 	if providerAPI == nil {
 		log.Errorf("Failed to create provider API")
 		return nil
 	}
 
-	// 返回基于 Polaris 的服务注册器
+	// Return Polaris-based service registrar
 	return NewPolarisRegistrar(providerAPI, p.conf.Namespace)
 }
 
-// NewServiceDiscovery 实现 ServiceRegistry 接口
+// NewServiceDiscovery implements ServiceRegistry interface
 func (p *PlugPolaris) NewServiceDiscovery() registry.Discovery {
 	if err := p.checkInitialized(); err != nil {
 		log.Warnf("Polaris plugin not initialized, returning nil discovery: %v", err)
 		return nil
 	}
 
-	// 创建 Consumer API 客户端
+	// Create Consumer API client
 	consumerAPI := api.NewConsumerAPIByContext(p.sdk)
 	if consumerAPI == nil {
 		log.Errorf("Failed to create consumer API")
 		return nil
 	}
 
-	// 返回基于 Polaris 的服务发现客户端
+	// Return Polaris-based service discovery client
 	return NewPolarisDiscovery(consumerAPI, p.conf.Namespace)
 }
 
-// parseEndpoints 解析端点信息
+// parseEndpoints parses endpoint information
 func parseEndpoints(endpoints []string) (host string, port int, protocol string) {
 	if len(endpoints) == 0 {
 		return "localhost", 8080, "http"
@@ -94,8 +94,8 @@ func parseEndpoints(endpoints []string) (host string, port int, protocol string)
 	return host, port, protocol
 }
 
-// PolarisRegistrar 基于 Polaris 的服务注册器
-// 实现 Kratos registry.Registrar 接口
+// PolarisRegistrar Polaris-based service registrar
+// Implements Kratos registry.Registrar interface
 type PolarisRegistrar struct {
 	provider  api.ProviderAPI
 	namespace string
@@ -103,7 +103,7 @@ type PolarisRegistrar struct {
 	mu        sync.RWMutex
 }
 
-// NewPolarisRegistrar 创建新的 Polaris 注册器
+// NewPolarisRegistrar creates new Polaris registrar
 func NewPolarisRegistrar(provider api.ProviderAPI, namespace string) *PolarisRegistrar {
 	return &PolarisRegistrar{
 		provider:  provider,
@@ -112,7 +112,7 @@ func NewPolarisRegistrar(provider api.ProviderAPI, namespace string) *PolarisReg
 	}
 }
 
-// Register 注册服务实例
+// Register registers service instance
 func (r *PolarisRegistrar) Register(ctx context.Context, service *registry.ServiceInstance) error {
 	if service == nil {
 		return fmt.Errorf("service instance is nil")
@@ -150,7 +150,7 @@ func (r *PolarisRegistrar) Register(ctx context.Context, service *registry.Servi
 	return nil
 }
 
-// Deregister 注销服务实例
+// Deregister deregisters service instance
 func (r *PolarisRegistrar) Deregister(ctx context.Context, service *registry.ServiceInstance) error {
 	if service == nil {
 		return fmt.Errorf("service instance is nil")
@@ -182,7 +182,7 @@ func (r *PolarisRegistrar) Deregister(ctx context.Context, service *registry.Ser
 	return nil
 }
 
-// GetService 获取服务信息（实现 Discovery 接口）
+// GetService gets service information (implements Discovery interface)
 func (r *PolarisRegistrar) GetService(ctx context.Context, name string) ([]*registry.ServiceInstance, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -197,7 +197,7 @@ func (r *PolarisRegistrar) GetService(ctx context.Context, name string) ([]*regi
 	return instances, nil
 }
 
-// Watch 监听服务变更（实现 Discovery 接口）
+// Watch watches service changes (implements Discovery interface)
 func (r *PolarisRegistrar) Watch(ctx context.Context, name string) (registry.Watcher, error) {
 	return &PolarisWatcher{
 		ctx:  ctx,
@@ -205,14 +205,14 @@ func (r *PolarisRegistrar) Watch(ctx context.Context, name string) (registry.Wat
 	}, nil
 }
 
-// PolarisDiscovery 基于 Polaris 的服务发现客户端
-// 实现 Kratos registry.Discovery 接口
+// PolarisDiscovery Polaris-based service discovery client
+// Implements Kratos registry.Discovery interface
 type PolarisDiscovery struct {
 	consumer  api.ConsumerAPI
 	namespace string
 }
 
-// NewPolarisDiscovery 创建新的 Polaris 发现客户端
+// NewPolarisDiscovery creates new Polaris discovery client
 func NewPolarisDiscovery(consumer api.ConsumerAPI, namespace string) *PolarisDiscovery {
 	return &PolarisDiscovery{
 		consumer:  consumer,
@@ -220,7 +220,7 @@ func NewPolarisDiscovery(consumer api.ConsumerAPI, namespace string) *PolarisDis
 	}
 }
 
-// GetService 获取服务实例列表
+// GetService gets service instance list
 func (d *PolarisDiscovery) GetService(ctx context.Context, name string) ([]*registry.ServiceInstance, error) {
 	req := &api.GetInstancesRequest{
 		GetInstancesRequest: model.GetInstancesRequest{
@@ -250,7 +250,7 @@ func (d *PolarisDiscovery) GetService(ctx context.Context, name string) ([]*regi
 	return instances, nil
 }
 
-// Watch 监听服务变更
+// Watch watches service changes
 func (d *PolarisDiscovery) Watch(ctx context.Context, name string) (registry.Watcher, error) {
 	req := &api.WatchServiceRequest{
 		WatchServiceRequest: model.WatchServiceRequest{
@@ -273,15 +273,15 @@ func (d *PolarisDiscovery) Watch(ctx context.Context, name string) (registry.Wat
 	}, nil
 }
 
-// PolarisWatcher Polaris 服务监听器
-// 实现 Kratos registry.Watcher 接口
+// PolarisWatcher Polaris service watcher
+// Implements Kratos registry.Watcher interface
 type PolarisWatcher struct {
 	ctx      context.Context
 	name     string
 	response *model.WatchServiceResponse
 }
 
-// Next 获取下一个服务变更事件
+// Next gets next service change event
 func (w *PolarisWatcher) Next() ([]*registry.ServiceInstance, error) {
 	if w.response == nil {
 		return []*registry.ServiceInstance{}, nil
@@ -289,7 +289,7 @@ func (w *PolarisWatcher) Next() ([]*registry.ServiceInstance, error) {
 	return []*registry.ServiceInstance{}, nil
 }
 
-// Stop 停止监听
+// Stop stops watching
 func (w *PolarisWatcher) Stop() error {
 	return nil
 }

@@ -8,12 +8,12 @@ import (
 	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
-// updateServiceInstanceCache 更新服务实例缓存
+// updateServiceInstanceCache updates service instance cache
 func (p *PlugPolaris) updateServiceInstanceCache(serviceName string, instances []model.Instance) {
-	// 实现本地缓存更新逻辑
+	// Implement local cache update logic
 	cacheKey := fmt.Sprintf("service:%s:%s", p.conf.Namespace, serviceName)
 
-	// 构建缓存数据
+	// Build cache data
 	cacheData := map[string]interface{}{
 		"service_name": serviceName,
 		"namespace":    p.conf.Namespace,
@@ -22,22 +22,22 @@ func (p *PlugPolaris) updateServiceInstanceCache(serviceName string, instances [
 		"count":        len(instances),
 	}
 
-	// 使用锁保护缓存操作
+	// Use lock to protect cache operations
 	p.cacheMutex.Lock()
 	defer p.cacheMutex.Unlock()
 
-	// 1. 检查缓存是否存在
+	// 1. Check if cache exists
 	if p.serviceCache == nil {
 		p.serviceCache = make(map[string]interface{})
 	}
 
-	// 2. 更新缓存数据
+	// 2. Update cache data
 	p.serviceCache[cacheKey] = cacheData
 
-	// 3. 设置缓存过期时间（可选）
-	// 这里可以实现 TTL 机制
+	// 3. Set cache expiration time (optional)
+	// TTL mechanism can be implemented here
 
-	// 4. 记录缓存统计信息
+	// 4. Record cache statistics
 	cacheStats := map[string]interface{}{
 		"cache_key":      cacheKey,
 		"cache_size":     len(p.serviceCache),
@@ -49,12 +49,12 @@ func (p *PlugPolaris) updateServiceInstanceCache(serviceName string, instances [
 	log.Debugf("Cache stats: %+v", cacheStats)
 }
 
-// updateConfigCache 更新配置缓存
+// updateConfigCache updates configuration cache
 func (p *PlugPolaris) updateConfigCache(fileName, group string, config model.ConfigFile) {
-	// 实现配置缓存更新逻辑
+	// Implement configuration cache update logic
 	cacheKey := fmt.Sprintf("config:%s:%s:%s", p.conf.Namespace, group, fileName)
 
-	// 构建缓存数据
+	// Build cache data
 	cacheData := map[string]interface{}{
 		"config_file":    fileName,
 		"group":          group,
@@ -64,22 +64,22 @@ func (p *PlugPolaris) updateConfigCache(fileName, group string, config model.Con
 		"content_length": len(config.GetContent()),
 	}
 
-	// 具体实现：使用内存缓存
+	// Specific implementation: use in-memory cache
 	p.cacheMutex.Lock()
 	defer p.cacheMutex.Unlock()
 
-	// 1. 检查缓存是否存在
+	// 1. Check if cache exists
 	if p.configCache == nil {
 		p.configCache = make(map[string]interface{})
 	}
 
-	// 2. 更新缓存数据
+	// 2. Update cache data
 	p.configCache[cacheKey] = cacheData
 
-	// 3. 设置缓存过期时间（可选）
-	// 这里可以实现 TTL 机制
+	// 3. Set cache expiration time (optional)
+	// TTL mechanism can be implemented here
 
-	// 4. 记录缓存统计信息
+	// 4. Record cache statistics
 	cacheStats := map[string]interface{}{
 		"cache_key":      cacheKey,
 		"cache_size":     len(p.configCache),
@@ -91,11 +91,11 @@ func (p *PlugPolaris) updateConfigCache(fileName, group string, config model.Con
 	log.Debugf("Config cache stats: %+v", cacheStats)
 }
 
-// getServiceInstanceFromCache 从缓存获取服务实例
+// getServiceInstanceFromCache retrieves service instances from cache
 func (p *PlugPolaris) getServiceInstanceFromCache(serviceName string) ([]model.Instance, bool) {
 	cacheKey := fmt.Sprintf("service:%s:%s", p.conf.Namespace, serviceName)
 
-	// 使用读锁保护缓存读取
+	// Use read lock to protect cache reading
 	p.cacheMutex.RLock()
 	defer p.cacheMutex.RUnlock()
 
@@ -115,11 +115,11 @@ func (p *PlugPolaris) getServiceInstanceFromCache(serviceName string) ([]model.I
 	return nil, false
 }
 
-// getConfigFromCache 从缓存获取配置
+// getConfigFromCache retrieves configuration from cache
 func (p *PlugPolaris) getConfigFromCache(fileName, group string) (string, bool) {
 	cacheKey := fmt.Sprintf("config:%s:%s:%s", p.conf.Namespace, group, fileName)
 
-	// 使用读锁保护缓存读取
+	// Use read lock to protect cache reading
 	p.cacheMutex.RLock()
 	defer p.cacheMutex.RUnlock()
 
@@ -139,7 +139,7 @@ func (p *PlugPolaris) getConfigFromCache(fileName, group string) (string, bool) 
 	return "", false
 }
 
-// clearServiceCache 清理服务缓存
+// clearServiceCache clears service cache
 func (p *PlugPolaris) clearServiceCache() {
 	p.cacheMutex.Lock()
 	defer p.cacheMutex.Unlock()
@@ -151,7 +151,7 @@ func (p *PlugPolaris) clearServiceCache() {
 	}
 }
 
-// clearConfigCache 清理配置缓存
+// clearConfigCache clears configuration cache
 func (p *PlugPolaris) clearConfigCache() {
 	p.cacheMutex.Lock()
 	defer p.cacheMutex.Unlock()
@@ -163,7 +163,7 @@ func (p *PlugPolaris) clearConfigCache() {
 	}
 }
 
-// getCacheStats 获取缓存统计信息
+// getCacheStats retrieves cache statistics
 func (p *PlugPolaris) getCacheStats() map[string]interface{} {
 	p.cacheMutex.RLock()
 	defer p.cacheMutex.RUnlock()

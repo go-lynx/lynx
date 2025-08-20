@@ -6,11 +6,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestWatchersIntegration 测试 watchers 和 polaris 插件的集成
+// TestWatchersIntegration tests the integration of watchers and polaris plugin
 func TestWatchersIntegration(t *testing.T) {
 	plugin := NewPolarisControlPlane()
 
-	// 测试未初始化状态下的监听器创建
+	// Test watcher creation in uninitialized state
 	_, err := plugin.WatchService("test-service")
 	assert.Error(t, err)
 	assert.IsType(t, &PolarisError{}, err)
@@ -20,45 +20,45 @@ func TestWatchersIntegration(t *testing.T) {
 	assert.IsType(t, &PolarisError{}, err)
 }
 
-// TestServiceWatcherCreation 测试服务监听器创建
+// TestServiceWatcherCreation tests service watcher creation
 func TestServiceWatcherCreation(t *testing.T) {
-	// 测试服务监听器创建（不连接 SDK）
+	// Test service watcher creation (without connecting to SDK)
 	watcher := NewServiceWatcher(nil, "test-service", "test-namespace")
 	assert.NotNil(t, watcher)
 	assert.Equal(t, "test-service", watcher.serviceName)
 	assert.Equal(t, "test-namespace", watcher.namespace)
-	assert.Nil(t, watcher.consumer) // 未连接 SDK 时为 nil
+	assert.Nil(t, watcher.consumer) // nil when not connected to SDK
 }
 
-// TestConfigWatcherCreation 测试配置监听器创建
+// TestConfigWatcherCreation tests configuration watcher creation
 func TestConfigWatcherCreation(t *testing.T) {
-	// 测试配置监听器创建（不连接 SDK）
+	// Test configuration watcher creation (without connecting to SDK)
 	watcher := NewConfigWatcher(nil, "test-config", "test-group", "test-namespace")
 	assert.NotNil(t, watcher)
 	assert.Equal(t, "test-config", watcher.fileName)
 	assert.Equal(t, "test-group", watcher.group)
 	assert.Equal(t, "test-namespace", watcher.namespace)
-	assert.Nil(t, watcher.configAPI) // 未连接 SDK 时为 nil
+	assert.Nil(t, watcher.configAPI) // nil when not connected to SDK
 }
 
-// TestWatchersWithMetrics 测试带指标的监听器
+// TestWatchersWithMetrics tests watchers with metrics
 func TestWatchersWithMetrics(t *testing.T) {
-	// 创建 metrics
+	// Create metrics
 	metrics := NewPolarisMetrics()
 	assert.NotNil(t, metrics)
 
-	// 测试服务监听器带指标
+	// Test service watcher with metrics
 	serviceWatcher := NewServiceWatcher(nil, "test-service", "test-namespace")
 	serviceWatcher.metrics = metrics
 	assert.NotNil(t, serviceWatcher.metrics)
 
-	// 测试配置监听器带指标
+	// Test configuration watcher with metrics
 	configWatcher := NewConfigWatcher(nil, "test-config", "test-group", "test-namespace")
 	configWatcher.metrics = metrics
 	assert.NotNil(t, configWatcher.metrics)
 }
 
-// TestWatchersLifecycle 测试监听器生命周期
+// TestWatchersLifecycle tests watcher lifecycle
 func TestWatchersLifecycle(t *testing.T) {
 	t.Skip("Skipping lifecycle test to avoid log initialization issues")
 }

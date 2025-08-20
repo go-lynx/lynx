@@ -5,8 +5,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"time"
 	"os"
+	"time"
 
 	"github.com/go-lynx/lynx/plugins/tracer/conf"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -15,75 +15,75 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-// buildExporter 根据 Tracer 配置构建 OTLP Trace 导出器以及批处理（BatchSpanProcessor）选项。
-// 特性：
-// - 协议：gRPC（默认）或 HTTP（通过 config.protocol 指定）
-// - 连接：addr、insecure/TLS、headers、自定义 http_path（HTTP）
-// - 可靠性：timeout、retry（gRPC 支持 initial/max interval）
-// - 压缩：gzip（gRPC/HTTP）
-// - 批处理：queue size、batch size、导出超时、调度延迟
-// 返回：
-// - exp: 已初始化的 SpanExporter
-// - batchOpts: 批处理器可选项
-// - useBatch: 是否启用批处理（依据 config.batch.enabled）
-// - err: 初始化失败时的错误
+// buildExporter builds OTLP Trace exporter and batch processing (BatchSpanProcessor) options based on Tracer configuration.
+// Features:
+// - Protocol: gRPC (default) or HTTP (specified via config.protocol)
+// - Connection: addr, insecure/TLS, headers, custom http_path (HTTP)
+// - Reliability: timeout, retry (gRPC supports initial/max interval)
+// - Compression: gzip (gRPC/HTTP)
+// - Batch processing: queue size, batch size, export timeout, scheduling delay
+// Returns:
+// - exp: Initialized SpanExporter
+// - batchOpts: Batch processor options
+// - useBatch: Whether batch processing is enabled (based on config.batch.enabled)
+// - err: Error when initialization fails
 func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExporter, batchOpts []traceSdk.BatchSpanProcessorOption, useBatch bool, err error) {
-	// 获取 Tracer 配置
+	// Get Tracer configuration
 	cfg := c.GetConfig()
-	// 说明：cfg 在外层初始化时应保证非空；此处直接读取其字段
+	// Note: cfg should be guaranteed non-nil when initialized in outer layer; directly read its fields here
 
-	// 批处理选项
+	// Batch processing options
 	if cfg != nil && cfg.Batch.GetEnabled() {
-		// 启用批处理
+		// Enable batch processing
 		useBatch = true
-		// 最大队列长度：决定待导出 span 的队列容量
+		// Maximum queue length: determines the queue capacity for spans to be exported
 		if v := cfg.Batch.GetMaxQueueSize(); v > 0 {
 			batchOpts = append(batchOpts, traceSdk.WithMaxQueueSize(int(v)))
 		}
-		// 调度延迟：批处理器定期触发导出的时间间隔
+		// Scheduling delay: time interval for batch processor to trigger export periodically
 		if d := cfg.Batch.GetScheduledDelay(); d != nil {
 			batchOpts = append(batchOpts, traceSdk.WithBatchTimeout(d.AsDuration()))
 		}
-		// 导出超时：单次批量导出的超时时间
+		// Export timeout: timeout for single batch export
 		if d := cfg.Batch.GetExportTimeout(); d != nil {
 			batchOpts = append(batchOpts, traceSdk.WithExportTimeout(d.AsDuration()))
 		}
-		// 单批最大导出数量：每次 flush 的最大 span 数
+		// Maximum export batch size: maximum number of spans per flush
 		if v := cfg.Batch.GetMaxBatchSize(); v > 0 {
 			batchOpts = append(batchOpts, traceSdk.WithMaxExportBatchSize(int(v)))
 		}
 	}
 
-	// 构建导出器
+	// Build exporter
 	switch cfg.GetProtocol() {
 	case conf.Protocol_OTLP_HTTP:
 		// OTLP over HTTP
 		opts := []otlptracehttp.Option{}
-		// 目标地址：Collector 的 HTTP 端点（通常是 host:4318），无需包含协议
+		// Target address: Collector's HTTP endpoint (usually host:4318), no need to include protocol
 		if c.Addr != "" {
 			opts = append(opts, otlptracehttp.WithEndpoint(c.Addr))
 		}
-		// 明文 HTTP：设置为 Insecure 表示使用 http（否则默认为 https）
+		// Plaintext HTTP: set to Insecure to use http (otherwise defaults to https)
 		if cfg.GetInsecure() {
 			opts = append(opts, otlptracehttp.WithInsecure())
 		}
-		// 自定义 URL 路径：默认 /v1/traces，可通过 http_path 指定
+		// Custom URL path: default /v1/traces, can be specified via http_path
 		if hp := cfg.GetHttpPath(); hp != "" {
 			opts = append(opts, otlptracehttp.WithURLPath(hp))
 		}
-		// 附加请求头：常用于鉴权（例如 Authorization: Bearer <token>）
+		// Additional request headers: commonly used for authentication (e.g., Authorization: Bearer <token>)
 		if hdrs := cfg.GetHeaders(); len(hdrs) > 0 {
 			opts = append(opts, otlptracehttp.WithHeaders(hdrs))
 		}
-		// 超时
+		// Timeout
 		if to := cfg.GetTimeout(); to != nil {
 			opts = append(opts, otlptracehttp.WithTimeout(to.AsDuration()))
 		}
-		// 压缩（gzip）
+		// Compression (gzip)
 		if cfg.GetCompression() == conf.Compression_COMPRESSION_GZIP {
 			opts = append(opts, otlptracehttp.WithCompression(otlptracehttp.GzipCompression))
 		}
-		// 初始化 HTTP 导出器
+		// Initialize HTTP exporter
 		exp, err = otlptracehttp.New(ctx, opts...)
 		if err != nil {
 			return nil, nil, false, fmt.Errorf("create otlp http exporter: %w", err)
@@ -91,18 +91,18 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 		return exp, batchOpts, useBatch, nil
 
 	default:
-		// 默认走 gRPC
+		// Default to gRPC
 		opts := []otlptracegrpc.Option{}
-		// 目标地址：Collector 的 gRPC 端点（通常是 host:4317）
+		// Target address: Collector's gRPC endpoint (usually host:4317)
 		if c.Addr != "" {
 			opts = append(opts, otlptracegrpc.WithEndpoint(c.Addr))
 		}
 
 		// TLS / Insecure
-		// 明文 gRPC：不启用 TLS
+		// Plaintext gRPC: do not enable TLS
 		if cfg.GetInsecure() {
 			opts = append(opts, otlptracegrpc.WithInsecure())
-		// 否则根据 TLS 配置加载凭证；若配置错误则直接返回错误
+			// Otherwise load credentials based on TLS configuration; return error directly if configuration is incorrect
 		} else if tlsOpt, tlsErr := buildTLSCredentials(cfg); tlsErr == nil && tlsOpt != nil {
 			opts = append(opts, *tlsOpt)
 		} else if tlsErr != nil {
@@ -110,19 +110,19 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 		}
 
 		// Headers
-		// 附加 gRPC Metadata：例如认证头、租户信息等
+		// Additional gRPC Metadata: e.g., authentication headers, tenant information, etc.
 		if hdrs := cfg.GetHeaders(); len(hdrs) > 0 {
 			opts = append(opts, otlptracegrpc.WithHeaders(hdrs))
 		}
 
 		// Timeout
-		// 导出器内部的请求超时时间
+		// Request timeout within exporter
 		if to := cfg.GetTimeout(); to != nil {
 			opts = append(opts, otlptracegrpc.WithTimeout(to.AsDuration()))
 		}
 
 		// Retry
-		// gRPC 重试策略：支持初始/最大退避间隔；最大重试时间用于近似限制最大重试次数
+		// gRPC retry strategy: supports initial/max backoff intervals; maximum retry time is used to approximate limit on maximum retry attempts
 		if r := cfg.GetRetry(); r != nil {
 			rc := otlptracegrpc.RetryConfig{Enabled: r.GetEnabled()}
 			if ii := r.GetInitialInterval(); ii != nil {
@@ -131,9 +131,9 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 			if mi := r.GetMaxInterval(); mi != nil {
 				rc.MaxInterval = mi.AsDuration()
 			}
-			// 近似将 max_attempts 映射为最大重试时长（MaxElapsedTime），以限制总体重试次数
+			// Approximately map max_attempts to maximum retry duration (MaxElapsedTime) to limit total retry attempts
 			if ma := r.GetMaxAttempts(); ma > 0 {
-				// 优先使用 MaxInterval 作为每次等待的上界；如未设置则回退到 InitialInterval；再回退到 5s
+				// Prefer to use MaxInterval as upper bound for each wait; if not set, fall back to InitialInterval; then fall back to 5s
 				chosen := rc.MaxInterval
 				if chosen == 0 {
 					chosen = rc.InitialInterval
@@ -147,12 +147,12 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 		}
 
 		// Compression (gzip)
-		// gRPC 压缩：当 Collector 支持 gzip 时可启用以减少带宽
+		// gRPC compression: can be enabled to reduce bandwidth when Collector supports gzip
 		if cfg.GetCompression() == conf.Compression_COMPRESSION_GZIP {
 			opts = append(opts, otlptracegrpc.WithCompressor("gzip"))
 		}
 
-		// 初始化 gRPC 导出器
+		// Initialize gRPC exporter
 		exp, err = otlptracegrpc.New(ctx, opts...)
 		if err != nil {
 			return nil, nil, false, fmt.Errorf("create otlp grpc exporter: %w", err)
@@ -161,21 +161,21 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 	}
 }
 
-// buildTLSCredentials 构建 gRPC TLS 凭证（当 insecure=false 时）。
-// 支持：
-// - CA 文件（根证书）：ca_file
-// - 客户端双向认证：cert_file + key_file
-// - InsecureSkipVerify：是否跳过服务端证书校验
-// 返回 otlptracegrpc.WithTLSCredentials 对应的选项；若未配置 TLS 则返回 (nil, nil)。
+// buildTLSCredentials builds gRPC TLS credentials (when insecure=false).
+// Supports:
+// - CA file (root certificate): ca_file
+// - Client mutual authentication: cert_file + key_file
+// - InsecureSkipVerify: whether to skip server certificate verification
+// Returns the option corresponding to otlptracegrpc.WithTLSCredentials; returns (nil, nil) if TLS is not configured.
 func buildTLSCredentials(cfg *conf.Config) (*otlptracegrpc.Option, error) {
-	// 获取 TLS 配置
+	// Get TLS configuration
 	tlsCfg := cfg.GetTls()
 	if tlsCfg == nil {
 		return nil, nil
 	}
 
 	// CA
-	// 若提供 ca_file，则将根证书加载到 RootCAs；用于验证服务端证书
+	// If ca_file is provided, load root certificate to RootCAs; used to verify server certificate
 	var rootCAs *x509.CertPool
 	if tlsCfg.GetCaFile() != "" {
 		pem, err := os.ReadFile(tlsCfg.GetCaFile())
@@ -187,7 +187,7 @@ func buildTLSCredentials(cfg *conf.Config) (*otlptracegrpc.Option, error) {
 	}
 
 	// Client cert
-	// 若同时提供 cert_file 与 key_file，则启用 mTLS 客户端证书
+	// If both cert_file and key_file are provided, enable mTLS client certificate
 	var certs []tls.Certificate
 	if tlsCfg.GetCertFile() != "" && tlsCfg.GetKeyFile() != "" {
 		cert, err := tls.LoadX509KeyPair(tlsCfg.GetCertFile(), tlsCfg.GetKeyFile())
@@ -197,7 +197,7 @@ func buildTLSCredentials(cfg *conf.Config) (*otlptracegrpc.Option, error) {
 		certs = []tls.Certificate{cert}
 	}
 
-	// 组装 tls.Config；当 InsecureSkipVerify=true 时，将跳过对服务端证书的校验（仅应在受控环境使用）
+	// Assemble tls.Config; when InsecureSkipVerify=true, skip verification of server certificate (should only be used in controlled environments)
 	tcfg := &tls.Config{
 		RootCAs:            rootCAs,
 		Certificates:       certs,

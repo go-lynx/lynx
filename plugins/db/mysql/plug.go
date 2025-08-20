@@ -7,26 +7,26 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// init 是 Go 语言的初始化函数，在包被加载时自动执行。
-// 此函数的作用是将 MySQL 客户端插件注册到全局插件工厂中。
+// init is Go's initialization function, automatically executed when the package is loaded.
+// This function's purpose is to register the MySQL client plugin to the global plugin factory.
 func init() {
-	// 获取全局插件工厂实例，并调用其 RegisterPlugin 方法进行插件注册。
-	// 第一个参数 pluginName 是插件的名称，用于唯一标识该插件。
-	// 第二个参数 confPrefix 是配置前缀，用于从配置中读取插件相关配置。
-	// 第三个参数是一个匿名函数，该函数返回一个 plugins.Plugin 接口类型的实例，
-	// 这里调用 NewMysqlClient 函数创建一个新的 MySQL 客户端插件实例。
+	// Get global plugin factory instance and call its RegisterPlugin method for plugin registration.
+	// First parameter pluginName is the plugin name, used to uniquely identify the plugin.
+	// Second parameter confPrefix is the configuration prefix, used to read plugin-related configuration from config.
+	// Third parameter is an anonymous function that returns an instance of plugins.Plugin interface type,
+	// here calling NewMysqlClient function to create a new MySQL client plugin instance.
 	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
 		return NewMysqlClient()
 	})
 }
 
-// GetDriver 函数用于获取 MySQL 客户端的数据库驱动实例。
-// 返回值为 *sql.Driver 类型，即数据库驱动指针。
+// GetDriver function is used to get the database driver instance of MySQL client.
+// Returns *sql.Driver type, which is the database driver pointer.
 func GetDriver() *sql.Driver {
-	// 从全局 Lynx 应用实例中获取插件管理器，
-	// 再通过插件管理器根据插件名称获取对应的插件实例，
-	// 最后将获取到的插件实例转换为 *DBMysqlClient 类型，
-	// 并返回其 dri 字段，即数据库驱动实例。
+	// Get plugin manager from global Lynx application instance,
+	// then get corresponding plugin instance by plugin name through plugin manager,
+	// finally convert the obtained plugin instance to *DBMysqlClient type,
+	// and return its dri field, which is the database driver instance.
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
 	if plugin == nil {
 		return nil

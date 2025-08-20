@@ -9,75 +9,75 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 )
 
-// PreparePlug 方法通过远程或本地配置文件引导插件加载。
-// 它基于配置处理插件的初始化和注册操作，遇到单个插件失败时会记录日志并跳过该插件，尽力返回其余成功项。
-// 返回一个成功准备好的插件列表（可能为空）和错误信息（仅在全局性错误时返回）。
+// PreparePlug bootstraps plugin loading via remote or local configuration files.
+// It initializes and registers plugins based on configuration. If a single plugin fails,
+// it logs the error and skips that plugin, attempting to return other successful items.
+// Returns a list of successfully prepared plugins (possibly empty) and an error only for global failures.
 func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.Plugin, error) {
-	// 检查配置是否为 nil，如果为 nil 则记录错误日志并返回 nil
+	// Validate configuration is not nil; log and return error if nil
 	if config == nil {
 		log.Error("Configuration is nil")
 		return nil, fmt.Errorf("configuration is nil")
 	}
 
-	// 获取包含所有已注册插件配置前缀的注册表
+	// Retrieve registry containing all registered plugin config prefixes
 	table := m.factory.GetPluginRegistry()
-	// 检查注册表是否为空，如果为空则记录警告日志并返回 nil
+	// If registry is empty, log a warning and return error
 	if len(table) == 0 {
 		log.Warn("No plugins registered in factory")
 		return nil, fmt.Errorf("no plugins registered in factory")
 	}
 
-	// 初始化一个切片，用于存储待加载的插件实例，预分配容量为注册表的长度
+	// Initialize slice to store plugins to be loaded with preallocated capacity
 	prepared := make([]plugins.Plugin, 0, len(table))
 
-	// 遍历配置前缀
+	// Iterate over configuration prefixes
 	for confPrefix, names := range table {
-		// 检查配置前缀是否为空，如果为空则记录警告日志并跳过当前循环
+		// Validate prefix not empty; warn and skip if empty
 		if confPrefix == "" {
 			log.Warnf("Empty configuration prefix found, skipping")
 			continue
 		}
 
-		// 尝试获取当前前缀对应的配置值
+		// Try to get configuration value for current prefix
 		cfg := config.Value(confPrefix)
-		// 检查配置值是否为 nil，如果为 nil 则记录调试日志并跳过当前循环
+		// If value is nil, log debug and continue
 		if cfg == nil {
 			log.Debugf("No configuration found for prefix: %s", confPrefix)
 			continue
 		}
 
-		// 加载配置值，如果加载结果为 nil 则记录调试日志并跳过当前循环
+		// Load configuration; if result is nil, log debug and continue
 		if loaded := cfg.Load(); loaded == nil {
 			log.Debugf("Configuration cfg is nil for prefix: %s", confPrefix)
 			continue
 		}
 
-		// 检查是否有与前缀关联的插件名称，如果没有则记录调试日志并跳过当前循环
+		// Ensure there are plugin names associated with the prefix; otherwise skip
 		if len(names) == 0 {
 			log.Debugf("No plugins associated with prefix: %s", confPrefix)
 			continue
 		}
 
-		// 处理每个插件名称
-		// 增强可观测性：统计该前缀下成功/失败的插件数
+		// Process each plugin name and collect success/failure counts (observability)
 		var successCount, failCount int
 		for _, name := range names {
-			// 检查插件名称是否为空，如果为空则记录警告日志并跳过当前循环
+			// Validate plugin name not empty
 			if name == "" {
 				log.Warn("Empty plugin name found, skipping")
 				continue
 			}
 
-			// 检查插件是否已存在且能否创建
+			// Prepare plugin if creatable
 			if err := m.preparePlugin(name); err != nil {
-				// 增强可观测性：记录具体插件的准备失败原因
+				// Log specific preparation failure reason
 				log.Warnf("prepare plugin %s failed: %v", name, err)
 				failCount++
 				continue
 			}
 			successCount++
 
-			// 获取插件实例并添加到切片中
+			// Retrieve the plugin instance and append to the result slice
 			if value, ok := m.pluginInstances.Load(name); ok {
 				if plugin, ok := value.(plugins.Plugin); ok {
 					prepared = append(prepared, plugin)
@@ -85,7 +85,7 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 			}
 		}
 
-		// 前缀级别汇总日志，便于定位配置问题
+		// Prefix-level summary logging to help diagnose configuration issues
 		if successCount > 0 || failCount > 0 {
 			if failCount > 0 {
 				log.Warnf("confPrefix %s prepared summary: success=%d, failed=%d, total=%d", confPrefix, successCount, failCount, len(names))
@@ -97,7 +97,7 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 		}
 	}
 
-	// 检查是否有成功准备的插件，记录结果
+	// Log overall preparation result
 	if len(prepared) != 0 {
 		log.Infof("successfully prepared %d plugins", len(prepared))
 	} else {
@@ -107,32 +107,32 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 	return prepared, nil
 }
 
-// preparePlugin 处理单个插件的准备工作。
-// 它会检查插件是否已存在，创建插件实例，并将其添加到管理器中。
-// 如果任何步骤失败，则返回错误。
+// preparePlugin performs preparation for a single plugin.
+// It checks for existing instances, creates the plugin, and adds it to the manager.
+// Returns an error if any step fails.
 func (m *DefaultPluginManager[T]) preparePlugin(name string) error {
-	// 检查插件是否已经加载，如果已加载则返回错误信息
+	// Return error if plugin is already loaded
 	if _, exists := m.pluginInstances.Load(name); exists {
 		return fmt.Errorf("plugin %s is already loaded", name)
 	}
 
-	// 验证插件是否存在于工厂中，如果不存在则返回错误信息
+	// Validate the plugin exists in the factory
 	if !m.factory.HasPlugin(name) {
 		return fmt.Errorf("plugin %s does not exist in factory", name)
 	}
 
-	// 创建插件实例，如果创建失败则返回错误信息
+	// Create the plugin instance
 	p, err := m.factory.CreatePlugin(name)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin %s: %v", name, err)
 	}
 
-	// 检查创建的插件实例是否为 nil，如果为 nil 则返回错误信息
+	// Validate the created plugin instance is not nil
 	if p == nil {
 		return fmt.Errorf("created plugin %s is nil", name)
 	}
 
-	// 将插件添加到管理器的跟踪结构中
+	// Track the plugin within the manager
 	m.mu.Lock()
 	m.pluginList = append(m.pluginList, p)
 	m.mu.Unlock()
