@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net"
 	nhttp "net/http"
+	"sync"
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
+	obsmetrics "github.com/go-lynx/lynx/app/observability/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -19,72 +21,119 @@ func (h *ServiceHttp) initMonitoringDefaults() {
 }
 
 // initMetrics 初始化 Prometheus 监控指标
+// 全局单例指标，避免多实例重复注册导致 panic
+var (
+	metricsInitOnce     sync.Once
+	httpRequestCounter  *prometheus.CounterVec
+	httpRequestDuration *prometheus.HistogramVec
+	httpResponseSize    *prometheus.HistogramVec
+	httpRequestSize     *prometheus.HistogramVec
+	httpErrorCounter    *prometheus.CounterVec
+	httpHealthCheckTot  *prometheus.CounterVec
+	httpInflight        *prometheus.GaugeVec
+)
+
+// ensureGlobalMetrics 初始化并在统一注册表注册一次
+func ensureGlobalMetrics() {
+	metricsInitOnce.Do(func() {
+		httpRequestCounter = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "lynx",
+				Subsystem: "http",
+				Name:      "requests_total",
+				Help:      "Total number of HTTP requests",
+			},
+			[]string{"method", "path", "status"},
+		)
+
+		httpRequestDuration = prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: "lynx",
+				Subsystem: "http",
+				Name:      "request_duration_seconds",
+				Help:      "HTTP request duration in seconds",
+				Buckets:   []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5},
+			},
+			[]string{"method", "path"},
+		)
+
+		httpResponseSize = prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: "lynx",
+				Subsystem: "http",
+				Name:      "response_size_bytes",
+				Help:      "HTTP response size in bytes",
+				Buckets:   prometheus.ExponentialBuckets(100, 10, 8),
+			},
+			[]string{"method", "path"},
+		)
+
+		httpRequestSize = prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: "lynx",
+				Subsystem: "http",
+				Name:      "request_size_bytes",
+				Help:      "HTTP request size in bytes",
+				Buckets:   prometheus.ExponentialBuckets(100, 10, 8),
+			},
+			[]string{"method", "path"},
+		)
+
+		httpErrorCounter = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "lynx",
+				Subsystem: "http",
+				Name:      "errors_total",
+				Help:      "Total number of HTTP errors",
+			},
+			[]string{"method", "path", "error_type"},
+		)
+
+		httpHealthCheckTot = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "lynx",
+				Subsystem: "http",
+				Name:      "health_check_total",
+				Help:      "Total number of health checks",
+			},
+			[]string{"status"},
+		)
+
+		httpInflight = prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: "lynx",
+				Subsystem: "http",
+				Name:      "inflight_requests",
+				Help:      "Number of HTTP requests currently being served",
+			},
+			[]string{"path"},
+		)
+
+		// 使用统一注册表注册，避免多实例重复注册
+		obsmetrics.MustRegister(
+			httpRequestCounter,
+			httpRequestDuration,
+			httpResponseSize,
+			httpRequestSize,
+			httpErrorCounter,
+			httpHealthCheckTot,
+			httpInflight,
+		)
+	})
+}
+
 func (h *ServiceHttp) initMetrics() {
-	// 请求计数器
-	h.requestCounter = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: "lynx",
-			Subsystem: "http",
-			Name:      "requests_total",
-			Help:      "Total number of HTTP requests",
-		},
-		[]string{"method", "path", "status"},
-	)
+	// 确保全局指标已初始化并注册一次
+	ensureGlobalMetrics()
 
-	// 请求持续时间
-	h.requestDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Namespace: "lynx",
-			Subsystem: "http",
-			Name:      "request_duration_seconds",
-			Help:      "HTTP request duration in seconds",
-			Buckets:   prometheus.DefBuckets,
-		},
-		[]string{"method", "path"},
-	)
-
-	// 响应大小
-	h.responseSize = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Namespace: "lynx",
-			Subsystem: "http",
-			Name:      "response_size_bytes",
-			Help:      "HTTP response size in bytes",
-			Buckets:   prometheus.ExponentialBuckets(100, 10, 8),
-		},
-		[]string{"method", "path"},
-	)
-
-	// 错误计数器
-	h.errorCounter = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: "lynx",
-			Subsystem: "http",
-			Name:      "errors_total",
-			Help:      "Total number of HTTP errors",
-		},
-		[]string{"method", "path", "error_type"},
-	)
-
-	// 健康检查计数器
-	h.healthCheckTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: "lynx",
-			Subsystem: "http",
-			Name:      "health_check_total",
-			Help:      "Total number of health checks",
-		},
-		[]string{"status"},
-	)
-
-	// 注册指标（默认注册表）
-	prometheus.MustRegister(
-		h.requestCounter,
-		h.requestDuration,
-		h.responseSize,
-		h.errorCounter,
-		h.healthCheckTotal,
-	)
+	// 各实例复用同一组 Collector
+	h.requestCounter = httpRequestCounter
+	h.requestDuration = httpRequestDuration
+	h.responseSize = httpResponseSize
+	h.requestSize = httpRequestSize
+	h.errorCounter = httpErrorCounter
+	h.healthCheckTotal = httpHealthCheckTot
+	h.inflightRequests = httpInflight
 }
 
 // CheckHealth 对 HTTP 服务器进行全面的健康检查。

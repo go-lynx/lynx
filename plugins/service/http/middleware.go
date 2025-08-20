@@ -55,7 +55,16 @@ func (h *ServiceHttp) recoveryMiddleware() middleware.Middleware {
 
 			// 记录错误指标
 			if h.errorCounter != nil {
-				h.errorCounter.WithLabelValues("panic", "recovery", "panic").Inc()
+				method := "POST"
+				path := "unknown"
+				if tr, ok := transport.FromServerContext(ctx); ok {
+					// Kratos HTTP 传输常用 POST
+					if m := tr.RequestHeader().Get("X-HTTP-Method"); m != "" {
+						method = m
+					}
+					path = tr.Operation()
+				}
+				h.errorCounter.WithLabelValues(method, path, "panic").Inc()
 			}
 
 			return nil
@@ -70,7 +79,15 @@ func (h *ServiceHttp) rateLimitMiddleware() middleware.Middleware {
 			if h.rateLimiter != nil && !h.rateLimiter.Allow() {
 				// 记录限流指标
 				if h.errorCounter != nil {
-					h.errorCounter.WithLabelValues("rate_limit", "rate_limit", "rate_limit_exceeded").Inc()
+					method := "POST"
+					path := "unknown"
+					if tr, ok := transport.FromServerContext(ctx); ok {
+						if m := tr.RequestHeader().Get("X-HTTP-Method"); m != "" {
+							method = m
+						}
+						path = tr.Operation()
+					}
+					h.errorCounter.WithLabelValues(method, path, "rate_limit_exceeded").Inc()
 				}
 				return nil, fmt.Errorf("rate limit exceeded")
 			}

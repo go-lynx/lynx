@@ -2,6 +2,7 @@ package pgsql
 
 import (
 	"strings"
+	"time"
 
 	"github.com/go-lynx/lynx/plugins/db/pgsql/conf"
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,6 +16,83 @@ type PrometheusConfig struct {
 	Subsystem string
 	// 指标的额外标签（用于构建静态或扩展标签）
 	Labels map[string]string
+}
+
+// --- Helpers for connection metrics ---
+
+// IncConnectAttempt 增加一次连接尝试
+func (pm *PrometheusMetrics) IncConnectAttempt(config *conf.Pgsql) {
+    if pm == nil { return }
+    labels := pm.buildLabels(config)
+    pm.ConnectAttempts.With(labels).Inc()
+}
+
+// IncConnectRetry 增加一次连接重试
+func (pm *PrometheusMetrics) IncConnectRetry(config *conf.Pgsql) {
+    if pm == nil { return }
+    labels := pm.buildLabels(config)
+    pm.ConnectRetries.With(labels).Inc()
+}
+
+// IncConnectSuccess 增加一次连接成功
+func (pm *PrometheusMetrics) IncConnectSuccess(config *conf.Pgsql) {
+    if pm == nil { return }
+    labels := pm.buildLabels(config)
+    pm.ConnectSuccess.With(labels).Inc()
+}
+
+// IncConnectFailure 增加一次连接失败
+func (pm *PrometheusMetrics) IncConnectFailure(config *conf.Pgsql) {
+    if pm == nil { return }
+    labels := pm.buildLabels(config)
+    pm.ConnectFailures.With(labels).Inc()
+}
+
+// RecordQuery 记录一次 SQL 查询的耗时、错误和慢查询计数
+func (pm *PrometheusMetrics) RecordQuery(op string, dur time.Duration, err error, threshold time.Duration, config *conf.Pgsql, sqlState string) {
+	if pm == nil {
+		return
+	}
+	labels := pm.buildLabels(config)
+	status := "ok"
+	if err != nil {
+		status = "error"
+	}
+	l := cloneLabels(labels)
+	l["op"] = op
+	l["status"] = status
+	pm.QueryDuration.With(l).Observe(dur.Seconds())
+
+	if err != nil {
+		le := cloneLabels(labels)
+		if sqlState == "" {
+			sqlState = "unknown"
+		}
+		le["sqlstate"] = sqlState
+		pm.ErrorCounter.With(le).Inc()
+	}
+
+	if threshold > 0 && dur >= threshold {
+		ls := cloneLabels(labels)
+		ls["op"] = op
+		ls["threshold"] = threshold.String()
+		pm.SlowQueryCnt.With(ls).Inc()
+	}
+}
+
+// RecordTx 记录一次事务的耗时与状态
+func (pm *PrometheusMetrics) RecordTx(dur time.Duration, committed bool, config *conf.Pgsql) {
+	if pm == nil {
+		return
+	}
+	labels := pm.buildLabels(config)
+	l := cloneLabels(labels)
+	if committed {
+		l["status"] = "commit"
+	} else {
+		l["status"] = "rollback"
+	}
+	pm.TxDuration.With(l).Observe(dur.Seconds())
 }
 
 // 从配置创建 PrometheusConfig
@@ -55,6 +133,18 @@ type PrometheusMetrics struct {
 
 	// 注册表
 	registry *prometheus.Registry
+
+	// 查询/事务指标
+	QueryDuration *prometheus.HistogramVec
+	TxDuration    *prometheus.HistogramVec
+	ErrorCounter  *prometheus.CounterVec
+	SlowQueryCnt  *prometheus.CounterVec
+
+	// 连接重试/尝试/成功/失败指标
+	ConnectAttempts *prometheus.CounterVec
+	ConnectRetries  *prometheus.CounterVec
+	ConnectSuccess  *prometheus.CounterVec
+	ConnectFailures *prometheus.CounterVec
 }
 
 // NewPrometheusMetrics 创建新的 Prometheus 监控指标
@@ -226,6 +316,96 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		labels,
 	)
 
+	// 直方图桶（5ms ~ 5s）
+	buckets := []float64{0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 3, 5}
+
+	// 查询时延直方图
+	metrics.QueryDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: config.Namespace,
+			Subsystem: config.Subsystem,
+			Name:      "query_duration_seconds",
+			Help:      "SQL query duration in seconds",
+			Buckets:   buckets,
+		},
+		append(labels, "op", "status"),
+	)
+
+	// 事务时延直方图
+	metrics.TxDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: config.Namespace,
+			Subsystem: config.Subsystem,
+			Name:      "tx_duration_seconds",
+			Help:      "Transaction duration in seconds",
+			Buckets:   buckets,
+		},
+		append(labels, "status"),
+	)
+
+	// 错误码统计（SQLSTATE）
+	metrics.ErrorCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: config.Namespace,
+			Subsystem: config.Subsystem,
+			Name:      "errors_total",
+			Help:      "Total errors by SQLSTATE code",
+		},
+		append(labels, "sqlstate"),
+	)
+
+	// 慢查询计数（按 op、阈值标签）
+	metrics.SlowQueryCnt = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: config.Namespace,
+			Subsystem: config.Subsystem,
+			Name:      "slow_queries_total",
+			Help:      "Slow queries counted by op and threshold",
+		},
+		append(labels, "op", "threshold"),
+	)
+
+	// 连接类指标
+	metrics.ConnectAttempts = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: config.Namespace,
+			Subsystem: config.Subsystem,
+			Name:      "connect_attempts_total",
+			Help:      "Total number of database connection attempts",
+		},
+		labels,
+	)
+
+	metrics.ConnectRetries = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: config.Namespace,
+			Subsystem: config.Subsystem,
+			Name:      "connect_retries_total",
+			Help:      "Total number of database connection retries",
+		},
+		labels,
+	)
+
+	metrics.ConnectSuccess = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: config.Namespace,
+			Subsystem: config.Subsystem,
+			Name:      "connect_success_total",
+			Help:      "Total number of successful database connections",
+		},
+		labels,
+	)
+
+	metrics.ConnectFailures = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: config.Namespace,
+			Subsystem: config.Subsystem,
+			Name:      "connect_failures_total",
+			Help:      "Total number of failed database connection attempts",
+		},
+		labels,
+	)
+
 	// 注册所有指标
 	metrics.registry.MustRegister(
 		metrics.MaxOpenConnections,
@@ -242,6 +422,14 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		metrics.HealthCheckFailure,
 		metrics.ConfigMinConn,
 		metrics.ConfigMaxConn,
+		metrics.QueryDuration,
+		metrics.TxDuration,
+		metrics.ErrorCounter,
+		metrics.SlowQueryCnt,
+		metrics.ConnectAttempts,
+		metrics.ConnectRetries,
+		metrics.ConnectSuccess,
+		metrics.ConnectFailures,
 	)
 
 	return metrics
@@ -317,6 +505,15 @@ func (pm *PrometheusMetrics) buildLabels(config *conf.Pgsql) prometheus.Labels {
 	}
 
 	return labels
+}
+
+// cloneLabels 浅拷贝 labels，便于追加维度
+func cloneLabels(in prometheus.Labels) prometheus.Labels {
+    out := prometheus.Labels{}
+    for k, v := range in {
+        out[k] = v
+    }
+    return out
 }
 
 // extractDatabaseName 从连接字符串中提取数据库名称

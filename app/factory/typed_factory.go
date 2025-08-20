@@ -1,4 +1,3 @@
-// Package factory provides functionality for creating and managing plugins in the Lynx framework.
 package factory
 
 import (
@@ -9,47 +8,8 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// PluginFactory defines the complete interface for plugin management,
-// combining both creation and registry capabilities.
-// PluginFactory 定义了插件管理的完整接口，结合了插件创建和注册功能。
-type PluginFactory interface {
-	PluginCreator
-	PluginRegistry
-}
-
-// PluginCreator defines the interface for creating plugin instances.
-// PluginCreator 定义了创建插件实例的接口。
-type PluginCreator interface {
-	// CreatePlugin instantiates a new plugin instance by its name.
-	// Returns an error if the plugin cannot be created.
-	// CreatePlugin 根据插件名称实例化一个新的插件实例。
-	// 如果插件无法创建，则返回错误。
-	CreatePlugin(name string) (plugins.Plugin, error)
-}
-
-// PluginRegistry defines the interface for managing plugin registrations.
-// PluginRegistry 定义了管理插件注册的接口。
-type PluginRegistry interface {
-	// RegisterPlugin adds a new plugin to the registry with its configuration prefix
-	// and creation function.
-	// RegisterPlugin 使用插件的配置前缀和创建函数将新插件添加到注册表中。
-	RegisterPlugin(name string, configPrefix string, creator func() plugins.Plugin)
-
-	// UnregisterPlugin removes a plugin from the registry.
-	// UnregisterPlugin 从注册表中移除一个插件。
-	UnregisterPlugin(name string)
-
-	// GetPluginRegistry returns the mapping of configuration prefixes to plugin names.
-	// GetPluginRegistry 返回配置前缀到插件名称的映射。
-	GetPluginRegistry() map[string][]string
-
-	// HasPlugin checks if a plugin is registered with the given name.
-	// HasPlugin 检查具有给定名称的插件是否已注册。
-	HasPlugin(name string) bool
-}
-
-// TypedPluginFactory 泛型插件工厂
-type TypedPluginFactory struct {
+// TypedFactory 类型安全的插件工厂
+type TypedFactory struct {
 	// creators 存储插件创建函数
 	creators map[string]func() plugins.Plugin
 	// configMapping 配置前缀映射
@@ -58,17 +18,17 @@ type TypedPluginFactory struct {
 	mu sync.RWMutex
 }
 
-// NewTypedPluginFactory 创建泛型插件工厂
-func NewTypedPluginFactory() *TypedPluginFactory {
-	return &TypedPluginFactory{
+// NewTypedFactory 创建类型安全的插件工厂
+func NewTypedFactory() *TypedFactory {
+	return &TypedFactory{
 		creators:      make(map[string]func() plugins.Plugin),
 		configMapping: make(map[string][]string),
 	}
 }
 
-// RegisterTypedPlugin 注册泛型插件
+// RegisterTypedPlugin 注册类型安全的插件
 func RegisterTypedPlugin[T plugins.Plugin](
-	factory *TypedPluginFactory,
+	factory *TypedFactory,
 	name string,
 	configPrefix string,
 	creator func() T,
@@ -116,7 +76,7 @@ func RegisterTypedPlugin[T plugins.Plugin](
 }
 
 // GetTypedPlugin 获取类型安全的插件实例
-func GetTypedPlugin[T plugins.Plugin](factory *TypedPluginFactory, name string) (T, error) {
+func GetTypedPlugin[T plugins.Plugin](factory *TypedFactory, name string) (T, error) {
 	var zero T
 
 	factory.mu.RLock()
@@ -137,12 +97,12 @@ func GetTypedPlugin[T plugins.Plugin](factory *TypedPluginFactory, name string) 
 }
 
 // CreateTypedPlugin 创建类型安全的插件实例
-func CreateTypedPlugin[T plugins.Plugin](factory *TypedPluginFactory, name string) (T, error) {
+func CreateTypedPlugin[T plugins.Plugin](factory *TypedFactory, name string) (T, error) {
 	return GetTypedPlugin[T](factory, name)
 }
 
 // HasPlugin 检查插件是否存在
-func (f *TypedPluginFactory) HasPlugin(name string) bool {
+func (f *TypedFactory) HasPlugin(name string) bool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	_, exists := f.creators[name]
@@ -150,7 +110,7 @@ func (f *TypedPluginFactory) HasPlugin(name string) bool {
 }
 
 // GetConfigMapping 获取配置映射
-func (f *TypedPluginFactory) GetConfigMapping() map[string][]string {
+func (f *TypedFactory) GetConfigMapping() map[string][]string {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -164,7 +124,7 @@ func (f *TypedPluginFactory) GetConfigMapping() map[string][]string {
 }
 
 // CreatePlugin 创建插件实例（兼容旧接口）
-func (f *TypedPluginFactory) CreatePlugin(name string) (plugins.Plugin, error) {
+func (f *TypedFactory) CreatePlugin(name string) (plugins.Plugin, error) {
 	f.mu.RLock()
 	creator, exists := f.creators[name]
 	f.mu.RUnlock()
@@ -177,12 +137,12 @@ func (f *TypedPluginFactory) CreatePlugin(name string) (plugins.Plugin, error) {
 }
 
 // GetPluginRegistry 获取插件注册表（兼容旧接口）
-func (f *TypedPluginFactory) GetPluginRegistry() map[string][]string {
+func (f *TypedFactory) GetPluginRegistry() map[string][]string {
 	return f.GetConfigMapping()
 }
 
 // UnregisterPlugin 注销插件
-func (f *TypedPluginFactory) UnregisterPlugin(name string) {
+func (f *TypedFactory) UnregisterPlugin(name string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -208,14 +168,14 @@ func (f *TypedPluginFactory) UnregisterPlugin(name string) {
 
 // Global typed factory instance
 var (
-	globalTypedFactory *TypedPluginFactory
+	globalTypedFactory *TypedFactory
 	typedFactoryOnce   sync.Once
 )
 
-// GlobalTypedPluginFactory 获取全局泛型插件工厂
-func GlobalTypedPluginFactory() *TypedPluginFactory {
+// GlobalTypedFactory 获取全局类型安全的插件工厂
+func GlobalTypedFactory() *TypedFactory {
 	typedFactoryOnce.Do(func() {
-		globalTypedFactory = NewTypedPluginFactory()
+		globalTypedFactory = NewTypedFactory()
 	})
 	return globalTypedFactory
 }
