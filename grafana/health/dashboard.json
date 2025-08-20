@@ -4,16 +4,119 @@
   "editable": true,
   "timezone": "browser",
   "version": 1,
-  "tags": ["lynx", "health"],
-  "templating": {"list": [
-    {"name": "DS_PROM", "type": "datasource", "query": "prometheus", "current": {"text": "Prometheus", "value": "Prometheus"}},
-    {"name": "job", "type": "query", "datasource": {"type": "prometheus", "uid": "$DS_PROM"}, "query": "label_values(up, job)", "refresh": 2, "multi": true, "includeAll": true},
-    {"name": "instance", "type": "query", "datasource": {"type": "prometheus", "uid": "$DS_PROM"}, "query": "label_values(up{job=~\"$job\"}, instance)", "refresh": 2, "multi": true, "includeAll": true},
-    {"name": "plugin", "type": "query", "datasource": {"type": "prometheus", "uid": "$DS_PROM"}, "query": "label_values(plugin_health_status, plugin)", "refresh": 2, "multi": true, "includeAll": true}
-  ]},
+  "tags": [
+    "lynx",
+    "health"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROM",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "Prometheus"
+        }
+      },
+      {
+        "name": "job",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
+        "query": "label_values(up, job)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
+        "query": "label_values(up{job=~\"$job\"}, instance)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "plugin",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
+        "query": "label_values(plugin_health_status, plugin)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
   "panels": [
-    {"type": "timeseries", "title": "Plugin health status", "gridPos": {"x":0,"y":0,"w":12,"h":8}, "datasource": {"type":"prometheus","uid":"$DS_PROM"}, "targets": [{"expr": "plugin_health_status{job=~\"$job\",instance=~\"$instance\",plugin=~\"$plugin\"}", "legendFormat": "{{plugin}}/{{instance}}"}]},
-    {"type": "timeseries", "title": "Error count", "gridPos": {"x":12,"y":0,"w":12,"h":8}, "datasource": {"type":"prometheus","uid":"$DS_PROM"}, "targets": [{"expr": "plugin_health_error_count{job=~\"$job\",instance=~\"$instance\",plugin=~\"$plugin\"}", "legendFormat": "{{plugin}}/{{instance}}"}]},
-    {"type": "timeseries", "title": "Last check ts", "gridPos": {"x":0,"y":8,"w":24,"h":8}, "datasource": {"type":"prometheus","uid":"$DS_PROM"}, "targets": [{"expr": "plugin_health_last_check_timestamp_seconds{job=~\"$job\",instance=~\"$instance\",plugin=~\"$plugin\"}", "legendFormat": "{{plugin}}/{{instance}}"}]}
+    {
+      "type": "timeseries",
+      "title": "Plugin health status",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
+      "targets": [
+        {
+          "expr": "plugin_health_status{job=~\"$job\",instance=~\"$instance\",plugin=~\"$plugin\"}",
+          "legendFormat": "{{plugin}}/{{instance}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error count",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
+      "targets": [
+        {
+          "expr": "plugin_health_error_count{job=~\"$job\",instance=~\"$instance\",plugin=~\"$plugin\"}",
+          "legendFormat": "{{plugin}}/{{instance}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Last check ts",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
+      "targets": [
+        {
+          "expr": "plugin_health_last_check_timestamp_seconds{job=~\"$job\",instance=~\"$instance\",plugin=~\"$plugin\"}",
+          "legendFormat": "{{plugin}}/{{instance}}"
+        }
+      ]
+    }
   ]
 }

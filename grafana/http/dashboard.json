@@ -4,7 +4,12 @@
   "editable": true,
   "timezone": "browser",
   "version": 3,
-  "tags": ["lynx", "http", "microservices", "monitoring"],
+  "tags": [
+    "lynx",
+    "http",
+    "microservices",
+    "monitoring"
+  ],
   "style": "dark",
   "graphTooltip": 1,
   "time": {
@@ -12,7 +17,18 @@
     "to": "now"
   },
   "timepicker": {
-    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
   },
   "templating": {
     "list": [
@@ -20,20 +36,29 @@
         "name": "DS_PROM",
         "type": "datasource",
         "query": "prometheus",
-        "current": {"text": "Prometheus", "value": "Prometheus"},
+        "current": {
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
         "hide": 2
       },
       {
         "name": "rate_interval",
         "type": "custom",
         "query": "1m,5m,15m",
-        "current": {"text": "5m", "value": "5m"},
+        "current": {
+          "text": "5m",
+          "value": "5m"
+        },
         "hide": 0
       },
       {
         "name": "job",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
         "query": "label_values(up, job)",
         "refresh": 2,
         "multi": true,
@@ -43,7 +68,10 @@
       {
         "name": "instance",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
         "query": "label_values(up{job=~\"$job\"}, instance)",
         "refresh": 2,
         "multi": true,
@@ -53,7 +81,10 @@
       {
         "name": "url",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
         "query": "label_values(lynx_http_requests_total, path)",
         "refresh": 2,
         "multi": true,
@@ -67,8 +98,16 @@
       "id": 1,
       "type": "stat",
       "title": "Total Requests/sec",
-      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum(rate(lynx_http_requests_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]))",
@@ -77,21 +116,38 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "displayMode": "gradient-gauge",
             "gradientMode": "hue",
             "orientation": "auto",
-            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 100},
-              {"color": "red", "value": 500}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
             ]
           },
           "unit": "reqps"
@@ -102,7 +158,13 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       }
     },
@@ -110,8 +172,16 @@
       "id": 2,
       "type": "stat",
       "title": "Response Time (P95)",
-      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "histogram_quantile(0.95, sum by (le) (rate(lynx_http_request_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])))",
@@ -120,21 +190,38 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "displayMode": "gradient-gauge",
             "gradientMode": "hue",
             "orientation": "auto",
-            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 0.1},
-              {"color": "red", "value": 0.5}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
             ]
           },
           "unit": "s"
@@ -145,7 +232,13 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       }
     },
@@ -153,8 +246,16 @@
       "id": 3,
       "type": "stat",
       "title": "Error Rate",
-      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum(rate(lynx_http_errors_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])) / sum(rate(lynx_http_requests_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])) * 100",
@@ -163,21 +264,38 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "displayMode": "gradient-gauge",
             "gradientMode": "hue",
             "orientation": "auto",
-            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 1},
-              {"color": "red", "value": 5}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
             ]
           },
           "unit": "percent"
@@ -188,7 +306,13 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       }
     },
@@ -196,8 +320,16 @@
       "id": 4,
       "type": "stat",
       "title": "Active Connections",
-      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum(lynx_http_inflight_requests{job=~\"$job\",instance=~\"$instance\"})",
@@ -206,21 +338,38 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "displayMode": "gradient-gauge",
             "gradientMode": "hue",
             "orientation": "auto",
-            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 100},
-              {"color": "red", "value": 500}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
             ]
           },
           "unit": "short"
@@ -231,7 +380,13 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       }
     },
@@ -239,8 +394,16 @@
       "id": 5,
       "type": "timeseries",
       "title": "Request Rate by Method",
-      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum by (method) (rate(lynx_http_requests_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]))",
@@ -250,7 +413,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -258,22 +423,39 @@
             "drawStyle": "line",
             "fillOpacity": 20,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "reqps"
@@ -296,8 +478,16 @@
       "id": 6,
       "type": "timeseries",
       "title": "Error Rate by Path",
-      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum by (path) (rate(lynx_http_errors_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]))",
@@ -307,7 +497,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -315,22 +507,39 @@
             "drawStyle": "bars",
             "fillOpacity": 80,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "normal"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "reqps"
@@ -353,8 +562,16 @@
       "id": 7,
       "type": "timeseries",
       "title": "Request Rate by URL",
-      "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum by (path) (rate(lynx_http_requests_total{job=~\"$job\",instance=~\"$instance\",path=~\"$url\"}[$rate_interval]))",
@@ -364,7 +581,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -372,22 +591,39 @@
             "drawStyle": "line",
             "fillOpacity": 20,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "reqps"
@@ -410,8 +646,16 @@
       "id": 8,
       "type": "timeseries",
       "title": "Error Rate by URL",
-      "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum by (path) (rate(lynx_http_errors_total{job=~\"$job\",instance=~\"$instance\",path=~\"$url\"}[$rate_interval])) / sum by (path) (rate(lynx_http_requests_total{job=~\"$job\",instance=~\"$instance\",path=~\"$url\"}[$rate_interval])) * 100",
@@ -421,7 +665,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -429,23 +675,43 @@
             "drawStyle": "line",
             "fillOpacity": 20,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 1},
-              {"color": "red", "value": 5}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
             ]
           },
           "unit": "percent"
@@ -468,8 +734,16 @@
       "id": 9,
       "type": "table",
       "title": "URL Performance Summary",
-      "gridPos": {"x": 0, "y": 20, "w": 24, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum by (path) (rate(lynx_http_requests_total{job=~\"$job\",instance=~\"$instance\",path=~\"$url\"}[$rate_interval]))",
@@ -498,7 +772,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "align": "auto",
             "displayMode": "auto",
@@ -508,8 +784,14 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           }
         }
@@ -549,8 +831,16 @@
       "id": 10,
       "type": "timeseries",
       "title": "Latency Percentiles",
-      "gridPos": {"x": 0, "y": 28, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "histogram_quantile(0.5, sum by (le) (rate(lynx_http_request_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])))",
@@ -575,7 +865,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -583,22 +875,39 @@
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "s"
@@ -621,8 +930,16 @@
       "id": 11,
       "type": "timeseries",
       "title": "Response Size Distribution",
-      "gridPos": {"x": 12, "y": 28, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum by (path) (rate(lynx_http_response_size_bytes_sum{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])) / sum by (path) (rate(lynx_http_response_size_bytes_count{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]))",
@@ -632,7 +949,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -640,22 +959,39 @@
             "drawStyle": "line",
             "fillOpacity": 20,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "bytes"
@@ -678,8 +1014,16 @@
       "id": 12,
       "type": "timeseries",
       "title": "In-Flight Requests",
-      "gridPos": {"x": 0, "y": 36, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "lynx_http_inflight_requests{job=~\"$job\",instance=~\"$instance\"}",
@@ -689,7 +1033,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -697,22 +1043,39 @@
             "drawStyle": "line",
             "fillOpacity": 30,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "short"
@@ -735,8 +1098,16 @@
       "id": 13,
       "type": "timeseries",
       "title": "Request Size Distribution",
-      "gridPos": {"x": 12, "y": 36, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum by (path) (rate(lynx_http_request_size_bytes_sum{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])) / sum by (path) (rate(lynx_http_request_size_bytes_count{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]))",
@@ -746,7 +1117,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -754,22 +1127,39 @@
             "drawStyle": "line",
             "fillOpacity": 20,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "bytes"
@@ -792,8 +1182,16 @@
       "id": 14,
       "type": "heatmap",
       "title": "Request Heatmap by Hour",
-      "gridPos": {"x": 0, "y": 44, "w": 24, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum by (le) (rate(lynx_http_request_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\"}[5m]))",
@@ -803,16 +1201,28 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false}
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           }
         }
