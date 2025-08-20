@@ -22,41 +22,29 @@ const (
 )
 
 // Defines a message type for log system configuration.
-// 定义一个用于日志系统配置的消息类型。
 type Log struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The log level: debug, info, warn, error, etc.
-	// 日志级别：debug、info、warn、error 等。
 	Level string `protobuf:"bytes,1,opt,name=level,proto3" json:"level,omitempty"`
 	// The file path where logs should be written.
-	// 日志输出的文件路径。
 	FilePath string `protobuf:"bytes,2,opt,name=file_path,json=filePath,proto3" json:"file_path,omitempty"`
 	// Whether to also output logs to the console.
-	// 是否同时输出日志到控制台。
 	ConsoleOutput bool `protobuf:"varint,3,opt,name=console_output,json=consoleOutput,proto3" json:"console_output,omitempty"`
 	// The maximum size of a single log file before rotation.
-	// 单个日志文件的最大大小，超过该大小将触发轮转。
 	MaxSizeMb int32 `protobuf:"varint,4,opt,name=max_size_mb,json=maxSizeMb,proto3" json:"max_size_mb,omitempty"`
 	// The maximum number of backup log files to keep.
-	// 最多保留的旧日志文件数。
 	MaxBackups int32 `protobuf:"varint,5,opt,name=max_backups,json=maxBackups,proto3" json:"max_backups,omitempty"`
 	// The maximum number of days to retain old log files.
-	// 日志文件最多保留的天数。
 	MaxAgeDays int32 `protobuf:"varint,6,opt,name=max_age_days,json=maxAgeDays,proto3" json:"max_age_days,omitempty"`
 	// Whether to compress rotated log files.
-	// 是否压缩轮转后的日志文件。
 	Compress bool `protobuf:"varint,7,opt,name=compress,proto3" json:"compress,omitempty"`
 	// Stack trace config at top-level log config.
-	// 顶层日志配置中的堆栈采集配置。
 	Stack *Log_Stack `protobuf:"bytes,8,opt,name=stack,proto3" json:"stack,omitempty"`
 	// Caller skip depth for caller() extraction.
-	// 日志调用者信息的栈深度偏移量。
 	CallerSkip int32 `protobuf:"varint,9,opt,name=caller_skip,json=callerSkip,proto3" json:"caller_skip,omitempty"`
 	// Timezone name for logging timestamps, e.g. "Asia/Shanghai" or "UTC".
-	// 日志时间戳的时区名称，例如 "Asia/Shanghai" 或 "UTC"。
 	Timezone string `protobuf:"bytes,10,opt,name=timezone,proto3" json:"timezone,omitempty"`
 	// Sampling config.
-	// 采样与限流配置。
 	Sampling      *Log_Sampling `protobuf:"bytes,11,opt,name=sampling,proto3" json:"sampling,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -170,23 +158,17 @@ func (x *Log) GetSampling() *Log_Sampling {
 }
 
 // Stack trace capture configuration.
-// 错误堆栈采集配置。
 type Log_Stack struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable stack capture.
-	// 是否开启堆栈采集。
 	Enable bool `protobuf:"varint,1,opt,name=enable,proto3" json:"enable,omitempty"`
 	// Minimum level to capture stack: debug|info|warn|error|fatal
-	// 采集阈值级别。
 	Level string `protobuf:"bytes,2,opt,name=level,proto3" json:"level,omitempty"`
 	// Number of frames to skip from the top of the stack.
-	// 跳过的栈帧数量。
 	Skip int32 `protobuf:"varint,3,opt,name=skip,proto3" json:"skip,omitempty"`
 	// Maximum number of frames to capture.
-	// 最多采集的栈帧数。
 	MaxFrames int32 `protobuf:"varint,4,opt,name=max_frames,json=maxFrames,proto3" json:"max_frames,omitempty"`
 	// Frame prefixes to filter out (package/file prefixes).
-	// 需要过滤的帧前缀（包名/文件路径前缀）。
 	FilterPrefixes []string `protobuf:"bytes,5,rep,name=filter_prefixes,json=filterPrefixes,proto3" json:"filter_prefixes,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -258,23 +240,17 @@ func (x *Log_Stack) GetFilterPrefixes() []string {
 }
 
 // Sampling and rate limit configuration.
-// 日志采样与限流配置。
 type Log_Sampling struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Enable sampling/ratelimiting.
-	// 是否启用采样/限流。
 	Enable bool `protobuf:"varint,1,opt,name=enable,proto3" json:"enable,omitempty"`
 	// Fraction 0..1 to keep info logs.
-	// info 级别采样比例（0..1）。
 	InfoRatio float32 `protobuf:"fixed32,2,opt,name=info_ratio,json=infoRatio,proto3" json:"info_ratio,omitempty"`
 	// Fraction 0..1 to keep debug logs.
-	// debug 级别采样比例（0..1）。
 	DebugRatio float32 `protobuf:"fixed32,3,opt,name=debug_ratio,json=debugRatio,proto3" json:"debug_ratio,omitempty"`
 	// Max info logs per second (0 = unlimited).
-	// 每秒最大 info 日志条数（0 为不限制）。
 	MaxInfoPerSec int32 `protobuf:"varint,4,opt,name=max_info_per_sec,json=maxInfoPerSec,proto3" json:"max_info_per_sec,omitempty"`
 	// Max debug logs per second (0 = unlimited).
-	// 每秒最大 debug 日志条数（0 为不限制）。
 	MaxDebugPerSec int32 `protobuf:"varint,5,opt,name=max_debug_per_sec,json=maxDebugPerSec,proto3" json:"max_debug_per_sec,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache

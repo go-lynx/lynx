@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
-// 默认构建下，注册原始 pgx 驱动
+// In default build, register original pgx driver
 func registerDriver() {
 	sql.Register("postgres", stdlib.GetDefaultDriver())
 }

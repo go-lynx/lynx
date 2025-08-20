@@ -6,38 +6,38 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestMetricsIntegration 测试 metrics 集成
+// TestMetricsIntegration tests metrics integration
 func TestMetricsIntegration(t *testing.T) {
 	plugin := NewPolarisControlPlane()
 
-	// 测试 metrics 初始化（未初始化时应该为 nil）
+	// Test metrics initialization (should be nil when not initialized)
 	assert.Nil(t, plugin.GetMetrics())
 
-	// 手动创建 metrics 进行测试
+	// Manually create metrics for testing
 	metrics := NewPolarisMetrics()
 	assert.NotNil(t, metrics)
 
-	// 测试 metrics 记录功能
+	// Test metrics recording functionality
 	if metrics != nil {
-		// 测试 SDK 操作记录
+		// Test SDK operation recording
 		metrics.RecordSDKOperation("test_operation", "success")
 		metrics.RecordSDKOperation("test_operation", "error")
 
-		// 测试服务发现记录
+		// Test service discovery recording
 		metrics.RecordServiceDiscovery("test-service", "test-namespace", "success")
 		metrics.RecordServiceDiscovery("test-service", "test-namespace", "error")
 
-		// 测试健康检查记录
+		// Test health check recording
 		metrics.RecordHealthCheck("test-component", "success")
 		metrics.RecordHealthCheck("test-component", "error")
 	}
 }
 
-// TestMetricsInOperations 测试操作中的 metrics 记录
+// TestMetricsInOperations tests metrics recording in operations
 func TestMetricsInOperations(t *testing.T) {
 	plugin := NewPolarisControlPlane()
 
-	// 测试未初始化状态下的操作（应该不会记录 metrics，因为会提前返回错误）
+	// Test operations in uninitialized state (should not record metrics as errors are returned early)
 	_, err := plugin.GetServiceInstances("test-service")
 	assert.Error(t, err)
 	assert.IsType(t, &PolarisError{}, err)
@@ -59,7 +59,7 @@ func TestMetricsInOperations(t *testing.T) {
 	assert.IsType(t, &PolarisError{}, err)
 }
 
-// TestMetricsInWatchers 测试监听器中的 metrics 记录
+// TestMetricsInWatchers tests metrics recording in watchers
 func TestMetricsInWatchers(t *testing.T) {
 	t.Skip("Skipping watcher test to avoid log initialization issues")
 }

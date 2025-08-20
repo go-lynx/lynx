@@ -1,61 +1,62 @@
 package polaris
 
 import (
+	"time"
+
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/polarismesh/polaris-go/pkg/model"
-	"time"
 )
 
-// handleServiceInstancesChanged 处理服务实例变更事件
+// handleServiceInstancesChanged handles service instance change events
 func (p *PlugPolaris) handleServiceInstancesChanged(serviceName string, instances []model.Instance) {
 	log.Infof("Service %s instances changed: %d instances", serviceName, len(instances))
 
-	// 记录服务发现指标
+	// Record service discovery metrics
 	if p.metrics != nil {
 		p.metrics.RecordServiceDiscovery(serviceName, p.conf.Namespace, "changed")
 	}
 
-	// 1. 更新本地缓存
+	// 1. Update local cache
 	p.updateServiceInstanceCache(serviceName, instances)
 
-	// 2. 记录审计日志
+	// 2. Record audit logs
 	p.recordServiceChangeAudit(serviceName, instances)
 
-	// 3. 通知相关组件
+	// 3. Notify related components
 	p.notifyServiceChange(serviceName, instances)
 
-	// 4. 触发负载均衡更新
+	// 4. Trigger load balancer update
 	p.triggerLoadBalancerUpdate(serviceName, instances)
 
-	// 5. 检查服务健康状态
+	// 5. Check service health status
 	p.checkServiceHealth(serviceName, instances)
 }
 
-// handleServiceWatchError 处理服务监听错误事件
+// handleServiceWatchError handles service watch error events
 func (p *PlugPolaris) handleServiceWatchError(serviceName string, err error) {
 	log.Errorf("Service %s watch error: %v", serviceName, err)
 
-	// 记录错误指标
+	// Record error metrics
 	if p.metrics != nil {
 		p.metrics.RecordSDKOperation("service_watch_error", "error")
 	}
 
-	// 1. 记录错误审计日志
+	// 1. Record error audit logs
 	p.recordServiceWatchErrorAudit(serviceName, err)
 
-	// 2. 发送告警通知
+	// 2. Send alert notifications
 	p.sendServiceWatchAlert(serviceName, err)
 
-	// 3. 尝试降级处理
+	// 3. Try degradation handling
 	p.handleServiceWatchDegradation(serviceName, err)
 
-	// 4. 启动重试机制
+	// 4. Start retry mechanism
 	go p.retryServiceWatch(serviceName)
 }
 
-// notifyServiceChange 通知服务变更
+// notifyServiceChange notifies service changes
 func (p *PlugPolaris) notifyServiceChange(serviceName string, instances []model.Instance) {
-	// 实现通知逻辑
+	// Implement notification logic
 	notification := map[string]interface{}{
 		"event_type":      "service_change",
 		"service_name":    serviceName,
@@ -66,7 +67,7 @@ func (p *PlugPolaris) notifyServiceChange(serviceName string, instances []model.
 		"unhealthy_count": 0,
 	}
 
-	// 统计健康状态
+	// Count health status
 	for _, instance := range instances {
 		if instance.IsHealthy() {
 			notification["healthy_count"] = notification["healthy_count"].(int) + 1
@@ -75,65 +76,65 @@ func (p *PlugPolaris) notifyServiceChange(serviceName string, instances []model.
 		}
 	}
 
-	// 这里可以集成具体的通知实现，比如：
-	// 1. 发送到消息队列（Kafka、RabbitMQ等）
-	// 2. 发送 Webhook 通知
-	// 3. 发送到事件总线
-	// 4. 发送到监控系统
+	// Here you can integrate specific notification implementations, such as:
+	// 1. Send to message queue (Kafka, RabbitMQ, etc.)
+	// 2. Send Webhook notifications
+	// 3. Send to event bus
+	// 4. Send to monitoring system
 
 	log.Infof("Service change notification: %+v", notification)
 }
 
-// handleConfigChanged 处理配置变更事件
+// handleConfigChanged handles configuration change events
 func (p *PlugPolaris) handleConfigChanged(fileName, group string, config model.ConfigFile) {
 	log.Infof("Config %s:%s changed", fileName, group)
 
-	// 记录配置变更指标
+	// Record configuration change metrics
 	if p.metrics != nil {
 		p.metrics.RecordConfigChange(fileName, group)
 	}
 
-	// 1. 记录配置变更审计日志
+	// 1. Record configuration change audit logs
 	p.recordConfigChangeAudit(fileName, group, config)
 
-	// 2. 更新配置缓存
+	// 2. Update configuration cache
 	p.updateConfigCache(fileName, group, config)
 
-	// 3. 通知配置变更
+	// 3. Notify configuration changes
 	p.notifyConfigChange(fileName, group, config)
 
-	// 4. 触发配置热更新
+	// 4. Trigger configuration hot reload
 	p.triggerConfigReload(fileName, group, config)
 
-	// 5. 验证配置有效性
+	// 5. Validate configuration validity
 	p.validateConfigChange(fileName, group, config)
 }
 
-// handleConfigWatchError 处理配置监听错误事件
+// handleConfigWatchError handles configuration watch error events
 func (p *PlugPolaris) handleConfigWatchError(fileName, group string, err error) {
 	log.Errorf("Config %s:%s watch error: %v", fileName, group, err)
 
-	// 记录错误指标
+	// Record error metrics
 	if p.metrics != nil {
 		p.metrics.RecordConfigOperation("watch_error", fileName, group, "error")
 	}
 
-	// 1. 记录错误审计日志
+	// 1. Record error audit logs
 	p.recordConfigWatchErrorAudit(fileName, group, err)
 
-	// 2. 发送告警通知
+	// 2. Send alert notifications
 	p.sendConfigWatchAlert(fileName, group, err)
 
-	// 3. 尝试降级处理
+	// 3. Try degradation handling
 	p.handleConfigWatchDegradation(fileName, group, err)
 
-	// 4. 启动重试机制
+	// 4. Start retry mechanism
 	go p.retryConfigWatch(fileName, group)
 }
 
-// notifyConfigChange 通知配置变更
+// notifyConfigChange notifies configuration changes
 func (p *PlugPolaris) notifyConfigChange(fileName, group string, config model.ConfigFile) {
-	// 实现通知逻辑
+	// Implement notification logic
 	notification := map[string]interface{}{
 		"event_type":     "config_change",
 		"config_file":    fileName,
@@ -143,18 +144,18 @@ func (p *PlugPolaris) notifyConfigChange(fileName, group string, config model.Co
 		"timestamp":      time.Now().Unix(),
 	}
 
-	// 这里可以集成具体的通知实现，比如：
-	// 1. 发送到消息队列（Kafka、RabbitMQ等）
-	// 2. 发送 Webhook 通知
-	// 3. 发送到事件总线
-	// 4. 发送到监控系统
+	// Here you can integrate specific notification implementations, such as:
+	// 1. Send to message queue (Kafka, RabbitMQ, etc.)
+	// 2. Send Webhook notifications
+	// 3. Send to event bus
+	// 4. Send to monitoring system
 
 	log.Infof("Config change notification: %+v", notification)
 }
 
-// triggerConfigReload 触发配置重载
+// triggerConfigReload triggers configuration reload
 func (p *PlugPolaris) triggerConfigReload(fileName, group string, config model.ConfigFile) {
-	// 实现配置热更新逻辑
+	// Implement configuration hot reload logic
 	reloadInfo := map[string]interface{}{
 		"config_file":    fileName,
 		"group":          group,
@@ -164,40 +165,40 @@ func (p *PlugPolaris) triggerConfigReload(fileName, group string, config model.C
 		"timestamp":      time.Now().Unix(),
 	}
 
-	// 这里可以集成具体的配置热更新实现，比如：
-	// 1. 通知应用重新加载配置
-	// 2. 更新内存中的配置
-	// 3. 触发配置变更事件
-	// 4. 重新初始化相关组件
+	// Here you can integrate specific configuration hot reload implementations, such as:
+	// 1. Notify application to reload configuration
+	// 2. Update configuration in memory
+	// 3. Trigger configuration change events
+	// 4. Reinitialize related components
 
 	log.Infof("Config reload triggered: %+v", reloadInfo)
 }
 
-// validateConfigChange 验证配置变更
+// validateConfigChange validates configuration changes
 func (p *PlugPolaris) validateConfigChange(fileName, group string, config model.ConfigFile) {
 	content := config.GetContent()
 
-	// 基本验证
+	// Basic validation
 	if len(content) == 0 {
 		log.Warnf("Config %s:%s has empty content", fileName, group)
 		return
 	}
 
-	// 这里可以添加更复杂的验证逻辑，比如：
-	// 1. 验证 JSON/YAML 格式
-	// 2. 验证配置项的有效性
-	// 3. 验证配置的完整性
-	// 4. 验证配置的安全性
+	// Here you can add more complex validation logic, such as:
+	// 1. Validate JSON/YAML format
+	// 2. Validate configuration item validity
+	// 3. Validate configuration completeness
+	// 4. Validate configuration security
 
 	log.Infof("Config %s:%s validation passed, content length: %d", fileName, group, len(content))
 }
 
-// handleServiceWatchDegradation 处理服务监听降级
+// handleServiceWatchDegradation handles service watch degradation
 func (p *PlugPolaris) handleServiceWatchDegradation(serviceName string, err error) {
-	// 实现降级处理逻辑
+	// Implement degradation handling logic
 	log.Warnf("Service watch degradation for %s: %v", serviceName, err)
 
-	// 构建降级信息
+	// Build degradation information
 	degradationInfo := map[string]interface{}{
 		"service_name":      serviceName,
 		"namespace":         p.conf.Namespace,
@@ -207,24 +208,24 @@ func (p *PlugPolaris) handleServiceWatchDegradation(serviceName string, err erro
 		"fallback_strategy": "cache_only",
 	}
 
-	// 实现具体的降级逻辑
-	// 1. 使用本地缓存的服务实例
+	// Implement specific degradation logic
+	// 1. Use cached service instances
 	p.useCachedServiceInstances(serviceName)
 
-	// 2. 切换到备用服务发现机制
+	// 2. Switch to backup service discovery mechanism
 	p.switchToBackupDiscovery(serviceName)
 
-	// 3. 通知相关组件进入降级模式
+	// 3. Notify related components to enter degradation mode
 	p.notifyDegradationMode(serviceName, degradationInfo)
 
 	log.Warnf("Service degradation activated: %+v", degradationInfo)
 }
 
-// handleConfigWatchDegradation 处理配置监听降级
+// handleConfigWatchDegradation handles configuration watch degradation
 func (p *PlugPolaris) handleConfigWatchDegradation(fileName, group string, err error) {
 	log.Warnf("Config watch degradation for %s:%s: %v", fileName, group, err)
 
-	// 实现降级处理逻辑
+	// Implement degradation handling logic
 	degradationInfo := map[string]interface{}{
 		"config_file":       fileName,
 		"group":             group,

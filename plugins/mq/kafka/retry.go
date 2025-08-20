@@ -6,26 +6,26 @@ import (
 	"time"
 )
 
-// RetryConfig 重试配置
+// RetryConfig retry configuration
 type RetryConfig struct {
-	MaxRetries  int           // 最大重试次数
-	BackoffTime time.Duration // 初始退避时间
-	MaxBackoff  time.Duration // 最大退避时间
+	MaxRetries  int           // Maximum retry count
+	BackoffTime time.Duration // Initial backoff time
+	MaxBackoff  time.Duration // Maximum backoff time
 }
 
-// RetryHandler 重试处理器
+// RetryHandler retry handler
 type RetryHandler struct {
 	config RetryConfig
 }
 
-// NewRetryHandler 创建新的重试处理器
+// NewRetryHandler creates a new retry handler
 func NewRetryHandler(config RetryConfig) *RetryHandler {
 	return &RetryHandler{
 		config: config,
 	}
 }
 
-// DoWithRetry 执行带重试的操作
+// DoWithRetry executes operation with retry
 func (rh *RetryHandler) DoWithRetry(ctx context.Context, operation func() error) error {
 	var lastErr error
 	backoff := rh.config.BackoffTime
@@ -45,14 +45,14 @@ func (rh *RetryHandler) DoWithRetry(ctx context.Context, operation func() error)
 				break
 			}
 
-			// 等待后重试
+			// Wait before retry
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-time.After(backoff):
 			}
 
-			// 指数退避
+			// Exponential backoff
 			backoff *= 2
 			if backoff > rh.config.MaxBackoff {
 				backoff = rh.config.MaxBackoff
@@ -63,7 +63,7 @@ func (rh *RetryHandler) DoWithRetry(ctx context.Context, operation func() error)
 	return fmt.Errorf("operation failed after %d retries: %w", rh.config.MaxRetries, lastErr)
 }
 
-// DefaultRetryConfig 默认重试配置
+// DefaultRetryConfig default retry configuration
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
 		MaxRetries:  3,

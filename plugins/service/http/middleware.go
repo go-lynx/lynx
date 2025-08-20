@@ -1,4 +1,4 @@
-// Package http 实现了 Lynx 框架的 HTTP 服务器插件功能。
+// Package http implements the HTTP server plugin for the Lynx framework.
 package http
 
 import (
@@ -17,29 +17,29 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// buildMiddlewares 构建中间件链
+// buildMiddlewares builds the middleware chain.
 func (h *ServiceHttp) buildMiddlewares() []middleware.Middleware {
 	var middlewares []middleware.Middleware
 
-	// 基础中间件
+	// Base middlewares
 	middlewares = append(middlewares,
-		// 配置链路追踪中间件，设置追踪器名称为应用名称
+		// Tracing middleware with tracer name set to the application name
 		tracing.Server(tracing.WithTracerName(app.GetName())),
-		// 配置日志中间件，使用 Lynx 框架的日志记录器
+		// Logging middleware using the Lynx framework logger
 		logging.Server(log.Logger),
-		// 配置增强的响应包装中间件（集成监控指标）
+		// Enhanced response wrapper middleware (integrated with metrics)
 		TracerLogPackWithMetrics(h),
-		// 配置参数验证中间件
+		// Request parameter validation middleware
 		validate.ProtoValidate(),
-		// 配置恢复中间件，处理请求处理过程中的 panic
+		// Recovery middleware to handle panic during request processing
 		h.recoveryMiddleware(),
 	)
 
-	// 安全中间件
+	// Security-related middlewares
 	middlewares = append(middlewares, h.rateLimitMiddleware())
 
-	// 配置限流中间件，使用 Lynx 框架控制平面的 HTTP 限流策略
-	// 如果有限流中间件，则追加进去
+	// Configure rate limit middleware using Lynx control plane HTTP rate limit policy
+	// If a rate limit middleware exists, append it
 	if rl := app.Lynx().GetControlPlane().HTTPRateLimit(); rl != nil {
 		middlewares = append(middlewares, rl)
 	}
@@ -47,18 +47,18 @@ func (h *ServiceHttp) buildMiddlewares() []middleware.Middleware {
 	return middlewares
 }
 
-// recoveryMiddleware 恢复中间件
+// recoveryMiddleware returns a recovery middleware.
 func (h *ServiceHttp) recoveryMiddleware() middleware.Middleware {
 	return recovery.Recovery(
 		recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
 			log.ErrorCtx(ctx, "Panic recovered", "error", err)
 
-			// 记录错误指标
+			// Record error metrics
 			if h.errorCounter != nil {
 				method := "POST"
 				path := "unknown"
 				if tr, ok := transport.FromServerContext(ctx); ok {
-					// Kratos HTTP 传输常用 POST
+					// Kratos HTTP transport commonly uses POST
 					if m := tr.RequestHeader().Get("X-HTTP-Method"); m != "" {
 						method = m
 					}
@@ -72,12 +72,12 @@ func (h *ServiceHttp) recoveryMiddleware() middleware.Middleware {
 	)
 }
 
-// rateLimitMiddleware 限流中间件
+// rateLimitMiddleware returns a rate limit middleware.
 func (h *ServiceHttp) rateLimitMiddleware() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
 			if h.rateLimiter != nil && !h.rateLimiter.Allow() {
-				// 记录限流指标
+				// Record rate limit metrics
 				if h.errorCounter != nil {
 					method := "POST"
 					path := "unknown"
@@ -96,35 +96,35 @@ func (h *ServiceHttp) rateLimitMiddleware() middleware.Middleware {
 	}
 }
 
-// metricsMiddleware 监控中间件
+// metricsMiddleware returns a metrics middleware.
 func (h *ServiceHttp) metricsMiddleware() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
 			start := time.Now()
 
-			// 获取请求信息
+			// Get request information
 			method := "unknown"
 			path := "unknown"
 
-			// 使用 Kratos transport 包获取请求信息
+			// Use Kratos transport to get request information
 			if tr, ok := transport.FromServerContext(ctx); ok {
 				method = tr.RequestHeader().Get("X-HTTP-Method")
 				if method == "" {
-					method = "POST" // Kratos 默认使用 POST
+					method = "POST" // Kratos uses POST by default
 				}
-				path = tr.Operation() // 获取操作路径
+				path = tr.Operation() // Operation path
 			}
 
-			// 处理请求
+			// Handle the request
 			reply, err = handler(ctx, req)
 
-			// 记录指标
+			// Record metrics
 			duration := time.Since(start).Seconds()
 			if h.requestDuration != nil {
 				h.requestDuration.WithLabelValues(method, path).Observe(duration)
 			}
 
-			// 记录请求计数
+			// Record request count
 			if h.requestCounter != nil {
 				status := "success"
 				if err != nil {
@@ -133,9 +133,9 @@ func (h *ServiceHttp) metricsMiddleware() middleware.Middleware {
 				h.requestCounter.WithLabelValues(method, path, status).Inc()
 			}
 
-			// 记录响应大小
+			// Record response size
 			if h.responseSize != nil && reply != nil {
-				// 尝试获取响应大小
+				// Try to get response size
 				if msg, ok := reply.(proto.Message); ok {
 					if data, err := proto.Marshal(msg); err == nil {
 						h.responseSize.WithLabelValues(method, path).Observe(float64(len(data)))

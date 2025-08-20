@@ -21,10 +21,10 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Bootstrap 消息表示应用程序的启动配置信息。
+// Bootstrap message represents the application's bootstrap configuration information.
 type Bootstrap struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// lynx 字段包含 Lynx 框架相关的配置信息。
+	// lynx field contains Lynx framework related configuration information.
 	Lynx          *Lynx `protobuf:"bytes,1,opt,name=lynx,proto3" json:"lynx,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -67,10 +67,10 @@ func (x *Bootstrap) GetLynx() *Lynx {
 	return nil
 }
 
-// Subscriptions 定义应用需要订阅的服务列表
+// Subscriptions defines the list of services that the application needs to subscribe to
 type Subscriptions struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// grpc 定义需要订阅的 gRPC 服务列表
+	// grpc defines the list of gRPC services to subscribe to
 	Grpc          []*GrpcSubscription `protobuf:"bytes,1,rep,name=grpc,proto3" json:"grpc,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -113,18 +113,18 @@ func (x *Subscriptions) GetGrpc() []*GrpcSubscription {
 	return nil
 }
 
-// GrpcSubscription 描述一个要订阅的 gRPC 服务
+// GrpcSubscription describes a gRPC service to be subscribed
 type GrpcSubscription struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// service 要订阅的服务名（服务发现中的注册名）
+	// service is the service name to subscribe to (registration name in service discovery)
 	Service string `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
-	// required 是否为强依赖，上线前/启动时需要校验可用性
+	// required indicates whether this is a strong dependency that needs availability checking before/upon startup
 	Required bool `protobuf:"varint,2,opt,name=required,proto3" json:"required,omitempty"`
-	// tls 是否启用 TLS
+	// tls indicates whether TLS is enabled
 	Tls bool `protobuf:"varint,3,opt,name=tls,proto3" json:"tls,omitempty"`
-	// ca_name 根 CA 证书文件名
+	// ca_name is the root CA certificate file name
 	CaName string `protobuf:"bytes,4,opt,name=ca_name,json=caName,proto3" json:"ca_name,omitempty"`
-	// ca_group 根 CA 证书文件所在文件组
+	// ca_group is the file group where the root CA certificate file is located
 	CaGroup       string `protobuf:"bytes,5,opt,name=ca_group,json=caGroup,proto3" json:"ca_group,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -195,14 +195,14 @@ func (x *GrpcSubscription) GetCaGroup() string {
 	return ""
 }
 
-// Lynx 消息封装了 Lynx 框架的应用程序配置。
+// Lynx message encapsulates the Lynx framework application configuration.
 type Lynx struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// application 字段包含应用程序自身的配置信息。
+	// application field contains the application's own configuration information.
 	Application *Application `protobuf:"bytes,1,opt,name=application,proto3" json:"application,omitempty"`
-	// subscriptions 字段定义 Lynx 在启动时需要订阅的上游服务
+	// subscriptions field defines the upstream services that Lynx needs to subscribe to at startup
 	Subscriptions *Subscriptions `protobuf:"bytes,2,opt,name=subscriptions,proto3" json:"subscriptions,omitempty"`
-	// runtime 字段包含运行时相关配置（事件系统等）
+	// runtime field contains runtime related configurations (event system, etc.)
 	Runtime       *Runtime `protobuf:"bytes,3,opt,name=runtime,proto3" json:"runtime,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -259,14 +259,14 @@ func (x *Lynx) GetRuntime() *Runtime {
 	return nil
 }
 
-// Application 消息包含应用程序的基本配置信息。
+// Application message contains basic configuration information of the application.
 type Application struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// name 字段表示应用程序的名称。
+	// name field represents the application name.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// version 字段表示应用程序的版本号。
+	// version field represents the application version number.
 	Version string `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
-	// close_banner 字段用于控制是否关闭应用程序启动时显示的横幅信息。
+	// close_banner field controls whether to close the banner information displayed when the application starts.
 	CloseBanner   bool `protobuf:"varint,3,opt,name=close_banner,json=closeBanner,proto3" json:"close_banner,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -323,10 +323,10 @@ func (x *Application) GetCloseBanner() bool {
 	return false
 }
 
-// Runtime 运行时配置
+// Runtime configuration
 type Runtime struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// event 事件系统配置
+	// event event system configuration
 	Event         *Event `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -369,18 +369,18 @@ func (x *Runtime) GetEvent() *Event {
 	return nil
 }
 
-// Event 事件系统配置
+// Event event system configuration
 type Event struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// queue_size 事件队列大小
+	// queue_size event queue size
 	QueueSize int32 `protobuf:"varint,1,opt,name=queue_size,json=queueSize,proto3" json:"queue_size,omitempty"`
-	// worker_count 事件分发工作协程数量
+	// worker_count number of event dispatch worker goroutines
 	WorkerCount int32 `protobuf:"varint,2,opt,name=worker_count,json=workerCount,proto3" json:"worker_count,omitempty"`
-	// listener_queue_size 每个监听器的独立队列大小
+	// listener_queue_size individual queue size for each listener
 	ListenerQueueSize int32 `protobuf:"varint,3,opt,name=listener_queue_size,json=listenerQueueSize,proto3" json:"listener_queue_size,omitempty"`
-	// history_size 历史事件保留条数（<=0 表示不保留历史）
+	// history_size number of historical events to retain (<=0 means no history retention)
 	HistorySize int32 `protobuf:"varint,4,opt,name=history_size,json=historySize,proto3" json:"history_size,omitempty"`
-	// drain_timeout_ms 关闭 Phase 2 的排空超时（毫秒）。>0 则在通知退出前尽可能等待监听器队列清空
+	// drain_timeout_ms drain timeout for Phase 2 shutdown (milliseconds). >0 means waiting for listener queue to drain as much as possible before exit notification
 	DrainTimeoutMs int32 `protobuf:"varint,5,opt,name=drain_timeout_ms,json=drainTimeoutMs,proto3" json:"drain_timeout_ms,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache

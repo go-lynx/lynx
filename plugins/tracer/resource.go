@@ -8,11 +8,11 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
-// buildResource 根据 Tracer 配置与 Lynx 应用元信息构建 OpenTelemetry Resource：
-// - service.name 优先使用配置中的 resource.service_name，否则回退到 app.GetName()
-// - 默认注入：service.instance.id、service.version、service.namespace
-// - 支持附加自定义 attributes（字符串键值对）
-// 注意：使用 Schemaless 构建，便于灵活扩展。
+// buildResource builds OpenTelemetry Resource based on Tracer configuration and Lynx application metadata:
+// - service.name prefers resource.service_name from config, otherwise falls back to app.GetName()
+// - Default injection: service.instance.id, service.version, service.namespace
+// - Supports additional custom attributes (string key-value pairs)
+// Note: Uses Schemaless construction for flexible extension.
 func buildResource(c *conf.Tracer) *resource.Resource {
 	var r *conf.Resource
 	if c != nil && c.GetConfig() != nil {

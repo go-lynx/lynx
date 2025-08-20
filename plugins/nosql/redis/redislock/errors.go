@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// 错误码定义
+// Error code definitions
 const (
 	ErrCodeLockNotHeld           = "LOCK_NOT_HELD"
 	ErrCodeLockAcquireFailed     = "LOCK_ACQUIRE_FAILED"
@@ -19,7 +19,7 @@ const (
 	ErrCodeInvalidOptions        = "INVALID_OPTIONS"
 )
 
-// LockError 自定义锁错误类型
+// LockError custom lock error type
 type LockError struct {
 	Code    string
 	Message string
@@ -37,7 +37,7 @@ func (e *LockError) Unwrap() error {
 	return e.Err
 }
 
-// 创建锁错误的辅助函数
+// Helper function to create lock errors
 func newLockError(code, message string, err error) *LockError {
 	return &LockError{
 		Code:    code,
@@ -47,29 +47,29 @@ func newLockError(code, message string, err error) *LockError {
 }
 
 var (
-	// ErrLockNotHeld 表示尝试释放未持有的锁
+	// ErrLockNotHeld indicates attempting to release a lock not held
 	ErrLockNotHeld = newLockError(ErrCodeLockNotHeld, "lock not held", nil)
-	// ErrLockAcquireFailed 表示获取锁失败
+	// ErrLockAcquireFailed indicates lock acquisition failure
 	ErrLockAcquireFailed = newLockError(ErrCodeLockAcquireFailed, "failed to acquire lock", nil)
-	// ErrLockAcquireTimeout 表示获取锁超时
+	// ErrLockAcquireTimeout indicates lock acquisition timeout
 	ErrLockAcquireTimeout = newLockError(ErrCodeLockAcquireTimeout, "lock acquire timeout", nil)
-	// ErrLockAcquireConflict 表示获取锁冲突
+	// ErrLockAcquireConflict indicates lock acquisition conflict
 	ErrLockAcquireConflict = newLockError(ErrCodeLockAcquireConflict, "lock acquire conflict", nil)
-	// ErrRedisClientNotFound 表示未找到 Redis 客户端
+	// ErrRedisClientNotFound indicates Redis client not found
 	ErrRedisClientNotFound = newLockError(ErrCodeRedisClientNotFound, "redis client not found", nil)
-	// ErrMaxRetriesExceeded 表示超过最大重试次数
+	// ErrMaxRetriesExceeded indicates exceeding maximum retry attempts
 	ErrMaxRetriesExceeded = newLockError(ErrCodeMaxRetriesExceeded, "max retries exceeded", nil)
-	// ErrLockFnRequired 表示锁保护的函数不能为空
+	// ErrLockFnRequired indicates lock protected function cannot be empty
 	ErrLockFnRequired = newLockError(ErrCodeLockFnRequired, "lock function is required", nil)
-	// ErrLockRenewalFailed 表示锁续期失败
+	// ErrLockRenewalFailed indicates lock renewal failure
 	ErrLockRenewalFailed = newLockError(ErrCodeLockRenewalFailed, "lock renewal failed", nil)
-	// ErrRenewalServiceStopped 表示续期服务已停止
+	// ErrRenewalServiceStopped indicates renewal service has stopped
 	ErrRenewalServiceStopped = newLockError(ErrCodeRenewalServiceStopped, "renewal service stopped", nil)
-	// ErrInvalidOptions 表示配置选项无效
+	// ErrInvalidOptions indicates invalid configuration options
 	ErrInvalidOptions = newLockError(ErrCodeInvalidOptions, "invalid options", nil)
 )
 
-// 错误信息国际化映射（可以根据需要扩展）
+// Error message internationalization mapping (can be extended as needed)
 var errorMessages = map[string]map[string]string{
 	"en": {
 		ErrCodeLockNotHeld:           "Lock is not held by current instance",
@@ -84,27 +84,27 @@ var errorMessages = map[string]map[string]string{
 		ErrCodeInvalidOptions:        "Invalid options provided",
 	},
 	"zh": {
-		ErrCodeLockNotHeld:           "锁未被当前实例持有",
-		ErrCodeLockAcquireFailed:     "获取锁失败",
-		ErrCodeLockAcquireTimeout:    "获取锁超时",
-		ErrCodeLockAcquireConflict:   "获取锁冲突",
-		ErrCodeRedisClientNotFound:   "未找到Redis客户端",
-		ErrCodeMaxRetriesExceeded:    "超过最大重试次数",
-		ErrCodeLockFnRequired:        "锁保护函数不能为空",
-		ErrCodeLockRenewalFailed:     "锁续期失败",
-		ErrCodeRenewalServiceStopped: "续期服务已停止",
-		ErrCodeInvalidOptions:        "配置选项无效",
+		ErrCodeLockNotHeld:           "Lock is not held by current instance",
+		ErrCodeLockAcquireFailed:     "Failed to acquire lock",
+		ErrCodeLockAcquireTimeout:    "Lock acquisition timeout",
+		ErrCodeLockAcquireConflict:   "Lock acquisition conflict",
+		ErrCodeRedisClientNotFound:   "Redis client not found",
+		ErrCodeMaxRetriesExceeded:    "Maximum retries exceeded",
+		ErrCodeLockFnRequired:        "Lock function is required",
+		ErrCodeLockRenewalFailed:     "Lock renewal failed",
+		ErrCodeRenewalServiceStopped: "Renewal service stopped",
+		ErrCodeInvalidOptions:        "Invalid options provided",
 	},
 }
 
-// GetErrorMessage 获取国际化错误信息
+// GetErrorMessage gets internationalized error message
 func GetErrorMessage(code, lang string) string {
 	if messages, ok := errorMessages[lang]; ok {
 		if msg, ok := messages[code]; ok {
 			return msg
 		}
 	}
-	// 默认返回英文
+	// Default to English
 	if messages, ok := errorMessages["en"]; ok {
 		if msg, ok := messages[code]; ok {
 			return msg
@@ -113,7 +113,7 @@ func GetErrorMessage(code, lang string) string {
 	return code
 }
 
-// 错误检查辅助函数
+// Error checking helper function
 func IsLockError(err error, code string) bool {
 	var lockErr *LockError
 	if errors.As(err, &lockErr) {

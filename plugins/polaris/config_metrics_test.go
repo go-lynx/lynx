@@ -6,37 +6,37 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestConfigMetrics 测试配置变动指标
+// TestConfigMetrics tests configuration change metrics
 func TestConfigMetrics(t *testing.T) {
-	// 创建 metrics 实例
+	// Create metrics instance
 	metrics := NewPolarisMetrics()
 	assert.NotNil(t, metrics)
 
-	// 测试配置操作指标
+	// Test configuration operation metrics
 	metrics.RecordConfigOperation("get", "application.yml", "DEFAULT_GROUP", "start")
 	metrics.RecordConfigOperation("get", "application.yml", "DEFAULT_GROUP", "success")
 	metrics.RecordConfigOperation("check", "application.yml", "DEFAULT_GROUP", "start")
 	metrics.RecordConfigOperation("check", "application.yml", "DEFAULT_GROUP", "success")
 
-	// 测试配置变更指标
+	// Test configuration change metrics
 	metrics.RecordConfigChange("application.yml", "DEFAULT_GROUP")
 	metrics.RecordConfigChange("database.yml", "DEFAULT_GROUP")
 
-	// 测试配置操作耗时
+	// Test configuration operation duration
 	metrics.RecordConfigOperationDuration("get", "application.yml", "DEFAULT_GROUP", 0.1)
 	metrics.RecordConfigOperationDuration("check", "application.yml", "DEFAULT_GROUP", 0.05)
 }
 
-// TestConfigWatcherMetrics 测试配置监听器指标
+// TestConfigWatcherMetrics tests configuration watcher metrics
 func TestConfigWatcherMetrics(t *testing.T) {
 	t.Skip("Skipping config watcher test to avoid Prometheus metrics registration issues")
 }
 
-// TestConfigOperationsWithMetrics 测试带指标的配置操作
+// TestConfigOperationsWithMetrics tests configuration operations with metrics
 func TestConfigOperationsWithMetrics(t *testing.T) {
 	plugin := NewPolarisControlPlane()
 
-	// 测试未初始化状态下的配置操作
+	// Test configuration operations in uninitialized state
 	_, err := plugin.GetConfigValue("application.yml", "DEFAULT_GROUP")
 	assert.Error(t, err)
 	assert.IsType(t, &PolarisError{}, err)

@@ -8,17 +8,17 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// TypedFactory 类型安全的插件工厂
+// TypedFactory type-safe plugin factory
 type TypedFactory struct {
-	// creators 存储插件创建函数
+	// creators stores plugin creation functions
 	creators map[string]func() plugins.Plugin
-	// configMapping 配置前缀映射
+	// configMapping configuration prefix mapping
 	configMapping map[string][]string
-	// mu 读写锁保护并发访问
+	// mu read-write lock for concurrent access protection
 	mu sync.RWMutex
 }
 
-// NewTypedFactory 创建类型安全的插件工厂
+// NewTypedFactory creates a type-safe plugin factory
 func NewTypedFactory() *TypedFactory {
 	return &TypedFactory{
 		creators:      make(map[string]func() plugins.Plugin),
@@ -26,7 +26,7 @@ func NewTypedFactory() *TypedFactory {
 	}
 }
 
-// RegisterTypedPlugin 注册类型安全的插件
+// RegisterTypedPlugin registers a type-safe plugin
 func RegisterTypedPlugin[T plugins.Plugin](
 	factory *TypedFactory,
 	name string,
@@ -36,12 +36,12 @@ func RegisterTypedPlugin[T plugins.Plugin](
 	factory.mu.Lock()
 	defer factory.mu.Unlock()
 
-	// 检查是否已经注册
+	// Check if already registered
 	if _, exists := factory.creators[name]; exists {
 		panic(fmt.Errorf("plugin already registered: %s", name))
 	}
 
-	// 跨前缀重复名检测（防御性）：如果该 name 已经出现在其他前缀的映射中，记录告警
+	// Cross-prefix duplicate name detection (defensive): if the name already appears in other prefix mappings, log a warning
 	for prefix, names := range factory.configMapping {
 		if prefix == configPrefix {
 			continue
@@ -53,16 +53,16 @@ func RegisterTypedPlugin[T plugins.Plugin](
 		}
 	}
 
-	// 存储创建函数
+	// Store creation function
 	factory.creators[name] = func() plugins.Plugin {
 		return creator()
 	}
 
-	// 配置映射
+	// Configuration mapping
 	if factory.configMapping[configPrefix] == nil {
 		factory.configMapping[configPrefix] = make([]string, 0)
 	}
-	// 前缀内去重，避免重复追加
+	// Deduplication within prefix to avoid duplicate appending
 	exists := false
 	for _, n := range factory.configMapping[configPrefix] {
 		if n == name {
@@ -75,7 +75,7 @@ func RegisterTypedPlugin[T plugins.Plugin](
 	}
 }
 
-// GetTypedPlugin 获取类型安全的插件实例
+// GetTypedPlugin gets a type-safe plugin instance
 func GetTypedPlugin[T plugins.Plugin](factory *TypedFactory, name string) (T, error) {
 	var zero T
 
@@ -96,12 +96,12 @@ func GetTypedPlugin[T plugins.Plugin](factory *TypedFactory, name string) (T, er
 	return typed, nil
 }
 
-// CreateTypedPlugin 创建类型安全的插件实例
+// CreateTypedPlugin creates a type-safe plugin instance
 func CreateTypedPlugin[T plugins.Plugin](factory *TypedFactory, name string) (T, error) {
 	return GetTypedPlugin[T](factory, name)
 }
 
-// HasPlugin 检查插件是否存在
+// HasPlugin checks if plugin exists
 func (f *TypedFactory) HasPlugin(name string) bool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -109,12 +109,12 @@ func (f *TypedFactory) HasPlugin(name string) bool {
 	return exists
 }
 
-// GetConfigMapping 获取配置映射
+// GetConfigMapping gets configuration mapping
 func (f *TypedFactory) GetConfigMapping() map[string][]string {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	// 创建副本以避免并发修改
+	// Create a copy to avoid concurrent modification
 	result := make(map[string][]string)
 	for k, v := range f.configMapping {
 		result[k] = make([]string, len(v))
@@ -123,7 +123,7 @@ func (f *TypedFactory) GetConfigMapping() map[string][]string {
 	return result
 }
 
-// CreatePlugin 创建插件实例（兼容旧接口）
+// CreatePlugin creates plugin instance (compatible with old interface)
 func (f *TypedFactory) CreatePlugin(name string) (plugins.Plugin, error) {
 	f.mu.RLock()
 	creator, exists := f.creators[name]
@@ -136,27 +136,27 @@ func (f *TypedFactory) CreatePlugin(name string) (plugins.Plugin, error) {
 	return creator(), nil
 }
 
-// GetPluginRegistry 获取插件注册表（兼容旧接口）
+// GetPluginRegistry returns the plugin registry (backward-compatible API).
 func (f *TypedFactory) GetPluginRegistry() map[string][]string {
 	return f.GetConfigMapping()
 }
 
-// UnregisterPlugin 注销插件
+// UnregisterPlugin unregisters a plugin.
 func (f *TypedFactory) UnregisterPlugin(name string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// 从创建器映射中删除
+	// Remove from creator mapping
 	delete(f.creators, name)
 
-	// 从配置映射中删除
+	// Remove from configuration mapping
 	for prefix, pluginList := range f.configMapping {
 		for i, plugin := range pluginList {
 			if plugin == name {
-				// 移除插件
+				// Remove the plugin
 				f.configMapping[prefix] = append(pluginList[:i], pluginList[i+1:]...)
 
-				// 如果该前缀下没有插件了，删除前缀
+				// If no plugins remain under this prefix, delete the prefix entry
 				if len(f.configMapping[prefix]) == 0 {
 					delete(f.configMapping, prefix)
 				}
@@ -172,7 +172,7 @@ var (
 	typedFactoryOnce   sync.Once
 )
 
-// GlobalTypedFactory 获取全局类型安全的插件工厂
+// GlobalTypedFactory returns the global type-safe plugin factory.
 func GlobalTypedFactory() *TypedFactory {
 	typedFactoryOnce.Do(func() {
 		globalTypedFactory = NewTypedFactory()

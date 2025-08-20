@@ -4,68 +4,68 @@ package lynx.protobuf.app.conf;
 
 option go_package = "github.com/go-lynx/lynx/conf";
 
-// Bootstrap 消息表示应用程序的启动配置信息。
+// Bootstrap message represents the application's bootstrap configuration information.
 message Bootstrap {
-  // lynx 字段包含 Lynx 框架相关的配置信息。
+  // lynx field contains Lynx framework related configuration information.
   Lynx lynx = 1;
 }
 
-// Subscriptions 定义应用需要订阅的服务列表
+// Subscriptions defines the list of services that the application needs to subscribe to
 message Subscriptions {
-  // grpc 定义需要订阅的 gRPC 服务列表
+  // grpc defines the list of gRPC services to subscribe to
   repeated GrpcSubscription grpc = 1;
 }
 
-// GrpcSubscription 描述一个要订阅的 gRPC 服务
+// GrpcSubscription describes a gRPC service to be subscribed
 message GrpcSubscription {
-  // service 要订阅的服务名（服务发现中的注册名）
+  // service is the service name to subscribe to (registration name in service discovery)
   string service = 1;
-  // required 是否为强依赖，上线前/启动时需要校验可用性
+  // required indicates whether this is a strong dependency that needs availability checking before/upon startup
   bool required = 2;
-  // tls 是否启用 TLS
+  // tls indicates whether TLS is enabled
   bool tls = 3;
-  // ca_name 根 CA 证书文件名
+  // ca_name is the root CA certificate file name
   string ca_name = 4;
-  // ca_group 根 CA 证书文件所在文件组
+  // ca_group is the file group where the root CA certificate file is located
   string ca_group = 5;
 }
 
-// Lynx 消息封装了 Lynx 框架的应用程序配置。
+// Lynx message encapsulates the Lynx framework application configuration.
 message Lynx {
-  // application 字段包含应用程序自身的配置信息。
+  // application field contains the application's own configuration information.
   Application application = 1;
-  // subscriptions 字段定义 Lynx 在启动时需要订阅的上游服务
+  // subscriptions field defines the upstream services that Lynx needs to subscribe to at startup
   Subscriptions subscriptions = 2;
-  // runtime 字段包含运行时相关配置（事件系统等）
+  // runtime field contains runtime related configurations (event system, etc.)
   Runtime runtime = 3;
 }
 
-// Application 消息包含应用程序的基本配置信息。
+// Application message contains basic configuration information of the application.
 message Application {
-  // name 字段表示应用程序的名称。
+  // name field represents the application name.
   string name = 1;
-  // version 字段表示应用程序的版本号。
+  // version field represents the application version number.
   string version = 2;
-  // close_banner 字段用于控制是否关闭应用程序启动时显示的横幅信息。
+  // close_banner field controls whether to close the banner information displayed when the application starts.
   bool close_banner = 3;
 }
 
-// Runtime 运行时配置
+// Runtime configuration
 message Runtime {
-  // event 事件系统配置
+  // event event system configuration
   Event event = 1;
 }
 
-// Event 事件系统配置
+// Event event system configuration
 message Event {
-  // queue_size 事件队列大小
+  // queue_size event queue size
   int32 queue_size = 1;
-  // worker_count 事件分发工作协程数量
+  // worker_count number of event dispatch worker goroutines
   int32 worker_count = 2;
-  // listener_queue_size 每个监听器的独立队列大小
+  // listener_queue_size individual queue size for each listener
   int32 listener_queue_size = 3;
-  // history_size 历史事件保留条数（<=0 表示不保留历史）
+  // history_size number of historical events to retain (<=0 means no history retention)
   int32 history_size = 4;
-  // drain_timeout_ms 关闭 Phase 2 的排空超时（毫秒）。>0 则在通知退出前尽可能等待监听器队列清空
+  // drain_timeout_ms drain timeout for Phase 2 shutdown (milliseconds). >0 means waiting for listener queue to drain as much as possible before exit notification
   int32 drain_timeout_ms = 5;
 }

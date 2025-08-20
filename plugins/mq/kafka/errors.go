@@ -24,7 +24,7 @@ var (
 	ErrMessageProcessingFailed = errors.New("failed to process message")
 	ErrOffsetCommitFailed      = errors.New("failed to commit offsets")
 
-	// 新增错误类型
+	// New error types
 	ErrCircuitBreakerOpen     = errors.New("circuit breaker is open")
 	ErrMessageTooLarge        = errors.New("message size exceeds limit")
 	ErrTopicNotFound          = errors.New("topic not found")
@@ -37,7 +37,7 @@ var (
 	ErrMessageDeserialization = errors.New("message deserialization failed")
 )
 
-// ErrorType 错误类型
+// ErrorType error type
 type ErrorType int
 
 const (
@@ -50,7 +50,7 @@ const (
 	ErrorTypeSystem
 )
 
-// Error 增强的错误类型
+// Error enhanced error type
 type Error struct {
 	Type    ErrorType
 	Message string
@@ -59,7 +59,7 @@ type Error struct {
 	Context map[string]interface{}
 }
 
-// Error 实现 error 接口
+// Error implements error interface
 func (e *Error) Error() string {
 	if e.Cause != nil {
 		return fmt.Sprintf("%s: %v", e.Message, e.Cause)
@@ -67,12 +67,12 @@ func (e *Error) Error() string {
 	return e.Message
 }
 
-// Unwrap 返回原始错误
+// Unwrap returns the original error
 func (e *Error) Unwrap() error {
 	return e.Cause
 }
 
-// NewError 创建新的错误
+// NewError creates a new error
 func NewError(errType ErrorType, message string, cause error) *Error {
 	return &Error{
 		Type:    errType,
@@ -83,7 +83,7 @@ func NewError(errType ErrorType, message string, cause error) *Error {
 	}
 }
 
-// CircuitBreaker 熔断器
+// CircuitBreaker circuit breaker
 type CircuitBreaker struct {
 	mu              sync.RWMutex
 	state           CircuitBreakerState
@@ -96,7 +96,7 @@ type CircuitBreaker struct {
 	halfOpenCount   int
 }
 
-// CircuitBreakerState 熔断器状态
+// CircuitBreakerState circuit breaker state
 type CircuitBreakerState int
 
 const (
@@ -105,7 +105,7 @@ const (
 	CircuitBreakerHalfOpen
 )
 
-// NewCircuitBreaker 创建新的熔断器
+// NewCircuitBreaker creates a new circuit breaker
 func NewCircuitBreaker(threshold int, timeout time.Duration) *CircuitBreaker {
 	return &CircuitBreaker{
 		state:         CircuitBreakerClosed,
@@ -115,7 +115,7 @@ func NewCircuitBreaker(threshold int, timeout time.Duration) *CircuitBreaker {
 	}
 }
 
-// Call 执行带熔断器的调用
+// Call executes a call with circuit breaker
 func (cb *CircuitBreaker) Call(operation func() error) error {
 	if !cb.canExecute() {
 		return ErrCircuitBreakerOpen
@@ -126,7 +126,7 @@ func (cb *CircuitBreaker) Call(operation func() error) error {
 	return err
 }
 
-// canExecute 检查是否可以执行
+// canExecute checks if execution is allowed
 func (cb *CircuitBreaker) canExecute() bool {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
@@ -152,7 +152,7 @@ func (cb *CircuitBreaker) canExecute() bool {
 	}
 }
 
-// recordResult 记录执行结果
+// recordResult records the execution result
 func (cb *CircuitBreaker) recordResult(err error) {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -180,14 +180,14 @@ func (cb *CircuitBreaker) recordResult(err error) {
 	}
 }
 
-// GetState 获取熔断器状态
+// GetState gets the circuit breaker state
 func (cb *CircuitBreaker) GetState() CircuitBreakerState {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
 	return cb.state
 }
 
-// GetStats 获取熔断器统计信息
+// GetStats gets circuit breaker statistics
 func (cb *CircuitBreaker) GetStats() map[string]interface{} {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
@@ -204,7 +204,7 @@ func (cb *CircuitBreaker) GetStats() map[string]interface{} {
 	}
 }
 
-// RetryStrategy 重试策略
+// RetryStrategy retry strategy
 type RetryStrategy struct {
 	MaxRetries     int
 	InitialBackoff time.Duration
@@ -213,7 +213,7 @@ type RetryStrategy struct {
 	Jitter         bool
 }
 
-// NewRetryStrategy 创建新的重试策略
+// NewRetryStrategy creates a new retry strategy
 func NewRetryStrategy(maxRetries int, initialBackoff, maxBackoff time.Duration) *RetryStrategy {
 	return &RetryStrategy{
 		MaxRetries:     maxRetries,
@@ -224,7 +224,7 @@ func NewRetryStrategy(maxRetries int, initialBackoff, maxBackoff time.Duration) 
 	}
 }
 
-// ExecuteWithRetry 执行带重试的操作
+// ExecuteWithRetry executes an operation with retry
 func (rs *RetryStrategy) ExecuteWithRetry(ctx context.Context, operation func() error) error {
 	var lastErr error
 	backoff := rs.InitialBackoff
@@ -244,19 +244,19 @@ func (rs *RetryStrategy) ExecuteWithRetry(ctx context.Context, operation func() 
 				break
 			}
 
-			// 计算退避时间
+			// Calculate backoff time
 			if rs.Jitter {
 				backoff = rs.addJitter(backoff)
 			}
 
-			// 等待后重试
+			// Wait and retry
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-time.After(backoff):
 			}
 
-			// 指数退避
+			// Exponential backoff
 			backoff = time.Duration(float64(backoff) * rs.BackoffFactor)
 			if backoff > rs.MaxBackoff {
 				backoff = rs.MaxBackoff
@@ -267,14 +267,14 @@ func (rs *RetryStrategy) ExecuteWithRetry(ctx context.Context, operation func() 
 	return fmt.Errorf("operation failed after %d retries: %w", rs.MaxRetries, lastErr)
 }
 
-// addJitter 添加抖动
+// addJitter adds jitter
 func (rs *RetryStrategy) addJitter(backoff time.Duration) time.Duration {
-	// 简单的抖动实现：添加 ±25% 的随机时间
+	// Simple jitter implementation: add ±25% random time
 	jitter := time.Duration(float64(backoff) * 0.25)
 	return backoff + time.Duration(float64(jitter)*(0.5-0.5*float64(time.Now().UnixNano()%2)))
 }
 
-// ErrorHandler 错误处理器
+// ErrorHandler error handler
 type ErrorHandler struct {
 	circuitBreaker *CircuitBreaker
 	retryStrategy  *RetryStrategy
@@ -282,7 +282,7 @@ type ErrorHandler struct {
 	mu             sync.RWMutex
 }
 
-// NewErrorHandler 创建新的错误处理器
+// NewErrorHandler creates a new error handler
 func NewErrorHandler() *ErrorHandler {
 	return &ErrorHandler{
 		circuitBreaker: NewCircuitBreaker(5, 30*time.Second),
@@ -291,7 +291,7 @@ func NewErrorHandler() *ErrorHandler {
 	}
 }
 
-// HandleError 处理错误
+// HandleError handles an error
 func (eh *ErrorHandler) HandleError(err *Error) {
 	eh.mu.RLock()
 	callbacks := eh.errorCallbacks[err.Type]
@@ -302,26 +302,26 @@ func (eh *ErrorHandler) HandleError(err *Error) {
 	}
 }
 
-// RegisterErrorCallback 注册错误回调
+// RegisterErrorCallback registers an error callback
 func (eh *ErrorHandler) RegisterErrorCallback(errType ErrorType, callback func(*Error)) {
 	eh.mu.Lock()
 	defer eh.mu.Unlock()
 	eh.errorCallbacks[errType] = append(eh.errorCallbacks[errType], callback)
 }
 
-// ExecuteWithErrorHandling 执行带错误处理的操作
+// ExecuteWithErrorHandling executes an operation with error handling
 func (eh *ErrorHandler) ExecuteWithErrorHandling(ctx context.Context, operation func() error) error {
 	return eh.circuitBreaker.Call(func() error {
 		return eh.retryStrategy.ExecuteWithRetry(ctx, operation)
 	})
 }
 
-// GetCircuitBreaker 获取熔断器
+// GetCircuitBreaker gets the circuit breaker
 func (eh *ErrorHandler) GetCircuitBreaker() *CircuitBreaker {
 	return eh.circuitBreaker
 }
 
-// GetRetryStrategy 获取重试策略
+// GetRetryStrategy gets the retry strategy
 func (eh *ErrorHandler) GetRetryStrategy() *RetryStrategy {
 	return eh.retryStrategy
 }

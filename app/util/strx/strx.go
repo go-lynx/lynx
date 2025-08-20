@@ -5,7 +5,7 @@ import (
 	"unicode"
 )
 
-// HasPrefixAny 判断 s 是否具有任一前缀。
+// HasPrefixAny returns true if s has any of the given prefixes.
 func HasPrefixAny(s string, prefixes ...string) bool {
 	for _, p := range prefixes {
 		if strings.HasPrefix(s, p) {
@@ -15,7 +15,7 @@ func HasPrefixAny(s string, prefixes ...string) bool {
 	return false
 }
 
-// HasSuffixAny 判断 s 是否具有任一后缀。
+// HasSuffixAny returns true if s has any of the given suffixes.
 func HasSuffixAny(s string, suffixes ...string) bool {
 	for _, sf := range suffixes {
 		if strings.HasSuffix(s, sf) {
@@ -25,8 +25,8 @@ func HasSuffixAny(s string, suffixes ...string) bool {
 	return false
 }
 
-// Truncate 对字符串进行 rune 安全截断；max<=0 返回空。
-// 若提供 ellipsis 且实际截断，则在末尾拼接 ellipsis。
+// Truncate cuts the string in a rune-safe way; max<=0 returns an empty string.
+// If ellipsis is provided and truncation occurs, append it to the end.
 func Truncate(s string, max int, ellipsis string) string {
 	if max <= 0 {
 		return ""
@@ -39,9 +39,9 @@ func Truncate(s string, max int, ellipsis string) string {
 		return string(runes[:max])
 	}
 	if max < len([]rune(ellipsis)) {
-		// 省略号长度超过 max，直接返回截断
-		return string(runes[:max])
-	}
+        // Ellipsis length exceeds max; return direct truncation
+        return string(runes[:max])
+    }
 	cut := max - len([]rune(ellipsis))
 	if cut < 0 {
 		cut = 0
@@ -49,7 +49,7 @@ func Truncate(s string, max int, ellipsis string) string {
 	return string(runes[:cut]) + ellipsis
 }
 
-// TrimSpaceAndCompress 去除首尾空白并将内部连续空白压缩为单个空格。
+// TrimSpaceAndCompress trims leading/trailing spaces and compresses internal whitespace to single spaces.
 func TrimSpaceAndCompress(s string) string {
 	s = strings.TrimSpace(s)
 	var b strings.Builder
@@ -69,7 +69,7 @@ func TrimSpaceAndCompress(s string) string {
 	return b.String()
 }
 
-// SplitAndTrim 按分隔符拆分，去除各项空白并剔除空项。
+// SplitAndTrim splits by sep, trims items, and removes empty parts.
 func SplitAndTrim(s, sep string) []string {
 	if sep == "" {
 		return []string{strings.TrimSpace(s)}

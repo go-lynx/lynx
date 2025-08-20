@@ -15,63 +15,62 @@ import (
 )
 
 // Plugin metadata
-// 插件元数据，包含插件名称、版本、描述和配置前缀
 const (
-	// 插件名称
+	// Plugin name
 	pluginName = "mysql.client"
-	// 插件版本
+	// Plugin version
 	pluginVersion = "v2.0.0"
-	// 插件描述
+	// Plugin description
 	pluginDescription = "mysql client plugin for lynx framework"
-	// 配置前缀
+	// Configuration prefix
 	confPrefix = "lynx.mysql"
 )
 
-// DBMysqlClient 表示 MySQL 客户端插件实例
+// DBMysqlClient represents MySQL client plugin instance
 type DBMysqlClient struct {
-	// 继承基础插件
+	// Inherit base plugin
 	*plugins.BasePlugin
-	// 数据库驱动
+	// Database driver
 	dri *esql.Driver
-	// MySQL 配置
+	// MySQL configuration
 	conf *conf.Mysql
 }
 
-// NewMysqlClient 创建一个新的 MySQL 客户端插件实例
-// 返回一个指向 DBMysqlClient 结构体的指针
+// NewMysqlClient creates a new MySQL client plugin instance
+// Returns a pointer to DBMysqlClient struct
 func NewMysqlClient() *DBMysqlClient {
 	return &DBMysqlClient{
 		BasePlugin: plugins.NewBasePlugin(
-			// 生成插件 ID
+			// Generate plugin ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
-			// 插件名称
+			// Plugin name
 			pluginName,
-			// 插件描述
+			// Plugin description
 			pluginDescription,
-			// 插件版本
+			// Plugin version
 			pluginVersion,
-			// 配置前缀
+			// Configuration prefix
 			confPrefix,
-			// 权重
+			// Weight
 			101,
 		),
 	}
 }
 
-// InitializeResources 从运行时配置中扫描并加载 MySQL 配置
-// 参数 rt 为运行时环境
-// 返回错误信息，如果配置加载失败则返回相应错误
+// InitializeResources scans and loads MySQL configuration from runtime configuration
+// Parameter rt is the runtime environment
+// Returns error information, returns corresponding error if configuration loading fails
 func (m *DBMysqlClient) InitializeResources(rt plugins.Runtime) error {
-	// 初始化一个空的配置结构
+	// Initialize an empty configuration structure
 	m.conf = &conf.Mysql{}
 
-	// 从运行时配置中扫描并加载 MySQL 配置
+	// Scan and load MySQL configuration from runtime configuration
 	err := rt.GetConfig().Value(confPrefix).Scan(m.conf)
 	if err != nil {
 		return err
 	}
 
-	// 设置默认配置
+	// Set default configuration
 	defaultConf := &conf.Mysql{
 		Driver:      "mysql",
 		Source:      "root:123456@tcp(127.0.0.1:3306)/db_name?charset=utf8mb4&parseTime=True&loc=Local",
@@ -81,7 +80,7 @@ func (m *DBMysqlClient) InitializeResources(rt plugins.Runtime) error {
 		MaxLifeTime: &durationpb.Duration{Seconds: 300},
 	}
 
-	// 对未设置的字段使用默认值
+	// Use default values for unset fields
 	if m.conf.Driver == "" {
 		m.conf.Driver = defaultConf.Driver
 	}
@@ -104,82 +103,82 @@ func (m *DBMysqlClient) InitializeResources(rt plugins.Runtime) error {
 	return nil
 }
 
-// StartupTasks 初始化数据库连接并进行健康检查
-// 返回错误信息，如果连接或健康检查失败则返回相应错误
+// StartupTasks initializes database connection and performs health check
+// Returns error information, returns corresponding error if connection or health check fails
 func (m *DBMysqlClient) StartupTasks() error {
-	// 记录数据库初始化日志
+	// Log database initialization
 	log.Infof("Initializing database")
 
-	// 打开数据库连接
+	// Open database connection
 	drv, err := esql.Open(
 		m.conf.Driver,
 		m.conf.Source,
 	)
 
 	if err != nil {
-		// 记录打开数据库连接失败日志
+		// Log database connection failure
 		log.Errorf("failed opening connection to dataBase: %v", err)
-		// 发生错误时 panic
+		// Panic when error occurs
 		panic(err)
 	}
 
-	// 设置连接池的最大空闲连接数
+	// Set maximum idle connections in connection pool
 	drv.DB().SetMaxIdleConns(int(m.conf.MinConn))
-	// 设置连接池的最大打开连接数
+	// Set maximum open connections in connection pool
 	drv.DB().SetMaxOpenConns(int(m.conf.MaxConn))
-	// 设置连接的最大空闲时间
+	// Set maximum idle time for connections
 	drv.DB().SetConnMaxIdleTime(m.conf.MaxIdleTime.AsDuration())
-	// 设置连接的最大生命周期
+	// Set maximum lifetime for connections
 	drv.DB().SetConnMaxLifetime(m.conf.MaxLifeTime.AsDuration())
 
-	// 将数据库驱动赋值给实例
+	// Assign database driver to instance
 	m.dri = drv
-	// 记录数据库初始化成功日志
+	// Log successful database initialization
 	log.Infof("database successfully initialized")
-	// 原代码此处返回值有误，正确返回 nil
+	// Original code had incorrect return value here, correctly return nil
 	return nil
 }
 
-// CleanupTasks 关闭数据库连接
-// 返回错误信息，如果关闭连接失败则返回相应错误
+// CleanupTasks closes database connection
+// Returns error information, returns corresponding error if closing connection fails
 func (m *DBMysqlClient) CleanupTasks() error {
 	if m.dri == nil {
 		return nil
 	}
-	// 关闭数据库连接
+	// Close database connection
 	if err := m.dri.Close(); err != nil {
-		// 记录关闭数据库连接失败日志
+		// Log database connection close failure
 		log.Error(err)
 		return err
 	}
-	// 记录关闭数据库资源日志
+	// Log database resource close
 	log.Info("message", "Closing the DataBase resources")
 	return nil
 }
 
-// Configure 更新 HTTP 服务器的配置。
-// 该函数接收一个任意类型的参数，尝试将其转换为 *conf.Http 类型，如果转换成功则更新配置。
+// Configure updates MySQL configuration.
+// This function receives a parameter of any type, attempts to convert it to *conf.Mysql type, and updates configuration if conversion succeeds.
 func (m *DBMysqlClient) Configure(c any) error {
-	// 尝试将传入的配置转换为 *conf.Http 类型
+	// Attempt to convert passed configuration to *conf.Mysql type
 	if mysqlConf, ok := c.(*conf.Mysql); ok {
-		// 转换成功，更新配置
+		// Conversion successful, update configuration
 		m.conf = mysqlConf
 		return nil
 	}
-	// 转换失败，返回配置无效错误
+	// Conversion failed, return invalid configuration error
 	return plugins.ErrInvalidConfiguration
 }
 
-// CheckHealth 对 HTTP 服务器进行健康检查。
-// 该函数目前直接返回 nil，表示服务器健康，可根据实际需求添加检查逻辑。
+// CheckHealth performs health check on database connection.
+// This function executes a ping context to check database connectivity.
 func (m *DBMysqlClient) CheckHealth() error {
-	// 创建一个带超时的上下文
+	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	// 执行数据库连接健康检查
+	// Execute database connection health check
 	err := m.dri.DB().PingContext(ctx)
 	if err != nil {
-		// 原代码此处返回值有误，正确返回错误信息
+		// Return error information
 		return err
 	}
 	return nil

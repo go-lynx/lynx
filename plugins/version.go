@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Version 版本结构
+// Version structure
 type Version struct {
 	Major      int
 	Minor      int
@@ -17,38 +17,38 @@ type Version struct {
 	Original   string
 }
 
-// VersionManager 版本管理器接口
+// VersionManager version manager interface
 type VersionManager interface {
-	// ParseVersion 解析版本字符串
+	// ParseVersion parses version string
 	ParseVersion(version string) (*Version, error)
-	// CompareVersions 比较两个版本
+	// CompareVersions compares two versions
 	CompareVersions(v1, v2 *Version) int
-	// SatisfiesConstraint 检查版本是否满足约束
+	// SatisfiesConstraint checks if version satisfies constraint
 	SatisfiesConstraint(version *Version, constraint *VersionConstraint) bool
-	// ResolveVersionConflict 解决版本冲突
+	// ResolveVersionConflict resolves version conflicts
 	ResolveVersionConflict(conflicts []VersionConflict) (map[string]string, error)
-	// GetCompatibleVersions 获取兼容版本列表
+	// GetCompatibleVersions gets compatible version list
 	GetCompatibleVersions(required *VersionConstraint, available []*Version) []*Version
 }
 
-// DefaultVersionManager 默认版本管理器实现
+// DefaultVersionManager default version manager implementation
 type DefaultVersionManager struct{}
 
-// NewVersionManager 创建新的版本管理器
+// NewVersionManager creates a new version manager
 func NewVersionManager() VersionManager {
 	return &DefaultVersionManager{}
 }
 
-// ParseVersion 解析版本字符串
+// ParseVersion parses version string
 func (vm *DefaultVersionManager) ParseVersion(version string) (*Version, error) {
 	if version == "" {
 		return nil, fmt.Errorf("version string cannot be empty")
 	}
 
-	// 移除前缀v（如果存在）
+	// Remove prefix v (if exists)
 	version = strings.TrimPrefix(version, "v")
 
-	// 分割版本和预发布信息
+	// Split version and pre-release information
 	parts := strings.SplitN(version, "-", 2)
 	versionPart := parts[0]
 	var preRelease string
@@ -56,13 +56,13 @@ func (vm *DefaultVersionManager) ParseVersion(version string) (*Version, error) 
 		preRelease = parts[1]
 	}
 
-	// 分割版本和构建信息
+	// Split version and build information
 	buildParts := strings.SplitN(preRelease, "+", 2)
 	if len(buildParts) > 1 {
 		preRelease = buildParts[0]
 	}
 
-	// 解析主要版本号
+	// Parse major version number
 	versionNumbers := strings.Split(versionPart, ".")
 	if len(versionNumbers) < 1 {
 		return nil, fmt.Errorf("invalid version format: %s", version)
@@ -99,14 +99,14 @@ func (vm *DefaultVersionManager) ParseVersion(version string) (*Version, error) 
 	}, nil
 }
 
-// CompareVersions 比较两个版本
-// 返回值: -1 (v1 < v2), 0 (v1 == v2), 1 (v1 > v2)
+// CompareVersions compares two versions
+// Return value: -1 (v1 < v2), 0 (v1 == v2), 1 (v1 > v2)
 func (vm *DefaultVersionManager) CompareVersions(v1, v2 *Version) int {
 	if v1 == nil || v2 == nil {
 		return 0
 	}
 
-	// 比较主要版本号
+	// Compare major version numbers
 	if v1.Major != v2.Major {
 		if v1.Major < v2.Major {
 			return -1
@@ -114,7 +114,7 @@ func (vm *DefaultVersionManager) CompareVersions(v1, v2 *Version) int {
 		return 1
 	}
 
-	// 比较次要版本号
+	// Compare minor version numbers
 	if v1.Minor != v2.Minor {
 		if v1.Minor < v2.Minor {
 			return -1
@@ -122,7 +122,7 @@ func (vm *DefaultVersionManager) CompareVersions(v1, v2 *Version) int {
 		return 1
 	}
 
-	// 比较补丁版本号
+	// Compare patch version numbers
 	if v1.Patch != v2.Patch {
 		if v1.Patch < v2.Patch {
 			return -1
@@ -130,22 +130,22 @@ func (vm *DefaultVersionManager) CompareVersions(v1, v2 *Version) int {
 		return 1
 	}
 
-	// 比较预发布版本
+	// Compare pre-release versions
 	if v1.PreRelease == "" && v2.PreRelease == "" {
 		return 0
 	}
 	if v1.PreRelease == "" {
-		return 1 // 正式版本 > 预发布版本
+		return 1 // Release version > pre-release version
 	}
 	if v2.PreRelease == "" {
-		return -1 // 预发布版本 < 正式版本
+		return -1 // Pre-release version < release version
 	}
 
-	// 预发布版本比较
+	// Pre-release version comparison
 	return vm.comparePreRelease(v1.PreRelease, v2.PreRelease)
 }
 
-// comparePreRelease 比较预发布版本
+// comparePreRelease compares pre-release versions
 func (vm *DefaultVersionManager) comparePreRelease(pr1, pr2 string) int {
 	parts1 := strings.Split(pr1, ".")
 	parts2 := strings.Split(pr2, ".")
@@ -164,7 +164,7 @@ func (vm *DefaultVersionManager) comparePreRelease(pr1, pr2 string) int {
 			part2 = parts2[i]
 		}
 
-		// 数字部分比较
+		// Numeric part comparison
 		if vm.isNumeric(part1) && vm.isNumeric(part2) {
 			num1, _ := strconv.Atoi(part1)
 			num2, _ := strconv.Atoi(part2)
@@ -175,7 +175,7 @@ func (vm *DefaultVersionManager) comparePreRelease(pr1, pr2 string) int {
 				return 1
 			}
 		} else {
-			// 字符串部分比较
+			// String part comparison
 			if part1 < part2 {
 				return -1
 			}
@@ -188,19 +188,19 @@ func (vm *DefaultVersionManager) comparePreRelease(pr1, pr2 string) int {
 	return 0
 }
 
-// isNumeric 检查字符串是否为数字
+// isNumeric checks if string is numeric
 func (vm *DefaultVersionManager) isNumeric(s string) bool {
 	_, err := strconv.Atoi(s)
 	return err == nil
 }
 
-// SatisfiesConstraint 检查版本是否满足约束
+// SatisfiesConstraint checks if version satisfies constraint
 func (vm *DefaultVersionManager) SatisfiesConstraint(version *Version, constraint *VersionConstraint) bool {
 	if constraint == nil || version == nil {
 		return true
 	}
 
-	// 检查精确版本
+	// Check exact version
 	if constraint.ExactVersion != "" {
 		exactVersion, err := vm.ParseVersion(constraint.ExactVersion)
 		if err != nil {
@@ -209,7 +209,7 @@ func (vm *DefaultVersionManager) SatisfiesConstraint(version *Version, constrain
 		return vm.CompareVersions(version, exactVersion) == 0
 	}
 
-	// 检查排除版本
+	// Check excluded versions
 	for _, excludedVersion := range constraint.ExcludeVersions {
 		excluded, err := vm.ParseVersion(excludedVersion)
 		if err != nil {
@@ -220,7 +220,7 @@ func (vm *DefaultVersionManager) SatisfiesConstraint(version *Version, constrain
 		}
 	}
 
-	// 检查最小版本
+	// Check minimum version
 	if constraint.MinVersion != "" {
 		minVersion, err := vm.ParseVersion(constraint.MinVersion)
 		if err != nil {
@@ -231,7 +231,7 @@ func (vm *DefaultVersionManager) SatisfiesConstraint(version *Version, constrain
 		}
 	}
 
-	// 检查最大版本
+	// Check maximum version
 	if constraint.MaxVersion != "" {
 		maxVersion, err := vm.ParseVersion(constraint.MaxVersion)
 		if err != nil {
@@ -245,7 +245,7 @@ func (vm *DefaultVersionManager) SatisfiesConstraint(version *Version, constrain
 	return true
 }
 
-// ResolveVersionConflict 解决版本冲突
+// ResolveVersionConflict resolves version conflicts
 func (vm *DefaultVersionManager) ResolveVersionConflict(conflicts []VersionConflict) (map[string]string, error) {
 	if len(conflicts) == 0 {
 		return nil, nil
@@ -255,7 +255,7 @@ func (vm *DefaultVersionManager) ResolveVersionConflict(conflicts []VersionConfl
 	conflictGroups := vm.groupConflictsByPlugin(conflicts)
 
 	for pluginID, pluginConflicts := range conflictGroups {
-		// 为每个插件选择最佳版本
+		// Select best version for each plugin
 		bestVersion, err := vm.selectBestVersion(pluginConflicts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve conflicts for plugin %s: %w", pluginID, err)
@@ -266,7 +266,7 @@ func (vm *DefaultVersionManager) ResolveVersionConflict(conflicts []VersionConfl
 	return resolution, nil
 }
 
-// groupConflictsByPlugin 按插件分组冲突
+// groupConflictsByPlugin groups conflicts by plugin
 func (vm *DefaultVersionManager) groupConflictsByPlugin(conflicts []VersionConflict) map[string][]VersionConflict {
 	groups := make(map[string][]VersionConflict)
 
@@ -277,19 +277,19 @@ func (vm *DefaultVersionManager) groupConflictsByPlugin(conflicts []VersionConfl
 	return groups
 }
 
-// selectBestVersion 为插件选择最佳版本
+// selectBestVersion selects the best version for a plugin
 func (vm *DefaultVersionManager) selectBestVersion(conflicts []VersionConflict) (string, error) {
 	if len(conflicts) == 0 {
 		return "", fmt.Errorf("no conflicts provided")
 	}
 
-	// 收集所有可用版本
+	// Collect all available versions
 	availableVersions := make(map[string]bool)
 	for _, conflict := range conflicts {
 		availableVersions[conflict.AvailableVersion] = true
 	}
 
-	// 解析所有版本
+	// Parse all versions
 	versions := make([]*Version, 0)
 	for versionStr := range availableVersions {
 		version, err := vm.ParseVersion(versionStr)
@@ -303,7 +303,7 @@ func (vm *DefaultVersionManager) selectBestVersion(conflicts []VersionConflict) 
 		return "", fmt.Errorf("no valid versions available")
 	}
 
-	// 选择最高版本（通常是最新的稳定版本）
+	// Select highest version (usually the latest stable version)
 	bestVersion := versions[0]
 	for _, version := range versions[1:] {
 		if vm.CompareVersions(version, bestVersion) > 0 {
@@ -314,7 +314,7 @@ func (vm *DefaultVersionManager) selectBestVersion(conflicts []VersionConflict) 
 	return bestVersion.Original, nil
 }
 
-// GetCompatibleVersions 获取兼容版本列表
+// GetCompatibleVersions gets compatible version list
 func (vm *DefaultVersionManager) GetCompatibleVersions(required *VersionConstraint, available []*Version) []*Version {
 	var compatible []*Version
 
@@ -327,17 +327,17 @@ func (vm *DefaultVersionManager) GetCompatibleVersions(required *VersionConstrai
 	return compatible
 }
 
-// VersionRange 版本范围
+// VersionRange version range
 type VersionRange struct {
 	Min *Version
 	Max *Version
 }
 
-// ParseVersionRange 解析版本范围字符串
+// ParseVersionRange parses version range string
 func (vm *DefaultVersionManager) ParseVersionRange(rangeStr string) (*VersionRange, error) {
-	// 支持格式: ">=1.0.0", "<=2.0.0", "1.0.0 - 2.0.0"
+	// Supported formats: ">=1.0.0", "<=2.0.0", "1.0.0 - 2.0.0"
 
-	// 检查范围格式
+	// Check range format
 	if strings.Contains(rangeStr, " - ") {
 		parts := strings.Split(rangeStr, " - ")
 		if len(parts) != 2 {
@@ -357,7 +357,7 @@ func (vm *DefaultVersionManager) ParseVersionRange(rangeStr string) (*VersionRan
 		return &VersionRange{Min: minVersion, Max: maxVersion}, nil
 	}
 
-	// 检查比较操作符格式
+	// Check comparison operator format
 	re := regexp.MustCompile(`^([<>=]+)\s*(.+)$`)
 	matches := re.FindStringSubmatch(rangeStr)
 	if len(matches) == 3 {
@@ -375,7 +375,7 @@ func (vm *DefaultVersionManager) ParseVersionRange(rangeStr string) (*VersionRan
 		case "<=":
 			return &VersionRange{Max: version}, nil
 		case ">":
-			// 创建比当前版本高一个补丁版本的版本
+			// Create a version one patch higher than the current version
 			nextVersion := &Version{
 				Major: version.Major,
 				Minor: version.Minor,
@@ -390,7 +390,7 @@ func (vm *DefaultVersionManager) ParseVersionRange(rangeStr string) (*VersionRan
 	return nil, fmt.Errorf("unsupported range format: %s", rangeStr)
 }
 
-// IsVersionInRange 检查版本是否在范围内
+// IsVersionInRange checks if version is within range
 func (vm *DefaultVersionManager) IsVersionInRange(version *Version, rng *VersionRange) bool {
 	if rng == nil || version == nil {
 		return true
@@ -407,7 +407,7 @@ func (vm *DefaultVersionManager) IsVersionInRange(version *Version, rng *Version
 	return true
 }
 
-// GetVersionString 获取版本字符串表示
+// GetVersionString gets version string representation
 func (v *Version) String() string {
 	if v == nil {
 		return ""
@@ -426,12 +426,12 @@ func (v *Version) String() string {
 	return result
 }
 
-// IsStable 检查是否为稳定版本
+// IsStable checks if it's a stable version
 func (v *Version) IsStable() bool {
 	return v != nil && v.PreRelease == ""
 }
 
-// IsPreRelease 检查是否为预发布版本
+// IsPreRelease checks if it's a pre-release version
 func (v *Version) IsPreRelease() bool {
 	return v != nil && v.PreRelease != ""
 }

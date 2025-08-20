@@ -55,7 +55,6 @@ func initBanner(cfg kconf.Config) error {
 }
 
 // Embedded banner file for application startup
-// 使用 //go:embed 指令将 banner.txt 文件嵌入到程序中
 //
 //go:embed banner.txt
 var bannerFS embed.FS

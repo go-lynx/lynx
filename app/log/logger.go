@@ -35,9 +35,6 @@ var (
 )
 
 // InitLogger initializes the application's logging system.
-// 初始化应用的日志系统，设置主日志记录器并配置各种日志字段，
-// 如时间戳、调用者信息、服务详情和追踪 ID 等。
-// 返回一个错误对象，如果初始化过程中出现错误则返回相应错误，否则返回 nil。
 // InitLogger initializes the application's logging system with the provided configuration.
 // It returns an error if initialization fails.
 //
@@ -65,20 +62,20 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// Use Info level as this is an important system event
 	log.Info("initializing Lynx logging component")
 
-	// 解析日志配置
+	// Parse log configuration
 	var logConfig lconf.Log
 	if err := cfg.Value("lynx.log").Scan(&logConfig); err != nil {
-		// 如果没有配置，使用默认配置
+		// If no configuration, use default configuration
 		logConfig = lconf.Log{
 			Level:         "info",
 			ConsoleOutput: true,
 		}
 	}
 
-	// 设置日志输出
+	// Set up log output
 	var writers []io.Writer
 
-	// 配置控制台输出
+	// Configure console output
 	if logConfig.GetConsoleOutput() {
 		consoleWriter := zerolog.ConsoleWriter{
 			Out:        os.Stdout,
@@ -97,31 +94,31 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		writers = append(writers, consoleWriter)
 	}
 
-	// 配置文件输出
+	// Configure file output
 	if logConfig.GetFilePath() != "" {
-		// 确保日志目录存在
+		// Ensure log directory exists
 		logDir := filepath.Dir(logConfig.GetFilePath())
 		if err := os.MkdirAll(logDir, 0755); err != nil {
 			return fmt.Errorf("failed to create log directory: %v", err)
 		}
 
-		// 配置日志轮转
+		// Configure log rotation
 		fileWriter := &lumberjack.Logger{
 			Filename:   logConfig.GetFilePath(),
-			MaxSize:    int(logConfig.GetMaxSizeMb()),  // 单个文件最大大小，单位 MB
-			MaxBackups: int(logConfig.GetMaxBackups()), // 最多保留的旧文件数
-			MaxAge:     int(logConfig.GetMaxAgeDays()), // 旧文件最多保留天数
-			Compress:   logConfig.GetCompress(),        // 是否压缩旧文件
+			MaxSize:    int(logConfig.GetMaxSizeMb()),  // Maximum size of single file, in MB
+			MaxBackups: int(logConfig.GetMaxBackups()), // Maximum number of old files to keep
+			MaxAge:     int(logConfig.GetMaxAgeDays()), // Maximum age of old files in days
+			Compress:   logConfig.GetCompress(),        // Whether to compress old files
 		}
 		writers = append(writers, fileWriter)
 	}
 
-	// 如果没有配置任何输出，默认输出到控制台
+	// If no output is configured, default to console output
 	if len(writers) == 0 {
 		writers = append(writers, os.Stdout)
 	}
 
-	// 创建多输出写入器
+	// Create multi-output writer
 	output := zerolog.MultiLevelWriter(writers...)
 
 	// Set global time format and timezone
@@ -145,7 +142,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		zerolog.TimestampFunc = func() time.Time { return time.Now().In(tzLoc) }
 	}
 
-	// 设置全局日志级别（统一 zerolog + kratos）
+	// Set global log level (unified zerolog + kratos)
 	logLevel := strings.ToLower(logConfig.GetLevel())
 	switch logLevel {
 	case "debug":
@@ -161,18 +158,18 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
 		kratosMinLevel = log.LevelError
 	default:
-		// 默认使用 Info 级别
+		// Default to Info level
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 		kratosMinLevel = log.LevelInfo
 	}
 
-	// callerSkip 可配置
+	// callerSkip is configurable
 	callerSkipCurrent = callerSkipDefault
 	if v := logConfig.GetCallerSkip(); v > 0 {
 		callerSkipCurrent = int(v)
 	}
 
-	// 用 zeroLogger 初始化底层日志器
+	// Initialize underlying logger with zeroLogger
 	zeroLogger := zerolog.New(output).With().Timestamp().Logger()
 
 	// Initialize the main logger with level filter and default fields
@@ -188,37 +185,34 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		"span.id", tracing.SpanID(),
 	)
 
-	// 检查日志记录器是否创建失败，如果为 nil 则返回错误
+	// Check if logger creation failed, return error if nil
 	if logger == nil {
 		return fmt.Errorf("failed to create logger")
 	}
 
 	// Create a lHelper for more convenient logging
-	// 创建一个日志辅助对象，方便进行日志记录操作
 	lHelper := log.NewHelper(logger)
-	// 检查日志辅助对象是否创建失败，如果为 nil 则返回错误
+	// Check if logger helper creation failed, return error if nil
 	if lHelper == nil {
 		return fmt.Errorf("failed to create logger lHelper")
 	}
 
 	// Store logger instances
-	// 将日志记录器和日志辅助对象存储到 LynxApp 实例中
 	Logger = logger
 	LHelper = *lHelper
-	// 更新原子 helper，避免热更新期间的数据竞争
+	// Update atomic helper to avoid data race during hot updates
 	helperStore.Store(lHelper)
 
 	// Initialize and display the application banner
-	// 初始化并显示应用启动横幅
 	if err := initBanner(cfg); err != nil {
-		// 若横幅初始化失败，记录警告信息，但不影响程序继续执行
+		// If banner initialization fails, log warning but don't affect program execution
 		lHelper.Warnf("failed to initialize banner: %v", err)
 		// Continue execution as banner display is not critical
 	}
 
-	// 先尝试基于配置源的 Watch 机制（例如本地文件、Polaris 等可能支持）
+	// First try Watch mechanism based on configuration source (e.g., local files, Polaris, etc. may support)
 	apply := func(nc *lconf.Log) {
-		// 应用更新：优先使用 timezone 字符串，否则默认 Local
+		// Apply updates: prefer timezone string, otherwise default to Local
 		if tz, err := cfg.Value("lynx.log.timezone").String(); err == nil && tz != "" {
 			if loc, e := time.LoadLocation(tz); e == nil {
 				tzLoc = loc
@@ -252,7 +246,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			callerSkipCurrent = int(v)
 		}
 
-		// 重建 logger
+		// Rebuild logger
 		newLogger := log.With(
 			log.NewFilter(base, log.FilterLevel(kratosMinLevel)),
 			"caller", Caller(callerSkipCurrent),
@@ -269,7 +263,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		}
 	}
 
-	// 使用 Watch，如果不支持则回退到轮询
+	// Use Watch, fallback to polling if not supported
 	if err := cfg.Watch("lynx.log", func(key string, v kconf.Value) {
 		var nc lconf.Log
 		if err := v.Scan(&nc); err != nil {
@@ -277,10 +271,10 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		}
 		apply(&nc)
 	}); err != nil {
-		// 轻量轮询热更新（后端不支持 Watch 时的降级方案）
-		// 每 2s 读取一次 lynx.log，配置变化则应用
+		// Lightweight polling hot update (fallback when backend doesn't support Watch)
+		// Read lynx.log every 2s, apply if configuration changes
 		go func() {
-			// 生成签名函数
+			// Generate signature function
 			signature := func(c *lconf.Log) string {
 				if c == nil {
 					return ""

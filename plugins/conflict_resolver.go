@@ -6,19 +6,19 @@ import (
 	"strings"
 )
 
-// ConflictResolver 依赖冲突解决器接口
+// ConflictResolver dependency conflict resolver interface
 type ConflictResolver interface {
-	// DetectConflicts 检测所有依赖冲突
+	// DetectConflicts detects all dependency conflicts
 	DetectConflicts(graph *DependencyGraph) ([]DependencyConflict, error)
-	// ResolveConflicts 解决依赖冲突
+	// ResolveConflicts resolves dependency conflicts
 	ResolveConflicts(conflicts []DependencyConflict) (*ConflictResolution, error)
-	// SuggestAlternatives 建议替代方案
+	// SuggestAlternatives suggests alternative solutions
 	SuggestAlternatives(conflict DependencyConflict, availablePlugins map[string][]Plugin) []ConflictAlternative
-	// ValidateResolution 验证冲突解决方案
+	// ValidateResolution validates conflict resolution
 	ValidateResolution(resolution *ConflictResolution, graph *DependencyGraph) error
 }
 
-// DependencyConflict 依赖冲突信息
+// DependencyConflict dependency conflict information
 type DependencyConflict struct {
 	ID          string             `json:"id"`
 	Type        ConflictType       `json:"type"`
@@ -29,39 +29,39 @@ type DependencyConflict struct {
 	Solutions   []ConflictSolution `json:"solutions"`
 }
 
-// ConflictType 冲突类型
+// ConflictType conflict type
 type ConflictType string
 
 const (
-	// ConflictTypeVersion 版本冲突
+	// ConflictTypeVersion version conflict
 	ConflictTypeVersion ConflictType = "version"
-	// ConflictTypeCircular 循环依赖冲突
+	// ConflictTypeCircular circular dependency conflict
 	ConflictTypeCircular ConflictType = "circular"
-	// ConflictTypeMissing 缺失依赖冲突
+	// ConflictTypeMissing missing dependency conflict
 	ConflictTypeMissing ConflictType = "missing"
-	// ConflictTypeIncompatible 不兼容冲突
+	// ConflictTypeIncompatible incompatible conflict
 	ConflictTypeIncompatible ConflictType = "incompatible"
-	// ConflictTypeResource 资源冲突
+	// ConflictTypeResource resource conflict
 	ConflictTypeResource ConflictType = "resource"
 )
 
-// ConflictSeverity 冲突严重程度
+// ConflictSeverity conflict severity level
 type ConflictSeverity string
 
 const (
-	// ConflictSeverityCritical 严重冲突
+	// ConflictSeverityCritical critical conflict
 	ConflictSeverityCritical ConflictSeverity = "critical"
-	// ConflictSeverityHigh 高优先级冲突
+	// ConflictSeverityHigh high priority conflict
 	ConflictSeverityHigh ConflictSeverity = "high"
-	// ConflictSeverityMedium 中等优先级冲突
+	// ConflictSeverityMedium medium priority conflict
 	ConflictSeverityMedium ConflictSeverity = "medium"
-	// ConflictSeverityLow 低优先级冲突
+	// ConflictSeverityLow low priority conflict
 	ConflictSeverityLow ConflictSeverity = "low"
-	// ConflictSeverityInfo 信息性冲突
+	// ConflictSeverityInfo informational conflict
 	ConflictSeverityInfo ConflictSeverity = "info"
 )
 
-// ConflictDetail 冲突详细信息
+// ConflictDetail conflict detailed information
 type ConflictDetail struct {
 	PluginID       string `json:"plugin_id"`
 	DependencyID   string `json:"dependency_id"`
@@ -70,7 +70,7 @@ type ConflictDetail struct {
 	Message        string `json:"message"`
 }
 
-// ConflictSolution 冲突解决方案
+// ConflictSolution conflict resolution
 type ConflictSolution struct {
 	ID          string           `json:"id"`
 	Type        SolutionType     `json:"type"`
@@ -80,23 +80,23 @@ type ConflictSolution struct {
 	Priority    int              `json:"priority"`
 }
 
-// SolutionType 解决方案类型
+// SolutionType solution type
 type SolutionType string
 
 const (
-	// SolutionTypeUpgrade 升级版本
+	// SolutionTypeUpgrade upgrade version
 	SolutionTypeUpgrade SolutionType = "upgrade"
-	// SolutionTypeDowngrade 降级版本
+	// SolutionTypeDowngrade downgrade version
 	SolutionTypeDowngrade SolutionType = "downgrade"
-	// SolutionTypeReplace 替换插件
+	// SolutionTypeReplace replace plugin
 	SolutionTypeReplace SolutionType = "replace"
-	// SolutionTypeRemove 移除插件
+	// SolutionTypeRemove remove plugin
 	SolutionTypeRemove SolutionType = "remove"
-	// SolutionTypeConfigure 配置调整
+	// SolutionTypeConfigure configuration adjustment
 	SolutionTypeConfigure SolutionType = "configure"
 )
 
-// SolutionAction 解决方案动作
+// SolutionAction solution action
 type SolutionAction struct {
 	Type        string            `json:"type"`
 	Target      string            `json:"target"`
@@ -105,29 +105,29 @@ type SolutionAction struct {
 	Parameters  map[string]string `json:"parameters"`
 }
 
-// SolutionRisk 解决方案风险
+// SolutionRisk solution risk
 type SolutionRisk string
 
 const (
-	// SolutionRiskLow 低风险
+	// SolutionRiskLow low risk
 	SolutionRiskLow SolutionRisk = "low"
-	// SolutionRiskMedium 中等风险
+	// SolutionRiskMedium medium risk
 	SolutionRiskMedium SolutionRisk = "medium"
-	// SolutionRiskHigh 高风险
+	// SolutionRiskHigh high risk
 	SolutionRiskHigh SolutionRisk = "high"
 )
 
-// ConflictAlternative 冲突替代方案
+// ConflictAlternative conflict alternative solution
 type ConflictAlternative struct {
 	PluginID      string       `json:"plugin_id"`
 	Name          string       `json:"name"`
 	Version       string       `json:"version"`
 	Description   string       `json:"description"`
-	Compatibility float64      `json:"compatibility"` // 兼容性评分 0-1
+	Compatibility float64      `json:"compatibility"` // Compatibility score 0-1
 	Risk          SolutionRisk `json:"risk"`
 }
 
-// ConflictResolution 冲突解决方案
+// ConflictResolution conflict resolution
 type ConflictResolution struct {
 	ResolvedConflicts  []string           `json:"resolved_conflicts"`
 	RemainingConflicts []string           `json:"remaining_conflicts"`
@@ -136,7 +136,7 @@ type ConflictResolution struct {
 	Risk               SolutionRisk       `json:"risk"`
 }
 
-// ResolutionAction 解决方案动作
+// ResolutionAction resolution action
 type ResolutionAction struct {
 	ConflictID string           `json:"conflict_id"`
 	SolutionID string           `json:"solution_id"`
@@ -144,39 +144,39 @@ type ResolutionAction struct {
 	Status     ActionStatus     `json:"status"`
 }
 
-// ActionStatus 动作状态
+// ActionStatus action status
 type ActionStatus string
 
 const (
-	// ActionStatusPending 待执行
+	// ActionStatusPending pending execution
 	ActionStatusPending ActionStatus = "pending"
-	// ActionStatusInProgress 执行中
+	// ActionStatusInProgress in progress
 	ActionStatusInProgress ActionStatus = "in_progress"
-	// ActionStatusCompleted 已完成
+	// ActionStatusCompleted completed
 	ActionStatusCompleted ActionStatus = "completed"
-	// ActionStatusFailed 执行失败
+	// ActionStatusFailed execution failed
 	ActionStatusFailed ActionStatus = "failed"
-	// ActionStatusRollback 已回滚
+	// ActionStatusRollback rolled back
 	ActionStatusRollback ActionStatus = "rollback"
 )
 
-// DefaultConflictResolver 默认冲突解决器实现
+// DefaultConflictResolver default conflict resolver implementation
 type DefaultConflictResolver struct {
 	versionManager VersionManager
 }
 
-// NewConflictResolver 创建新的冲突解决器
+// NewConflictResolver creates a new conflict resolver
 func NewConflictResolver(versionManager VersionManager) ConflictResolver {
 	return &DefaultConflictResolver{
 		versionManager: versionManager,
 	}
 }
 
-// DetectConflicts 检测所有依赖冲突
+// DetectConflicts detects all dependency conflicts
 func (cr *DefaultConflictResolver) DetectConflicts(graph *DependencyGraph) ([]DependencyConflict, error) {
 	var conflicts []DependencyConflict
 
-	// 检测循环依赖
+	// Detect circular dependencies
 	if cycle, err := graph.CheckCircularDependencies(); err != nil {
 		conflicts = append(conflicts, DependencyConflict{
 			ID:          "circular_dependency",
@@ -193,7 +193,7 @@ func (cr *DefaultConflictResolver) DetectConflicts(graph *DependencyGraph) ([]De
 		})
 	}
 
-	// 检测版本冲突
+	// Detect version conflicts
 	versionConflicts, err := graph.CheckVersionConflicts()
 	if err != nil {
 		return nil, fmt.Errorf("failed to check version conflicts: %w", err)
@@ -203,22 +203,22 @@ func (cr *DefaultConflictResolver) DetectConflicts(graph *DependencyGraph) ([]De
 		conflicts = append(conflicts, cr.convertVersionConflicts(versionConflicts)...)
 	}
 
-	// 检测缺失依赖
+	// Detect missing dependencies
 	missingConflicts := cr.detectMissingDependencies(graph)
 	conflicts = append(conflicts, missingConflicts...)
 
-	// 检测资源冲突
+	// Detect resource conflicts
 	resourceConflicts := cr.detectResourceConflicts(graph)
 	conflicts = append(conflicts, resourceConflicts...)
 
 	return conflicts, nil
 }
 
-// convertVersionConflicts 转换版本冲突
+// convertVersionConflicts converts version conflicts
 func (cr *DefaultConflictResolver) convertVersionConflicts(versionConflicts []VersionConflict) []DependencyConflict {
 	var conflicts []DependencyConflict
 
-	// 按插件分组版本冲突
+	// Group version conflicts by plugin
 	conflictGroups := make(map[string][]VersionConflict)
 	for _, vc := range versionConflicts {
 		conflictGroups[vc.DependencyID] = append(conflictGroups[vc.DependencyID], vc)
@@ -253,15 +253,15 @@ func (cr *DefaultConflictResolver) convertVersionConflicts(versionConflicts []Ve
 	return conflicts
 }
 
-// detectMissingDependencies 检测缺失依赖
+// detectMissingDependencies detects missing dependencies
 func (cr *DefaultConflictResolver) detectMissingDependencies(graph *DependencyGraph) []DependencyConflict {
 	var conflicts []DependencyConflict
 
-	// 遍历所有插件的依赖关系
+	// Traverse all plugin dependencies
 	for pluginID, deps := range graph.GetAllDependencies() {
 		for _, dep := range deps {
 			if dep.Type == DependencyTypeRequired {
-				// 检查依赖的插件是否存在
+				// Check if the dependent plugin exists
 				if !graph.HasPlugin(dep.ID) {
 					conflicts = append(conflicts, DependencyConflict{
 						ID:          fmt.Sprintf("missing_dependency_%s_%s", pluginID, dep.ID),
@@ -288,26 +288,26 @@ func (cr *DefaultConflictResolver) detectMissingDependencies(graph *DependencyGr
 	return conflicts
 }
 
-// detectResourceConflicts 检测资源冲突
+// detectResourceConflicts detects resource conflicts
 func (cr *DefaultConflictResolver) detectResourceConflicts(graph *DependencyGraph) []DependencyConflict {
 	var conflicts []DependencyConflict
 
-	// 这里需要检查资源名称冲突
-	// 由于当前架构中没有直接的资源注册信息，我们提供一个框架实现
-	// 实际使用中需要扩展 Plugin 接口以支持资源注册信息
+	// Here we need to check for resource name conflicts
+	// Since there is no direct resource registration information in the current architecture, we provide a framework implementation
+	// In actual use, the Plugin interface needs to be extended to support resource registration information
 
-	// 检查插件名称冲突
+	// Check for plugin name conflicts
 	pluginNames := make(map[string][]string)
 	for pluginID, plugin := range graph.GetAllPlugins() {
 		if plugin != nil {
-			// 假设插件有 Name() 方法，如果没有则需要扩展接口
-			// 这里使用插件ID作为名称的替代
+			// Assume the plugin has a Name() method, if not, the interface needs to be extended
+			// Here we use the plugin ID as a substitute for the name
 			name := pluginID
 			pluginNames[name] = append(pluginNames[name], pluginID)
 		}
 	}
 
-	// 检测名称冲突
+	// Detect name conflicts
 	for name, pluginIDs := range pluginNames {
 		if len(pluginIDs) > 1 {
 			conflicts = append(conflicts, DependencyConflict{
@@ -333,11 +333,11 @@ func (cr *DefaultConflictResolver) detectResourceConflicts(graph *DependencyGrap
 	return conflicts
 }
 
-// generateResourceConflictSolutions 生成资源冲突解决方案
+// generateResourceConflictSolutions generates resource conflict solutions
 func (cr *DefaultConflictResolver) generateResourceConflictSolutions(name string, pluginIDs []string) []ConflictSolution {
 	var solutions []ConflictSolution
 
-	// 方案1: 重命名插件
+	// Solution 1: Rename plugins
 	solutions = append(solutions, ConflictSolution{
 		ID:          "rename_plugin",
 		Type:        SolutionTypeConfigure,
@@ -353,7 +353,7 @@ func (cr *DefaultConflictResolver) generateResourceConflictSolutions(name string
 		Priority: 1,
 	})
 
-	// 方案2: 移除重复插件
+	// Solution 2: Remove duplicate plugins
 	solutions = append(solutions, ConflictSolution{
 		ID:          "remove_duplicate",
 		Type:        SolutionTypeRemove,
@@ -369,7 +369,7 @@ func (cr *DefaultConflictResolver) generateResourceConflictSolutions(name string
 		Priority: 2,
 	})
 
-	// 方案3: 合并插件
+	// Solution 3: Merge plugins
 	solutions = append(solutions, ConflictSolution{
 		ID:          "merge_plugins",
 		Type:        SolutionTypeConfigure,
@@ -388,11 +388,11 @@ func (cr *DefaultConflictResolver) generateResourceConflictSolutions(name string
 	return solutions
 }
 
-// generateCircularDependencySolutions 生成循环依赖解决方案
+// generateCircularDependencySolutions generates circular dependency solutions
 func (cr *DefaultConflictResolver) generateCircularDependencySolutions(cycle []string) []ConflictSolution {
 	var solutions []ConflictSolution
 
-	// 方案1: 移除其中一个依赖
+	// Solution 1: Remove one of the dependencies
 	if len(cycle) > 0 {
 		solutions = append(solutions, ConflictSolution{
 			ID:          "remove_dependency",
@@ -410,7 +410,7 @@ func (cr *DefaultConflictResolver) generateCircularDependencySolutions(cycle []s
 		})
 	}
 
-	// 方案2: 重构依赖关系
+	// Solution 2: Restructure dependencies
 	solutions = append(solutions, ConflictSolution{
 		ID:          "restructure_dependencies",
 		Type:        SolutionTypeConfigure,
@@ -429,11 +429,11 @@ func (cr *DefaultConflictResolver) generateCircularDependencySolutions(cycle []s
 	return solutions
 }
 
-// generateVersionConflictSolutions 生成版本冲突解决方案
+// generateVersionConflictSolutions generates version conflict solutions
 func (cr *DefaultConflictResolver) generateVersionConflictSolutions(conflicts []VersionConflict) []ConflictSolution {
 	var solutions []ConflictSolution
 
-	// 方案1: 升级到兼容版本
+	// Solution 1: Upgrade to compatible version
 	solutions = append(solutions, ConflictSolution{
 		ID:          "upgrade_version",
 		Type:        SolutionTypeUpgrade,
@@ -449,7 +449,7 @@ func (cr *DefaultConflictResolver) generateVersionConflictSolutions(conflicts []
 		Priority: 1,
 	})
 
-	// 方案2: 降级到兼容版本
+	// Solution 2: Downgrade to compatible version
 	solutions = append(solutions, ConflictSolution{
 		ID:          "downgrade_version",
 		Type:        SolutionTypeDowngrade,
@@ -468,11 +468,11 @@ func (cr *DefaultConflictResolver) generateVersionConflictSolutions(conflicts []
 	return solutions
 }
 
-// generateMissingDependencySolutions 生成缺失依赖的解决方案
+// generateMissingDependencySolutions generates solutions for missing dependencies
 func (cr *DefaultConflictResolver) generateMissingDependencySolutions(pluginID string, dep *Dependency) []ConflictSolution {
 	var solutions []ConflictSolution
 
-	// 方案1: 安装缺失的依赖
+	// Solution 1: Install missing dependency
 	solutions = append(solutions, ConflictSolution{
 		ID:          "install_dependency",
 		Type:        SolutionTypeConfigure,
@@ -488,7 +488,7 @@ func (cr *DefaultConflictResolver) generateMissingDependencySolutions(pluginID s
 		Priority: 1,
 	})
 
-	// 方案2: 寻找替代插件
+	// Solution 2: Find alternative plugin
 	solutions = append(solutions, ConflictSolution{
 		ID:          "find_alternative",
 		Type:        SolutionTypeConfigure,
@@ -504,7 +504,7 @@ func (cr *DefaultConflictResolver) generateMissingDependencySolutions(pluginID s
 		Priority: 2,
 	})
 
-	// 方案3: 移除依赖此插件的插件
+	// Solution 3: Remove plugin that depends on this
 	solutions = append(solutions, ConflictSolution{
 		ID:          "remove_dependent",
 		Type:        SolutionTypeRemove,
@@ -523,7 +523,7 @@ func (cr *DefaultConflictResolver) generateMissingDependencySolutions(pluginID s
 	return solutions
 }
 
-// ResolveConflicts 解决依赖冲突
+// ResolveConflicts resolves dependency conflicts
 func (cr *DefaultConflictResolver) ResolveConflicts(conflicts []DependencyConflict) (*ConflictResolution, error) {
 	if len(conflicts) == 0 {
 		return &ConflictResolution{
@@ -537,13 +537,13 @@ func (cr *DefaultConflictResolver) ResolveConflicts(conflicts []DependencyConfli
 		Risk:    SolutionRiskLow,
 	}
 
-	// 按严重程度排序冲突
+	// Sort conflicts by severity
 	sort.Slice(conflicts, func(i, j int) bool {
 		return cr.getSeverityWeight(conflicts[i].Severity) > cr.getSeverityWeight(conflicts[j].Severity)
 	})
 
 	for _, conflict := range conflicts {
-		// 选择最佳解决方案
+		// Select the best solution
 		solution := cr.selectBestSolution(conflict)
 		if solution != nil {
 			resolution.ResolvedConflicts = append(resolution.ResolvedConflicts, conflict.ID)
@@ -558,20 +558,20 @@ func (cr *DefaultConflictResolver) ResolveConflicts(conflicts []DependencyConfli
 		}
 	}
 
-	// 更新整体风险等级
+	// Update overall risk level
 	resolution.Risk = cr.calculateOverallRisk(resolution.Actions)
 	resolution.Summary = cr.generateResolutionSummary(resolution)
 
 	return resolution, nil
 }
 
-// selectBestSolution 选择最佳解决方案
+// selectBestSolution selects the best solution
 func (cr *DefaultConflictResolver) selectBestSolution(conflict DependencyConflict) *ConflictSolution {
 	if len(conflict.Solutions) == 0 {
 		return nil
 	}
 
-	// 按优先级和风险排序
+	// Sort by priority and risk
 	sort.Slice(conflict.Solutions, func(i, j int) bool {
 		if conflict.Solutions[i].Priority != conflict.Solutions[j].Priority {
 			return conflict.Solutions[i].Priority < conflict.Solutions[j].Priority
@@ -582,7 +582,7 @@ func (cr *DefaultConflictResolver) selectBestSolution(conflict DependencyConflic
 	return &conflict.Solutions[0]
 }
 
-// getSeverityWeight 获取严重程度权重
+// getSeverityWeight gets severity weight
 func (cr *DefaultConflictResolver) getSeverityWeight(severity ConflictSeverity) int {
 	switch severity {
 	case ConflictSeverityCritical:
@@ -600,7 +600,7 @@ func (cr *DefaultConflictResolver) getSeverityWeight(severity ConflictSeverity) 
 	}
 }
 
-// getRiskWeight 获取风险权重
+// getRiskWeight gets risk weight
 func (cr *DefaultConflictResolver) getRiskWeight(risk SolutionRisk) int {
 	switch risk {
 	case SolutionRiskHigh:
@@ -614,7 +614,7 @@ func (cr *DefaultConflictResolver) getRiskWeight(risk SolutionRisk) int {
 	}
 }
 
-// calculateOverallRisk 计算整体风险
+// calculateOverallRisk calculates overall risk
 func (cr *DefaultConflictResolver) calculateOverallRisk(actions []ResolutionAction) SolutionRisk {
 	if len(actions) == 0 {
 		return SolutionRiskLow
@@ -624,8 +624,8 @@ func (cr *DefaultConflictResolver) calculateOverallRisk(actions []ResolutionActi
 	mediumRiskCount := 0
 
 	for range actions {
-		// 这里需要根据解决方案ID查找风险等级
-		// 简化实现，假设所有动作都是中等风险
+		// Here we need to look up the risk level by solution ID
+		// Simplified implementation, assuming all actions are medium risk
 		mediumRiskCount++
 	}
 
@@ -638,7 +638,7 @@ func (cr *DefaultConflictResolver) calculateOverallRisk(actions []ResolutionActi
 	return SolutionRiskLow
 }
 
-// generateResolutionSummary 生成解决方案摘要
+// generateResolutionSummary generates resolution summary
 func (cr *DefaultConflictResolver) generateResolutionSummary(resolution *ConflictResolution) string {
 	total := len(resolution.ResolvedConflicts) + len(resolution.RemainingConflicts)
 	resolved := len(resolution.ResolvedConflicts)
@@ -654,7 +654,7 @@ func (cr *DefaultConflictResolver) generateResolutionSummary(resolution *Conflic
 	return fmt.Sprintf("Resolved %d out of %d conflicts (%d remaining)", resolved, total, len(resolution.RemainingConflicts))
 }
 
-// SuggestAlternatives 建议替代方案
+// SuggestAlternatives suggests alternative solutions
 func (cr *DefaultConflictResolver) SuggestAlternatives(conflict DependencyConflict, availablePlugins map[string][]Plugin) []ConflictAlternative {
 	var alternatives []ConflictAlternative
 
@@ -668,24 +668,24 @@ func (cr *DefaultConflictResolver) SuggestAlternatives(conflict DependencyConfli
 	return alternatives
 }
 
-// suggestVersionAlternatives 建议版本替代方案
+// suggestVersionAlternatives suggests version alternative solutions
 func (cr *DefaultConflictResolver) suggestVersionAlternatives(conflict DependencyConflict, availablePlugins map[string][]Plugin) []ConflictAlternative {
 	var alternatives []ConflictAlternative
 
-	// 分析版本冲突，寻找兼容版本
+	// Analyze version conflicts and look for compatible versions
 	for _, detail := range conflict.Details {
 		if detail.DependencyID != "" {
-			// 查找可用的兼容版本
+			// Look for available compatible versions
 			if plugins, exists := availablePlugins[detail.DependencyID]; exists {
 				for range plugins {
-					// 这里需要实现版本兼容性检查
-					// 简化实现：假设所有可用版本都是兼容的
+					// Here we need to implement version compatibility checking
+					// Simplified implementation: assume all available versions are compatible
 					alternatives = append(alternatives, ConflictAlternative{
 						PluginID:      detail.DependencyID,
 						Name:          detail.DependencyID,
-						Version:       "latest", // 实际实现中应该获取真实版本
+						Version:       "latest", // In actual implementation, should get real version
 						Description:   fmt.Sprintf("Alternative version for %s", detail.DependencyID),
-						Compatibility: 0.8, // 假设兼容性评分
+						Compatibility: 0.8, // Assume compatibility score
 						Risk:          SolutionRiskLow,
 					})
 				}
@@ -696,24 +696,24 @@ func (cr *DefaultConflictResolver) suggestVersionAlternatives(conflict Dependenc
 	return alternatives
 }
 
-// suggestReplacementAlternatives 建议替换替代方案
+// suggestReplacementAlternatives suggests replacement alternative solutions
 func (cr *DefaultConflictResolver) suggestReplacementAlternatives(conflict DependencyConflict, availablePlugins map[string][]Plugin) []ConflictAlternative {
 	var alternatives []ConflictAlternative
 
-	// 分析缺失依赖，寻找替代插件
+	// Analyze missing dependencies and look for alternative plugins
 	for _, detail := range conflict.Details {
 		if detail.DependencyID != "" {
-			// 查找功能相似的替代插件
+			// Look for functionally similar alternative plugins
 			for pluginType, plugins := range availablePlugins {
-				// 这里需要实现功能相似性检查
-				// 简化实现：假设所有可用插件都是潜在的替代方案
+				// Here we need to implement functional similarity checking
+				// Simplified implementation: assume all available plugins are potential alternatives
 				if len(plugins) > 0 {
 					alternatives = append(alternatives, ConflictAlternative{
 						PluginID:      pluginType,
 						Name:          pluginType,
-						Version:       "latest", // 实际实现中应该获取真实版本
+						Version:       "latest", // In actual implementation, should get real version
 						Description:   fmt.Sprintf("Alternative plugin for %s", detail.DependencyID),
-						Compatibility: 0.6, // 假设兼容性评分较低，因为是替代方案
+						Compatibility: 0.6, // Assume lower compatibility score as it's an alternative
 						Risk:          SolutionRiskMedium,
 					})
 				}
@@ -724,14 +724,14 @@ func (cr *DefaultConflictResolver) suggestReplacementAlternatives(conflict Depen
 	return alternatives
 }
 
-// ValidateResolution 验证冲突解决方案
+// ValidateResolution validates conflict resolution
 func (cr *DefaultConflictResolver) ValidateResolution(resolution *ConflictResolution, graph *DependencyGraph) error {
-	// 检查是否还有循环依赖
+	// Check if there are still circular dependencies
 	if cycle, err := graph.CheckCircularDependencies(); err != nil {
 		return fmt.Errorf("circular dependency still exists after resolution: %s", strings.Join(cycle, " -> "))
 	}
 
-	// 检查是否还有版本冲突
+	// Check if there are still version conflicts
 	versionConflicts, err := graph.CheckVersionConflicts()
 	if err != nil {
 		return fmt.Errorf("failed to check version conflicts: %w", err)

@@ -10,7 +10,7 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// ExamplePlugin 示例插件
+// ExamplePlugin example plugin
 type ExamplePlugin struct {
 	*plugins.TypedBasePlugin[*ExamplePlugin]
 	name string
@@ -26,7 +26,7 @@ func NewExamplePlugin(name string) *ExamplePlugin {
 
 func (p *ExamplePlugin) Initialize(plugin plugins.Plugin, rt plugins.Runtime) error {
 	fmt.Printf("Plugin %s initializing...\n", p.name)
-	
+
 	// 注册私有资源
 	if err := rt.RegisterPrivateResource("private_config", map[string]string{
 		"plugin_name": p.name,
@@ -34,54 +34,54 @@ func (p *ExamplePlugin) Initialize(plugin plugins.Plugin, rt plugins.Runtime) er
 	}); err != nil {
 		return err
 	}
-	
+
 	// 注册共享资源
 	if err := rt.RegisterSharedResource("shared_counter", 0); err != nil {
 		return err
 	}
-	
+
 	// 发出初始化事件
 	rt.EmitPluginEvent(p.name, "initialized", map[string]any{
 		"timestamp": time.Now().Unix(),
 		"status":    "ready",
 	})
-	
+
 	return nil
 }
 
 func (p *ExamplePlugin) Start(plugin plugins.Plugin) error {
 	fmt.Printf("Plugin %s starting...\n", p.name)
-	
+
 	// 发出启动事件
 	p.EmitEvent(plugins.PluginEvent{
-		Type:      "started",
-		PluginID:  p.name,
-		Source:    p.name,
+		Type:     "started",
+		PluginID: p.name,
+		Source:   p.name,
 		Metadata: map[string]any{
 			"timestamp": time.Now().Unix(),
 			"status":    "running",
 		},
 		Timestamp: time.Now().Unix(),
 	})
-	
+
 	return nil
 }
 
 func (p *ExamplePlugin) Stop(plugin plugins.Plugin) error {
 	fmt.Printf("Plugin %s stopping...\n", p.name)
-	
+
 	// 发出停止事件
 	p.EmitEvent(plugins.PluginEvent{
-		Type:      "stopped",
-		PluginID:  p.name,
-		Source:    p.name,
+		Type:     "stopped",
+		PluginID: p.name,
+		Source:   p.name,
 		Metadata: map[string]any{
 			"timestamp": time.Now().Unix(),
 			"status":    "stopped",
 		},
 		Timestamp: time.Now().Unix(),
 	})
-	
+
 	return nil
 }
 
@@ -103,7 +103,7 @@ func NewEventListener(name string) *EventListener {
 }
 
 func (l *EventListener) HandleEvent(event plugins.PluginEvent) {
-	fmt.Printf("[%s] Event: %s from plugin %s at %d\n", 
+	fmt.Printf("[%s] Event: %s from plugin %s at %d\n",
 		l.name, event.Type, event.PluginID, event.Timestamp)
 }
 
@@ -112,77 +112,77 @@ func (l *EventListener) GetListenerID() string {
 }
 
 func main() {
-	fmt.Println("=== 分层 Runtime 设计示例 ===")
-	
-	    // 创建插件管理器（Typed 版本）
-    manager := app.NewTypedPluginManager()
-	
-	// 创建示例插件（简化版本）
-	fmt.Println("创建插件...")
-	
-	// 获取运行时
+	fmt.Println("=== Layered Runtime Design Example ===")
+
+	// Create plugin manager (Typed version)
+	manager := app.NewTypedPluginManager()
+
+	// Create example plugins (simplified version)
+	fmt.Println("Creating plugins...")
+
+	// Get runtime
 	runtime := manager.GetRuntime()
-	
-	// 添加事件监听器
+
+	// Add event listeners
 	listener1 := NewEventListener("global_listener")
 	runtime.AddListener(listener1, nil)
-	
+
 	listener2 := NewEventListener("plugin1_listener")
 	runtime.AddPluginListener("plugin1", listener2, nil)
-	
-	// 创建配置
+
+	// Create configuration
 	conf := config.New()
-	
-	// 加载插件
-	fmt.Println("\n--- 加载插件 ---")
+
+	// Load plugins
+	fmt.Println("\n--- Loading Plugins ---")
 	if err := manager.LoadPlugins(conf); err != nil {
 		log.Fatalf("Failed to load plugins: %v", err)
 	}
-	
-	// 等待一段时间让事件处理
+
+	// Wait for event processing
 	time.Sleep(1 * time.Second)
-	
-	// 显示资源统计
-	fmt.Println("\n--- 资源统计 ---")
+
+	// Display resource statistics
+	fmt.Println("\n--- Resource Statistics ---")
 	stats := manager.GetResourceStats()
 	for key, value := range stats {
 		fmt.Printf("%s: %v\n", key, value)
 	}
-	
-	// 列出所有资源
-	fmt.Println("\n--- 资源列表 ---")
+
+	// List all resources
+	fmt.Println("\n--- Resource List ---")
 	resources := manager.ListResources()
 	for _, resource := range resources {
 		fmt.Printf("Resource: %s (Type: %s, Plugin: %s, Private: %v, Size: %d bytes)\n",
 			resource.Name, resource.Type, resource.PluginID, resource.IsPrivate, resource.Size)
 	}
-	
-	// 显示事件历史
-	fmt.Println("\n--- 事件历史 ---")
+
+	// Display event history
+	fmt.Println("\n--- Event History ---")
 	events := runtime.GetEventHistory(plugins.EventFilter{})
 	for _, event := range events {
 		fmt.Printf("Event: %s from %s at %d\n", event.Type, event.PluginID, event.Timestamp)
 	}
-	
-	// 显示特定插件的事件历史
-	fmt.Println("\n--- Plugin1 事件历史 ---")
+
+	// Display specific plugin event history
+	fmt.Println("\n--- Plugin1 Event History ---")
 	plugin1Events := runtime.GetPluginEventHistory("plugin1", plugins.EventFilter{})
 	for _, event := range plugin1Events {
 		fmt.Printf("Plugin1 Event: %s at %d\n", event.Type, event.Timestamp)
 	}
-	
-	// 停止插件
-	fmt.Println("\n--- 停止插件 ---")
+
+	// Stop plugins
+	fmt.Println("\n--- Stopping Plugins ---")
 	if err := manager.StopPlugin("plugin1"); err != nil {
 		log.Printf("Failed to stop plugin1: %v", err)
 	}
-	
-	// 显示停止后的资源统计
-	fmt.Println("\n--- 停止后的资源统计 ---")
+
+	// Display resource statistics after stopping
+	fmt.Println("\n--- Resource Statistics After Stopping ---")
 	stats = manager.GetResourceStats()
 	for key, value := range stats {
 		fmt.Printf("%s: %v\n", key, value)
 	}
-	
-	fmt.Println("\n=== 示例完成 ===")
+
+	fmt.Println("\n=== Example Completed ===")
 }

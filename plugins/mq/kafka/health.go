@@ -10,7 +10,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-// HealthChecker 健康检查器
+// HealthChecker performs health checks on Kafka connections
 type HealthChecker struct {
 	client      *kgo.Client
 	interval    time.Duration
@@ -26,7 +26,7 @@ type HealthChecker struct {
 	onUnhealthy func(error)
 }
 
-// NewHealthChecker 创建新的健康检查器
+// NewHealthChecker creates a new health checker
 func NewHealthChecker(client *kgo.Client, interval, timeout time.Duration) *HealthChecker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &HealthChecker{
@@ -42,17 +42,17 @@ func NewHealthChecker(client *kgo.Client, interval, timeout time.Duration) *Heal
 	}
 }
 
-// Start 启动健康检查
+// Start starts the health check
 func (hc *HealthChecker) Start() {
 	go hc.run()
 }
 
-// Stop 停止健康检查
+// Stop stops the health check
 func (hc *HealthChecker) Stop() {
 	hc.cancel()
 }
 
-// run 运行健康检查循环
+// run runs the health check loop
 func (hc *HealthChecker) run() {
 	ticker := time.NewTicker(hc.interval)
 	defer ticker.Stop()
@@ -67,13 +67,13 @@ func (hc *HealthChecker) run() {
 	}
 }
 
-// check 执行健康检查
+// check performs health check
 func (hc *HealthChecker) check() {
-	// 通过 Metadata 请求探测集群健康
+	// Probe cluster health through Metadata request
 	ctx, cancel := context.WithTimeout(hc.ctx, hc.timeout)
 	defer cancel()
 
-	// 发送空 MetadataRequest（请求全部 topic 的元数据）
+	// Send empty MetadataRequest (request metadata for all topics)
 	var req kmsg.MetadataRequest
 	_, err := req.RequestWith(ctx, hc.client)
 
@@ -85,7 +85,7 @@ func (hc *HealthChecker) check() {
 		hc.errorCount++
 		if hc.isHealthy && hc.errorCount >= hc.maxErrors {
 			hc.isHealthy = false
-			// 回调不可阻塞主循环
+			// Callback should not block main loop
 			go hc.onUnhealthy(err)
 		}
 		log.WarnfCtx(hc.ctx, "Kafka health check failed (%d/%d): %v", hc.errorCount, hc.maxErrors, err)
@@ -93,39 +93,39 @@ func (hc *HealthChecker) check() {
 	}
 
 	if !hc.isHealthy {
-		// 状态从不健康 -> 健康
+		// Status changed from unhealthy -> healthy
 		hc.isHealthy = true
 		hc.errorCount = 0
 		go hc.onHealthy()
 		log.InfofCtx(hc.ctx, "Kafka health recovered")
 	} else {
-		// 维持健康，清零错误计数
+		// Maintain health, reset error count
 		hc.errorCount = 0
 	}
 }
 
-// IsHealthy 检查是否健康
+// IsHealthy checks if the connection is healthy
 func (hc *HealthChecker) IsHealthy() bool {
 	hc.mu.RLock()
 	defer hc.mu.RUnlock()
 	return hc.isHealthy
 }
 
-// GetLastCheck 获取最后检查时间
+// GetLastCheck gets the last check time
 func (hc *HealthChecker) GetLastCheck() time.Time {
 	hc.mu.RLock()
 	defer hc.mu.RUnlock()
 	return hc.lastCheck
 }
 
-// GetErrorCount 获取错误计数
+// GetErrorCount gets the error count
 func (hc *HealthChecker) GetErrorCount() int {
 	hc.mu.RLock()
 	defer hc.mu.RUnlock()
 	return hc.errorCount
 }
 
-// SetCallbacks 设置回调函数
+// SetCallbacks sets callback functions
 func (hc *HealthChecker) SetCallbacks(onHealthy func(), onUnhealthy func(error)) {
 	hc.mu.Lock()
 	defer hc.mu.Unlock()
@@ -133,7 +133,7 @@ func (hc *HealthChecker) SetCallbacks(onHealthy func(), onUnhealthy func(error))
 	hc.onUnhealthy = onUnhealthy
 }
 
-// ConnectionManager 连接管理器
+// ConnectionManager manages Kafka connections
 type ConnectionManager struct {
 	client        *kgo.Client
 	brokers       []string
@@ -145,7 +145,7 @@ type ConnectionManager struct {
 	cancel        context.CancelFunc
 }
 
-// NewConnectionManager 创建新的连接管理器
+// NewConnectionManager creates a new connection manager
 func NewConnectionManager(client *kgo.Client, brokers []string) *ConnectionManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	cm := &ConnectionManager{
@@ -156,7 +156,7 @@ func NewConnectionManager(client *kgo.Client, brokers []string) *ConnectionManag
 		cancel:        cancel,
 	}
 
-	// 创建健康检查器
+	// Create health checker
 	cm.healthChecker = NewHealthChecker(client, 30*time.Second, 10*time.Second)
 	cm.healthChecker.SetCallbacks(
 		func() { cm.onHealthy() },
@@ -166,19 +166,19 @@ func NewConnectionManager(client *kgo.Client, brokers []string) *ConnectionManag
 	return cm
 }
 
-// Start 启动连接管理器
+// Start starts the connection manager
 func (cm *ConnectionManager) Start() {
 	cm.healthChecker.Start()
 	go cm.handleReconnections()
 }
 
-// Stop 停止连接管理器
+// Stop stops the connection manager
 func (cm *ConnectionManager) Stop() {
 	cm.cancel()
 	cm.healthChecker.Stop()
 }
 
-// onHealthy 连接恢复时的回调
+// onHealthy callback when connection is restored
 func (cm *ConnectionManager) onHealthy() {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -186,21 +186,21 @@ func (cm *ConnectionManager) onHealthy() {
 	log.InfofCtx(cm.ctx, "Kafka connection established")
 }
 
-// onUnhealthy 连接失败时的回调
+// onUnhealthy callback when connection fails
 func (cm *ConnectionManager) onUnhealthy(err error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.isConnected = false
 	log.ErrorfCtx(cm.ctx, "Kafka connection lost: %v", err)
 
-	// 触发重连
+	// Trigger reconnection
 	select {
 	case cm.reconnectChan <- struct{}{}:
 	default:
 	}
 }
 
-// handleReconnections 处理重连
+// handleReconnections handles reconnection
 func (cm *ConnectionManager) handleReconnections() {
 	for {
 		select {
@@ -212,10 +212,10 @@ func (cm *ConnectionManager) handleReconnections() {
 	}
 }
 
-// reconnect 重连逻辑
+// reconnect reconnection logic
 func (cm *ConnectionManager) reconnect() {
 	log.InfofCtx(cm.ctx, "Attempting to reconnect to Kafka...")
-	// franz-go 自带连接管理，这里通过触发一次 Metadata 来加速恢复
+	// franz-go has built-in connection management, trigger a Metadata request to accelerate recovery
 	ctx, cancel := context.WithTimeout(cm.ctx, 10*time.Second)
 	defer cancel()
 	var req kmsg.MetadataRequest
@@ -223,23 +223,23 @@ func (cm *ConnectionManager) reconnect() {
 	if err != nil {
 		log.WarnfCtx(cm.ctx, "Reconnect metadata request failed: %v", err)
 	}
-	// 轻微退避，避免风暴
+	// Light backoff to avoid storm
 	time.Sleep(2 * time.Second)
 }
 
-// IsConnected 检查是否已连接
+// IsConnected checks if connected
 func (cm *ConnectionManager) IsConnected() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.isConnected
 }
 
-// GetHealthChecker 获取健康检查器
+// GetHealthChecker gets the health checker
 func (cm *ConnectionManager) GetHealthChecker() *HealthChecker {
 	return cm.healthChecker
 }
 
-// ForceReconnect 强制重连
+// ForceReconnect forces reconnection
 func (cm *ConnectionManager) ForceReconnect() {
 	select {
 	case cm.reconnectChan <- struct{}{}:

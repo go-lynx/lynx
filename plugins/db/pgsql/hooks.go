@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-lynx/lynx/plugins/db/pgsql/conf"
 	"github.com/jackc/pgconn"
 	"github.com/qustavo/sqlhooks/v2"
-	"github.com/go-lynx/lynx/plugins/db/pgsql/conf"
 )
 
-// 全局指标与阈值（由 pgsql.go 在初始化时赋值）
+// Global metrics and thresholds (assigned by pgsql.go during initialization)
 var (
-	globalPgsqlMetrics *PrometheusMetrics
+	globalPgsqlMetrics  *PrometheusMetrics
 	globalSlowThreshold = 200 * time.Millisecond
 	globalPgsqlConf     *conf.Pgsql
 )
@@ -29,23 +29,23 @@ const (
 
 type metricsHooks struct{}
 
-// Before 符合 sqlhooks v2 接口
+// Before conforms to sqlhooks v2 interface
 func (h *metricsHooks) Before(ctx context.Context, query string, args ...interface{}) (context.Context, error) {
 	return context.WithValue(ctx, ctxStartKey, time.Now()), nil
 }
 
-// After 符合 sqlhooks v2 接口（无 err 参数）
+// After conforms to sqlhooks v2 interface (no err parameter)
 func (h *metricsHooks) After(ctx context.Context, query string, args ...interface{}) (context.Context, error) {
 	start, _ := ctx.Value(ctxStartKey).(time.Time)
 	if !start.IsZero() && globalPgsqlMetrics != nil {
 		dur := time.Since(start)
-		// 无错误信息时记录为 ok
+		// Record as ok when no error information
 		globalPgsqlMetrics.RecordQuery(parseOp(query), dur, nil, globalSlowThreshold, globalPgsqlConf, "")
 	}
 	return ctx, nil
 }
 
-// OnError 捕获错误以记录错误码与时延
+// OnError captures errors to record error codes and latency
 func (h *metricsHooks) OnError(ctx context.Context, err error, query string, args ...interface{}) error {
 	start, _ := ctx.Value(ctxStartKey).(time.Time)
 	if !start.IsZero() && globalPgsqlMetrics != nil {
@@ -55,7 +55,7 @@ func (h *metricsHooks) OnError(ctx context.Context, err error, query string, arg
 	return err
 }
 
-// Helper: 提取 SQLSTATE
+// Helper: Extract SQLSTATE
 func extractSQLState(err error) string {
 	if err == nil {
 		return ""
@@ -67,13 +67,13 @@ func extractSQLState(err error) string {
 	return ""
 }
 
-// parseOp 简单解析 SQL 操作名作为 op 标签
+// parseOp simply parses SQL operation name as op label
 func parseOp(query string) string {
 	q := strings.TrimSpace(query)
 	if q == "" {
 		return "query"
 	}
-	// 取首个单词
+	// Take the first word
 	i := strings.IndexFunc(q, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' })
 	if i <= 0 {
 		return strings.ToLower(q)
@@ -81,7 +81,7 @@ func parseOp(query string) string {
 	return strings.ToLower(q[:i])
 }
 
-// NewMetricsHooks 供 pgsql.go 注册使用
+// NewMetricsHooks for pgsql.go registration use
 func NewMetricsHooks() sqlhooks.Hooks {
 	return &metricsHooks{}
 }

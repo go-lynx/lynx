@@ -4,25 +4,25 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// 本文件包含三段 Lua 脚本（获取、释放、续期），并以 go-redis Script 封装供 EVALSHA 复用。
-// 重要设计约定（需与 Go 侧严格一致）：
-//   - lockLua: 返回值>0 表示当前持有者的重入计数；0 表示被其他持有者占用。
-//   - unlockLua: 返回 2 表示部分释放(计数>0)，1 表示完全释放，0 不存在，-1 非持有者。
-//     注意：当部分释放时，仅当传入的 TTL(毫秒) > 0 才会刷新两个键的过期时间；
-//     为了统一语义，Go 侧对 Unlock/UnlockByValue 的“部分释放”默认传 0（不刷新 TTL）。
-//   - renewLua: 返回 1 表示续期成功；0 非持有者；-1 不存在；-2 续期失败。
+// This file contains three Lua scripts (acquire, release, renew), encapsulated as go-redis Script for EVALSHA reuse.
+// Important design conventions (must be strictly consistent with Go side):
+//   - lockLua: Return value > 0 indicates reentry count of current holder; 0 indicates occupied by other holder.
+//   - unlockLua: Return 2 for partial release (count > 0), 1 for complete release, 0 for non-existent, -1 for non-holder.
+//     Note: When partially releasing, expiration time of both keys is only refreshed when passed TTL (milliseconds) > 0;
+//     For unified semantics, Go side defaults to passing 0 (no TTL refresh) for "partial release" in Unlock/UnlockByValue.
+//   - renewLua: Return 1 for successful renewal; 0 for non-holder; -1 for non-existent; -2 for renewal failure.
 //
-// 另外：所有脚本使用 KEYS[1]=owner 键、KEYS[2]=count 键 且在 Redis Cluster 下共享相同 hashtag，
-// 以确保在同一 slot 内执行原子操作。
-// 获取锁的 Lua 脚本（带重入计数）
-// KEYS[1]: owner 键（保存持有者标识）
-// KEYS[2]: count 键（保存重入计数）
-// ARGV[1]: owner 值（锁值，用于识别持有者）
-// ARGV[2]: 过期时间（毫秒）
+// Additionally: All scripts use KEYS[1]=owner key, KEYS[2]=count key and share the same hashtag under Redis Cluster,
+// to ensure atomic operations within the same slot.
+// Lua script for acquiring lock (with reentry count)
+// KEYS[1]: owner key (stores holder identifier)
+// KEYS[2]: count key (stores reentry count)
+// ARGV[1]: owner value (lock value, used to identify holder)
+// ARGV[2]: expiration time (milliseconds)
 var lockLua = `
 local owner = redis.call("GET", KEYS[1])
 if not owner then
-    -- 无 owner，尝试占有
+    -- No owner, try to acquire
     local ok = redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[2], "NX")
     if ok then
         redis.call("SET", KEYS[2], 1, "PX", ARGV[2])
@@ -33,22 +33,22 @@ if not owner then
 end
 
 if owner == ARGV[1] then
-    -- 可重入：计数 +1 并续期两个键
+    -- Reentrant: increment count and renew both keys
     local cnt = redis.call("INCR", KEYS[2])
     redis.call("PEXPIRE", KEYS[1], ARGV[2])
     redis.call("PEXPIRE", KEYS[2], ARGV[2])
     return cnt
 end
 
--- 被其他持有者占用
+-- Occupied by other holder
 return 0`
 
-// 释放锁的 Lua 脚本（带重入计数）
-// KEYS[1]: owner 键
-// KEYS[2]: count 键
-// ARGV[1]: owner 值
-// ARGV[2]: 刷新 TTL 的过期时间（毫秒），当部分释放时用于 PEXPIRE
-// 返回: 2 部分释放(计数减一仍>0)；1 完全释放(删除键)；0 不存在；-1 非持有者
+// Lua script for releasing lock (with reentry count)
+// KEYS[1]: owner key
+// KEYS[2]: count key
+// ARGV[1]: owner value
+// ARGV[2]: TTL refresh expiration time (milliseconds), used for PEXPIRE when partially releasing
+// Return: 2 partial release (count decremented still > 0); 1 complete release (delete keys); 0 non-existent; -1 non-holder
 var unlockLua = `
 local owner = redis.call("GET", KEYS[1])
 if not owner then
@@ -60,7 +60,7 @@ end
 
 local cnt = redis.call("DECR", KEYS[2])
 if cnt and cnt > 0 then
-    -- 仍持有：可选择刷新 TTL 并返回部分释放（仅当传入 TTL>0 时刷新）
+    -- Still held: optionally refresh TTL and return partial release (only refresh when passed TTL > 0)
     local ttl = tonumber(ARGV[2])
     if ttl and ttl > 0 then
         redis.call("PEXPIRE", KEYS[1], ttl)
@@ -69,17 +69,17 @@ if cnt and cnt > 0 then
     return 2
 end
 
--- 计数<=0，完全释放
+-- Count <= 0, complete release
 redis.call("DEL", KEYS[1])
 redis.call("DEL", KEYS[2])
 return 1`
 
-// 续期锁的 Lua 脚本（带重入计数）
-// KEYS[1]: owner 键
-// KEYS[2]: count 键
-// ARGV[1]: owner 值
-// ARGV[2]: 新的过期时间（毫秒）
-// 返回: 1 续期成功；0 非持有者；-1 不存在；-2 续期失败
+// Lua script for renewing lock (with reentry count)
+// KEYS[1]: owner key
+// KEYS[2]: count key
+// ARGV[1]: owner value
+// ARGV[2]: new expiration time (milliseconds)
+// Return: 1 successful renewal; 0 non-holder; -1 non-existent; -2 renewal failure
 var renewLua = `
 local owner = redis.call("GET", KEYS[1])
 if not owner then
@@ -96,12 +96,12 @@ if ok1 == 1 and ok2 == 1 then
 end
 return -2`
 
-// go-redis Script 对象，使用 EVALSHA 缓存
-// Go 侧使用的映射：
+// go-redis Script objects, using EVALSHA cache
+// Go side usage mapping:
 //
-//	lockScript:   获取锁
-//	unlockScript: 释放锁
-//	renewScript:  续期锁
+//	lockScript:   acquire lock
+//	unlockScript: release lock
+//	renewScript:  renew lock
 var (
 	lockScript   = redis.NewScript(lockLua)
 	unlockScript = redis.NewScript(unlockLua)

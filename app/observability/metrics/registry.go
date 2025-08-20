@@ -6,8 +6,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// HealthProvider 抽象各插件健康数据的提供方
-// Labels 返回的键值会作为额外的标签附加到健康指标上（除标准标签外）。
+// HealthProvider abstracts health data providers for various plugins
+// Labels returns key-value pairs that will be attached as additional labels to health metrics (besides standard labels).
 type HealthProvider interface {
 	IsHealthy() bool
 	ErrorCount() int
@@ -16,14 +16,14 @@ type HealthProvider interface {
 }
 
 var (
-	// 全局注册表（各插件统一注册）
+	// Global registry (unified registration for all plugins)
 	registry = prometheus.NewRegistry()
-	// 额外的聚合源（用于接入无法直接依赖本包的第三方/子模块注册表）
+	// Additional aggregation sources (for integrating third-party/submodule registries that cannot directly depend on this package)
 	extraGatherers []prometheus.Gatherer
 )
 
-// RegisterGatherer 允许在不引入该包的插件/模块，通过上层装配时注入其私有注册表
-// 例如：某些插件内部维护了独立的 *prometheus.Registry
+// RegisterGatherer allows plugins/modules that don't import this package to inject their private registries during upper-level assembly
+// For example: some plugins maintain independent *prometheus.Registry internally
 func RegisterGatherer(g prometheus.Gatherer) {
 	if g == nil {
 		return
@@ -31,17 +31,17 @@ func RegisterGatherer(g prometheus.Gatherer) {
 	extraGatherers = append(extraGatherers, g)
 }
 
-// RegisterCollector 向全局注册表注册一个 Collector
+// RegisterCollector registers a Collector to the global registry
 func RegisterCollector(c prometheus.Collector) error {
 	return registry.Register(c)
 }
 
-// MustRegister 批量注册 Collector（注册失败将 panic）
+// MustRegister registers Collectors in batch (will panic if registration fails)
 func MustRegister(cs ...prometheus.Collector) {
 	registry.MustRegister(cs...)
 }
 
-// healthCollector 将 HealthProvider 适配为三个指标：
+// healthCollector adapts HealthProvider to three metrics:
 // - plugin_health_status{plugin,instance,version,...} 0/1
 // - plugin_health_error_count{plugin,instance,version,...}
 // - plugin_health_last_check_timestamp_seconds{plugin,instance,version,...}
@@ -56,9 +56,9 @@ type healthCollector struct {
 	lastCheckDesc  *prometheus.Desc
 }
 
-// NewHealthCollector 创建健康指标采集器
+// NewHealthCollector creates a health metrics collector
 func NewHealthCollector(plugin, instance, version string, hp HealthProvider) prometheus.Collector {
-	// 统一标准标签
+	// Unified standard labels
 	constLabels := prometheus.Labels{
 		"plugin":   plugin,
 		"instance": instance,
@@ -98,7 +98,7 @@ func (c *healthCollector) Collect(ch chan<- prometheus.Metric) {
 	if c.hp.IsHealthy() {
 		healthy = 1.0
 	}
-	// 注意：额外标签在此版本不展开为动态标签，避免高基数；可扩展为 Info 指标。
+	// Note: Additional labels are not expanded as dynamic labels in this version to avoid high cardinality; can be extended as Info metrics.
 	ch <- prometheus.MustNewConstMetric(c.statusDesc, prometheus.GaugeValue, healthy)
 	ch <- prometheus.MustNewConstMetric(c.errorCountDesc, prometheus.GaugeValue, float64(c.hp.ErrorCount()))
 	ch <- prometheus.MustNewConstMetric(c.lastCheckDesc, prometheus.GaugeValue, float64(c.hp.LastCheck().Unix()))

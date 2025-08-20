@@ -10,42 +10,42 @@ import (
 	lynx "github.com/go-lynx/lynx/plugins/nosql/redis"
 )
 
-// Lock 获取指定 key 的分布式锁并执行回调函数，执行完成后自动释放锁。
-// - 使用 DefaultLockOptions 作为基础配置，仅覆盖 Expiration。
-// - 使用 Lua 脚本原子获取/重入锁，避免竞态。
-// - 若启用续期，将在全局管理器中注册并自动续期直到函数执行结束。
+// Lock acquires a distributed lock for the specified key and executes the callback function, automatically releasing the lock after execution.
+// - Uses DefaultLockOptions as base configuration, only overriding Expiration.
+// - Uses Lua script for atomic lock acquisition/reentrancy, avoiding race conditions.
+// - If renewal is enabled, registers in global manager and automatically renews until function execution ends.
 func Lock(ctx context.Context, key string, expiration time.Duration, fn func() error) error {
-	// 使用 DefaultLockOptions 作为基础配置，仅覆盖 Expiration
+	// Use DefaultLockOptions as base configuration, only overriding Expiration
 	options := DefaultLockOptions
 	options.Expiration = expiration
 	return LockWithOptions(ctx, key, options, fn)
 }
 
-// LockWithToken 获取指定 key 的分布式锁并执行回调函数，回调可获得 fencing token。
-// - 基于 DefaultLockOptions，仅覆盖 Expiration，重试策略使用 DefaultRetryStrategy。
-// - token 仅在“首次获取”（非重入）时递增；重入不会产生新 token。
+// LockWithToken acquires a distributed lock for the specified key and executes the callback function, callback can obtain fencing token.
+// - Based on DefaultLockOptions, only overriding Expiration, retry strategy uses DefaultRetryStrategy.
+// - token is only incremented on "first acquisition" (non-reentrant); reentry does not generate a new token.
 func LockWithToken(ctx context.Context, key string, expiration time.Duration, fn func(token int64) error) error {
-	// 基于默认选项构建
+	// Build based on default options
 	options := DefaultLockOptions
 	options.Expiration = expiration
 
-	// 创建锁实例（不主动加锁）
+	// Create lock instance (not actively locking)
 	lock, err := NewLock(ctx, key, options)
 	if err != nil {
 		return err
 	}
 
-	// 尝试按默认策略重试获取
+	// Try to acquire with default retry strategy
 	if err := lock.AcquireWithRetry(ctx, options.RetryStrategy); err != nil {
 		return err
 	}
 
-	// 若启用续期，纳入全局管理
+	// If renewal is enabled, include in global management
 	if options.RenewalEnabled {
 		lock.EnableAutoRenew(options)
 	}
 
-	// 确保最终释放
+	// Ensure final release
 	defer func() {
 		rctx := ctx
 		var cancel context.CancelFunc
@@ -66,29 +66,31 @@ func LockWithToken(ctx context.Context, key string, expiration time.Duration, fn
 		observeScriptLatency("unlock", time.Since(start))
 	}()
 
-	// 执行业务回调，传递 token（若首次获取则为正整数，否则为 0）
+	// Execute business callback, passing token (positive integer if first acquisition, otherwise 0)
 	return fn(lock.GetToken())
 }
 
-// UnlockByValue 使用 key + value 的方式释放锁（无需持有 RedisLock 实例）。
-// 语义说明：
-// - 当计数 > 0 时，该操作属于“部分释放”。本实现统一传 TTL=0 给脚本，表示不刷新 TTL（保持剩余过期时间不变）。
-// - 当 key 不存在或 value 不匹配，返回 ErrLockNotHeld。
-// 超时说明：
-// - 单次脚本调用使用 DefaultLockOptions.ScriptCallTimeout 作为可选的 per-call 超时。
+// UnlockByValue releases lock using key + value method (no need to hold RedisLock instance).
+// Semantic explanation:
+//   - When count > 0, this operation is a "partial release". This implementation uniformly passes TTL=0 to the script,
+//     indicating not to refresh TTL (keeping the remaining expiration time unchanged).
+//   - When key does not exist or value does not match, returns ErrLockNotHeld.
+//
+// Timeout explanation:
+// - Single script call uses DefaultLockOptions.ScriptCallTimeout as optional per-call timeout.
 func UnlockByValue(ctx context.Context, key, value string) error {
-	// 验证锁键名
+	// Validate lock key name
 	if err := ValidateKey(key); err != nil {
 		return newLockError(ErrCodeInvalidOptions, "invalid lock key", err)
 	}
-	// 获取 Redis 客户端
+	// Get Redis client
 	client := lynx.GetRedis()
 	if client == nil {
 		return ErrRedisClientNotFound
 	}
-	// 构建锁键
+	// Build lock keys
 	ownerKey, countKey := buildLockKeys(key)
-	// 执行解锁脚本
+	// Execute unlock script
 	runCtx := ctx
 	var cancel context.CancelFunc
 	if to := DefaultLockOptions.ScriptCallTimeout; to > 0 {
@@ -101,14 +103,14 @@ func UnlockByValue(ctx context.Context, key, value string) error {
 	if err != nil {
 		return fmt.Errorf("unlock script execution failed: %w", err)
 	}
-	// 处理解锁结果
+	// Handle unlock result
 	n, ok := result.(int64)
 	if !ok {
 		return fmt.Errorf("unknown unlock result type: %T", result)
 	}
 	switch n {
 	case 2:
-		// 部分释放（仍持有）
+		// Partial release (still held)
 		return nil
 	case 1:
 		return nil
@@ -121,31 +123,31 @@ func UnlockByValue(ctx context.Context, key, value string) error {
 	}
 }
 
-// NewLock 创建一个可复用的锁实例（支持同实例可重入）。
-// 行为：
-// - 不主动触发加锁，只构建 RedisLock 对象；调用者需显式调用 Acquire() 获取或重入锁。
-// - 同一实例多次 Acquire 因 value 不变，会被脚本视为可重入并刷新 TTL。
-// - Redis Cluster：内部 ownerKey 与 countKey 使用相同 hashtag，确保同槽位以支持 Lua 原子操作。
+// NewLock creates a reusable lock instance (supports reentrancy within the same instance).
+// Behavior:
+// - Does not actively trigger locking, only builds RedisLock object; caller must explicitly call Acquire() to obtain or reenter lock.
+// - Multiple Acquire calls on the same instance are treated as reentrant by the script due to unchanged value, and TTL is refreshed.
+// - Redis Cluster: internal ownerKey and countKey use the same hashtag to ensure same slot for Lua atomic operations.
 func NewLock(ctx context.Context, key string, options LockOptions) (*RedisLock, error) {
-	// 验证锁键名
+	// Validate lock key name
 	if err := ValidateKey(key); err != nil {
 		return nil, newLockError(ErrCodeInvalidOptions, "invalid lock key", err)
 	}
-	// 验证配置选项
+	// Validate configuration options
 	if err := options.Validate(); err != nil {
 		return nil, newLockError(ErrCodeInvalidOptions, "invalid lock options", err)
 	}
-	// 获取 Redis 客户端
+	// Get Redis client
 	client := lynx.GetRedis()
 	if client == nil {
 		return nil, ErrRedisClientNotFound
 	}
-	// 构建锁键与 fencing token 键
+	// Build lock keys and fencing token key
 	ownerKey, countKey := buildLockKeys(key)
 	tokenKey := buildTokenKey(key)
-	// 生成锁值
+	// Generate lock value
 	value := generateLockValue()
-	// 创建锁实例
+	// Create lock instance
 	lock := &RedisLock{
 		client:           client,
 		key:              key,
@@ -159,48 +161,48 @@ func NewLock(ctx context.Context, key string, options LockOptions) (*RedisLock, 
 	return lock, nil
 }
 
-// LockWithRetry 获取锁并执行函数，支持按策略重试。
-// - 基于 DefaultLockOptions，覆盖 Expiration 与 RetryStrategy，其余沿用默认。
-// - 重试期间使用随机抖动（0.5~1.5x）降低热点碰撞。
+// LockWithRetry acquires lock and executes function, supports retry by strategy.
+// - Based on DefaultLockOptions, overrides Expiration and RetryStrategy, others use defaults.
+// - Uses random jitter (0.5~1.5x) during retries to reduce hot spot collisions.
 func LockWithRetry(ctx context.Context, key string, expiration time.Duration, fn func() error, strategy RetryStrategy) error {
-	// 使用 DefaultLockOptions 作为基础配置，覆盖 Expiration 与 RetryStrategy
+	// Use DefaultLockOptions as base configuration, override Expiration and RetryStrategy
 	options := DefaultLockOptions
 	options.Expiration = expiration
 	options.RetryStrategy = strategy
 	return LockWithOptions(ctx, key, options, fn)
 }
 
-// LockWithOptions 使用完整的配置选项获取锁并执行回调函数。
-// 关键行为：
-// - 脚本调用均可配置 per-call 超时（options.ScriptCallTimeout）。设置后会在每次调用后立即 cancel。
-// - 获取成功后，若启用续期，将把锁注册到全局 manager 并启动续期服务。
-// - 函数返回前通过 defer 释放锁。释放和状态检查(IsLocked)均使用短超时上下文，避免阻塞调用方。
-// - 统一的部分释放语义：释放脚本传 TTL=0 时不刷新 TTL，仅减少计数。
-// 错误：
-// - 竞争导致的获取失败将触发回调 OnLockAcquireFailed，并根据重试策略决定是否继续。
+// LockWithOptions uses complete configuration options to acquire lock and execute callback function.
+// Key behaviors:
+// - Script calls can configure per-call timeout (options.ScriptCallTimeout). When set, cancel immediately after each call.
+// - After successful acquisition, if renewal is enabled, register in global manager and start renewal service.
+// - Release lock via defer before function returns. Release and status check (IsLocked) both use short timeout context to avoid blocking caller.
+// - Unified partial release semantics: release script passes TTL=0 to not refresh TTL, only reduce count.
+// Errors:
+// - Acquisition failures due to contention will trigger OnLockAcquireFailed callback and decide whether to continue based on retry strategy.
 func LockWithOptions(ctx context.Context, key string, options LockOptions, fn func() error) error {
-	// 验证回调函数
+	// Validate callback function
 	if fn == nil {
 		return ErrLockFnRequired
 	}
-	// 验证锁键名
+	// Validate lock key name
 	if err := ValidateKey(key); err != nil {
 		return newLockError(ErrCodeInvalidOptions, "invalid lock key", err)
 	}
-	// 验证配置选项
+	// Validate configuration options
 	if err := options.Validate(); err != nil {
 		return newLockError(ErrCodeInvalidOptions, "invalid lock options", err)
 	}
-	// 获取 Redis 客户端
+	// Get Redis client
 	client := lynx.GetRedis()
 	if client == nil {
 		return ErrRedisClientNotFound
 	}
-	// 生成锁值
+	// Generate lock value
 	value := generateLockValue()
-	// 构建锁键
+	// Build lock keys
 	ownerKey, countKey := buildLockKeys(key)
-	// 创建锁实例
+	// Create lock instance
 	lock := &RedisLock{
 		client:           client,
 		key:              key,
@@ -210,15 +212,15 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 		ownerKey:         ownerKey,
 		countKey:         countKey,
 	}
-	// 尝试获取锁
+	// Try to acquire lock
 	for retries := 0; ; retries++ {
-		// 检查是否超过最大重试次数
+		// Check if maximum retry count is exceeded
 		if options.RetryStrategy.MaxRetries > 0 && retries >= options.RetryStrategy.MaxRetries {
 			return ErrMaxRetriesExceeded
 		}
-		// 若不是第一次尝试，按策略等待后再重试（加入抖动以减少同时碰撞）
+		// If not the first attempt, wait according to strategy before retrying (add jitter to reduce simultaneous collisions)
 		if retries > 0 {
-			// 加入抖动，避免热点碰撞
+			// Add jitter to avoid hot spot collisions
 			delay := options.RetryStrategy.RetryDelay
 			if delay > 0 {
 				jitter := time.Duration(float64(delay) * (0.5 + randFloat64()))
@@ -232,7 +234,7 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 				return ctx.Err()
 			}
 		}
-		// 执行加锁脚本（可选 per-call 超时，Run 后立即 cancel 释放资源）
+		// Execute lock script (optional per-call timeout, cancel immediately after Run to release resources)
 		runCtx := ctx
 		var cancel context.CancelFunc
 		if to := options.ScriptCallTimeout; to > 0 {
@@ -249,20 +251,20 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 			incAcquire("error")
 			return fmt.Errorf("lock script execution failed: %w", err)
 		}
-		// 处理加锁结果
+		// Handle lock result
 		n, ok := result.(int64)
 		if !ok {
 			return fmt.Errorf("unknown lock result type: %T", result)
 		}
 		if n > 0 {
-			// 使用同一个时间戳，避免重复调用 time.Now()
+			// Use the same timestamp to avoid repeated time.Now() calls
 			now := time.Now()
 			lock.expiresAt = now.Add(lock.expiration)
 			lock.acquiredAt = now
 			incAcquire("success")
-			// 触发获取锁回调
+			// Trigger lock acquired callback
 			globalCallback.OnLockAcquired(key, lock.expiration)
-			// 如果启用续期，添加到全局锁管理器
+			// If renewal is enabled, add to global lock manager
 			if options.RenewalEnabled {
 				globalLockManager.mutex.Lock()
 				globalLockManager.locks[key] = lock
@@ -270,14 +272,14 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 				atomic.AddInt64(&globalLockManager.stats.ActiveLocks, 1)
 				globalLockManager.mutex.Unlock()
 				activeLocksInc()
-				// 启动续期服务
+				// Start renewal service
 				globalLockManager.startRenewalService(options)
 			}
-			// 使用 defer 确保锁会被释放
+			// Use defer to ensure lock is released
 			var err error
 			inManager := options.RenewalEnabled
 			defer func() {
-				// 使用短超时上下文，避免释放在外层长期 ctx 下阻塞
+				// Use short timeout context to avoid blocking release under long-term outer ctx
 				rctx := ctx
 				var cancel context.CancelFunc
 				to := options.ScriptCallTimeout
@@ -302,9 +304,9 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 					cancel()
 				}
 				observeScriptLatency("unlock", time.Since(start))
-				// 仅在完全释放时，从 manager 中移除（部分释放需继续续期）
+				// Only remove from manager when fully released (partial release needs to continue renewal)
 				if inManager {
-					// 使用短超时上下文进行 IsLocked 查询，避免阻塞
+					// Use short timeout context for IsLocked query to avoid blocking
 					cctx := ctx
 					var ccancel context.CancelFunc
 					if to > 0 {
@@ -315,7 +317,7 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 						ccancel()
 					}
 					if checkErr != nil {
-						// 保守处理：查询失败则保留在 manager，避免锁意外失去续期
+						// Conservative handling: if query fails, keep in manager to avoid lock losing renewal unexpectedly
 						log.ErrorCtx(ctx, "failed to check lock held after release", "error", checkErr)
 						return
 					}
@@ -330,18 +332,18 @@ func LockWithOptions(ctx context.Context, key string, options LockOptions, fn fu
 					}
 				}
 			}()
-			// 执行用户函数
+			// Execute user function
 			err = fn()
 			return err
 		}
-		// 触发获取锁失败回调（冲突场景）
+		// Trigger lock acquire failed callback (conflict scenario)
 		incAcquire("conflict")
 		globalCallback.OnLockAcquireFailed(key, ErrLockAcquireConflict)
-		// 如果不需要重试，直接返回错误
+		// If no retry needed, return error directly
 		if options.RetryStrategy.MaxRetries == 0 {
 			return ErrLockAcquireConflict
 		}
-		// 否则继续重试
+		// Otherwise continue retrying
 		continue
 	}
 }

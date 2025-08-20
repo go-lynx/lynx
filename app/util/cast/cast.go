@@ -7,7 +7,9 @@ import (
 	"time"
 )
 
-// ---- Int ----
+// ToInt converts a value of any type to an int.
+// It supports various numeric types, string representations of integers, and fmt.Stringer implementations.
+// Returns an error if the conversion is not possible or if the value overflows.
 func ToInt(v any) (int, error) {
 	switch x := v.(type) {
 	case int:
@@ -39,6 +41,8 @@ func ToInt(v any) (int, error) {
 	}
 }
 
+// ToIntDefault converts a value of any type to an int, returning a default value if conversion fails.
+// It uses ToInt for the conversion and returns the provided default value if an error occurs.
 func ToIntDefault(v any, def int) int {
 	if i, err := ToInt(v); err == nil {
 		return i
@@ -46,6 +50,8 @@ func ToIntDefault(v any, def int) int {
 	return def
 }
 
+// toIntFromUint converts unsigned integer types to int.
+// Handles overflow checking for uint64 values.
 func toIntFromUint(v any) (int, error) {
 	switch x := v.(type) {
 	case uint:
@@ -57,6 +63,7 @@ func toIntFromUint(v any) (int, error) {
 	case uint32:
 		return int(x), nil
 	case uint64:
+		// Check for overflow when converting uint64 to int
 		if x > uint64(^uint(0)>>1) {
 			return 0, errors.New("ToInt: uint64 overflow")
 		}
@@ -66,7 +73,9 @@ func toIntFromUint(v any) (int, error) {
 	}
 }
 
-// ---- Bool ----
+// ToBool converts a value of any type to a boolean.
+// It supports boolean types, string representations of booleans, and numeric types (0 is false, non-zero is true).
+// Returns an error if the conversion is not possible.
 func ToBool(v any) (bool, error) {
 	switch x := v.(type) {
 	case bool:
@@ -88,6 +97,8 @@ func ToBool(v any) (bool, error) {
 	}
 }
 
+// ToBoolDefault converts a value of any type to a boolean, returning a default value if conversion fails.
+// It uses ToBool for the conversion and returns the provided default value if an error occurs.
 func ToBoolDefault(v any, def bool) bool {
 	if b, err := ToBool(v); err == nil {
 		return b
@@ -95,7 +106,9 @@ func ToBoolDefault(v any, def bool) bool {
 	return def
 }
 
-// ---- Float64 ----
+// ToFloat64 converts a value of any type to a float64.
+// It supports various numeric types, string representations of floats, and fmt.Stringer implementations.
+// Returns an error if the conversion is not possible.
 func ToFloat64(v any) (float64, error) {
 	switch x := v.(type) {
 	case float64:
@@ -121,6 +134,8 @@ func ToFloat64(v any) (float64, error) {
 	}
 }
 
+// ToFloat64Default converts a value of any type to a float64, returning a default value if conversion fails.
+// It uses ToFloat64 for the conversion and returns the provided default value if an error occurs.
 func ToFloat64Default(v any, def float64) float64 {
 	if f, err := ToFloat64(v); err == nil {
 		return f
@@ -128,8 +143,10 @@ func ToFloat64Default(v any, def float64) float64 {
 	return def
 }
 
-// ---- Duration ----
-// 支持字符串（time.ParseDuration）、数字（按秒）
+// ToDuration converts a value of any type to a time.Duration.
+// It supports time.Duration, string representations (using time.ParseDuration),
+// and numeric types (interpreted as seconds).
+// Returns an error if the conversion is not possible.
 func ToDuration(v any) (time.Duration, error) {
 	switch x := v.(type) {
 	case time.Duration:
@@ -139,7 +156,7 @@ func ToDuration(v any) (time.Duration, error) {
 		if err == nil {
 			return d, nil
 		}
-		// 兼容纯数字字符串表示秒
+		// Also support plain numeric strings as seconds
 		if i, e := strconv.ParseInt(x, 10, 64); e == nil {
 			return time.Duration(i) * time.Second, nil
 		}
@@ -155,6 +172,8 @@ func ToDuration(v any) (time.Duration, error) {
 	}
 }
 
+// ToDurationDefault converts a value of any type to a time.Duration, returning a default value if conversion fails.
+// It uses ToDuration for the conversion and returns the provided default value if an error occurs.
 func ToDurationDefault(v any, def time.Duration) time.Duration {
 	if d, err := ToDuration(v); err == nil {
 		return d

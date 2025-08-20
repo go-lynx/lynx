@@ -10,44 +10,45 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// GetKey 获取锁的键名
+// GetKey gets the lock key name
 func (rl *RedisLock) GetKey() string {
 	return rl.key
 }
 
-// GetExpiration 获取锁的过期时间
+// GetExpiration gets the lock expiration time
 func (rl *RedisLock) GetExpiration() time.Duration {
 	return rl.expiration
 }
 
-// GetExpiresAt 获取锁的过期时间点
+// GetExpiresAt gets the lock expiration time point
 func (rl *RedisLock) GetExpiresAt() time.Time {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	return rl.expiresAt
 }
 
-// GetAcquiredAt 获取锁的获取时间
+// GetAcquiredAt gets the lock acquisition time
 func (rl *RedisLock) GetAcquiredAt() time.Time {
 	return rl.acquiredAt
 }
 
-// GetToken 返回最近一次首次获取到的 fencing token（非重入时生成）。
-// 若为 0 表示尚未在本进程首次获取成功（或仅发生了重入）。
+// GetToken returns the most recently acquired fencing token (generated on non-reentrant acquisition).
+// If 0, it means the lock has not been successfully acquired for the first time in this process
+// (or only reentry occurred).
 func (rl *RedisLock) GetToken() int64 {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	return rl.token
 }
 
-// GetRemainingTime 获取锁的剩余时间
+// GetRemainingTime gets the remaining time of the lock
 func (rl *RedisLock) GetRemainingTime() time.Duration {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	return time.Until(rl.expiresAt)
 }
 
-// GetStatus 获取锁的当前状态信息（避免重复时间计算）
+// GetStatus gets the current status information of the lock (avoids repeated time calculations)
 func (rl *RedisLock) GetStatus() (remainingTime time.Duration, isExpired bool) {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
@@ -57,23 +58,23 @@ func (rl *RedisLock) GetStatus() (remainingTime time.Duration, isExpired bool) {
 	return
 }
 
-// IsExpired 检查锁是否已过期
+// IsExpired checks if the lock has expired
 func (rl *RedisLock) IsExpired() bool {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	return time.Now().After(rl.expiresAt)
 }
 
-// Renew 手动续期锁
+// Renew manually renews the lock
 func (rl *RedisLock) Renew(ctx context.Context, newExpiration time.Duration) error {
-	// 为单次调用设置可选超时
+	// Set optional timeout for single call
 	runCtx := ctx
 	var cancel context.CancelFunc
 	if to := DefaultLockOptions.ScriptCallTimeout; to > 0 {
 		runCtx, cancel = context.WithTimeout(ctx, to)
 	}
 	start := time.Now()
-	// 执行续期脚本（避免持锁进行网络调用）
+	// Execute renewal script (avoid network calls while holding lock)
 	result, err := renewScript.Run(runCtx, rl.client, []string{rl.ownerKey, rl.countKey},
 		rl.value, newExpiration.Milliseconds()).Result()
 	if cancel != nil {
@@ -92,7 +93,7 @@ func (rl *RedisLock) Renew(ctx context.Context, newExpiration time.Duration) err
 		return err
 	}
 	switch n {
-	case 1: // 续期成功
+	case 1: // Renewal successful
 		now := time.Now()
 		rl.mutex.Lock()
 		rl.expiration = newExpiration
@@ -100,7 +101,7 @@ func (rl *RedisLock) Renew(ctx context.Context, newExpiration time.Duration) err
 		rl.mutex.Unlock()
 		globalCallback.OnLockRenewed(rl.key, newExpiration)
 		return nil
-	case 0, -1, -2: // 锁不存在或不是当前持有者
+	case 0, -1, -2: // Lock does not exist or not current holder
 		globalCallback.OnLockRenewalFailed(rl.key, ErrLockRenewalFailed)
 		return ErrLockRenewalFailed
 	default:
@@ -110,16 +111,16 @@ func (rl *RedisLock) Renew(ctx context.Context, newExpiration time.Duration) err
 	}
 }
 
-// Release 释放锁
+// Release releases the lock
 func (rl *RedisLock) Release(ctx context.Context) error {
-	// 为单次调用设置可选超时
+	// Set optional timeout for single call
 	runCtx := ctx
 	var cancel context.CancelFunc
 	if to := DefaultLockOptions.ScriptCallTimeout; to > 0 {
 		runCtx, cancel = context.WithTimeout(ctx, to)
 	}
 	start := time.Now()
-	// 执行解锁脚本（统一语义：部分释放不刷新 TTL，传 0）
+	// Execute unlock script (unified semantics: partial release does not refresh TTL, pass 0)
 	result, err := unlockScript.Run(runCtx, rl.client, []string{rl.ownerKey, rl.countKey}, rl.value, int64(0)).Result()
 	if cancel != nil {
 		cancel()
@@ -129,30 +130,30 @@ func (rl *RedisLock) Release(ctx context.Context) error {
 		return fmt.Errorf("unlock script execution failed: %w", err)
 	}
 
-	// 检查是否成功释放锁
+	// Check if lock was successfully released
 	n, ok := result.(int64)
 	if !ok {
 		return fmt.Errorf("unknown unlock result type: %T", result)
 	}
 	switch n {
-	case 2: // 部分释放（仍持有）
+	case 2: // Partial release (still held)
 		return nil
-	case 1: // 完全释放锁
+	case 1: // Fully released lock
 		duration := time.Since(rl.acquiredAt)
 		globalCallback.OnLockReleased(rl.key, duration)
 		return nil
-	case 0: // 锁不存在
+	case 0: // Lock does not exist
 		return ErrLockNotHeld
-	case -1: // 锁存在但不是当前持有者
+	case -1: // Lock exists but not current holder
 		return ErrLockNotHeld
 	default:
 		return fmt.Errorf("unknown unlock result: %d", n)
 	}
 }
 
-// IsLocked 检查锁是否被当前实例持有
+// IsLocked checks if the lock is held by the current instance
 func (rl *RedisLock) IsLocked(ctx context.Context) (bool, error) {
-	// 为单次调用设置可选超时
+	// Set optional timeout for single call
 	runCtx := ctx
 	var cancel context.CancelFunc
 	if to := DefaultLockOptions.ScriptCallTimeout; to > 0 {
@@ -171,10 +172,11 @@ func (rl *RedisLock) IsLocked(ctx context.Context) (bool, error) {
 	return value == rl.value, nil
 }
 
-// Acquire 尝试基于当前 RedisLock 实例获取（或重入）锁
-// 若同实例再次调用，因 value 不变，Lua 脚本会将其视为可重入并续期
+// Acquire attempts to acquire (or reenter) the lock based on the current RedisLock instance
+// If called again on the same instance, the Lua script will treat it as reentrant and renew
+// because the value remains unchanged
 func (rl *RedisLock) Acquire(ctx context.Context) error {
-	// 为单次调用设置可选超时
+	// Set optional timeout for single call
 	runCtx := ctx
 	var cancel context.CancelFunc
 	if to := DefaultLockOptions.ScriptCallTimeout; to > 0 {
@@ -200,10 +202,10 @@ func (rl *RedisLock) Acquire(ctx context.Context) error {
 		rl.acquiredAt = now
 		rl.expiresAt = now.Add(rl.expiration)
 		rl.mutex.Unlock()
-		// 如果是首次获取（非重入），生成并记录 fencing token
+		// If this is the first acquisition (non-reentrant), generate and record fencing token
 		if n == 1 {
-			// 独立一次命令即可，因已持有锁期间不会有其他持有者
-			// 可选超时
+			// A single command is sufficient since no other holder can exist while holding the lock
+			// Optional timeout
 			tctx := ctx
 			var tcancel context.CancelFunc
 			if to := DefaultLockOptions.ScriptCallTimeout; to > 0 {
@@ -222,12 +224,12 @@ func (rl *RedisLock) Acquire(ctx context.Context) error {
 		globalCallback.OnLockAcquired(rl.key, rl.expiration)
 		return nil
 	}
-	// 被其他持有者占用
+	// Occupied by another holder
 	globalCallback.OnLockAcquireFailed(rl.key, ErrLockAcquireConflict)
 	return ErrLockAcquireConflict
 }
 
-// AcquireWithRetry 获取（或重入）锁并按策略重试
+// AcquireWithRetry acquires (or reenters) the lock and retries according to strategy
 func (rl *RedisLock) AcquireWithRetry(ctx context.Context, strategy RetryStrategy) error {
 	retries := 0
 	for {
@@ -235,7 +237,7 @@ func (rl *RedisLock) AcquireWithRetry(ctx context.Context, strategy RetryStrateg
 			return ErrMaxRetriesExceeded
 		}
 		if retries > 0 {
-			// 加入抖动，避免热点碰撞
+			// Add jitter to avoid hot spot collisions
 			delay := strategy.RetryDelay
 			if delay > 0 {
 				jitter := time.Duration(float64(delay) * (0.5 + randFloat64()))
@@ -256,7 +258,7 @@ func (rl *RedisLock) AcquireWithRetry(ctx context.Context, strategy RetryStrateg
 		if err != ErrLockAcquireConflict {
 			return err
 		}
-		// 冲突则继续按策略重试
+		// Continue retrying according to strategy on conflict
 		if strategy.MaxRetries == 0 {
 			return ErrLockAcquireConflict
 		}
@@ -264,7 +266,7 @@ func (rl *RedisLock) AcquireWithRetry(ctx context.Context, strategy RetryStrateg
 	}
 }
 
-// EnableAutoRenew 将当前锁注册到全局续期管理器（如尚未启动会启动）
+// EnableAutoRenew registers the current lock to the global renewal manager (starts if not already started)
 func (rl *RedisLock) EnableAutoRenew(options LockOptions) {
 	globalLockManager.mutex.Lock()
 	if _, exists := globalLockManager.locks[rl.key]; !exists {

@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// ConfigManager 管理应用程序的配置路径
+// ConfigManager manages application configuration paths
 type ConfigManager struct {
 	configPath string
 	mu         sync.RWMutex
@@ -16,7 +16,7 @@ var (
 	once          sync.Once
 )
 
-// GetConfigManager 返回单例的配置管理器实例
+// GetConfigManager returns singleton configuration manager instance
 func GetConfigManager() *ConfigManager {
 	once.Do(func() {
 		configManager = &ConfigManager{}
@@ -24,31 +24,31 @@ func GetConfigManager() *ConfigManager {
 	return configManager
 }
 
-// SetConfigPath 设置配置路径
+// SetConfigPath sets configuration path
 func (cm *ConfigManager) SetConfigPath(path string) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.configPath = path
 }
 
-// GetConfigPath 获取配置路径
+// GetConfigPath gets configuration path
 func (cm *ConfigManager) GetConfigPath() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.configPath
 }
 
-// GetDefaultConfigPath 获取默认配置路径
+// GetDefaultConfigPath gets default configuration path
 func (cm *ConfigManager) GetDefaultConfigPath() string {
-	// 优先使用环境变量
+	// Prioritize environment variable
 	if envPath := os.Getenv("LYNX_CONFIG_PATH"); envPath != "" {
 		return envPath
 	}
-	// 默认使用当前目录下的configs
+	// Default to configs directory under current directory
 	return "./configs"
 }
 
-// IsConfigPathSet 检查配置路径是否已设置
+// IsConfigPathSet checks if configuration path is set
 func (cm *ConfigManager) IsConfigPathSet() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()

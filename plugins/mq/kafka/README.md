@@ -1,61 +1,63 @@
-# Kafka 插件重构说明
+# Kafka Plugin Refactoring Documentation
 
-## 重构目标
+## Refactoring Goals
 
-本次重构旨在优化 Kafka 插件的代码结构，提高可维护性和可扩展性。
+This refactoring aims to optimize the Kafka plugin's code structure, improving maintainability and extensibility.
 
-## 文件结构变更
+## File Structure Changes
 
-### 重构前
+### Before Refactoring
 ```
 kafka/
-├── client.go          # 主客户端结构
-├── producer.go        # 生产者相关
-├── consumer.go        # 消费者相关
-├── config.go          # 配置验证
-├── errors.go          # 错误定义
-├── monitoring.go      # 监控指标和健康检查
-├── utils.go           # 工具函数（包含多种功能）
-├── constants.go       # 常量定义
-└── plug.go           # 插件入口
+├── client.go          # Main client structure
+├── producer.go        # Producer related
+├── consumer.go        # Consumer related
+├── config.go          # Configuration validation
+├── errors.go          # Error definitions
+├── monitoring.go      # Monitoring metrics and health checks
+├── utils.go           # Utility functions (containing multiple functions)
+├── constants.go       # Constant definitions
+└── plug.go           # Plugin entry point
 ```
 
-### 重构后
+
+### After Refactoring
 ```
 kafka/
-├── client.go          # 主客户端结构
-├── producer.go        # 生产者相关
-├── consumer.go        # 消费者相关
-├── config.go          # 配置验证
-├── errors.go          # 错误定义
-├── metrics.go         # 监控指标（从 monitoring.go 分离）
-├── health.go          # 健康检查和连接管理（从 monitoring.go 分离）
-├── batch.go           # 批量处理（从 utils.go 分离）
-├── retry.go           # 重试逻辑（从 utils.go 分离）
-├── pool.go            # 协程池（从 utils.go 分离）
-├── interfaces.go      # 接口定义（新增）
-├── utils.go           # 通用工具函数
-├── constants.go       # 常量定义
-└── plug.go           # 插件入口
+├── client.go          # Main client structure
+├── producer.go        # Producer related
+├── consumer.go        # Consumer related
+├── config.go          # Configuration validation
+├── errors.go          # Error definitions
+├── metrics.go         # Monitoring metrics (separated from monitoring.go)
+├── health.go          # Health checks and connection management (separated from monitoring.go)
+├── batch.go           # Batch processing (separated from utils.go)
+├── retry.go           # Retry logic (separated from utils.go)
+├── pool.go            # Goroutine pool (separated from utils.go)
+├── interfaces.go      # Interface definitions (new)
+├── utils.go           # General utility functions
+├── constants.go       # Constant definitions
+└── plug.go           # Plugin entry point
 ```
 
-## 主要改进
 
-### 1. 文件职责分离
+## Major Improvements
 
-- **metrics.go**: 专注于监控指标收集和管理
-- **health.go**: 专注于健康检查和连接管理
-- **batch.go**: 专注于批量处理逻辑
-- **retry.go**: 专注于重试机制
-- **pool.go**: 专注于协程池管理
-- **interfaces.go**: 定义清晰的接口契约
+### 1. File Responsibility Separation
 
-### 2. 接口设计
+- **metrics.go**: Focuses on monitoring metrics collection and management
+- **health.go**: Focuses on health checks and connection management
+- **batch.go**: Focuses on batch processing logic
+- **retry.go**: Focuses on retry mechanisms
+- **pool.go**: Focuses on goroutine pool management
+- **interfaces.go**: Defines clear interface contracts
 
-新增了完整的接口定义：
+### 2. Interface Design
+
+Added complete interface definitions:
 
 ```go
-// KafkaProducer 生产者接口
+// KafkaProducer producer interface
 type KafkaProducer interface {
     Produce(ctx context.Context, topic string, key, value []byte) error
     ProduceBatch(ctx context.Context, topic string, records []*kgo.Record) error
@@ -63,14 +65,14 @@ type KafkaProducer interface {
     IsProducerReady() bool
 }
 
-// KafkaConsumer 消费者接口
+// KafkaConsumer consumer interface
 type KafkaConsumer interface {
     Subscribe(ctx context.Context, topics []string, handler MessageHandler) error
     GetConsumer() *kgo.Client
     IsConsumerReady() bool
 }
 
-// KafkaClientInterface 完整客户端接口
+// KafkaClientInterface complete client interface
 type KafkaClientInterface interface {
     KafkaProducer
     KafkaConsumer
@@ -81,67 +83,69 @@ type KafkaClientInterface interface {
 }
 ```
 
-### 3. 错误处理增强
 
-- 添加了参数验证（如 `validateTopic`）
-- 增强了错误包装和上下文信息
-- 提供了更详细的错误类型定义
+### 3. Enhanced Error Handling
 
-### 4. 配置优化
+- Added parameter validation (such as [validateTopic](file:///Users/claire/GolandProjects/lynx/lynx/plugins/mq/kafka/utils.go#L7-L25))
+- Enhanced error wrapping and context information
+- Provided more detailed error type definitions
 
-- 添加了默认配置函数
-- 提供了更灵活的配置选项
-- 增强了配置验证逻辑
+### 4. Configuration Optimization
 
-### 5. 监控指标改进
+- Added default configuration functions
+- Provided more flexible configuration options
+- Enhanced configuration validation logic
 
-- 分离了指标收集和健康检查
-- 提供了更丰富的指标类型
-- 支持指标重置和统计
+### 5. Monitoring Metrics Improvement
 
-## 使用示例
+- Separated metrics collection and health checks
+- Provided richer metric types
+- Supported metric reset and statistics
 
-### 基本使用
+## Usage Examples
+
+### Basic Usage
 
 ```go
-// 创建客户端
+// Create client
 client := NewKafkaClient()
 
-// 初始化
+// Initialize
 err := client.InitializeResources(runtime)
 if err != nil {
     log.Fatal(err)
 }
 
-// 启动
+// Start
 err = client.StartupTasks()
 if err != nil {
     log.Fatal(err)
 }
 
-// 发送消息
+// Send message
 err = client.Produce(ctx, "test-topic", []byte("key"), []byte("value"))
 if err != nil {
     log.Error(err)
 }
 
-// 订阅消息
+// Subscribe to messages
 err = client.Subscribe(ctx, []string{"test-topic"}, func(ctx context.Context, topic string, partition int32, offset int64, key, value []byte) error {
     log.Infof("Received message: %s", string(value))
     return nil
 })
 ```
 
-### 批量处理
+
+### Batch Processing
 
 ```go
-// 创建批量处理器
+// Create batch processor
 batchProcessor := NewBatchProcessor(1000, 100*time.Millisecond, func(ctx context.Context, records []*kgo.Record) error {
-    // 处理批量记录
+    // Process batch records
     return nil
 })
 
-// 添加记录
+// Add record
 record := &kgo.Record{
     Topic: "test-topic",
     Key:   []byte("key"),
@@ -150,49 +154,51 @@ record := &kgo.Record{
 batchProcessor.AddRecord(ctx, record)
 ```
 
-### 重试机制
+
+### Retry Mechanism
 
 ```go
-// 创建重试处理器
+// Create retry handler
 retryHandler := NewRetryHandler(RetryConfig{
     MaxRetries:  3,
     BackoffTime: time.Second,
     MaxBackoff:  30 * time.Second,
 })
 
-// 执行带重试的操作
+// Execute operation with retry
 err := retryHandler.DoWithRetry(ctx, func() error {
-    // 执行可能失败的操作
+    // Execute operation that may fail
     return nil
 })
 ```
 
-## 向后兼容性
 
-重构后的代码保持了向后兼容性：
+## Backward Compatibility
 
-1. 所有公共 API 保持不变
-2. 配置格式保持不变
-3. 插件注册方式保持不变
+The refactored code maintains backward compatibility:
 
-## 性能优化
+1. All public APIs remain unchanged
+2. Configuration format remains unchanged
+3. Plugin registration method remains unchanged
 
-1. **批量处理**: 支持消息批量发送，提高吞吐量
-2. **协程池**: 限制并发处理数量，避免资源耗尽
-3. **重试机制**: 智能重试，避免无效重试
-4. **连接管理**: 自动重连和健康检查
+## Performance Optimization
 
-## 监控和可观测性
+1. **Batch Processing**: Supports message batch sending to improve throughput
+2. **Goroutine Pool**: Limits concurrent processing to avoid resource exhaustion
+3. **Retry Mechanism**: Intelligent retry to avoid ineffective retries
+4. **Connection Management**: Automatic reconnection and health checks
 
-1. **详细指标**: 生产/消费消息数、字节数、错误数、延迟等
-2. **健康检查**: 定期检查连接状态
-3. **错误统计**: 分类统计各种错误类型
-4. **性能监控**: 延迟、吞吐量等性能指标
+## Monitoring and Observability
 
-## 后续计划
+1. **Detailed Metrics**: Production/consumption message count, byte count, error count, latency, etc.
+2. **Health Checks**: Regular connection status checks
+3. **Error Statistics**: Categorized statistics of various error types
+4. **Performance Monitoring**: Latency, throughput, and other performance metrics
 
-1. **完善 SASL 认证**: 实现完整的 SASL 认证机制
-2. **添加更多压缩算法**: 支持更多压缩类型
-3. **增强错误处理**: 添加更多错误类型和处理策略
-4. **性能优化**: 进一步优化批量处理和并发性能
-5. **测试覆盖**: 添加完整的单元测试和集成测试 
+## Future Plans
+
+1. **Complete SASL Authentication**: Implement complete SASL authentication mechanism
+2. **Add More Compression Algorithms**: Support more compression types
+3. **Enhance Error Handling**: Add more error types and handling strategies
+4. **Performance Optimization**: Further optimize batch processing and concurrent performance
+5. **Test Coverage**: Add complete unit tests and integration tests

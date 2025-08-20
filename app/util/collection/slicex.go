@@ -1,6 +1,6 @@
 package collection
 
-// Map 将切片元素映射为另一类型。
+// Map maps slice elements to another type.
 func Map[A any, B any](in []A, f func(A) B) []B {
 	if len(in) == 0 { return []B{} }
 	out := make([]B, len(in))
@@ -8,7 +8,7 @@ func Map[A any, B any](in []A, f func(A) B) []B {
 	return out
 }
 
-// Filter 过滤切片元素。
+// Filter filters slice elements by predicate.
 func Filter[T any](in []T, pred func(T) bool) []T {
 	if len(in) == 0 { return []T{} }
 	out := make([]T, 0, len(in))
@@ -16,7 +16,7 @@ func Filter[T any](in []T, pred func(T) bool) []T {
 	return out
 }
 
-// Unique 返回去重后的新切片（保持首次出现顺序）。
+// Unique returns a de-duplicated slice preserving the first occurrence order.
 func Unique[T comparable](in []T) []T {
 	if len(in) == 0 { return []T{} }
 	seen := make(map[T]struct{}, len(in))
@@ -29,7 +29,7 @@ func Unique[T comparable](in []T) []T {
 	return out
 }
 
-// Chunk 将切片按 n 分块。n<=0 时返回空。
+// Chunk splits the slice into chunks of size n. Returns empty when n<=0.
 func Chunk[T any](in []T, n int) [][]T {
 	if n <= 0 || len(in) == 0 { return [][]T{} }
 	res := make([][]T, 0, (len(in)+n-1)/n)
@@ -41,7 +41,7 @@ func Chunk[T any](in []T, n int) [][]T {
 	return res
 }
 
-// GroupBy 将切片按 key 分组。
+// GroupBy groups slice elements by key.
 func GroupBy[T any, K comparable](in []T, key func(T) K) map[K][]T {
 	m := make(map[K][]T)
 	for _, v := range in {

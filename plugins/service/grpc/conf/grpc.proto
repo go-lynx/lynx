@@ -6,27 +6,17 @@ option go_package = "github.com/go-lynx/lynx/plugins/service/grpc/conf;conf";
 
 import "google/protobuf/duration.proto";
 
-// grpc 消息定义了 gRPC 服务器插件的配置信息。
 // The grpc message defines the configuration information for the gRPC server plugin.
 message grpc {
-  // Network 指定网络类型（例如 "tcp"、"unix"），用于确定 gRPC 服务器监听的网络协议。
   // Network specifies the network type (e.g., "tcp", "unix") for the gRPC server to listen on.
   string network = 1;
 
-  // Addr 指定 gRPC 服务器监听的地址（例如 ":9090", "localhost:9090"）。
   // Addr specifies the address for the gRPC server to listen on (e.g., ":9090", "localhost:9090").
   string addr = 2;
 
-  // Tls 指示是否启用 TLS/GRPCS 加密通信。
   // Tls indicates whether TLS/GRPCS encryption is enabled.
   bool tls_enable = 3;
 
-  // TlsAuthType 指定 TLS 客户端认证类型，不同的值代表不同的认证策略：
-  // 0: 不进行客户端认证
-  // 1: 请求客户端证书，但不强制要求
-  // 2: 强制要求客户端提供证书
-  // 3: 验证客户端证书
-  // 4: 若客户端提供证书，则进行验证
   // TlsAuthType specifies the TLS client authentication type. Different values represent different authentication strategies:
   // 0: No client authentication
   // 1: Request client certificate, but not mandatory
@@ -35,7 +25,6 @@ message grpc {
   // 4: Verify client certificate if provided
   int32 tls_auth_type = 4;
 
-  // Timeout 指定处理 gRPC 请求的最大时长，超过该时长请求可能会被终止。
   // Timeout specifies the maximum duration for handling gRPC requests. Requests may be terminated if they exceed this duration.
   google.protobuf.Duration timeout = 5;
 }

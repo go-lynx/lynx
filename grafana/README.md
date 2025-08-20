@@ -1,106 +1,106 @@
 # 🎨 Lynx Grafana Dashboards
 
-## 概述
+## Overview
 
-这是一套专为 Lynx 微服务框架设计的现代化 Grafana 仪表板，采用炫酷的视觉效果和直观的数据展示方式。
+This is a set of modern Grafana dashboards specifically designed for the Lynx microservices framework, featuring stunning visual effects and intuitive data presentation.
 
-## 🚀 特色功能
+## 🚀 Key Features
 
-### ✨ 现代化设计
-- **深色主题**: 采用深色背景，减少视觉疲劳
-- **渐变色彩**: 使用渐变色彩方案，提升视觉效果
-- **Emoji 图标**: 使用直观的 Emoji 图标，快速识别面板类型
-- **响应式布局**: 适配不同屏幕尺寸
+### ✨ Modern Design
+- **Dark Theme**: Dark background to reduce eye strain
+- **Gradient Colors**: Gradient color schemes to enhance visual appeal
+- **Emoji Icons**: Intuitive emoji icons for quick panel type recognition
+- **Responsive Layout**: Adapts to different screen sizes
 
-### 📊 丰富的图表类型
-- **统计卡片**: 带渐变仪表盘的 KPI 指标
-- **时间序列图**: 平滑曲线，支持多种显示模式
-- **热力图**: 性能分布可视化
-- **柱状图**: 错误率和分类统计
+### 📊 Rich Chart Types
+- **Stat Cards**: KPI metrics with gradient dashboards
+- **Time Series**: Smooth curves with multiple display modes
+- **Heatmaps**: Performance distribution visualization
+- **Bar Charts**: Error rates and categorical statistics
 
-### 🎯 智能阈值
-- **动态阈值**: 根据业务场景设置合理的告警阈值
-- **颜色编码**: 绿色(正常) → 黄色(警告) → 红色(异常)
-- **单位优化**: 自动选择合适的单位显示
+### 🎯 Smart Thresholds
+- **Dynamic Thresholds**: Reasonable alert thresholds based on business scenarios
+- **Color Coding**: Green (normal) → Yellow (warning) → Red (abnormal)
+- **Unit Optimization**: Automatic selection of appropriate unit display
 
-## 📁 仪表板列表
+## 📁 Dashboard List
 
 ### 1. 🌟 System Overview Dashboard
-**文件**: `overview.json`
-**功能**: 系统整体概览
-- 🚀 总服务数统计
-- ✅ 健康服务监控
-- ❌ 失败服务告警
-- 📊 系统可用性
-- 📈 HTTP 请求率
-- ⚡ 系统延迟监控
-- ❌ 错误率趋势
-- 🔥 性能热力图
+**File**: [overview.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/overview.json)
+**Function**: System-wide overview
+- 🚀 Total service count statistics
+- ✅ Healthy service monitoring
+- ❌ Failed service alerts
+- 📊 System availability
+- 📈 HTTP request rate
+- ⚡ System latency monitoring
+- ❌ Error rate trends
+- 🔥 Performance heatmap
 
 ### 2. 🚀 HTTP Service Dashboard
-**文件**: `http/dashboard.json`
-**功能**: HTTP 服务监控
-- 📊 请求速率统计
-- ⚡ 响应时间监控
-- ❌ 错误率分析
-- 🔄 活跃连接数
-- 📈 请求方法分布
-- 🔥 错误路径分析
-- ⚡ 延迟百分位数
-- 📦 响应大小分布
-- 🔄 飞行中请求
-- 📥 请求大小分布
-- 🔥 请求热力图
+**File**: [http/dashboard.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/http/dashboard.json)
+**Function**: HTTP service monitoring
+- 📊 Request rate statistics
+- ⚡ Response time monitoring
+- ❌ Error rate analysis
+- 🔄 Active connections
+- 📈 Request method distribution
+- 🔥 Error path analysis
+- ⚡ Latency percentiles
+- 📦 Response size distribution
+- 🔄 In-flight requests
+- 📥 Request size distribution
+- 🔥 Request heatmap
 
 ### 3. 🔥 Redis Service Dashboard
-**文件**: `redis/dashboard.json`
-**功能**: Redis 缓存监控
-- 🚀 客户端启动统计
-- ❌ 启动失败监控
-- ⚡ PING 延迟
-- 🔗 连接池状态
-- 📊 连接池性能
-- 🎯 池命中率分析
-- 🔥 命令错误分析
-- 🔥 Redis 性能热力图
+**File**: [redis/dashboard.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/redis/dashboard.json)
+**Function**: Redis cache monitoring
+- 🚀 Client startup statistics
+- ❌ Startup failure monitoring
+- ⚡ PING latency
+- 🔗 Connection pool status
+- 📊 Connection pool performance
+- 🎯 Pool hit rate analysis
+- 🔥 Command error analysis
+- 🔥 Redis performance heatmap
 
 ### 4. 📊 Kafka Service Dashboard
-**文件**: `kafka/dashboard.json`
-**功能**: Kafka 消息队列监控
-- 📤 消息生产速率
-- 📥 消息消费速率
-- ❌ 生产者错误
-- ⚡ 生产者延迟
-- 📈 主题生产分布
-- 📉 主题消费分布
-- ⚡ 延迟百分位数
-- 🔥 错误类型分析
-- 🔥 Kafka 性能热力图
+**File**: [kafka/dashboard.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/kafka/dashboard.json)
+**Function**: Kafka message queue monitoring
+- 📤 Message production rate
+- 📥 Message consumption rate
+- ❌ Producer errors
+- ⚡ Producer latency
+- 📈 Topic production distribution
+- 📉 Topic consumption distribution
+- ⚡ Latency percentiles
+- 🔥 Error type analysis
+- 🔥 Kafka performance heatmap
 
-## 🎨 设计特色
+## 🎨 Design Features
 
-### 色彩方案
-- **主色调**: 深色背景 (#1e1e1e)
-- **成功色**: 绿色渐变
-- **警告色**: 黄色渐变
-- **错误色**: 红色渐变
-- **信息色**: 蓝色渐变
+### Color Scheme
+- **Primary Tone**: Dark background (#1e1e1e)
+- **Success Color**: Green gradient
+- **Warning Color**: Yellow gradient
+- **Error Color**: Red gradient
+- **Info Color**: Blue gradient
 
-### 布局设计
-- **网格系统**: 24 列响应式网格
-- **卡片布局**: 统一的卡片设计
-- **间距规范**: 一致的边距和内边距
-- **层次结构**: 清晰的信息层次
+### Layout Design
+- **Grid System**: 24-column responsive grid
+- **Card Layout**: Unified card design
+- **Spacing Standards**: Consistent margins and padding
+- **Hierarchy**: Clear information hierarchy
 
-### 交互体验
-- **悬停效果**: 丰富的悬停提示
-- **缩放功能**: 支持时间范围缩放
-- **刷新间隔**: 多种自动刷新选项
-- **模板变量**: 灵活的数据源选择
+### Interactive Experience
+- **Hover Effects**: Rich hover tooltips
+- **Zoom Functionality**: Time range zoom support
+- **Refresh Intervals**: Multiple auto-refresh options
+- **Template Variables**: Flexible data source selection
 
-## 🔧 配置说明
+## 🔧 Configuration Guide
 
-### 数据源配置
+### Data Source Configuration
 ```json
 {
   "name": "DS_PROM",
@@ -109,80 +109,81 @@
 }
 ```
 
-### 模板变量
-- `rate_interval`: 速率计算间隔 (1m, 5m, 15m)
-- `job`: 服务作业名称
-- `instance`: 服务实例
-- `topic`: Kafka 主题 (仅 Kafka 仪表板)
 
-### 时间配置
-- **默认时间范围**: 最近 1 小时
-- **刷新间隔**: 5s, 10s, 30s, 1m, 5m, 15m, 30m, 1h, 2h, 1d
+### Template Variables
+- `rate_interval`: Rate calculation interval (1m, 5m, 15m)
+- `job`: Service job name
+- [instance](file:///Users/claire/GolandProjects/lynx/lynx/plugins/base.go#L37-L37): Service instance
+- `topic`: Kafka topic (Kafka dashboard only)
 
-## 📈 指标说明
+### Time Configuration
+- **Default Time Range**: Last 1 hour
+- **Refresh Intervals**: 5s, 10s, 30s, 1m, 5m, 15m, 30m, 1h, 2h, 1d
 
-### HTTP 指标
-- `lynx_http_requests_total`: 总请求数
-- `lynx_http_errors_total`: 错误请求数
-- `lynx_http_request_duration_seconds`: 请求延迟
-- `lynx_http_response_size_bytes`: 响应大小
-- `lynx_http_request_size_bytes`: 请求大小
-- `lynx_http_inflight_requests`: 飞行中请求
+## 📈 Metrics Guide
 
-### Redis 指标
-- `lynx_redis_client_startup_total`: 客户端启动数
-- `lynx_redis_client_startup_failed_total`: 启动失败数
-- `lynx_redis_client_ping_latency_seconds`: PING 延迟
-- `lynx_redis_client_pool_*`: 连接池相关指标
-- `lynx_redis_client_cmd_errors_total`: 命令错误
+### HTTP Metrics
+- `lynx_http_requests_total`: Total requests
+- `lynx_http_errors_total`: Error requests
+- `lynx_http_request_duration_seconds`: Request latency
+- `lynx_http_response_size_bytes`: Response size
+- `lynx_http_request_size_bytes`: Request size
+- `lynx_http_inflight_requests`: In-flight requests
 
-### Kafka 指标
-- `lynx_kafka_messages_produced_total`: 生产消息数
-- `lynx_kafka_messages_consumed_total`: 消费消息数
-- `lynx_kafka_producer_errors_total`: 生产者错误
-- `lynx_kafka_producer_latency_seconds`: 生产者延迟
+### Redis Metrics
+- `lynx_redis_client_startup_total`: Client startups
+- `lynx_redis_client_startup_failed_total`: Startup failures
+- `lynx_redis_client_ping_latency_seconds`: PING latency
+- `lynx_redis_client_pool_*`: Connection pool related metrics
+- `lynx_redis_client_cmd_errors_total`: Command errors
 
-## 🚀 快速开始
+### Kafka Metrics
+- `lynx_kafka_messages_produced_total`: Produced messages
+- `lynx_kafka_messages_consumed_total`: Consumed messages
+- `lynx_kafka_producer_errors_total`: Producer errors
+- `lynx_kafka_producer_latency_seconds`: Producer latency
 
-1. **导入仪表板**:
-   - 在 Grafana 中点击 "Import"
-   - 选择对应的 JSON 文件
-   - 配置数据源
+## 🚀 Quick Start
 
-2. **配置数据源**:
-   - 确保 Prometheus 数据源已配置
-   - 验证指标数据可用
+1. **Import Dashboard**:
+   - Click "Import" in Grafana
+   - Select the corresponding JSON file
+   - Configure data source
 
-3. **自定义配置**:
-   - 调整时间范围
-   - 设置刷新间隔
-   - 配置告警规则
+2. **Configure Data Source**:
+   - Ensure Prometheus data source is configured
+   - Verify metric data availability
 
-## 🎯 最佳实践
+3. **Customize Configuration**:
+   - Adjust time range
+   - Set refresh interval
+   - Configure alert rules
 
-### 监控策略
-- **实时监控**: 使用 5s 刷新间隔进行实时监控
-- **趋势分析**: 使用 1h 刷新间隔进行趋势分析
-- **容量规划**: 使用 24h 时间范围进行容量规划
+## 🎯 Best Practices
 
-### 告警配置
-- **响应时间**: P95 > 500ms 告警
-- **错误率**: > 1% 告警
-- **可用性**: < 99% 告警
+### Monitoring Strategy
+- **Real-time Monitoring**: Use 5s refresh interval for real-time monitoring
+- **Trend Analysis**: Use 1h refresh interval for trend analysis
+- **Capacity Planning**: Use 24h time range for capacity planning
 
-### 性能优化
-- **查询优化**: 使用适当的 rate_interval
-- **缓存策略**: 合理设置查询缓存
-- **资源监控**: 监控 Grafana 自身资源使用
+### Alert Configuration
+- **Response Time**: P95 > 500ms alert
+- **Error Rate**: > 1% alert
+- **Availability**: < 99% alert
 
-## 🔮 未来规划
+### Performance Optimization
+- **Query Optimization**: Use appropriate rate_interval
+- **Cache Strategy**: Reasonably set query cache
+- **Resource Monitoring**: Monitor Grafana's own resource usage
 
-- [ ] 添加更多服务类型的仪表板
-- [ ] 支持自定义主题
-- [ ] 增加更多图表类型
-- [ ] 优化移动端体验
-- [ ] 添加更多告警模板
+## 🔮 Future Plans
+
+- [ ] Add dashboards for more service types
+- [ ] Support custom themes
+- [ ] Add more chart types
+- [ ] Optimize mobile experience
+- [ ] Add more alert templates
 
 ---
 
-*这些仪表板设计参考了现代监控系统的最佳实践，旨在提供直观、美观且实用的监控体验。*
+*These dashboards are designed based on best practices of modern monitoring systems, aiming to provide an intuitive, beautiful, and practical monitoring experience.*

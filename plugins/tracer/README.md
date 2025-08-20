@@ -1,23 +1,23 @@
 # Lynx Tracer Plugin
 
-Lynx 链路追踪插件，基于 OpenTelemetry 实现分布式链路追踪功能。
+Lynx distributed tracing plugin, implementing distributed tracing functionality based on OpenTelemetry.
 
-## 功能特性
+## Features
 
-- ✅ OpenTelemetry 标准兼容
-- ✅ 导出协议：OTLP gRPC、OTLP HTTP
-- ✅ 传输能力：TLS（含双向）、超时、重试、压缩（gzip）、自定义 Header
-- ✅ 批处理：可配置队列、批大小、导出超时与调度延迟
-- ✅ 传播器：W3C tracecontext、baggage、B3（单/多头）、Jaeger
-- ✅ 采样器：AlwaysOn/AlwaysOff/TraceIDRatio/ParentBased-TraceIDRatio
-- ✅ 资源与限额：service.name/attributes 与 SpanLimits（属性/事件/链接/长度）
-- ✅ 优雅关闭与资源清理
+- ✅ OpenTelemetry standard compliant
+- ✅ Export protocols: OTLP gRPC, OTLP HTTP
+- ✅ Transport capabilities: TLS (including mutual), timeout, retry, compression (gzip), custom headers
+- ✅ Batch processing: configurable queue, batch size, export timeout, and scheduling delay
+- ✅ Propagators: W3C tracecontext, baggage, B3 (single/multi-header), Jaeger
+- ✅ Samplers: AlwaysOn/AlwaysOff/TraceIDRatio/ParentBased-TraceIDRatio
+- ✅ Resources and limits: service.name/attributes and SpanLimits (attributes/events/links/length)
+- ✅ Graceful shutdown and resource cleanup
 
-## 快速开始
+## Quick Start
 
-### 1. 最小配置（gRPC，推荐）
+### 1. Minimal Configuration (gRPC, recommended)
 
-在你的应用配置文件中添加以下配置：
+Add the following configuration to your application configuration file:
 
 ```yaml
 lynx:
@@ -32,19 +32,21 @@ lynx:
       propagators: [W3C_TRACE_CONTEXT, W3C_BAGGAGE]
 ```
 
-### 2. 启动应用
+
+### 2. Start Application
 
 ```bash
 go run main.go
 ```
 
-### 3. 查看链路追踪
 
-访问你的链路追踪系统（如 Jaeger、Zipkin 等）查看追踪数据。
+### 3. View Tracing Data
 
-## 配置说明
+Access your tracing system (such as Jaeger, Zipkin, etc.) to view tracing data.
 
-### 模块化（modular）配置项
+## Configuration Guide
+
+### Modular Configuration Options
 
 ```yaml
 lynx:
@@ -53,8 +55,8 @@ lynx:
     addr: "otel-collector:4317"
     config:
       protocol: PROTOCOL_OTLP_GRPC | PROTOCOL_OTLP_HTTP
-      http_path: /v1/traces           # 仅 HTTP 时使用
-      insecure: true                  # 或使用 TLS
+      http_path: /v1/traces           # Used only for HTTP
+      insecure: true                  # Or use TLS
       tls:
         ca_file: /path/ca.pem
         cert_file: /path/client.crt
@@ -74,7 +76,7 @@ lynx:
         export_timeout: 30s
         max_batch_size: 512
       sampler:
-        type: SAMPLER_TRACEID_RATIO   # 也支持 ALWAYS_ON/ALWAYS_OFF/PARENT_BASED_TRACEID_RATIO
+        type: SAMPLER_TRACEID_RATIO   # Also supports ALWAYS_ON/ALWAYS_OFF/PARENT_BASED_TRACEID_RATIO
         ratio: 0.1
       propagators: [W3C_TRACE_CONTEXT, W3C_BAGGAGE, B3, B3_MULTI, JAEGER]
       resource:
@@ -89,7 +91,8 @@ lynx:
         link_count_limit: 128
 ```
 
-### HTTP 导出示例（OTLP/HTTP）
+
+### HTTP Export Example (OTLP/HTTP)
 
 ```yaml
 lynx:
@@ -106,13 +109,14 @@ lynx:
       propagators: [B3, W3C_BAGGAGE]
 ```
 
-## 环境配置
 
-建议在不同环境下基于“模块化配置”调整 exporter 地址与采样策略（config.sampler），不再使用旧版 ratio 字段。
+## Environment Configuration
 
-## 使用示例
+It is recommended to adjust exporter addresses and sampling strategies (config.sampler) based on "modular configuration" in different environments, instead of using the legacy ratio field.
 
-### 在代码中使用
+## Usage Examples
+
+### Using in Code
 
 ```go
 package main
@@ -124,22 +128,23 @@ import (
 )
 
 func main() {
-    // 启动 Lynx 应用
+    // Start Lynx application
     app := app.New()
     
-    // 获取 tracer
+    // Get tracer
     tracer := otel.Tracer("my-service")
     
-    // 创建 span
+    // Create span
     ctx, span := tracer.Start(context.Background(), "my-operation")
     defer span.End()
     
-    // 你的业务逻辑
+    // Your business logic
     // ...
 }
 ```
 
-### 在 HTTP 服务中使用
+
+### Using in HTTP Service
 
 ```go
 package main
@@ -158,7 +163,7 @@ func main() {
         ctx, span := tracer.Start(r.Context(), "handle-request")
         defer span.End()
         
-        // 处理请求
+        // Handle request
         w.Write([]byte("Hello, World!"))
     })
     
@@ -166,47 +171,48 @@ func main() {
 }
 ```
 
-## 支持的导出器
 
-### OTLP gRPC/HTTP 导出器
+## Supported Exporters
 
-支持以下特性：
+### OTLP gRPC/HTTP Exporters
 
-- 压缩：gzip
-- 超时：可配置 timeout
-- TLS：单向或双向
-- 重试：初始/最大重试间隔
-- 批处理：队列/批大小/导出超时/调度延迟
+Support the following features:
 
-### 支持的收集器
+- Compression: gzip
+- Timeout: configurable timeout
+- TLS: one-way or mutual
+- Retry: initial/max retry interval
+- Batch processing: queue/batch size/export timeout/scheduling delay
+
+### Supported Collectors
 
 - **OpenTelemetry Collector**
 - **Jaeger**
 - **Zipkin**
-- **Prometheus**（通过 Collector）
+- **Prometheus** (via Collector)
 
-## 采样策略
+## Sampling Strategy
 
-### 采样率说明
+### Sampling Rate Description
 
-| 采样率 | 说明 | 适用场景 |
-|--------|------|----------|
-| 0.0 | 不采样 | 性能测试 |
-| 0.1 | 10% 采样 | 生产环境 |
-| 0.5 | 50% 采样 | 测试环境 |
-| 1.0 | 全量采样 | 开发环境 |
+| Sampling Rate | Description | Use Case |
+|---------------|-------------|----------|
+| 0.0 | No sampling | Performance testing |
+| 0.1 | 10% sampling | Production environment |
+| 0.5 | 50% sampling | Testing environment |
+| 1.0 | Full sampling | Development environment |
 
-### 采样建议
+### Sampling Recommendations
 
-- **开发环境**：使用 1.0 全量采样，便于调试
-- **测试环境**：使用 0.5 采样，平衡性能和可观测性
-- **生产环境**：使用 0.1-0.3 采样，避免性能影响
+- **Development Environment**: Use 1.0 full sampling for easier debugging
+- **Testing Environment**: Use 0.5 sampling to balance performance and observability
+- **Production Environment**: Use 0.1-0.3 sampling to avoid performance impact
 
-## 监控和调试
+## Monitoring and Debugging
 
-### 日志输出
+### Log Output
 
-插件会输出详细的日志信息：
+The plugin outputs detailed log information:
 
 ```
 [INFO] Initializing link monitoring component
@@ -214,87 +220,84 @@ func main() {
 [INFO] Tracer provider shutdown successfully
 ```
 
-## 故障排除
 
-### 常见问题
+## Troubleshooting
 
-#### 1. 连接失败
+### Common Issues
 
-**问题**：无法连接到收集器
+#### 1. Connection Failure
+
+**Issue**: Unable to connect to collector
 ```
 failed to create OTLP exporter: context deadline exceeded
 ```
 
-**解决方案**：
-- 检查收集器地址是否正确
-- 确认网络连接是否正常
-- 检查防火墙设置
 
-#### 2. 采样率无效
+**Solution**:
+- Check if collector address is correct
+- Confirm network connection is normal
+- Check firewall settings
 
-**问题**：采样率配置无效
+#### 2. Invalid Sampling Rate
+
+**Issue**: Sampling rate configuration invalid
 ```
 sampling ratio must be between 0 and 1, got 1.5
 ```
 
-**解决方案**：
-- 确保采样率在 0.0-1.0 范围内
-- 检查配置文件格式
 
-#### 3. 地址配置错误
+**Solution**:
+- Ensure sampling rate is within 0.0-1.0 range
+- Check configuration file format
 
-**问题**：启用追踪但未配置地址
+#### 3. Address Configuration Error
+
+**Issue**: Tracing enabled but address not configured
 ```
 tracer address is required when tracing is enabled
 ```
 
-**解决方案**：
-- 设置正确的 `addr` 配置项（gRPC: 4317 / HTTP: 4318 + http_path）
-- 或者禁用追踪功能
 
-### 调试模式
+**Solution**:
+- Set correct `addr` configuration item (gRPC: 4317 / HTTP: 4318 + http_path)
+- Or disable tracing functionality
 
-启用详细日志输出：
+### Debug Mode
+
+Enable detailed log output:
 
 ```go
-// 设置日志级别
+// Set log level
 log.SetLevel(log.DebugLevel)
 ```
 
-## 性能考虑
 
-### 性能影响
+## Performance Considerations
 
-- **采样率**：采样率越高，性能影响越大
-- **网络延迟**：导出器网络延迟会影响应用性能
-- **内存使用**：追踪数据会占用一定内存
+### Performance Impact
 
-### 优化建议
+- **Sampling Rate**: Higher sampling rate leads to greater performance impact
+- **Network Latency**: Exporter network latency affects application performance
+- **Memory Usage**: Tracing data occupies certain memory
 
-1. **合理设置采样率**：生产环境建议使用 0.1-0.3
-2. **使用本地收集器**：减少网络延迟
-3. **配置超时**：避免长时间阻塞
-4. **监控资源使用**：定期检查内存和 CPU 使用情况
+### Optimization Recommendations
 
-## 版本历史
+1. **Set Sampling Rate Appropriately**: Production environment recommends using 0.1-0.3
+2. **Use Local Collector**: Reduce network latency
+3. **Configure Timeout**: Avoid long blocking
+4. **Monitor Resource Usage**: Regularly check memory and CPU usage
+
+## Version History
 
 ### v2.0.0
 
-- ✅ Modular 配置（协议/TLS/重试/压缩/批处理/传播器/资源/限额）
-- ✅ 导出器支持 OTLP HTTP
-- ✅ 采样器与传播器可配置
-- ✅ 优雅关闭机制
+- ✅ Modular configuration (protocol/TLS/retry/compression/batch processing/propagators/resources/limits)
+- ✅ Exporter supports OTLP HTTP
+- ✅ Configurable samplers and propagators
+- ✅ Graceful shutdown mechanism
 
 ### v1.0.0
 
-- ✅ 基础链路追踪功能
-- ✅ OTLP gRPC 导出器
-- ✅ 可配置采样率
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 许可证
-
-MIT License
+- ✅ Basic tracing functionality
+- ✅ OTLP gRPC exporter
+- ✅ Configurable sampling rate

@@ -5,48 +5,69 @@ import (
 
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
-	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/app/conf"
+	"github.com/go-lynx/lynx/app/log"
 	ggrpc "google.golang.org/grpc"
 )
 
-// BuildGrpcSubscriptions 依据配置构建 gRPC 订阅连接
-// 返回值 key 为服务名，value 为可复用的 gRPC ClientConn
+// BuildGrpcSubscriptions builds gRPC subscription connections based on configuration
+// Returns map where key is service name, value is reusable gRPC ClientConn
 func BuildGrpcSubscriptions(cfg *conf.Subscriptions, discovery registry.Discovery, routerFactory func(string) selector.NodeFilter) (map[string]*ggrpc.ClientConn, error) {
+	// Initialize the connection map to store gRPC connections
 	conns := make(map[string]*ggrpc.ClientConn)
+
+	// Return early if no gRPC subscriptions are configured
 	if cfg == nil || len(cfg.GetGrpc()) == 0 {
 		return conns, nil
 	}
 
+	// Iterate through each gRPC subscription configuration
 	for _, item := range cfg.GetGrpc() {
+		// Get the service name from configuration
 		name := item.GetService()
+
+		// Skip empty service names
 		if name == "" {
 			log.Warnf("skip empty grpc subscription entry")
 			continue
 		}
 
+		// Build subscription options
 		opts := []Option{
 			WithServiceName(name),
 			WithDiscovery(discovery),
 		}
+
+		// Add node router factory if provided
 		if routerFactory != nil {
 			opts = append(opts, WithNodeRouterFactory(routerFactory))
 		}
+
+		// Enable TLS if configured
 		if item.GetTls() {
 			opts = append(opts, EnableTls())
 		}
+
+		// Add root CA file name if configured
 		if cn := item.GetCaName(); cn != "" {
 			opts = append(opts, WithRootCAFileName(cn))
 		}
+
+		// Add root CA file group if configured
 		if cg := item.GetCaGroup(); cg != "" {
 			opts = append(opts, WithRootCAFileGroup(cg))
 		}
+
+		// Mark as required subscription if configured
 		if item.GetRequired() {
 			opts = append(opts, Required())
 		}
 
+		// Create and execute the subscription
 		sub := NewGrpcSubscribe(opts...)
 		conn := sub.Subscribe()
+
+		// Handle connection failure
 		if conn == nil {
 			if item.GetRequired() {
 				return nil, fmt.Errorf("required grpc subscription failed: %s", name)
@@ -55,10 +76,11 @@ func BuildGrpcSubscriptions(cfg *conf.Subscriptions, discovery registry.Discover
 			continue
 		}
 
-		// 预热：简单执行连接状态检查（可选）
+		// Warm-up: Simple connection state check (optional)
 		state := conn.GetState()
 		log.Infof("grpc subscription established: service=%s state=%s", name, state.String())
 
+		// Store the successful connection
 		conns[name] = conn
 	}
 

@@ -12,20 +12,20 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// Client Kafka 客户端插件
+// Client Kafka client plugin
 type Client struct {
 	*plugins.BasePlugin
 	conf *conf.Kafka
-	// 多实例生产者/消费者
-	producers        map[string]*kgo.Client
-	batchProcessors  map[string]*BatchProcessor
-	defaultProducer  string
-	consumers        map[string]*kgo.Client
-	activeGroups     map[string]*ConsumerGroup // 按消费者实例名维护活跃组
-	// 连接管理器
-	prodConnMgrs     map[string]*ConnectionManager
-	consConnMgrs     map[string]*ConnectionManager
-	// 兼容旧字段，待 consumer 重构完成后移除
+	// Multi-instance producers/consumers
+	producers       map[string]*kgo.Client
+	batchProcessors map[string]*BatchProcessor
+	defaultProducer string
+	consumers       map[string]*kgo.Client
+	activeGroups    map[string]*ConsumerGroup // Maintain active groups by consumer instance name
+	// Connection managers
+	prodConnMgrs map[string]*ConnectionManager
+	consConnMgrs map[string]*ConnectionManager
+	// Compatible with old fields, to be removed after consumer refactoring is complete
 	producer            *kgo.Client
 	consumer            *kgo.Client
 	activeConsumerGroup *ConsumerGroup
@@ -37,12 +37,12 @@ type Client struct {
 	retryHandler        *RetryHandler
 }
 
-// 确保 Client 实现了所有接口
+// Ensure Client implements all interfaces
 var _ ClientInterface = (*Client)(nil)
 var _ Producer = (*Client)(nil)
 var _ Consumer = (*Client)(nil)
 
-// NewKafkaClient 创建一个新的 Kafka 客户端插件实例
+// NewKafkaClient creates a new Kafka client plugin instance
 func NewKafkaClient() *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
@@ -54,10 +54,10 @@ func NewKafkaClient() *Client {
 			confPrefix,
 			100,
 		),
-		ctx:          ctx,
-		cancel:       cancel,
-		metrics:      NewMetrics(),
-		retryHandler: NewRetryHandler(RetryConfig{MaxRetries: 3, BackoffTime: time.Second, MaxBackoff: 30 * time.Second}),
+		ctx:             ctx,
+		cancel:          cancel,
+		metrics:         NewMetrics(),
+		retryHandler:    NewRetryHandler(RetryConfig{MaxRetries: 3, BackoffTime: time.Second, MaxBackoff: 30 * time.Second}),
 		producers:       make(map[string]*kgo.Client),
 		batchProcessors: make(map[string]*BatchProcessor),
 		consumers:       make(map[string]*kgo.Client),
@@ -67,30 +67,30 @@ func NewKafkaClient() *Client {
 	}
 }
 
-// InitializeResources 初始化 Kafka 资源
+// InitializeResources initializes Kafka resources
 func (k *Client) InitializeResources(rt plugins.Runtime) error {
 	k.conf = &conf.Kafka{}
 
-	// 加载配置
+	// Load configuration
 	err := rt.GetConfig().Value(confPrefix).Scan(k.conf)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfiguration, err)
 	}
 
-	// 验证配置
+	// Validate configuration
 	if err := k.validateConfiguration(); err != nil {
 		return err
 	}
 
-	// 设置默认值
+	// Set default values
 	k.setDefaultValues()
 
 	return nil
 }
 
-// StartupTasks 启动任务
+// StartupTasks startup tasks
 func (k *Client) StartupTasks() error {
-	// 初始化所有启用的生产者实例
+	// Initialize all enabled producer instances
 	var firstProducerName string
 	for _, p := range k.conf.Producers {
 		if p == nil || !p.Enabled {
@@ -98,7 +98,7 @@ func (k *Client) StartupTasks() error {
 		}
 		name := p.Name
 		if name == "" {
-			// 若未命名，用 topic 组合或序号；这里简单使用 first-available 自增名
+			// If unnamed, use topic combination or sequence number; here simply use first-available incremental name
 			name = fmt.Sprintf("producer-%p", p)
 		}
 		if _, exists := k.producers[name]; exists {
@@ -111,19 +111,19 @@ func (k *Client) StartupTasks() error {
 		}
 		k.mu.Lock()
 		k.producers[name] = client
-		// 启动生产者连接管理器
+		// Start producer connection manager
 		if _, ok := k.prodConnMgrs[name]; !ok {
 			cm := NewConnectionManager(client, k.conf.GetBrokers())
 			k.prodConnMgrs[name] = cm
 			cm.Start()
 			log.Infof("Kafka producer[%s] connection manager started", name)
-			// 注册健康指标
+			// Register health metrics
 			k.registerHealthForProducer(name)
 		}
 		if firstProducerName == "" {
 			firstProducerName = name
 		}
-		// 每个生产者按配置决定是否启用异步批处理
+		// Each producer decides whether to enable async batch processing based on configuration
 		batchSize := int(p.BatchSize)
 		batchTimeout := p.BatchTimeout.AsDuration()
 		if batchSize > 1 && batchTimeout > 0 {
@@ -142,18 +142,18 @@ func (k *Client) StartupTasks() error {
 		k.defaultProducer = firstProducerName
 	}
 
-	// 消费者在 Subscribe/SubscribeWith 时初始化
+	// Consumers are initialized during Subscribe/SubscribeWith
 	return nil
 }
 
-// ShutdownTasks 关闭任务
+// ShutdownTasks shutdown tasks
 func (k *Client) ShutdownTasks() error {
-	k.cancel() // 取消所有上下文
+	k.cancel() // Cancel all contexts
 
 	k.mu.Lock()
 	defer k.mu.Unlock()
 
-	// 停止连接管理器（先于关闭客户端）
+	// Stop connection managers (before closing clients)
 	for name, cm := range k.prodConnMgrs {
 		if cm != nil {
 			cm.Stop()
@@ -169,7 +169,7 @@ func (k *Client) ShutdownTasks() error {
 		delete(k.consConnMgrs, name)
 	}
 
-	// 先优雅刷盘所有批处理器
+	// First gracefully flush all batch processors
 	for name, bp := range k.batchProcessors {
 		if bp == nil {
 			continue
@@ -200,7 +200,7 @@ func (k *Client) ShutdownTasks() error {
 	return nil
 }
 
-// GetMetrics 获取监控指标
+// GetMetrics gets monitoring metrics
 func (k *Client) GetMetrics() *Metrics {
 	return k.metrics
 }

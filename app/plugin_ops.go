@@ -240,7 +240,7 @@ func (m *DefaultPluginManager[T]) StopPlugin(pluginName string) error {
 	return nil
 }
 
-// Resource helpers.
+// GetResourceStats Resource helpers.
 func (m *DefaultPluginManager[T]) GetResourceStats() map[string]any {
 	return m.runtime.GetResourceStats()
 }
@@ -249,7 +249,7 @@ func (m *DefaultPluginManager[T]) ListResources() []*plugins.ResourceInfo {
 	return m.runtime.ListResources()
 }
 
-// Public helpers for any PluginManager.
+// ListPluginNames Public helpers for any PluginManager.
 func ListPluginNames(m PluginManager) []string {
 	if m == nil {
 		return nil

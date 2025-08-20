@@ -89,12 +89,12 @@ func helper() *log.Helper {
 	return &LHelper
 }
 
-// Debug 使用日志辅助器记录调试级别的日志信息。
+// Debug uses the log helper to record debug-level log information.
 func Debug(a ...any) {
 	helper().Debug(a...)
 }
 
-// DebugCtx 使用日志辅助器记录调试级别的日志信息，带上下文。
+// DebugCtx uses the log helper to record debug-level log information with context.
 func DebugCtx(ctx context.Context, a ...any) {
 	helper().WithContext(ctx).Debug(a...)
 }

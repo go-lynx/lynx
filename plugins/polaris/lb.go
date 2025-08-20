@@ -8,10 +8,10 @@ import (
 	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
-// triggerLoadBalancerUpdate 触发负载均衡更新
+// triggerLoadBalancerUpdate triggers load balancer update
 func (p *PlugPolaris) triggerLoadBalancerUpdate(serviceName string, instances []model.Instance) {
-	// 触发负载均衡器的更新
-	// 这里可以集成具体的负载均衡器实现
+	// Trigger load balancer update
+	// Specific load balancer implementations can be integrated here
 
 	healthyInstances := 0
 	totalWeight := 0
@@ -22,7 +22,7 @@ func (p *PlugPolaris) triggerLoadBalancerUpdate(serviceName string, instances []
 			healthyInstances++
 			totalWeight += int(instance.GetWeight())
 
-			// 构建实例信息
+			// Build instance information
 			instanceInfo := map[string]interface{}{
 				"id":       instance.GetId(),
 				"host":     instance.GetHost(),
@@ -35,7 +35,7 @@ func (p *PlugPolaris) triggerLoadBalancerUpdate(serviceName string, instances []
 		}
 	}
 
-	// 构建负载均衡更新数据
+	// Build load balancer update data
 	lbUpdate := map[string]interface{}{
 		"service_name":  serviceName,
 		"namespace":     p.conf.Namespace,
@@ -45,66 +45,66 @@ func (p *PlugPolaris) triggerLoadBalancerUpdate(serviceName string, instances []
 		"updated_at":    time.Now().Unix(),
 	}
 
-	// 具体实现：集成多种负载均衡器
-	// 1. 通知 Kratos 的负载均衡器
+	// Implementation: integrate multiple load balancers
+	// 1. Notify Kratos load balancer
 	p.updateKratosLoadBalancer(serviceName, lbUpdate)
 
-	// 2. 更新本地负载均衡缓存
+	// 2. Update local load balancer cache
 	p.updateLocalLoadBalancerCache(serviceName, lbUpdate)
 
-	// 3. 通知外部负载均衡器
+	// 3. Notify external load balancers
 	p.updateExternalLoadBalancer(serviceName, lbUpdate)
 
-	// 4. 更新服务网格配置
+	// 4. Update service mesh configuration
 	p.updateServiceMeshConfig(serviceName, lbUpdate)
 
 	log.Infof("Load balancer update: %+v", lbUpdate)
 }
 
-// updateKratosLoadBalancer 更新 Kratos 负载均衡器
+// updateKratosLoadBalancer updates Kratos load balancer
 func (p *PlugPolaris) updateKratosLoadBalancer(serviceName string, lbUpdate map[string]interface{}) {
-	// 具体实现：通知 Kratos 的负载均衡器
+	// Implementation: notify Kratos load balancer
 	log.Infof("Updating Kratos load balancer for service: %s", serviceName)
-	// 这里可以集成 Kratos 的负载均衡器 API
+	// Kratos load balancer API can be integrated here
 }
 
-// updateLocalLoadBalancerCache 更新本地负载均衡缓存
+// updateLocalLoadBalancerCache updates local load balancer cache
 func (p *PlugPolaris) updateLocalLoadBalancerCache(serviceName string, lbUpdate map[string]interface{}) {
-	// 具体实现：更新本地负载均衡缓存
+	// Implementation: update local load balancer cache
 	log.Infof("Updating local load balancer cache for service: %s", serviceName)
-	// 这里可以更新本地缓存中的负载均衡信息
+	// Load balancer information in local cache can be updated here
 }
 
-// updateExternalLoadBalancer 更新外部负载均衡器
+// updateExternalLoadBalancer updates external load balancers
 func (p *PlugPolaris) updateExternalLoadBalancer(serviceName string, lbUpdate map[string]interface{}) {
-	// 具体实现：通知外部负载均衡器（Nginx、HAProxy 等）
+	// Implementation: notify external load balancers (Nginx, HAProxy, etc.)
 	log.Infof("Updating external load balancer for service: %s", serviceName)
-	// 这里可以集成 Nginx、HAProxy 等负载均衡器的 API
+	// APIs for load balancers like Nginx, HAProxy can be integrated here
 }
 
-// updateServiceMeshConfig 更新服务网格配置
+// updateServiceMeshConfig updates service mesh configuration
 func (p *PlugPolaris) updateServiceMeshConfig(serviceName string, lbUpdate map[string]interface{}) {
-	// 具体实现：更新服务网格配置（Istio、Envoy 等）
+	// Implementation: update service mesh configuration (Istio, Envoy, etc.)
 	log.Infof("Updating service mesh config for service: %s", serviceName)
-	// 这里可以集成 Istio、Envoy 等服务网格的配置 API
+	// Configuration APIs for service meshes like Istio, Envoy can be integrated here
 }
 
-// getLoadBalancerStats 获取负载均衡统计信息
+// getLoadBalancerStats gets load balancer statistics
 func (p *PlugPolaris) getLoadBalancerStats(serviceName string) map[string]interface{} {
-	// 获取负载均衡统计信息
+	// Get load balancer statistics
 	stats := map[string]interface{}{
 		"service_name": serviceName,
 		"namespace":    p.conf.Namespace,
 		"timestamp":    time.Now().Unix(),
-		"lb_type":      "multi_type", // 支持多种负载均衡器
+		"lb_type":      "multi_type", // Support multiple load balancer types
 	}
 
 	return stats
 }
 
-// validateLoadBalancerUpdate 验证负载均衡更新
+// validateLoadBalancerUpdate validates load balancer update
 func (p *PlugPolaris) validateLoadBalancerUpdate(serviceName string, lbUpdate map[string]interface{}) error {
-	// 验证负载均衡更新数据的有效性
+	// Validate the validity of load balancer update data
 	if serviceName == "" {
 		return fmt.Errorf("service name is empty")
 	}
@@ -113,7 +113,7 @@ func (p *PlugPolaris) validateLoadBalancerUpdate(serviceName string, lbUpdate ma
 		return fmt.Errorf("load balancer update data is nil")
 	}
 
-	// 验证必要字段
+	// Validate required fields
 	if _, exists := lbUpdate["healthy_count"]; !exists {
 		return fmt.Errorf("missing healthy_count in load balancer update")
 	}

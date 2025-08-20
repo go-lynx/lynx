@@ -6,69 +6,69 @@ import (
 	"sync"
 )
 
-// DependencyType 定义依赖类型
+// DependencyType defines dependency types
 type DependencyType string
 
 const (
-	// DependencyTypeRequired 必需依赖
+	// DependencyTypeRequired required dependency
 	DependencyTypeRequired DependencyType = "required"
-	// DependencyTypeOptional 可选依赖
+	// DependencyTypeOptional optional dependency
 	DependencyTypeOptional DependencyType = "optional"
-	// DependencyTypeConflicts 冲突依赖
+	// DependencyTypeConflicts conflicting dependency
 	DependencyTypeConflicts DependencyType = "conflicts"
-	// DependencyTypeProvides 提供依赖
+	// DependencyTypeProvides provided dependency
 	DependencyTypeProvides DependencyType = "provides"
 )
 
-// VersionConstraint 版本约束
+// VersionConstraint version constraint
 type VersionConstraint struct {
-	MinVersion      string   `json:"min_version"`      // 最小版本
-	MaxVersion      string   `json:"max_version"`      // 最大版本
-	ExactVersion    string   `json:"exact_version"`    // 精确版本
-	ExcludeVersions []string `json:"exclude_versions"` // 排除版本
+	MinVersion      string   `json:"min_version"`      // Minimum version
+	MaxVersion      string   `json:"max_version"`      // Maximum version
+	ExactVersion    string   `json:"exact_version"`    // Exact version
+	ExcludeVersions []string `json:"exclude_versions"` // Excluded versions
 }
 
-// Dependency 描述插件之间的依赖关系
+// Dependency describes dependency relationships between plugins
 type Dependency struct {
-	ID                string             `json:"id"`                 // 依赖插件的唯一标识符
-	Name              string             `json:"name"`               // 依赖插件的名称
-	Type              DependencyType     `json:"type"`               // 依赖类型
-	VersionConstraint *VersionConstraint `json:"version_constraint"` // 版本约束
-	Required          bool               `json:"required"`           // 是否为必需依赖
-	Checker           DependencyChecker  `json:"-"`                  // 依赖验证器
-	Metadata          map[string]any     `json:"metadata"`           // 额外依赖信息
-	Description       string             `json:"description"`        // 依赖描述
+	ID                string             `json:"id"`                 // Unique identifier of the dependent plugin
+	Name              string             `json:"name"`               // Name of the dependent plugin
+	Type              DependencyType     `json:"type"`               // Dependency type
+	VersionConstraint *VersionConstraint `json:"version_constraint"` // Version constraint
+	Required          bool               `json:"required"`           // Whether it's a required dependency
+	Checker           DependencyChecker  `json:"-"`                  // Dependency validator
+	Metadata          map[string]any     `json:"metadata"`           // Additional dependency information
+	Description       string             `json:"description"`        // Dependency description
 }
 
-// DependencyChecker 定义依赖项验证的接口
+// DependencyChecker defines the interface for dependency validation
 type DependencyChecker interface {
-	// Check 验证依赖项条件是否满足
+	// Check validates whether dependency conditions are met
 	Check(plugin Plugin) bool
-	// Description 返回条件的易读描述
+	// Description returns a human-readable description of the condition
 	Description() string
 }
 
-// DependencyManager 依赖管理器接口
+// DependencyManager dependency manager interface
 type DependencyManager interface {
-	// AddDependency 添加依赖关系
+	// AddDependency adds a dependency relationship
 	AddDependency(pluginID string, dependency *Dependency) error
-	// RemoveDependency 移除依赖关系
+	// RemoveDependency removes a dependency relationship
 	RemoveDependency(pluginID string, dependencyID string) error
-	// GetDependencies 获取插件的所有依赖
+	// GetDependencies gets all dependencies of a plugin
 	GetDependencies(pluginID string) []*Dependency
-	// GetDependents 获取依赖该插件的所有插件
+	// GetDependents gets all plugins that depend on this plugin
 	GetDependents(pluginID string) []string
-	// CheckCircularDependencies 检查循环依赖
+	// CheckCircularDependencies checks for circular dependencies
 	CheckCircularDependencies() ([]string, error)
-	// ResolveDependencies 解析依赖关系，返回正确的加载顺序
+	// ResolveDependencies resolves dependency relationships and returns the correct loading order
 	ResolveDependencies() ([]string, error)
-	// CheckVersionConflicts 检查版本冲突
+	// CheckVersionConflicts checks for version conflicts
 	CheckVersionConflicts() ([]VersionConflict, error)
-	// ValidateDependencies 验证所有依赖是否满足
+	// ValidateDependencies validates whether all dependencies are satisfied
 	ValidateDependencies(plugins map[string]Plugin) ([]DependencyError, error)
 }
 
-// VersionConflict 版本冲突信息
+// VersionConflict version conflict information
 type VersionConflict struct {
 	PluginID         string `json:"plugin_id"`
 	DependencyID     string `json:"dependency_id"`
@@ -78,7 +78,7 @@ type VersionConflict struct {
 	Description      string `json:"description"`
 }
 
-// DependencyError 依赖错误信息
+// DependencyError dependency error information
 type DependencyError struct {
 	PluginID     string `json:"plugin_id"`
 	DependencyID string `json:"dependency_id"`
@@ -87,19 +87,19 @@ type DependencyError struct {
 	Severity     string `json:"severity"` // "error", "warning", "info"
 }
 
-// DependencyGraph 依赖图结构
+// DependencyGraph dependency graph structure
 type DependencyGraph struct {
-	// 插件ID -> 依赖列表
+	// Plugin ID -> dependency list
 	dependencies map[string][]*Dependency
-	// 插件ID -> 被依赖的插件列表
+	// Plugin ID -> list of plugins that depend on it
 	dependents map[string][]string
-	// 插件ID -> 插件信息
+	// Plugin ID -> plugin information
 	plugins map[string]Plugin
-	// 互斥锁
+	// Mutex
 	mu sync.RWMutex
 }
 
-// NewDependencyGraph 创建新的依赖图
+// NewDependencyGraph creates a new dependency graph
 func NewDependencyGraph() *DependencyGraph {
 	return &DependencyGraph{
 		dependencies: make(map[string][]*Dependency),
@@ -108,7 +108,7 @@ func NewDependencyGraph() *DependencyGraph {
 	}
 }
 
-// AddPlugin 添加插件到依赖图
+// AddPlugin adds a plugin to the dependency graph
 func (dg *DependencyGraph) AddPlugin(plugin Plugin) {
 	dg.mu.Lock()
 	defer dg.mu.Unlock()
@@ -117,7 +117,7 @@ func (dg *DependencyGraph) AddPlugin(plugin Plugin) {
 	dg.plugins[pluginID] = plugin
 }
 
-// RemovePlugin 从依赖图中移除插件
+// RemovePlugin removes a plugin from the dependency graph
 func (dg *DependencyGraph) RemovePlugin(pluginID string) {
 	dg.mu.Lock()
 	defer dg.mu.Unlock()
@@ -125,7 +125,7 @@ func (dg *DependencyGraph) RemovePlugin(pluginID string) {
 	delete(dg.plugins, pluginID)
 	delete(dg.dependencies, pluginID)
 
-	// 从所有被依赖列表中移除
+	// Remove from all dependent lists
 	for _, deps := range dg.dependents {
 		for i, dep := range deps {
 			if dep == pluginID {
@@ -136,31 +136,31 @@ func (dg *DependencyGraph) RemovePlugin(pluginID string) {
 	}
 }
 
-// AddDependency 添加依赖关系
+// AddDependency adds a dependency relationship
 func (dg *DependencyGraph) AddDependency(pluginID string, dependency *Dependency) error {
 	dg.mu.Lock()
 	defer dg.mu.Unlock()
 
-	// 检查插件是否存在
+	// Check if plugin exists
 	if _, exists := dg.plugins[pluginID]; !exists {
 		return fmt.Errorf("plugin %s not found", pluginID)
 	}
 
-	// 检查依赖插件是否存在
+	// Check if dependent plugin exists
 	if _, exists := dg.plugins[dependency.ID]; !exists {
 		return fmt.Errorf("dependency plugin %s not found", dependency.ID)
 	}
 
-	// 添加依赖关系
+	// Add dependency relationship
 	dg.dependencies[pluginID] = append(dg.dependencies[pluginID], dependency)
 
-	// 更新被依赖关系
+	// Update dependent relationship
 	dg.dependents[dependency.ID] = append(dg.dependents[dependency.ID], pluginID)
 
 	return nil
 }
 
-// RemoveDependency 移除依赖关系
+// RemoveDependency removes a dependency relationship
 func (dg *DependencyGraph) RemoveDependency(pluginID string, dependencyID string) error {
 	dg.mu.Lock()
 	defer dg.mu.Unlock()
@@ -170,12 +170,12 @@ func (dg *DependencyGraph) RemoveDependency(pluginID string, dependencyID string
 		return fmt.Errorf("plugin %s has no dependencies", pluginID)
 	}
 
-	// 查找并移除依赖
+	// Find and remove dependency
 	for i, dep := range deps {
 		if dep.ID == dependencyID {
 			dg.dependencies[pluginID] = append(deps[:i], deps[i+1:]...)
 
-			// 更新被依赖关系
+			// Update dependent relationship
 			if dependents, ok := dg.dependents[dependencyID]; ok {
 				for j, dep := range dependents {
 					if dep == pluginID {
@@ -191,7 +191,7 @@ func (dg *DependencyGraph) RemoveDependency(pluginID string, dependencyID string
 	return fmt.Errorf("dependency %s not found for plugin %s", dependencyID, pluginID)
 }
 
-// GetDependencies 获取插件的所有依赖
+// GetDependencies gets all dependencies of a plugin
 func (dg *DependencyGraph) GetDependencies(pluginID string) []*Dependency {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
@@ -204,7 +204,7 @@ func (dg *DependencyGraph) GetDependencies(pluginID string) []*Dependency {
 	return nil
 }
 
-// GetDependents 获取依赖该插件的所有插件
+// GetDependents gets all plugins that depend on this plugin
 func (dg *DependencyGraph) GetDependents(pluginID string) []string {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
@@ -218,7 +218,7 @@ func (dg *DependencyGraph) GetDependents(pluginID string) []string {
 	return nil
 }
 
-// CheckCircularDependencies 检查循环依赖
+// CheckCircularDependencies checks for circular dependencies
 func (dg *DependencyGraph) CheckCircularDependencies() ([]string, error) {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
@@ -227,11 +227,11 @@ func (dg *DependencyGraph) CheckCircularDependencies() ([]string, error) {
 	recStack := make(map[string]bool)
 	cycle := make([]string, 0)
 
-	// 深度优先搜索检测循环
+	// Depth-first search to detect cycles
 	var dfs func(pluginID string) bool
 	dfs = func(pluginID string) bool {
 		if recStack[pluginID] {
-			// 找到循环依赖
+			// Found circular dependency
 			cycle = append(cycle, pluginID)
 			return true
 		}
@@ -259,11 +259,11 @@ func (dg *DependencyGraph) CheckCircularDependencies() ([]string, error) {
 		return false
 	}
 
-	// 检查所有插件
+	// Check all plugins
 	for id := range dg.plugins {
 		if !visited[id] {
 			if dfs(id) {
-				// 反转循环路径
+				// Reverse cycle path
 				for i, j := 0, len(cycle)-1; i < j; i, j = i+1, j-1 {
 					cycle[i], cycle[j] = cycle[j], cycle[i]
 				}
@@ -275,26 +275,26 @@ func (dg *DependencyGraph) CheckCircularDependencies() ([]string, error) {
 	return nil, nil
 }
 
-// ResolveDependencies 解析依赖关系，返回正确的加载顺序
+// ResolveDependencies resolves dependency relationships and returns the correct loading order
 func (dg *DependencyGraph) ResolveDependencies() ([]string, error) {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
 
-	// 首先检查循环依赖
+	// First check for circular dependencies
 	if _, err := dg.CheckCircularDependencies(); err != nil {
 		return nil, err
 	}
 
-	// 拓扑排序
+	// Topological sort
 	inDegree := make(map[string]int)
 	graph := make(map[string][]string)
 
-	// 初始化入度
+	// Initialize in-degrees
 	for pluginID := range dg.plugins {
 		inDegree[pluginID] = 0
 	}
 
-	// 构建图和计算入度
+	// Build graph and calculate in-degrees
 	for pluginID, deps := range dg.dependencies {
 		for _, dep := range deps {
 			if dep.Type == DependencyTypeRequired {
@@ -304,24 +304,24 @@ func (dg *DependencyGraph) ResolveDependencies() ([]string, error) {
 		}
 	}
 
-	// 拓扑排序
+	// Topological sort
 	var result []string
 	queue := make([]string, 0)
 
-	// 找到所有入度为0的节点
+	// Find all nodes with in-degree 0
 	for pluginID, degree := range inDegree {
 		if degree == 0 {
 			queue = append(queue, pluginID)
 		}
 	}
 
-	// 处理队列
+	// Process queue
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
 		result = append(result, current)
 
-		// 更新相关节点的入度
+		// Update in-degrees of related nodes
 		for _, dep := range graph[current] {
 			inDegree[dep]--
 			if inDegree[dep] == 0 {
@@ -330,7 +330,7 @@ func (dg *DependencyGraph) ResolveDependencies() ([]string, error) {
 		}
 	}
 
-	// 检查是否所有节点都被处理
+	// Check if all nodes were processed
 	if len(result) != len(dg.plugins) {
 		return nil, fmt.Errorf("dependency resolution failed: some plugins have unresolved dependencies")
 	}
@@ -338,7 +338,7 @@ func (dg *DependencyGraph) ResolveDependencies() ([]string, error) {
 	return result, nil
 }
 
-// CheckVersionConflicts 检查版本冲突
+// CheckVersionConflicts checks for version conflicts
 func (dg *DependencyGraph) CheckVersionConflicts() ([]VersionConflict, error) {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
@@ -361,7 +361,7 @@ func (dg *DependencyGraph) CheckVersionConflicts() ([]VersionConflict, error) {
 				continue
 			}
 
-			// 检查版本约束
+			// Check version constraint
 			if conflict := dg.checkVersionConstraint(plugin, dep, depPlugin); conflict != nil {
 				conflicts = append(conflicts, *conflict)
 			}
@@ -371,12 +371,12 @@ func (dg *DependencyGraph) CheckVersionConflicts() ([]VersionConflict, error) {
 	return conflicts, nil
 }
 
-// checkVersionConstraint 检查单个版本约束
+// checkVersionConstraint checks a single version constraint
 func (dg *DependencyGraph) checkVersionConstraint(plugin Plugin, dep *Dependency, depPlugin Plugin) *VersionConflict {
 	constraint := dep.VersionConstraint
 	depVersion := depPlugin.Version()
 
-	// 检查精确版本
+	// Check exact version
 	if constraint.ExactVersion != "" && constraint.ExactVersion != depVersion {
 		return &VersionConflict{
 			PluginID:         plugin.ID(),
@@ -389,7 +389,7 @@ func (dg *DependencyGraph) checkVersionConstraint(plugin Plugin, dep *Dependency
 		}
 	}
 
-	// 检查排除版本
+	// Check excluded versions
 	for _, excludedVersion := range constraint.ExcludeVersions {
 		if excludedVersion == depVersion {
 			return &VersionConflict{
@@ -404,8 +404,8 @@ func (dg *DependencyGraph) checkVersionConstraint(plugin Plugin, dep *Dependency
 		}
 	}
 
-	// 检查版本范围（这里需要实现版本比较逻辑）
-	// 为了简化，这里只做基本的字符串比较
+	// Check version range (version comparison logic needs to be implemented here)
+	// For simplicity, only basic string comparison is done here
 	if constraint.MinVersion != "" && depVersion < constraint.MinVersion {
 		return &VersionConflict{
 			PluginID:         plugin.ID(),
@@ -433,7 +433,7 @@ func (dg *DependencyGraph) checkVersionConstraint(plugin Plugin, dep *Dependency
 	return nil
 }
 
-// ValidateDependencies 验证所有依赖是否满足
+// ValidateDependencies validates whether all dependencies are satisfied
 func (dg *DependencyGraph) ValidateDependencies(plugins map[string]Plugin) ([]DependencyError, error) {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
@@ -448,7 +448,7 @@ func (dg *DependencyGraph) ValidateDependencies(plugins map[string]Plugin) ([]De
 
 		for _, dep := range deps {
 			if dep.Type == DependencyTypeRequired {
-				// 检查依赖插件是否存在
+				// Check if dependent plugin exists
 				depPlugin, exists := plugins[dep.ID]
 				if !exists {
 					errors = append(errors, DependencyError{
@@ -461,7 +461,7 @@ func (dg *DependencyGraph) ValidateDependencies(plugins map[string]Plugin) ([]De
 					continue
 				}
 
-				// 检查版本约束
+				// Check version constraint
 				if dep.VersionConstraint != nil {
 					if conflict := dg.checkVersionConstraint(plugin, dep, depPlugin); conflict != nil {
 						errors = append(errors, DependencyError{
@@ -474,7 +474,7 @@ func (dg *DependencyGraph) ValidateDependencies(plugins map[string]Plugin) ([]De
 					}
 				}
 
-				// 检查依赖检查器
+				// Check dependency checker
 				if dep.Checker != nil {
 					if !dep.Checker.Check(depPlugin) {
 						errors = append(errors, DependencyError{
@@ -493,7 +493,7 @@ func (dg *DependencyGraph) ValidateDependencies(plugins map[string]Plugin) ([]De
 	return errors, nil
 }
 
-// GetDependencyTree 获取依赖树结构
+// GetDependencyTree gets the dependency tree structure
 func (dg *DependencyGraph) GetDependencyTree(pluginID string) map[string]interface{} {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
@@ -501,7 +501,7 @@ func (dg *DependencyGraph) GetDependencyTree(pluginID string) map[string]interfa
 	return dg.buildDependencyTree(pluginID, make(map[string]bool))
 }
 
-// buildDependencyTree 递归构建依赖树
+// buildDependencyTree recursively builds the dependency tree
 func (dg *DependencyGraph) buildDependencyTree(pluginID string, visited map[string]bool) map[string]interface{} {
 	if visited[pluginID] {
 		return map[string]interface{}{
@@ -540,7 +540,7 @@ func (dg *DependencyGraph) buildDependencyTree(pluginID string, visited map[stri
 	return tree
 }
 
-// GetDependencyStats 获取依赖统计信息
+// GetDependencyStats gets dependency statistics
 func (dg *DependencyGraph) GetDependencyStats() map[string]interface{} {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
@@ -578,7 +578,7 @@ func (dg *DependencyGraph) GetDependencyStats() map[string]interface{} {
 	return stats
 }
 
-// HasPlugin 检查插件是否存在
+// HasPlugin checks if a plugin exists
 func (dg *DependencyGraph) HasPlugin(pluginID string) bool {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
@@ -586,12 +586,12 @@ func (dg *DependencyGraph) HasPlugin(pluginID string) bool {
 	return exists
 }
 
-// GetAllDependencies 获取所有插件的依赖关系
+// GetAllDependencies gets all plugin dependency relationships
 func (dg *DependencyGraph) GetAllDependencies() map[string][]*Dependency {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
 
-	// 创建副本以避免外部修改
+	// Create a copy to avoid external modifications
 	result := make(map[string][]*Dependency)
 	for pluginID, deps := range dg.dependencies {
 		depsCopy := make([]*Dependency, len(deps))
@@ -601,12 +601,12 @@ func (dg *DependencyGraph) GetAllDependencies() map[string][]*Dependency {
 	return result
 }
 
-// GetAllPlugins 获取所有插件
+// GetAllPlugins gets all plugins
 func (dg *DependencyGraph) GetAllPlugins() map[string]Plugin {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
 
-	// 创建副本以避免外部修改
+	// Create a copy to avoid external modifications
 	result := make(map[string]Plugin)
 	for pluginID, plugin := range dg.plugins {
 		result[pluginID] = plugin
@@ -614,14 +614,14 @@ func (dg *DependencyGraph) GetAllPlugins() map[string]Plugin {
 	return result
 }
 
-// CleanupOrphanedDependencies 清理孤立的依赖关系
+// CleanupOrphanedDependencies cleans up orphaned dependency relationships
 func (dg *DependencyGraph) CleanupOrphanedDependencies() int {
 	dg.mu.Lock()
 	defer dg.mu.Unlock()
 
 	cleaned := 0
 
-	// 检查所有依赖关系，移除指向不存在插件的依赖
+	// Check all dependency relationships and remove dependencies pointing to non-existent plugins
 	for pluginID, deps := range dg.dependencies {
 		validDeps := make([]*Dependency, 0)
 
@@ -638,7 +638,7 @@ func (dg *DependencyGraph) CleanupOrphanedDependencies() int {
 		}
 	}
 
-	// 清理被依赖关系
+	// Clean up dependent relationships
 	for depID, dependents := range dg.dependents {
 		if _, exists := dg.plugins[depID]; !exists {
 			delete(dg.dependents, depID)

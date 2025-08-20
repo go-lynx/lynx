@@ -1,35 +1,35 @@
-# 根配置项，代表 Lynx 应用的全局配置
+# Root configuration item representing global configuration of Lynx application
 lynx:
-  # 应用程序相关配置
+  # Application related configuration
   application:
-    # 应用程序的名称，用于标识该应用
+    # Application name used to identify the app
     name: name
-    # 应用程序的版本号，遵循语义化版本规范
+    # Application version following semantic versioning specification
     version: v1.0.0
-  # Polaris 服务治理相关配置
+  # Polaris service governance configuration
   polaris:
-    # Polaris 命名空间，用于隔离不同环境或业务的资源
+    # Polaris namespace used to isolate resources of different environments or businesses
     namespace: dev
-    # 访问 Polaris 服务的认证令牌
+    # Authentication token for accessing Polaris service
     token: polaris-token
-    # 服务实例的权重，用于负载均衡，数值越大被选中的概率越高
+    # Service instance weight for load balancing, higher value means higher probability of being selected
     weight: 100
-    # 服务实例的存活时间（TTL），单位为秒，用于心跳检测
+    # Service instance Time To Live (TTL) in seconds, used for heartbeat detection
     ttl: 5
-    # 请求 Polaris 服务的超时时间，支持时间单位后缀，如 s（秒）、ms（毫秒）等
+    # Timeout for requesting Polaris service, supports time unit suffixes like s (seconds), ms (milliseconds), etc.
     timeout: 5s
 
-  # 运行时配置
+  # Runtime configuration
   runtime:
-    # 事件系统配置
+    # Event system configuration
     event:
-      # 事件队列大小（>0），默认 1024
+      # Event queue size (>0), default 1024
       queue_size: 1024
-      # 事件分发 worker 数量（>0），默认 10
+      # Event dispatch worker count (>0), default 10
       worker_count: 10
-      # 每个监听器的独立队列大小（>0），默认 256
+      # Independent queue size for each listener (>0), default 256
       listener_queue_size: 256
-      # 历史事件保留条数（<=0 表示不保留历史），默认 1000
+      # Number of historical events to retain (<=0 means no history retention), default 1000
       history_size: 1000
-      # 关闭时的排空超时（毫秒）。>0 表示在通知监听器退出前等待队列尽量清空
+      # Drain timeout in milliseconds when shutting down. >0 means waiting for the queue to drain as much as possible before notifying listeners to exit
       drain_timeout_ms: 0

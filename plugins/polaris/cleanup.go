@@ -9,7 +9,7 @@ import (
 	"github.com/polarismesh/polaris-go/api"
 )
 
-// stopHealthCheck 停止健康检查
+// stopHealthCheck stops health check
 func (p *PlugPolaris) stopHealthCheck() {
 	if p.healthCheckCh != nil {
 		log.Infof("Stopping health check")
@@ -18,11 +18,11 @@ func (p *PlugPolaris) stopHealthCheck() {
 	}
 }
 
-// cleanupWatchers 清理监听器
+// cleanupWatchers cleans up watchers
 func (p *PlugPolaris) cleanupWatchers() {
 	log.Infof("Cleaning up watchers")
 
-	// 清理服务监听器
+	// Clean up service watchers
 	p.watcherMutex.Lock()
 	serviceWatcherCount := len(p.activeWatchers)
 	for serviceName, watcher := range p.activeWatchers {
@@ -33,7 +33,7 @@ func (p *PlugPolaris) cleanupWatchers() {
 	}
 	p.activeWatchers = make(map[string]*ServiceWatcher)
 
-	// 清理配置监听器
+	// Clean up configuration watchers
 	configWatcherCount := len(p.configWatchers)
 	for configKey, watcher := range p.configWatchers {
 		log.Infof("Stopping config watcher for: %s", configKey)
@@ -47,25 +47,25 @@ func (p *PlugPolaris) cleanupWatchers() {
 	log.Infof("Cleaned up %d service watchers and %d config watchers", serviceWatcherCount, configWatcherCount)
 }
 
-// closeSDKConnection 关闭 SDK 连接
+// closeSDKConnection closes SDK connection
 func (p *PlugPolaris) closeSDKConnection() {
 	if p.sdk != nil {
 		log.Infof("Closing SDK connection")
 
-		// 获取 SDK 上下文信息
+		// Get SDK context information
 		sdkInfo := map[string]interface{}{
 			"sdk_type":  fmt.Sprintf("%T", p.sdk),
 			"namespace": p.conf.Namespace,
 		}
 
-		// 具体实现 SDK 关闭逻辑
-		// 1. 获取所有活跃的 API 客户端
+		// Implement specific SDK shutdown logic
+		// 1. Get all active API clients
 		consumerAPI := api.NewConsumerAPIByContext(p.sdk)
 		providerAPI := api.NewProviderAPIByContext(p.sdk)
 		configAPI := api.NewConfigFileAPIBySDKContext(p.sdk)
 		limitAPI := api.NewLimitAPIByContext(p.sdk)
 
-		// 2. 关闭各个 API 客户端
+		// 2. Close each API client
 		if consumerAPI != nil {
 			log.Infof("Closing consumer API")
 			consumerAPI.Destroy()
@@ -84,7 +84,7 @@ func (p *PlugPolaris) closeSDKConnection() {
 			log.Infof("Closing limit API")
 		}
 
-		// 3. 关闭 SDK 上下文
+		// 3. Close SDK context
 		log.Infof("Destroying SDK context")
 		p.sdk.Destroy()
 
@@ -93,31 +93,31 @@ func (p *PlugPolaris) closeSDKConnection() {
 	}
 }
 
-// destroyPolarisInstance 销毁 Polaris 实例
+// destroyPolarisInstance destroys Polaris instance
 func (p *PlugPolaris) destroyPolarisInstance() {
 	if p.polaris != nil {
 		log.Infof("Destroying Polaris instance")
 
-		// 记录实例信息
+		// Record instance information
 		instanceInfo := map[string]interface{}{
 			"service":       app.GetName(),
 			"namespace":     p.conf.Namespace,
 			"instance_type": fmt.Sprintf("%T", p.polaris),
 		}
 
-		// 具体实现 Polaris 实例销毁逻辑
-		// 1. 从 Lynx 应用的控制平面中移除
+		// Implement specific Polaris instance destruction logic
+		// 1. Remove from Lynx application control plane
 		if app.Lynx() != nil {
 			log.Infof("Removing from Lynx control plane")
 		}
 
-		// 2. 停止 Polaris 实例的所有服务
+		// 2. Stop all services of Polaris instance
 		log.Infof("Stopping Polaris instance services")
 
-		// 3. 清理实例相关的资源
+		// 3. Clean up instance-related resources
 		log.Infof("Cleaning up instance resources")
 
-		// 4. 记录销毁统计信息
+		// 4. Record destruction statistics
 		destroyStats := map[string]interface{}{
 			"service_name":  app.GetName(),
 			"namespace":     p.conf.Namespace,
@@ -130,23 +130,23 @@ func (p *PlugPolaris) destroyPolarisInstance() {
 	}
 }
 
-// releaseMemoryResources 释放内存资源
+// releaseMemoryResources releases memory resources
 func (p *PlugPolaris) releaseMemoryResources() {
 	log.Infof("Releasing memory resources")
 
-	// 清理服务信息
+	// Clear service information
 	if p.serviceInfo != nil {
 		log.Infof("Clearing service info")
 		p.serviceInfo = nil
 	}
 
-	// 清理配置
+	// Clear configuration
 	if p.conf != nil {
 		log.Infof("Clearing configuration")
 		p.conf = nil
 	}
 
-	// 清理增强组件
+	// Clear enhanced components
 	if p.metrics != nil {
 		log.Infof("Clearing metrics")
 		p.metrics = nil
@@ -162,36 +162,36 @@ func (p *PlugPolaris) releaseMemoryResources() {
 		p.circuitBreaker = nil
 	}
 
-	// 清理缓存
+	// Clear cache
 	p.clearServiceCache()
 	p.clearConfigCache()
 
 	log.Infof("Memory resources released")
 }
 
-// stopBackgroundTasks 停止后台任务
+// stopBackgroundTasks stops background tasks
 func (p *PlugPolaris) stopBackgroundTasks() {
 	log.Infof("Stopping background tasks")
 
-	// 停止重试任务
+	// Stop retry tasks
 	if p.retryManager != nil {
 		log.Infof("Stopping retry manager background tasks")
 		p.retryManager = nil
 	}
 
-	// 停止熔断器任务
+	// Stop circuit breaker tasks
 	if p.circuitBreaker != nil {
 		log.Infof("Stopping circuit breaker background tasks")
 		p.circuitBreaker.ForceClose()
 	}
 
-	// 停止指标收集任务
+	// Stop metrics collection tasks
 	if p.metrics != nil {
 		log.Infof("Stopping metrics collection tasks")
 		p.metrics = nil
 	}
 
-	// 停止其他后台任务
+	// Stop other background tasks
 	log.Infof("Stopping health check tasks")
 	log.Infof("Stopping monitoring tasks")
 	log.Infof("Stopping audit log tasks")
@@ -199,7 +199,7 @@ func (p *PlugPolaris) stopBackgroundTasks() {
 	log.Infof("Background tasks stopped")
 }
 
-// getCleanupStats 获取清理统计信息
+// getCleanupStats gets cleanup statistics
 func (p *PlugPolaris) getCleanupStats() map[string]interface{} {
 	stats := map[string]interface{}{
 		"cleanup_time": time.Now().Unix(),
@@ -219,7 +219,7 @@ func (p *PlugPolaris) getCleanupStats() map[string]interface{} {
 	return stats
 }
 
-// CleanupTasks 清理任务
+// CleanupTasks cleanup tasks
 func (p *PlugPolaris) CleanupTasks() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -232,7 +232,7 @@ func (p *PlugPolaris) CleanupTasks() error {
 		return nil
 	}
 
-	// 记录清理操作指标
+	// Record cleanup operation metrics
 	if p.metrics != nil {
 		p.metrics.RecordSDKOperation("cleanup", "start")
 		defer func() {
@@ -244,22 +244,22 @@ func (p *PlugPolaris) CleanupTasks() error {
 
 	log.Infof("Destroying Polaris plugin")
 
-	// 1. 停止健康检查
+	// 1. Stop health check
 	p.stopHealthCheck()
 
-	// 2. 清理监听器
+	// 2. Clean up watchers
 	p.cleanupWatchers()
 
-	// 3. 关闭 SDK 连接
+	// 3. Close SDK connection
 	p.closeSDKConnection()
 
-	// 4. 销毁 Polaris 实例
+	// 4. Destroy Polaris instance
 	p.destroyPolarisInstance()
 
-	// 5. 释放内存资源
+	// 5. Release memory resources
 	p.releaseMemoryResources()
 
-	// 6. 停止后台任务
+	// 6. Stop background tasks
 	p.stopBackgroundTasks()
 
 	p.setDestroyed()

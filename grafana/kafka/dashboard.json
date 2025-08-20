@@ -478,7 +478,7 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "📉 Message Consumption by Topic",
+      "title": "Message Consumption by Topic",
       "gridPos": {
         "x": 12,
         "y": 4,

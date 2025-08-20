@@ -7,10 +7,10 @@ import (
 	"math/big"
 )
 
-// 默认 URL 安全字符集（不含容易混淆的字符）。
+// Default URL-safe alphabet (excluding easily confused characters).
 const defaultAlphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_"
 
-// CryptoBytes 返回长度为 n 的强随机字节切片。
+// CryptoBytes returns a cryptographically strong random byte slice of length n.
 func CryptoBytes(n int) ([]byte, error) {
 	if n < 0 {
 		return nil, errors.New("CryptoBytes: negative n")
@@ -23,7 +23,7 @@ func CryptoBytes(n int) ([]byte, error) {
 	return b, err
 }
 
-// randInt 生成 [0, max) 的均匀分布随机整数，基于 crypto/rand。
+// randInt generates a uniform random integer in [0, max) using crypto/rand.
 func randInt(max int64) (int64, error) {
 	if max <= 0 {
 		return 0, errors.New("randInt: non-positive max")
@@ -35,7 +35,7 @@ func randInt(max int64) (int64, error) {
 	return n.Int64(), nil
 }
 
-// RandString 生成长度为 n 的随机字符串，alphabet 为空则使用默认字符集。
+// RandString generates a random string of length n; uses the default alphabet when empty.
 func RandString(n int, alphabet string) (string, error) {
 	if n < 0 {
 		return "", errors.New("RandString: negative n")

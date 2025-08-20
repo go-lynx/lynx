@@ -9,7 +9,7 @@ import (
 	"github.com/go-lynx/lynx/plugins/polaris/conf"
 )
 
-// ValidationError 配置验证错误
+// ValidationError configuration validation error
 type ValidationError struct {
 	Field   string
 	Message string
@@ -20,13 +20,13 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("validation error for field '%s': %s (value: %v)", e.Field, e.Message, e.Value)
 }
 
-// ValidationResult 验证结果
+// ValidationResult validation result
 type ValidationResult struct {
 	IsValid bool
 	Errors  []*ValidationError
 }
 
-// NewValidationResult 创建验证结果
+// NewValidationResult creates validation result
 func NewValidationResult() *ValidationResult {
 	return &ValidationResult{
 		IsValid: true,
@@ -34,7 +34,7 @@ func NewValidationResult() *ValidationResult {
 	}
 }
 
-// AddError 添加错误
+// AddError adds error
 func (r *ValidationResult) AddError(field, message string, value interface{}) {
 	r.IsValid = false
 	r.Errors = append(r.Errors, &ValidationError{
@@ -44,7 +44,7 @@ func (r *ValidationResult) AddError(field, message string, value interface{}) {
 	})
 }
 
-// Error 返回错误信息
+// Error returns error message
 func (r *ValidationResult) Error() string {
 	if r.IsValid {
 		return ""
@@ -57,56 +57,56 @@ func (r *ValidationResult) Error() string {
 	return strings.Join(messages, "; ")
 }
 
-// Validator 配置验证器
+// Validator configuration validator
 type Validator struct {
 	config *conf.Polaris
 }
 
-// NewValidator 创建新的验证器
+// NewValidator creates new validator
 func NewValidator(config *conf.Polaris) *Validator {
 	return &Validator{
 		config: config,
 	}
 }
 
-// Validate 验证配置
+// Validate validates configuration
 func (v *Validator) Validate() *ValidationResult {
 	result := NewValidationResult()
 
-	// 验证基本字段
+	// Validate basic fields
 	v.validateBasicFields(result)
 
-	// 验证数值范围
+	// Validate numeric ranges
 	v.validateNumericRanges(result)
 
-	// 验证枚举值
+	// Validate enum values
 	v.validateEnumValues(result)
 
-	// 验证时间相关配置
+	// Validate time-related configurations
 	v.validateTimeConfigs(result)
 
-	// 验证依赖关系
+	// Validate dependencies
 	v.validateDependencies(result)
 
 	return result
 }
 
-// validateBasicFields 验证基本字段
+// validateBasicFields validates basic fields
 func (v *Validator) validateBasicFields(result *ValidationResult) {
-	// 验证命名空间
+	// Validate namespace
 	if v.config.Namespace == "" {
 		result.AddError("namespace", "namespace cannot be empty", v.config.Namespace)
 	} else if len(v.config.Namespace) > 64 {
 		result.AddError("namespace", "namespace length must not exceed 64 characters", v.config.Namespace)
 	} else {
-		// 验证命名空间格式（只允许字母、数字、下划线、连字符）
+		// Validate namespace format (only letters, numbers, underscores, and hyphens allowed)
 		namespaceRegex := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 		if !namespaceRegex.MatchString(v.config.Namespace) {
 			result.AddError("namespace", "namespace can only contain letters, numbers, underscores, and hyphens", v.config.Namespace)
 		}
 	}
 
-	// 验证 Token（如果提供）
+	// Validate Token (if provided)
 	if v.config.Token != "" && len(v.config.Token) > 1024 {
 		result.AddError("token", "token length must not exceed 1024 characters", v.config.Token)
 	}
@@ -115,27 +115,27 @@ func (v *Validator) validateBasicFields(result *ValidationResult) {
 	}
 }
 
-// validateNumericRanges 验证数值范围
+// validateNumericRanges validates numeric ranges
 func (v *Validator) validateNumericRanges(result *ValidationResult) {
-	// 验证权重
+	// Validate weight
 	if v.config.Weight < conf.MinWeight || v.config.Weight > conf.MaxWeight {
 		result.AddError("weight", fmt.Sprintf("weight must be between %d and %d", conf.MinWeight, conf.MaxWeight), v.config.Weight)
 	}
 
-	// 验证 TTL
+	// Validate TTL
 	if v.config.Ttl < conf.MinTTL || v.config.Ttl > conf.MaxTTL {
 		result.AddError("ttl", fmt.Sprintf("ttl must be between %d and %d seconds", conf.MinTTL, conf.MaxTTL), v.config.Ttl)
 	}
 }
 
-// validateEnumValues 验证枚举值
+// validateEnumValues validates enum values
 func (v *Validator) validateEnumValues(result *ValidationResult) {
-	// 当前配置中没有枚举值字段，跳过验证
+	// No enum value fields in current configuration, skip validation
 }
 
-// validateTimeConfigs 验证时间相关配置
+// validateTimeConfigs validates time-related configurations
 func (v *Validator) validateTimeConfigs(result *ValidationResult) {
-	// 验证超时时间
+	// Validate timeout
 	if v.config.Timeout != nil {
 		timeout := time.Duration(v.config.Timeout.Seconds) * time.Second
 		if timeout < time.Duration(conf.MinTimeoutSeconds)*time.Second || timeout > time.Duration(conf.MaxTimeoutSeconds)*time.Second {
@@ -144,14 +144,14 @@ func (v *Validator) validateTimeConfigs(result *ValidationResult) {
 	}
 }
 
-// validateDependencies 验证依赖关系
+// validateDependencies validates dependencies
 func (v *Validator) validateDependencies(result *ValidationResult) {
-	// 权重和 TTL 的合理性验证
+	// Validate reasonableness of weight and TTL
 	if v.config.Weight > 0 && v.config.Ttl < 5 {
 		result.AddError("ttl", "TTL should be at least 5 seconds when weight is greater than 0", v.config.Ttl)
 	}
 
-	// 超时和 TTL 的协调性验证
+	// Validate coordination between timeout and TTL
 	if v.config.Timeout != nil && v.config.Ttl > 0 {
 		timeout := time.Duration(v.config.Timeout.Seconds) * time.Second
 		ttlDuration := time.Duration(v.config.Ttl) * time.Second
@@ -161,13 +161,13 @@ func (v *Validator) validateDependencies(result *ValidationResult) {
 		}
 	}
 
-	// 命名空间和服务的协调性验证
+	// Validate coordination between namespace and service
 	if v.config.Namespace == "default" && v.config.Token != "" {
 		result.AddError("token", "Token should not be required for default namespace", v.config.Token)
 	}
 }
 
-// contains 检查切片是否包含指定值
+// contains checks if slice contains specified value
 func contains(slice []string, value string) bool {
 	for _, item := range slice {
 		if item == value {
@@ -177,7 +177,7 @@ func contains(slice []string, value string) bool {
 	return false
 }
 
-// ValidateConfig 便捷的配置验证函数
+// ValidateConfig convenient configuration validation function
 func ValidateConfig(config *conf.Polaris) error {
 	validator := NewValidator(config)
 	result := validator.Validate()

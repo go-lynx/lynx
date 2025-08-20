@@ -17,56 +17,56 @@ import (
 )
 
 // Plugin metadata
-// 插件元数据，定义插件的基本信息
+// Plugin metadata defining basic plugin information
 const (
-	// pluginName 是 Polaris 控制平面插件的唯一标识符，用于在插件系统中识别该插件。
+	// pluginName is the unique identifier for the Polaris control plane plugin, used to identify this plugin in the plugin system.
 	pluginName = "polaris.control.plane"
 
-	// pluginVersion 表示 Polaris 控制平面插件的当前版本。
+	// pluginVersion represents the current version of the Polaris control plane plugin.
 	pluginVersion = "v2.0.0"
 
-	// pluginDescription 简要描述了 Polaris 控制平面插件的功能。
+	// pluginDescription briefly describes the functionality of the Polaris control plane plugin.
 	pluginDescription = "polaris control plane plugin for lynx framework"
 
-	// confPrefix 是加载 Polaris 配置时使用的配置前缀。
+	// confPrefix is the configuration prefix used when loading Polaris configuration.
 	confPrefix = "lynx.polaris"
 )
 
-// PlugPolaris 表示 Polaris 控制平面插件实例
+// PlugPolaris represents a Polaris control plane plugin instance
 type PlugPolaris struct {
 	*plugins.BasePlugin
 	polaris *polaris.Polaris
 	conf    *conf.Polaris
 
-	// SDK 组件
+	// SDK components
 	sdk api.SDKContext
 
-	// 增强的组件
+	// Enhanced components
 	metrics        *Metrics
 	retryManager   *RetryManager
 	circuitBreaker *CircuitBreaker
 
-	// 状态管理 - 使用原子操作提高并发安全性
+	// State management - using atomic operations to improve concurrency safety
 	mu            sync.RWMutex
-	initialized   int32 // 使用 int32 替代 bool，支持原子操作
-	destroyed     int32 // 使用 int32 替代 bool，支持原子操作
+	initialized   int32 // Use int32 instead of bool to support atomic operations
+	destroyed     int32 // Use int32 instead of bool to support atomic operations
 	healthCheckCh chan struct{}
 
-	// 服务信息
+	// Service information
 	serviceInfo *ServiceInfo
 
-	// 事件处理
-	activeWatchers map[string]*ServiceWatcher // 活跃的服务监听器
-	configWatchers map[string]*ConfigWatcher  // 活跃的配置监听器
-	watcherMutex   sync.RWMutex               // 监听器互斥锁
+	// Event handling
+	activeWatchers map[string]*ServiceWatcher // Active service watchers
+	configWatchers map[string]*ConfigWatcher  // Active configuration watchers
+	watcherMutex   sync.RWMutex               // Watcher mutex
 
-	// 缓存系统
-	serviceCache map[string]interface{} // 服务实例缓存
-	configCache  map[string]interface{} // 配置缓存
-	cacheMutex   sync.RWMutex           // 缓存互斥锁
+	// Cache system
+	serviceCache map[string]interface{} // Service instance cache
+	configCache  map[string]interface{} // Configuration cache
+	cacheMutex   sync.RWMutex           // Cache mutex
 }
 
-// ServiceInfo 服务注册信息
+// ServiceInfo service registration information
 type ServiceInfo struct {
 	Service   string            `json:"service"`
 	Namespace string            `json:"namespace"`
@@ -77,22 +77,22 @@ type ServiceInfo struct {
 	Metadata  map[string]string `json:"metadata"`
 }
 
-// NewPolarisControlPlane 创建一个新的控制平面 Polaris。
-// 该函数初始化插件的基础信息，并返回一个指向 PlugPolaris 的指针。
+// NewPolarisControlPlane creates a new Polaris control plane.
+// This function initializes the plugin's basic information and returns a pointer to PlugPolaris.
 func NewPolarisControlPlane() *PlugPolaris {
 	return &PlugPolaris{
 		BasePlugin: plugins.NewBasePlugin(
-			// 生成插件的唯一 ID
+			// Generate unique plugin ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
-			// 插件名称
+			// Plugin name
 			pluginName,
-			// 插件描述
+			// Plugin description
 			pluginDescription,
-			// 插件版本
+			// Plugin version
 			pluginVersion,
-			// 配置前缀
+			// Configuration prefix
 			confPrefix,
-			// 权重
+			// Weight
 			math.MaxInt,
 		),
 		healthCheckCh:  make(chan struct{}),
@@ -101,27 +101,27 @@ func NewPolarisControlPlane() *PlugPolaris {
 	}
 }
 
-// InitializeResources 实现了 Polaris 插件的自定义初始化逻辑。
-// 该函数会加载并验证 Polaris 配置，如果配置未提供，则使用默认配置。
+// InitializeResources implements custom initialization logic for the Polaris plugin.
+// This function loads and validates Polaris configuration, using default configuration if none is provided.
 func (p *PlugPolaris) InitializeResources(rt plugins.Runtime) error {
-	// 初始化一个空的配置结构
+	// Initialize an empty configuration structure
 	p.conf = &conf.Polaris{}
 
-	// 从运行时配置中扫描并加载 Polaris 配置
+	// Scan and load Polaris configuration from runtime configuration
 	err := rt.GetConfig().Value(confPrefix).Scan(p.conf)
 	if err != nil {
 		return WrapInitError(err, "failed to scan polaris configuration")
 	}
 
-	// 设置默认配置
+	// Set default configuration
 	p.setDefaultConfig()
 
-	// 验证配置
+	// Validate configuration
 	if err := p.validateConfig(); err != nil {
 		return WrapInitError(err, "configuration validation failed")
 	}
 
-	// 初始化增强组件
+	// Initialize enhanced components
 	if err := p.initComponents(); err != nil {
 		return WrapInitError(err, "failed to initialize components")
 	}
@@ -129,27 +129,27 @@ func (p *PlugPolaris) InitializeResources(rt plugins.Runtime) error {
 	return nil
 }
 
-// setDefaultConfig 设置默认配置
+// setDefaultConfig sets default configuration
 func (p *PlugPolaris) setDefaultConfig() {
-	// 默认命名空间为 default
+	// Default namespace is 'default'
 	if p.conf.Namespace == "" {
 		p.conf.Namespace = conf.DefaultNamespace
 	}
-	// 默认服务实例权重为 100
+	// Default service instance weight is 100
 	if p.conf.Weight == 0 {
 		p.conf.Weight = conf.DefaultWeight
 	}
-	// 默认 TTL 为 5 秒
+	// Default TTL is 5 seconds
 	if p.conf.Ttl == 0 {
 		p.conf.Ttl = conf.DefaultTTL
 	}
-	// 默认超时时间为 5 秒
+	// Default timeout is 5 seconds
 	if p.conf.Timeout == nil {
 		p.conf.Timeout = conf.GetDefaultTimeout()
 	}
 }
 
-// validateConfig 验证配置
+// validateConfig validates configuration
 func (p *PlugPolaris) validateConfig() error {
 	if p.conf == nil {
 		return NewConfigError("configuration is required")
@@ -164,21 +164,21 @@ func (p *PlugPolaris) validateConfig() error {
 	return nil
 }
 
-// initComponents 初始化增强组件
+// initComponents initializes enhanced components
 func (p *PlugPolaris) initComponents() error {
-	// 初始化监控指标
+	// Initialize monitoring metrics
 	p.metrics = NewPolarisMetrics()
 
-	// 初始化重试管理器
+	// Initialize retry manager
 	p.retryManager = NewRetryManager(3, time.Second)
 
-	// 初始化熔断器
+	// Initialize circuit breaker
 	p.circuitBreaker = NewCircuitBreaker(0.5)
 
 	return nil
 }
 
-// checkInitialized 统一的状态检查方法，确保线程安全
+// checkInitialized unified state checking method ensuring thread safety
 func (p *PlugPolaris) checkInitialized() error {
 	if atomic.LoadInt32(&p.initialized) == 0 {
 		return NewInitError("Polaris plugin not initialized")
@@ -189,18 +189,18 @@ func (p *PlugPolaris) checkInitialized() error {
 	return nil
 }
 
-// setInitialized 原子地设置初始化状态
+// setInitialized atomically sets initialization status
 func (p *PlugPolaris) setInitialized() {
 	atomic.StoreInt32(&p.initialized, 1)
 }
 
-// setDestroyed 原子地设置销毁状态
+// setDestroyed atomically sets destruction status
 func (p *PlugPolaris) setDestroyed() {
 	atomic.StoreInt32(&p.destroyed, 1)
 }
 
-// StartupTasks 实现了 Polaris 插件的自定义启动逻辑。
-// 该函数会配置并启动 Polaris 控制平面，添加必要的中间件和配置选项。
+// StartupTasks implements custom startup logic for the Polaris plugin.
+// This function configures and starts the Polaris control plane, adding necessary middleware and configuration options.
 func (p *PlugPolaris) StartupTasks() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -209,7 +209,7 @@ func (p *PlugPolaris) StartupTasks() error {
 		return NewInitError("Polaris plugin already initialized")
 	}
 
-	// 记录启动操作指标
+	// Record startup operation metrics
 	if p.metrics != nil {
 		p.metrics.RecordSDKOperation("startup", "start")
 		defer func() {
@@ -219,10 +219,10 @@ func (p *PlugPolaris) StartupTasks() error {
 		}()
 	}
 
-	// 使用 Lynx 应用的 Helper 记录 Polaris 插件初始化的信息。
+	// Use Lynx application Helper to log Polaris plugin initialization information.
 	log.Infof("Initializing polaris plugin with namespace: %s", p.conf.Namespace)
 
-	// 加载 Polaris SDK 配置并初始化
+	// Load Polaris SDK configuration and initialize
 	sdk, err := p.loadPolarisConfiguration()
 	if err != nil {
 		log.Errorf("Failed to initialize Polaris SDK: %v", err)
@@ -232,19 +232,19 @@ func (p *PlugPolaris) StartupTasks() error {
 		return WrapInitError(err, "failed to initialize Polaris SDK")
 	}
 
-	// 保存 SDK 实例
+	// Save SDK instance
 	p.sdk = sdk
 
-	// 创建一个新的 Polaris 实例，使用之前初始化的 SDK 和配置。
+	// Create a new Polaris instance using the previously initialized SDK and configuration.
 	pol := polaris.New(
 		sdk,
 		polaris.WithService(app.GetName()),
 		polaris.WithNamespace(p.conf.Namespace),
 	)
-	// 将 Polaris 实例保存到 p.polaris 中。
+	// Save the Polaris instance to p.polaris.
 	p.polaris = &pol
 
-	// 设置 Polaris 控制平面为 Lynx 应用的控制平面。
+	// Set the Polaris control plane as the Lynx application's control plane.
 	err = app.Lynx().SetControlPlane(p)
 	if err != nil {
 		log.Errorf("Failed to set control plane: %v", err)
@@ -254,7 +254,7 @@ func (p *PlugPolaris) StartupTasks() error {
 		return WrapInitError(err, "failed to set control plane")
 	}
 
-	// 获取 Lynx 应用的控制平面启动配置。
+	// Get the Lynx application's control plane startup configuration.
 	cfg, err := app.Lynx().InitControlPlaneConfig()
 	if err != nil {
 		log.Errorf("Failed to init control plane config: %v", err)
@@ -264,7 +264,7 @@ func (p *PlugPolaris) StartupTasks() error {
 		return WrapInitError(err, "failed to init control plane config")
 	}
 
-	// 加载插件列表中的插件。
+	// Load plugins from the plugin list.
 	app.Lynx().GetPluginManager().LoadPlugins(cfg)
 
 	p.setInitialized()
@@ -272,43 +272,43 @@ func (p *PlugPolaris) StartupTasks() error {
 	return nil
 }
 
-// GetMetrics 获取监控指标
+// GetMetrics gets monitoring metrics
 func (p *PlugPolaris) GetMetrics() *Metrics {
 	return p.metrics
 }
 
-// IsInitialized 检查是否已初始化
+// IsInitialized checks if initialized
 func (p *PlugPolaris) IsInitialized() bool {
 	return atomic.LoadInt32(&p.initialized) == 1
 }
 
-// IsDestroyed 检查是否已销毁
+// IsDestroyed checks if destroyed
 func (p *PlugPolaris) IsDestroyed() bool {
 	return atomic.LoadInt32(&p.destroyed) == 1
 }
 
-// GetPolarisConfig 获取 Polaris 配置
+// GetPolarisConfig gets Polaris configuration
 func (p *PlugPolaris) GetPolarisConfig() *conf.Polaris {
 	return p.conf
 }
 
-// SetServiceInfo 设置服务信息
+// SetServiceInfo sets service information
 func (p *PlugPolaris) SetServiceInfo(info *ServiceInfo) {
 	p.serviceInfo = info
 }
 
-// GetServiceInfo 获取服务信息
+// GetServiceInfo gets service information
 func (p *PlugPolaris) GetServiceInfo() *ServiceInfo {
 	return p.serviceInfo
 }
 
-// WatchConfig 监听配置变更
+// WatchConfig watches configuration changes
 func (p *PlugPolaris) WatchConfig(fileName, group string) (*ConfigWatcher, error) {
 	if !p.IsInitialized() {
 		return nil, NewInitError("Polaris plugin not initialized")
 	}
 
-	// 记录配置监听操作指标
+	// Record configuration watch operation metrics
 	if p.metrics != nil {
 		p.metrics.RecordSDKOperation("watch_config", "start")
 		defer func() {
@@ -320,7 +320,7 @@ func (p *PlugPolaris) WatchConfig(fileName, group string) (*ConfigWatcher, error
 
 	log.Infof("Watching config: %s, group: %s", fileName, group)
 
-	// 检查是否已经在监听该配置
+	// Check if the configuration is already being watched
 	configKey := fmt.Sprintf("%s:%s", fileName, group)
 	p.watcherMutex.Lock()
 	if existingWatcher, exists := p.configWatchers[configKey]; exists {
@@ -330,17 +330,17 @@ func (p *PlugPolaris) WatchConfig(fileName, group string) (*ConfigWatcher, error
 	}
 	p.watcherMutex.Unlock()
 
-	// 创建 Config API 客户端
+	// Create Config API client
 	configAPI := api.NewConfigFileAPIBySDKContext(p.sdk)
 	if configAPI == nil {
 		return nil, NewInitError("failed to create config API")
 	}
 
-	// 创建配置监听器并连接到 SDK
+	// Create configuration watcher and connect to SDK
 	watcher := NewConfigWatcher(configAPI, fileName, group, p.conf.Namespace)
-	watcher.metrics = p.metrics // 传递 metrics 引用
+	watcher.metrics = p.metrics // Pass metrics reference
 
-	// 设置事件处理回调
+	// Set event handling callbacks
 	watcher.SetOnConfigChanged(func(config model.ConfigFile) {
 		p.handleConfigChanged(fileName, group, config)
 	})
@@ -349,20 +349,20 @@ func (p *PlugPolaris) WatchConfig(fileName, group string) (*ConfigWatcher, error
 		p.handleConfigWatchError(fileName, group, err)
 	})
 
-	// 注册监听器
+	// Register watcher
 	p.watcherMutex.Lock()
 	p.configWatchers[configKey] = watcher
 	p.watcherMutex.Unlock()
 
-	// 启动监听
+	// Start watching
 	watcher.Start()
 
 	return watcher, nil
 }
 
-// recordServiceChangeAudit 记录服务变更审计日志
+// recordServiceChangeAudit records service change audit logs
 func (p *PlugPolaris) recordServiceChangeAudit(serviceName string, instances []model.Instance) {
-	// 记录详细的审计信息
+	// Record detailed audit information
 	auditInfo := map[string]interface{}{
 		"service_name":   serviceName,
 		"namespace":      p.conf.Namespace,
@@ -371,7 +371,7 @@ func (p *PlugPolaris) recordServiceChangeAudit(serviceName string, instances []m
 		"instances":      make([]map[string]interface{}, 0, len(instances)),
 	}
 
-	// 收集实例信息（脱敏处理）
+	// Collect instance information (with data masking)
 	for _, instance := range instances {
 		instanceInfo := map[string]interface{}{
 			"id":       instance.GetId(),
@@ -387,7 +387,7 @@ func (p *PlugPolaris) recordServiceChangeAudit(serviceName string, instances []m
 	log.Infof("Service change audit: %+v", auditInfo)
 }
 
-// recordServiceWatchErrorAudit 记录服务监听错误审计日志
+// recordServiceWatchErrorAudit records service watch error audit logs
 func (p *PlugPolaris) recordServiceWatchErrorAudit(serviceName string, err error) {
 	auditInfo := map[string]interface{}{
 		"service_name": serviceName,
@@ -404,9 +404,9 @@ func (p *PlugPolaris) recordServiceWatchErrorAudit(serviceName string, err error
 	log.Errorf("Service watch error audit: %+v", auditInfo)
 }
 
-// sendServiceWatchAlert 发送服务监听告警
+// sendServiceWatchAlert sends service watch alerts
 func (p *PlugPolaris) sendServiceWatchAlert(serviceName string, err error) {
-	// 实现告警通知逻辑
+	// Implement alert notification logic
 	alertInfo := map[string]interface{}{
 		"alert_type":   "service_watch_error",
 		"service_name": serviceName,
@@ -421,61 +421,61 @@ func (p *PlugPolaris) sendServiceWatchAlert(serviceName string, err error) {
 		},
 	}
 
-	// 具体实现：集成多种告警渠道
-	// 1. 发送到监控系统
+	// Implementation: integrate multiple alert channels
+	// 1. Send to monitoring system
 	p.sendToMonitoringSystem(alertInfo)
 
-	// 2. 发送到消息队列
+	// 2. Send to message queue
 	p.sendToMessageQueue(alertInfo)
 
-	// 3. 发送钉钉/企业微信通知
+	// 3. Send DingTalk/WeChat Work notifications
 	p.sendToIMNotification(alertInfo)
 
-	// 4. 发送邮件告警
+	// 4. Send email alerts
 	p.sendEmailAlert(alertInfo)
 
-	// 5. 发送短信告警
+	// 5. Send SMS alerts
 	p.sendSMSAlert(alertInfo)
 
 	log.Warnf("Service watch alert: %+v", alertInfo)
 }
 
-// sendToMonitoringSystem 发送到监控系统
+// sendToMonitoringSystem sends to monitoring system
 func (p *PlugPolaris) sendToMonitoringSystem(alertInfo map[string]interface{}) {
-	// 具体实现：发送到 Prometheus、Grafana 等监控系统
+	// Implementation: send to monitoring systems like Prometheus, Grafana
 	log.Infof("Sending alert to monitoring system: %s", alertInfo["alert_type"])
-	// 这里可以集成具体的监控系统 API
+	// Specific monitoring system APIs can be integrated here
 }
 
-// sendToMessageQueue 发送到消息队列
+// sendToMessageQueue sends to message queue
 func (p *PlugPolaris) sendToMessageQueue(alertInfo map[string]interface{}) {
-	// 具体实现：发送到 Kafka、RabbitMQ 等消息队列
+	// Implementation: send to message queues like Kafka, RabbitMQ
 	log.Infof("Sending alert to message queue: %s", alertInfo["alert_type"])
-	// 这里可以集成具体的消息队列客户端
+	// Specific message queue clients can be integrated here
 }
 
-// sendToIMNotification 发送即时通讯通知
+// sendToIMNotification sends instant messaging notifications
 func (p *PlugPolaris) sendToIMNotification(alertInfo map[string]interface{}) {
-	// 具体实现：发送钉钉、企业微信通知
+	// Implementation: send DingTalk, WeChat Work notifications
 	log.Infof("Sending IM notification: %s", alertInfo["alert_type"])
-	// 这里可以集成钉钉/企业微信机器人 API
+	// DingTalk/WeChat Work bot APIs can be integrated here
 }
 
-// sendEmailAlert 发送邮件告警
+// sendEmailAlert sends email alerts
 func (p *PlugPolaris) sendEmailAlert(alertInfo map[string]interface{}) {
-	// 具体实现：发送邮件告警
+	// Implementation: send email alerts
 	log.Infof("Sending email alert: %s", alertInfo["alert_type"])
-	// 这里可以集成邮件发送服务
+	// Email sending services can be integrated here
 }
 
-// sendSMSAlert 发送短信告警
+// sendSMSAlert sends SMS alerts
 func (p *PlugPolaris) sendSMSAlert(alertInfo map[string]interface{}) {
-	// 具体实现：发送短信告警
+	// Implementation: send SMS alerts
 	log.Infof("Sending SMS alert: %s", alertInfo["alert_type"])
-	// 这里可以集成短信发送服务
+	// SMS sending services can be integrated here
 }
 
-// recordConfigChangeAudit 记录配置变更审计日志
+// recordConfigChangeAudit records configuration change audit logs
 func (p *PlugPolaris) recordConfigChangeAudit(fileName, group string, config model.ConfigFile) {
 	auditInfo := map[string]interface{}{
 		"config_file":    fileName,
@@ -489,7 +489,7 @@ func (p *PlugPolaris) recordConfigChangeAudit(fileName, group string, config mod
 	log.Infof("Config change audit: %+v", auditInfo)
 }
 
-// recordConfigWatchErrorAudit 记录配置监听错误审计日志
+// recordConfigWatchErrorAudit records configuration watch error audit logs
 func (p *PlugPolaris) recordConfigWatchErrorAudit(fileName, group string, err error) {
 	auditInfo := map[string]interface{}{
 		"config_file": fileName,
@@ -507,7 +507,7 @@ func (p *PlugPolaris) recordConfigWatchErrorAudit(fileName, group string, err er
 	log.Errorf("Config watch error audit: %+v", auditInfo)
 }
 
-// sendConfigWatchAlert 发送配置监听告警
+// sendConfigWatchAlert sends configuration watch alerts
 func (p *PlugPolaris) sendConfigWatchAlert(fileName, group string, err error) {
 	alertInfo := map[string]interface{}{
 		"alert_type":  "config_watch_error",
@@ -520,19 +520,19 @@ func (p *PlugPolaris) sendConfigWatchAlert(fileName, group string, err error) {
 		"timestamp":   time.Now().Unix(),
 	}
 
-	// 这里可以集成具体的告警实现
+	// Specific alert implementations can be integrated here
 	log.Warnf("Config watch alert: %+v", alertInfo)
 }
 
-// retryConfigWatch 重试配置监听
+// retryConfigWatch retries configuration watching
 func (p *PlugPolaris) retryConfigWatch(fileName, group string) {
-	// 实现重试逻辑
+	// Implement retry logic
 	log.Infof("Retrying config watch for %s:%s", fileName, group)
 
-	// 等待一段时间后重试
+	// Wait for a period before retrying
 	time.Sleep(5 * time.Second)
 
-	// 重新创建监听器
+	// Recreate watcher
 	if _, err := p.WatchConfig(fileName, group); err == nil {
 		log.Infof("Successfully recreated config watcher for %s:%s", fileName, group)
 	} else {

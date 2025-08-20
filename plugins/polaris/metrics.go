@@ -5,51 +5,51 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// Metrics 定义 Polaris 相关的监控指标
+// Metrics defines Polaris-related monitoring metrics
 type Metrics struct {
-	// SDK 操作指标
+	// SDK operation metrics
 	sdkOperationsTotal    *prometheus.CounterVec
 	sdkOperationsDuration *prometheus.HistogramVec
 	sdkErrorsTotal        *prometheus.CounterVec
 
-	// 服务发现指标
+	// Service discovery metrics
 	serviceDiscoveryTotal    *prometheus.CounterVec
 	serviceDiscoveryDuration *prometheus.HistogramVec
 	serviceInstancesTotal    *prometheus.GaugeVec
 
-	// 服务注册指标
+	// Service registration metrics
 	serviceRegistrationTotal    *prometheus.CounterVec
 	serviceRegistrationDuration *prometheus.HistogramVec
 	serviceHeartbeatTotal       *prometheus.CounterVec
 
-	// 配置管理指标
+	// Configuration management metrics
 	configOperationsTotal    *prometheus.CounterVec
 	configOperationsDuration *prometheus.HistogramVec
 	configChangesTotal       *prometheus.CounterVec
 
-	// 路由指标
+	// Routing metrics
 	routeOperationsTotal    *prometheus.CounterVec
 	routeOperationsDuration *prometheus.HistogramVec
 
-	// 限流指标
+	// Rate limiting metrics
 	rateLimitRequestsTotal *prometheus.CounterVec
 	rateLimitRejectedTotal *prometheus.CounterVec
 	rateLimitQuotaUsed     *prometheus.GaugeVec
 
-	// 健康检查指标
+	// Health check metrics
 	healthCheckTotal    *prometheus.CounterVec
 	healthCheckDuration *prometheus.HistogramVec
 	healthCheckFailed   *prometheus.CounterVec
 
-	// 连接指标
+	// Connection metrics
 	connectionTotal       *prometheus.GaugeVec
 	connectionErrorsTotal *prometheus.CounterVec
 }
 
-// NewPolarisMetrics 创建新的监控指标实例
+// NewPolarisMetrics creates new monitoring metrics instance
 func NewPolarisMetrics() *Metrics {
 	return &Metrics{
-		// SDK 操作指标
+		// SDK operation metrics
 		sdkOperationsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "polaris_sdk_operations_total",
@@ -73,7 +73,7 @@ func NewPolarisMetrics() *Metrics {
 			[]string{"operation", "error_type"},
 		),
 
-		// 服务发现指标
+		// Service discovery metrics
 		serviceDiscoveryTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "polaris_service_discovery_total",
@@ -97,7 +97,7 @@ func NewPolarisMetrics() *Metrics {
 			[]string{"service", "namespace", "status"},
 		),
 
-		// 服务注册指标
+		// Service registration metrics
 		serviceRegistrationTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "polaris_service_registration_total",
@@ -121,7 +121,7 @@ func NewPolarisMetrics() *Metrics {
 			[]string{"service", "namespace", "status"},
 		),
 
-		// 配置管理指标
+		// Configuration management metrics
 		configOperationsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "polaris_config_operations_total",
@@ -145,7 +145,7 @@ func NewPolarisMetrics() *Metrics {
 			[]string{"file", "group"},
 		),
 
-		// 路由指标
+		// Routing metrics
 		routeOperationsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "polaris_route_operations_total",
@@ -162,7 +162,7 @@ func NewPolarisMetrics() *Metrics {
 			[]string{"service", "namespace"},
 		),
 
-		// 限流指标
+		// Rate limiting metrics
 		rateLimitRequestsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "polaris_rate_limit_requests_total",
@@ -185,7 +185,7 @@ func NewPolarisMetrics() *Metrics {
 			[]string{"service", "namespace"},
 		),
 
-		// 健康检查指标
+		// Health check metrics
 		healthCheckTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "polaris_health_check_total",
@@ -209,7 +209,7 @@ func NewPolarisMetrics() *Metrics {
 			[]string{"component", "error_type"},
 		),
 
-		// 连接指标
+		// Connection metrics
 		connectionTotal: promauto.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "polaris_connection_total",
@@ -227,112 +227,112 @@ func NewPolarisMetrics() *Metrics {
 	}
 }
 
-// RecordSDKOperation 记录 SDK 操作
+// RecordSDKOperation records SDK operation
 func (m *Metrics) RecordSDKOperation(operation, status string) {
 	m.sdkOperationsTotal.WithLabelValues(operation, status).Inc()
 }
 
-// RecordSDKOperationDuration 记录 SDK 操作耗时
+// RecordSDKOperationDuration records SDK operation duration
 func (m *Metrics) RecordSDKOperationDuration(operation string, duration float64) {
 	m.sdkOperationsDuration.WithLabelValues(operation).Observe(duration)
 }
 
-// RecordSDKError 记录 SDK 错误
+// RecordSDKError records SDK error
 func (m *Metrics) RecordSDKError(operation, errorType string) {
 	m.sdkErrorsTotal.WithLabelValues(operation, errorType).Inc()
 }
 
-// RecordServiceDiscovery 记录服务发现操作
+// RecordServiceDiscovery records service discovery operation
 func (m *Metrics) RecordServiceDiscovery(service, namespace, status string) {
 	m.serviceDiscoveryTotal.WithLabelValues(service, namespace, status).Inc()
 }
 
-// RecordServiceDiscoveryDuration 记录服务发现耗时
+// RecordServiceDiscoveryDuration records service discovery duration
 func (m *Metrics) RecordServiceDiscoveryDuration(service, namespace string, duration float64) {
 	m.serviceDiscoveryDuration.WithLabelValues(service, namespace).Observe(duration)
 }
 
-// SetServiceInstances 设置服务实例数量
+// SetServiceInstances sets service instance count
 func (m *Metrics) SetServiceInstances(service, namespace, status string, count float64) {
 	m.serviceInstancesTotal.WithLabelValues(service, namespace, status).Set(count)
 }
 
-// RecordServiceRegistration 记录服务注册操作
+// RecordServiceRegistration records service registration operation
 func (m *Metrics) RecordServiceRegistration(service, namespace, status string) {
 	m.serviceRegistrationTotal.WithLabelValues(service, namespace, status).Inc()
 }
 
-// RecordServiceRegistrationDuration 记录服务注册耗时
+// RecordServiceRegistrationDuration records service registration duration
 func (m *Metrics) RecordServiceRegistrationDuration(service, namespace string, duration float64) {
 	m.serviceRegistrationDuration.WithLabelValues(service, namespace).Observe(duration)
 }
 
-// RecordServiceHeartbeat 记录服务心跳
+// RecordServiceHeartbeat records service heartbeat
 func (m *Metrics) RecordServiceHeartbeat(service, namespace, status string) {
 	m.serviceHeartbeatTotal.WithLabelValues(service, namespace, status).Inc()
 }
 
-// RecordConfigOperation 记录配置操作
+// RecordConfigOperation records configuration operation
 func (m *Metrics) RecordConfigOperation(operation, file, group, status string) {
 	m.configOperationsTotal.WithLabelValues(operation, file, group, status).Inc()
 }
 
-// RecordConfigOperationDuration 记录配置操作耗时
+// RecordConfigOperationDuration records configuration operation duration
 func (m *Metrics) RecordConfigOperationDuration(operation, file, group string, duration float64) {
 	m.configOperationsDuration.WithLabelValues(operation, file, group).Observe(duration)
 }
 
-// RecordConfigChange 记录配置变更
+// RecordConfigChange records configuration change
 func (m *Metrics) RecordConfigChange(file, group string) {
 	m.configChangesTotal.WithLabelValues(file, group).Inc()
 }
 
-// RecordRouteOperation 记录路由操作
+// RecordRouteOperation records route operation
 func (m *Metrics) RecordRouteOperation(service, namespace, status string) {
 	m.routeOperationsTotal.WithLabelValues(service, namespace, status).Inc()
 }
 
-// RecordRouteOperationDuration 记录路由操作耗时
+// RecordRouteOperationDuration records route operation duration
 func (m *Metrics) RecordRouteOperationDuration(service, namespace string, duration float64) {
 	m.routeOperationsDuration.WithLabelValues(service, namespace).Observe(duration)
 }
 
-// RecordRateLimitRequest 记录限流请求
+// RecordRateLimitRequest records rate limit request
 func (m *Metrics) RecordRateLimitRequest(service, namespace, status string) {
 	m.rateLimitRequestsTotal.WithLabelValues(service, namespace, status).Inc()
 }
 
-// RecordRateLimitRejection 记录限流拒绝
+// RecordRateLimitRejection records rate limit rejection
 func (m *Metrics) RecordRateLimitRejection(service, namespace string) {
 	m.rateLimitRejectedTotal.WithLabelValues(service, namespace).Inc()
 }
 
-// SetRateLimitQuota 设置限流配额使用量
+// SetRateLimitQuota sets rate limit quota usage
 func (m *Metrics) SetRateLimitQuota(service, namespace string, quota float64) {
 	m.rateLimitQuotaUsed.WithLabelValues(service, namespace).Set(quota)
 }
 
-// RecordHealthCheck 记录健康检查
+// RecordHealthCheck records health check
 func (m *Metrics) RecordHealthCheck(component, status string) {
 	m.healthCheckTotal.WithLabelValues(component, status).Inc()
 }
 
-// RecordHealthCheckDuration 记录健康检查耗时
+// RecordHealthCheckDuration records health check duration
 func (m *Metrics) RecordHealthCheckDuration(component string, duration float64) {
 	m.healthCheckDuration.WithLabelValues(component).Observe(duration)
 }
 
-// RecordHealthCheckFailed 记录健康检查失败
+// RecordHealthCheckFailed records health check failure
 func (m *Metrics) RecordHealthCheckFailed(component, errorType string) {
 	m.healthCheckFailed.WithLabelValues(component, errorType).Inc()
 }
 
-// SetConnectionCount 设置连接数量
+// SetConnectionCount sets connection count
 func (m *Metrics) SetConnectionCount(connType, status string, count float64) {
 	m.connectionTotal.WithLabelValues(connType, status).Set(count)
 }
 
-// RecordConnectionError 记录连接错误
+// RecordConnectionError records connection error
 func (m *Metrics) RecordConnectionError(connType, errorType string) {
 	m.connectionErrorsTotal.WithLabelValues(connType, errorType).Inc()
 }

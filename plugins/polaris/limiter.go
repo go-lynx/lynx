@@ -9,11 +9,11 @@ import (
 	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
-// MiddlewareAdapter 中间件适配器
-// 职责：提供 HTTP/gRPC 限流中间件和路由中间件
+// MiddlewareAdapter 
+// Responsibility: provide HTTP/gRPC rate limit middleware and router middleware.
 
-// HTTPRateLimit 创建 HTTP 限流中间件
-// 从 Polaris 获取 HTTP 限流策略，并应用到 HTTP 请求处理流程中
+// HTTPRateLimit creates HTTP rate limit middleware.
+// It fetches HTTP rate limit policies from Polaris and applies them to the HTTP request flow.
 func (p *PlugPolaris) HTTPRateLimit() middleware.Middleware {
 	if err := p.checkInitialized(); err != nil {
 		log.Warnf("Polaris plugin not initialized, returning nil HTTP rate limit middleware: %v", err)
@@ -28,8 +28,8 @@ func (p *PlugPolaris) HTTPRateLimit() middleware.Middleware {
 	))
 }
 
-// GRPCRateLimit 创建 gRPC 限流中间件
-// 从 Polaris 获取 gRPC 限流策略，并应用到 gRPC 请求处理流程中
+// GRPCRateLimit creates gRPC rate limit middleware.
+// It fetches gRPC rate limit policies from Polaris and applies them to the gRPC request flow.
 func (p *PlugPolaris) GRPCRateLimit() middleware.Middleware {
 	if err := p.checkInitialized(); err != nil {
 		log.Warnf("Polaris plugin not initialized, returning nil gRPC rate limit middleware: %v", err)
@@ -44,13 +44,13 @@ func (p *PlugPolaris) GRPCRateLimit() middleware.Middleware {
 	))
 }
 
-// CheckRateLimit 检查限流
+// CheckRateLimit checks rate limiting for a service with optional labels.
 func (p *PlugPolaris) CheckRateLimit(serviceName string, labels map[string]string) (bool, error) {
 	if err := p.checkInitialized(); err != nil {
 		return false, err
 	}
 
-	// 记录限流检查操作指标
+	// Record metrics for the rate limit check operation
 	if p.metrics != nil {
 		p.metrics.RecordSDKOperation("check_rate_limit", "start")
 		defer func() {
@@ -62,29 +62,29 @@ func (p *PlugPolaris) CheckRateLimit(serviceName string, labels map[string]strin
 
 	log.Infof("Checking rate limit for service: %s", serviceName)
 
-	// 创建 Limit API 客户端
+	// Create Limit API client
 	limitAPI := api.NewLimitAPIByContext(p.sdk)
 	if limitAPI == nil {
 		return false, NewInitError("failed to create limit API")
 	}
 
-	// 构建限流请求
+	// Build quota request
 	quotaReq := api.NewQuotaRequest()
 	quotaReq.SetService(serviceName)
 	quotaReq.SetNamespace(p.conf.Namespace)
 
-	// 设置标签
+	// Set labels
 	for key, value := range labels {
 		quotaReq.AddArgument(model.BuildQueryArgument(key, value))
 	}
 
-	// 使用熔断器和重试机制执行操作
+	// Execute with circuit breaker and retry mechanism
 	var future api.QuotaFuture
 	var lastErr error
 
 	err := p.circuitBreaker.Do(func() error {
 		return p.retryManager.DoWithRetry(func() error {
-			// 调用 SDK API 检查限流
+			// Call SDK API to check rate limit
 			fut, err := limitAPI.GetQuota(quotaReq)
 			if err != nil {
 				lastErr = err
@@ -103,14 +103,14 @@ func (p *PlugPolaris) CheckRateLimit(serviceName string, labels map[string]strin
 		return false, WrapServiceError(lastErr, ErrCodeRateLimitFailed, "failed to check rate limit")
 	}
 
-	// 获取限流结果
+	// Obtain rate limit result
 	result := future.Get()
 	if result == nil {
 		log.Errorf("Rate limit result is nil for service %s", serviceName)
 		return false, NewServiceError(ErrCodeRateLimitFailed, "rate limit result is nil")
 	}
 
-	// 检查是否被限流
+	// Check whether the request is allowed
 	if result.Code == model.QuotaResultOk {
 		log.Infof("Rate limit check passed for service %s", serviceName)
 		return true, nil

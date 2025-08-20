@@ -1,77 +1,71 @@
 # Lynx Tracer Plugin Configuration Example
-# 链路追踪插件配置示例
 
-###############################################
-# 新的模块化（modular）配置示例
-# 建议优先使用以下配置方式，功能更完整、更灵活
-###############################################
-
-# gRPC 导出（推荐）
+# gRPC Exporter Configuration Example
 lynx:
   tracer:
-    enable: true                # 是否启用追踪；bool，true/false；默认 false
-    addr: "otel-collector:4317" # 导出端点地址；host:port；gRPC 常用 4317（例如 otel-collector:4317）
+    enable: true                # Whether to enable tracing; bool, true/false; default false
+    addr: "otel-collector:4317" # Export endpoint address; host:port; gRPC commonly uses 4317 (e.g., otel-collector:4317)
     config:
-      protocol: PROTOCOL_OTLP_GRPC   # 导出协议；可选：PROTOCOL_OTLP_GRPC / PROTOCOL_OTLP_HTTP
-      insecure: true                 # 明文传输；bool，true/false；与 tls 互斥（有 tls 时请设为 false）
-      compression: COMPRESSION_GZIP  # 压缩算法；可选：COMPRESSION_NONE/COMPRESSION_GZIP（默认 NONE）
-      headers:                       # 自定义请求头；map[string]string，可用于鉴权等
+      protocol: PROTOCOL_OTLP_GRPC   # Export protocol; options: PROTOCOL_OTLP_GRPC / PROTOCOL_OTLP_HTTP
+      insecure: true                 # Plaintext transmission; bool, true/false; mutually exclusive with tls (set to false when tls is present)
+      compression: COMPRESSION_GZIP  # Compression algorithm; options: COMPRESSION_NONE/COMPRESSION_GZIP (default NONE)
+      headers: # Custom request headers; map[string]string, can be used for authentication, etc.
         Authorization: Bearer ${OTEL_TOKEN}
-      timeout: 10s                   # 导出请求超时；time.Duration 格式，如 500ms/10s/1m
-      retry:                         # 重试配置（仅 gRPC 导出器支持）
-        enabled: true                # 是否开启重试；bool
-        initial_interval: 500ms      # 初始退避间隔；建议 10ms-5s
-        max_interval: 5s             # 最大退避间隔；建议不超过 1m
-      batch:                         # 批处理（建议开启以提高吞吐）
-        enabled: true                # 是否启用批处理；bool
-        max_queue_size: 2048         # 批处理队列上限；int > 0，建议 1k-10k
-        scheduled_delay: 200ms       # 批调度周期；time.Duration，越小延迟越低吞吐越低
-        export_timeout: 30s          # 单批导出超时；time.Duration
-        max_batch_size: 512          # 单批最大条目数；int > 0，建议 <= max_queue_size
+      timeout: 10s                   # Export request timeout; time.Duration format, such as 500ms/10s/1m
+      retry: # Retry configuration (only supported by gRPC exporter)
+        enabled: true                # Whether to enable retry; bool
+        initial_interval: 500ms      # Initial backoff interval; recommended 10ms-5s
+        max_interval: 5s             # Maximum backoff interval; recommended not to exceed 1m
+      batch: # Batch processing (recommended to enable for improved throughput)
+        enabled: true                # Whether to enable batch processing; bool
+        max_queue_size: 2048         # Batch processing queue limit; int > 0, recommended 1k-10k
+        scheduled_delay: 200ms       # Batch scheduling period; time.Duration, smaller delay means lower latency but lower throughput
+        export_timeout: 30s          # Single batch export timeout; time.Duration
+        max_batch_size: 512          # Maximum entries per batch; int > 0, recommended <= max_queue_size
       sampler:
-        type: SAMPLER_TRACEID_RATIO  # 采样器类型；可选：ALWAYS_ON/ALWAYS_OFF/SAMPLER_TRACEID_RATIO/PARENT_BASED_TRACEID_RATIO
-        ratio: 0.1                   # 采样率；0.0-1.0，生产常用 0.1-0.3
-      propagators: [W3C_TRACE_CONTEXT, W3C_BAGGAGE, B3] # 上下文传播器；可选：W3C_TRACE_CONTEXT/W3C_BAGGAGE/B3/B3_MULTI/JAEGER
+        type: SAMPLER_TRACEID_RATIO  # Sampler type; options: ALWAYS_ON/ALWAYS_OFF/SAMPLER_TRACEID_RATIO/PARENT_BASED_TRACEID_RATIO
+        ratio: 0.1                   # Sampling rate; 0.0-1.0, commonly 0.1-0.3 in production
+      propagators: [ W3C_TRACE_CONTEXT, W3C_BAGGAGE, B3 ] # Context propagators; options: W3C_TRACE_CONTEXT/W3C_BAGGAGE/B3/B3_MULTI/JAEGER
       resource:
-        service_name: my-service      # 服务名；string；建议与应用一致
-        attributes:                   # 额外资源属性；map[string]string
-          env: prod                   # 示例：环境标识
-          team: core                  # 示例：团队标识
+        service_name: my-service      # Service name; string; recommended to be consistent with the application
+        attributes: # Additional resource attributes; map[string]string
+          env: prod                   # Example: environment identifier
+          team: core                  # Example: team identifier
       limits:
-        attribute_count_limit: 128        # 每个 span 的最大 attribute 数；int > 0
-        attribute_value_length_limit: 2048 # 单个 attribute 最大长度（字符）；int > 0
-        event_count_limit: 128            # 每个 span 的最大 event 数；int > 0
-        link_count_limit: 128             # 每个 span 的最大 link 数；int > 0
+        attribute_count_limit: 128        # Maximum attributes per span; int > 0
+        attribute_value_length_limit: 2048 # Maximum length of single attribute (characters); int > 0
+        event_count_limit: 128            # Maximum events per span; int > 0
+        link_count_limit: 128             # Maximum links per span; int > 0
 
-# HTTP 导出（OTLP/HTTP）
-# 注意：需要 Collector 开启 4318 端口，且路径通常为 /v1/traces
-lynx:
-  tracer:
-    enable: true                 # 是否启用；bool
-    addr: "otel-collector:4318" # 导出端点地址；HTTP 常用 4318
-    config:
-      protocol: PROTOCOL_OTLP_HTTP     # 导出协议；HTTP 模式
-      http_path: /v1/traces            # OTLP/HTTP 上报路径；默认 /v1/traces
-      insecure: true                   # 明文 HTTP；如需 HTTPS，请提供 tls 并将其设为 false
-      compression: COMPRESSION_GZIP    # 压缩；同 gRPC
-      headers:                         # 自定义 Header；map[string]string
-        Authorization: Bearer ${OTEL_TOKEN}
-      batch:
-        enabled: true                  # 批处理；其余参数可与上例相同按需补充
-      propagators: [B3, W3C_BAGGAGE]   # 传播器；HTTP 同样适用
+# HTTP Export (OTLP/HTTP)
+# Note: Collector needs to enable port 4318, and the path is usually /v1/traces
+#lynx:
+#  tracer:
+#    enable: true                 # Whether to enable; bool
+#    addr: "otel-collector:4318" # Export endpoint address; HTTP commonly uses 4318
+#    config:
+#      protocol: PROTOCOL_OTLP_HTTP     # Export protocol; HTTP mode
+#      http_path: /v1/traces            # OTLP/HTTP reporting path; default /v1/traces
+#      insecure: true                   # Plaintext HTTP; for HTTPS, provide tls and set this to false
+#      compression: COMPRESSION_GZIP    # Compression; same as gRPC
+#      headers:                         # Custom Header; map[string]string
+#        Authorization: Bearer ${OTEL_TOKEN}
+#      batch:
+#        enabled: true                  # Batch processing; other parameters can be the same as the above example as needed
+#      propagators: [B3, W3C_BAGGAGE]   # Propagators; HTTP is also applicable
 
-# gRPC + TLS 双向认证示例
-lynx:
-  tracer:
-    enable: true                 # 启用追踪
-    addr: "otel-collector:4317" # gRPC 端口
-    config:
-      protocol: PROTOCOL_OTLP_GRPC      # gRPC 协议
-      insecure: false                   # 使用 TLS/mTLS 时必须为 false
-      tls:
-        ca_file: /etc/otel/ca.pem       # CA 根证书路径；用于验证对端证书
-        cert_file: /etc/otel/client.crt # 客户端证书（mTLS）；可选，为空则为单向 TLS
-        key_file: /etc/otel/client.key  # 客户端私钥（mTLS）；与 cert_file 配对
-        insecure_skip_verify: false     # 是否跳过服务器证书校验；不建议在生产开启
-      batch:
-        enabled: true                   # 建议启用批处理
+# gRPC + TLS Mutual Authentication Example
+#lynx:
+#  tracer:
+#    enable: true                 # Enable tracing
+#    addr: "otel-collector:4317" # gRPC port
+#    config:
+#      protocol: PROTOCOL_OTLP_GRPC      # gRPC protocol
+#      insecure: false                   # Must be false when using TLS/mTLS
+#      tls:
+#        ca_file: /etc/otel/ca.pem       # CA root certificate path; used to verify peer certificates
+#        cert_file: /etc/otel/client.crt # Client certificate (mTLS); optional, empty for one-way TLS
+#        key_file: /etc/otel/client.key  # Client private key (mTLS); paired with cert_file
+#        insecure_skip_verify: false     # Whether to skip server certificate verification; not recommended to enable in production
+#      batch:
+#        enabled: true                   # Recommended to enable batch processing

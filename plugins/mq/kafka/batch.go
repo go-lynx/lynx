@@ -9,7 +9,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// BatchProcessor 批量处理器
+// BatchProcessor batch processor
 type BatchProcessor struct {
 	maxBatchSize int
 	maxWaitTime  time.Duration
@@ -20,7 +20,7 @@ type BatchProcessor struct {
 	done         chan struct{}
 }
 
-// NewBatchProcessor 创建新的批量处理器
+// NewBatchProcessor creates a new batch processor
 func NewBatchProcessor(maxBatchSize int, maxWaitTime time.Duration, handler func(context.Context, []*kgo.Record) error) *BatchProcessor {
 	bp := &BatchProcessor{
 		maxBatchSize: maxBatchSize,
@@ -32,19 +32,19 @@ func NewBatchProcessor(maxBatchSize int, maxWaitTime time.Duration, handler func
 	return bp
 }
 
-// AddRecord 添加记录到批量处理器
+// AddRecord adds a record to the batch processor
 func (bp *BatchProcessor) AddRecord(ctx context.Context, record *kgo.Record) error {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 
 	bp.records = append(bp.records, record)
 
-	// 如果达到最大批量大小，立即处理
+	// If maximum batch size is reached, process immediately
 	if len(bp.records) >= bp.maxBatchSize {
 		return bp.processBatch(ctx)
 	}
 
-	// 设置定时器，在最大等待时间后处理
+	// Set timer to process after maximum wait time
 	if bp.timer == nil {
 		bp.timer = time.AfterFunc(bp.maxWaitTime, func() {
 			bp.mu.Lock()
@@ -61,24 +61,24 @@ func (bp *BatchProcessor) AddRecord(ctx context.Context, record *kgo.Record) err
 	return nil
 }
 
-// processBatch 处理批量记录
+// processBatch processes batch records
 func (bp *BatchProcessor) processBatch(ctx context.Context) error {
 	if len(bp.records) == 0 {
 		return nil
 	}
 
-	// 停止定时器
+	// Stop timer
 	if bp.timer != nil {
 		bp.timer.Stop()
 		bp.timer = nil
 	}
 
-	// 复制记录并清空原切片
+	// Copy records and clear original slice
 	records := make([]*kgo.Record, len(bp.records))
 	copy(records, bp.records)
 	bp.records = bp.records[:0]
 
-	// 异步处理批量记录
+	// Asynchronously process batch records
 	go func() {
 		if err := bp.handler(ctx, records); err != nil {
 			log.ErrorfCtx(ctx, "Batch processing failed: %v", err)
@@ -88,27 +88,27 @@ func (bp *BatchProcessor) processBatch(ctx context.Context) error {
 	return nil
 }
 
-// Flush 强制处理所有待处理的记录
+// Flush forces processing of all pending records
 func (bp *BatchProcessor) Flush(ctx context.Context) error {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 	return bp.processBatch(ctx)
 }
 
-// Close 关闭批量处理器
+// Close closes the batch processor
 func (bp *BatchProcessor) Close() {
 	close(bp.done)
 }
 
-// BatchConfig 批量处理配置
+// BatchConfig batch processing configuration
 type BatchConfig struct {
-	MaxBatchSize int           // 最大批量大小
-	MaxWaitTime  time.Duration // 最大等待时间
-	Compression  string        // 压缩类型
-	RetryCount   int           // 重试次数
+	MaxBatchSize int           // Maximum batch size
+	MaxWaitTime  time.Duration // Maximum wait time
+	Compression  string        // Compression type
+	RetryCount   int           // Retry count
 }
 
-// DefaultBatchConfig 默认批量处理配置
+// DefaultBatchConfig default batch processing configuration
 func DefaultBatchConfig() *BatchConfig {
 	return &BatchConfig{
 		MaxBatchSize: 1000,

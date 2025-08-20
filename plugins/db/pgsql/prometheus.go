@@ -8,47 +8,53 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// PrometheusConfig Prometheus 指标语义配置（插件内部私有 registry 用）
+// PrometheusConfig Prometheus metric semantic configuration (for plugin internal private registry)
 type PrometheusConfig struct {
-	// Prometheus 指标的命名空间
+	// Prometheus metric namespace
 	Namespace string
-	// Prometheus 指标的子系统
+	// Prometheus metric subsystem
 	Subsystem string
-	// 指标的额外标签（用于构建静态或扩展标签）
+	// Additional labels for metrics (used to build static or extended labels)
 	Labels map[string]string
 }
 
-// --- Helpers for connection metrics ---
-
-// IncConnectAttempt 增加一次连接尝试
+// IncConnectAttempt Increments connection attempt counter
 func (pm *PrometheusMetrics) IncConnectAttempt(config *conf.Pgsql) {
-    if pm == nil { return }
-    labels := pm.buildLabels(config)
-    pm.ConnectAttempts.With(labels).Inc()
+	if pm == nil {
+		return
+	}
+	labels := pm.buildLabels(config)
+	pm.ConnectAttempts.With(labels).Inc()
 }
 
-// IncConnectRetry 增加一次连接重试
+// IncConnectRetry Increments connection retry counter
 func (pm *PrometheusMetrics) IncConnectRetry(config *conf.Pgsql) {
-    if pm == nil { return }
-    labels := pm.buildLabels(config)
-    pm.ConnectRetries.With(labels).Inc()
+	if pm == nil {
+		return
+	}
+	labels := pm.buildLabels(config)
+	pm.ConnectRetries.With(labels).Inc()
 }
 
-// IncConnectSuccess 增加一次连接成功
+// IncConnectSuccess Increments connection success counter
 func (pm *PrometheusMetrics) IncConnectSuccess(config *conf.Pgsql) {
-    if pm == nil { return }
-    labels := pm.buildLabels(config)
-    pm.ConnectSuccess.With(labels).Inc()
+	if pm == nil {
+		return
+	}
+	labels := pm.buildLabels(config)
+	pm.ConnectSuccess.With(labels).Inc()
 }
 
-// IncConnectFailure 增加一次连接失败
+// IncConnectFailure Increments connection failure counter
 func (pm *PrometheusMetrics) IncConnectFailure(config *conf.Pgsql) {
-    if pm == nil { return }
-    labels := pm.buildLabels(config)
-    pm.ConnectFailures.With(labels).Inc()
+	if pm == nil {
+		return
+	}
+	labels := pm.buildLabels(config)
+	pm.ConnectFailures.With(labels).Inc()
 }
 
-// RecordQuery 记录一次 SQL 查询的耗时、错误和慢查询计数
+// RecordQuery Records SQL query duration, errors and slow query count
 func (pm *PrometheusMetrics) RecordQuery(op string, dur time.Duration, err error, threshold time.Duration, config *conf.Pgsql, sqlState string) {
 	if pm == nil {
 		return
@@ -80,7 +86,7 @@ func (pm *PrometheusMetrics) RecordQuery(op string, dur time.Duration, err error
 	}
 }
 
-// RecordTx 记录一次事务的耗时与状态
+// RecordTx Records transaction duration and status
 func (pm *PrometheusMetrics) RecordTx(dur time.Duration, committed bool, config *conf.Pgsql) {
 	if pm == nil {
 		return
@@ -95,9 +101,9 @@ func (pm *PrometheusMetrics) RecordTx(dur time.Duration, committed bool, config 
 	pm.TxDuration.With(l).Observe(dur.Seconds())
 }
 
-// 从配置创建 PrometheusConfig
+// Create PrometheusConfig from configuration
 func createPrometheusConfig(pgsqlConf *conf.Pgsql) *PrometheusConfig {
-	// 默认仅配置指标语义，不涉及 HTTP 暴露
+	// Default only configures metric semantics, does not involve HTTP exposure
 	return &PrometheusConfig{
 		Namespace: "lynx",
 		Subsystem: "pgsql",
@@ -105,55 +111,55 @@ func createPrometheusConfig(pgsqlConf *conf.Pgsql) *PrometheusConfig {
 	}
 }
 
-// PrometheusMetrics Prometheus 监控指标
+// PrometheusMetrics Prometheus monitoring metrics
 type PrometheusMetrics struct {
-	// 连接池指标
+	// Connection pool metrics
 	MaxOpenConnections *prometheus.GaugeVec
 	OpenConnections    *prometheus.GaugeVec
 	InUseConnections   *prometheus.GaugeVec
 	IdleConnections    *prometheus.GaugeVec
 	MaxIdleConnections *prometheus.GaugeVec
 
-	// 等待指标
+	// Wait metrics
 	WaitCount    *prometheus.CounterVec
 	WaitDuration *prometheus.CounterVec
 
-	// 连接关闭指标
+	// Connection close metrics
 	MaxIdleClosed     *prometheus.CounterVec
 	MaxLifetimeClosed *prometheus.CounterVec
 
-	// 健康检查指标
+	// Health check metrics
 	HealthCheckTotal   *prometheus.CounterVec
 	HealthCheckSuccess *prometheus.CounterVec
 	HealthCheckFailure *prometheus.CounterVec
 
-	// 配置指标
+	// Configuration metrics
 	ConfigMinConn *prometheus.GaugeVec
 	ConfigMaxConn *prometheus.GaugeVec
 
-	// 注册表
+	// Registry
 	registry *prometheus.Registry
 
-	// 查询/事务指标
+	// Query/transaction metrics
 	QueryDuration *prometheus.HistogramVec
 	TxDuration    *prometheus.HistogramVec
 	ErrorCounter  *prometheus.CounterVec
 	SlowQueryCnt  *prometheus.CounterVec
 
-	// 连接重试/尝试/成功/失败指标
+	// Connection retry/attempt/success/failure metrics
 	ConnectAttempts *prometheus.CounterVec
 	ConnectRetries  *prometheus.CounterVec
 	ConnectSuccess  *prometheus.CounterVec
 	ConnectFailures *prometheus.CounterVec
 }
 
-// NewPrometheusMetrics 创建新的 Prometheus 监控指标
+// NewPrometheusMetrics Creates new Prometheus monitoring metrics
 func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 	if config == nil {
 		return nil
 	}
 
-	// 设置默认值
+	// Set default values
 	if config.Namespace == "" {
 		config.Namespace = "lynx"
 	}
@@ -161,7 +167,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		config.Subsystem = "pgsql"
 	}
 
-	// 创建标签
+	// Create labels
 	labels := []string{"instance", "database"}
 	for key := range config.Labels {
 		labels = append(labels, key)
@@ -171,7 +177,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		registry: prometheus.NewRegistry(),
 	}
 
-	// 连接池指标
+	// Connection pool metrics
 	metrics.MaxOpenConnections = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: config.Namespace,
@@ -222,7 +228,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		labels,
 	)
 
-	// 等待指标
+	// Wait metrics
 	metrics.WaitCount = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: config.Namespace,
@@ -243,7 +249,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		labels,
 	)
 
-	// 连接关闭指标
+	// Connection close metrics
 	metrics.MaxIdleClosed = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: config.Namespace,
@@ -264,7 +270,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		labels,
 	)
 
-	// 健康检查指标
+	// Health check metrics
 	metrics.HealthCheckTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: config.Namespace,
@@ -295,7 +301,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		labels,
 	)
 
-	// 配置指标
+	// Configuration metrics
 	metrics.ConfigMinConn = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: config.Namespace,
@@ -316,10 +322,10 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		labels,
 	)
 
-	// 直方图桶（5ms ~ 5s）
+	// Histogram buckets (5ms ~ 5s)
 	buckets := []float64{0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1, 1.5, 2, 3, 5}
 
-	// 查询时延直方图
+	// Query duration histogram
 	metrics.QueryDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: config.Namespace,
@@ -331,7 +337,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		append(labels, "op", "status"),
 	)
 
-	// 事务时延直方图
+	// Transaction duration histogram
 	metrics.TxDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: config.Namespace,
@@ -343,7 +349,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		append(labels, "status"),
 	)
 
-	// 错误码统计（SQLSTATE）
+	// Error code statistics (SQLSTATE)
 	metrics.ErrorCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: config.Namespace,
@@ -354,7 +360,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		append(labels, "sqlstate"),
 	)
 
-	// 慢查询计数（按 op、阈值标签）
+	// Slow query count (by op, threshold labels)
 	metrics.SlowQueryCnt = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: config.Namespace,
@@ -365,7 +371,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		append(labels, "op", "threshold"),
 	)
 
-	// 连接类指标
+	// Connection metrics
 	metrics.ConnectAttempts = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: config.Namespace,
@@ -406,7 +412,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 		labels,
 	)
 
-	// 注册所有指标
+	// Register all metrics
 	metrics.registry.MustRegister(
 		metrics.MaxOpenConnections,
 		metrics.OpenConnections,
@@ -435,7 +441,7 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 	return metrics
 }
 
-// GetGatherer 返回该插件私有的 Prometheus Gatherer（用于在应用装配阶段统一聚合到全局 /metrics）
+// GetGatherer Returns the plugin's private Prometheus Gatherer (used to aggregate to global /metrics during application assembly phase)
 func (pm *PrometheusMetrics) GetGatherer() prometheus.Gatherer {
 	if pm == nil {
 		return nil
@@ -443,38 +449,38 @@ func (pm *PrometheusMetrics) GetGatherer() prometheus.Gatherer {
 	return pm.registry
 }
 
-// UpdateMetrics 更新监控指标
+// UpdateMetrics Updates monitoring metrics
 func (pm *PrometheusMetrics) UpdateMetrics(stats *ConnectionPoolStats, config *conf.Pgsql) {
 	if pm == nil || stats == nil {
 		return
 	}
 
-	// 构建标签
+	// Build labels
 	labels := pm.buildLabels(config)
 
-	// 更新连接池指标
+	// Update connection pool metrics
 	pm.MaxOpenConnections.With(labels).Set(float64(stats.MaxOpenConnections))
 	pm.OpenConnections.With(labels).Set(float64(stats.OpenConnections))
 	pm.InUseConnections.With(labels).Set(float64(stats.InUse))
 	pm.IdleConnections.With(labels).Set(float64(stats.Idle))
 	pm.MaxIdleConnections.With(labels).Set(float64(stats.MaxIdleConnections))
 
-	// 更新等待指标
+	// Update wait metrics
 	pm.WaitCount.With(labels).Add(float64(stats.WaitCount))
 	pm.WaitDuration.With(labels).Add(stats.WaitDuration.Seconds())
 
-	// 更新连接关闭指标
+	// Update connection close metrics
 	pm.MaxIdleClosed.With(labels).Add(float64(stats.MaxIdleClosed))
 	pm.MaxLifetimeClosed.With(labels).Add(float64(stats.MaxLifetimeClosed))
 
-	// 更新配置指标
+	// Update configuration metrics
 	if config != nil {
 		pm.ConfigMinConn.With(labels).Set(float64(config.MinConn))
 		pm.ConfigMaxConn.With(labels).Set(float64(config.MaxConn))
 	}
 }
 
-// RecordHealthCheck 记录健康检查结果
+// RecordHealthCheck Records health check results
 func (pm *PrometheusMetrics) RecordHealthCheck(success bool, config *conf.Pgsql) {
 	if pm == nil {
 		return
@@ -490,14 +496,14 @@ func (pm *PrometheusMetrics) RecordHealthCheck(success bool, config *conf.Pgsql)
 	}
 }
 
-// buildLabels 构建标签
+// buildLabels Builds labels
 func (pm *PrometheusMetrics) buildLabels(config *conf.Pgsql) prometheus.Labels {
 	labels := prometheus.Labels{
 		"instance": "pgsql",
 		"database": "postgres",
 	}
 
-	// 从连接字符串中提取数据库名称
+	// Extract database name from connection string
 	if config != nil && config.Source != "" {
 		if dbName := pm.extractDatabaseName(config.Source); dbName != "" {
 			labels["database"] = dbName
@@ -507,23 +513,23 @@ func (pm *PrometheusMetrics) buildLabels(config *conf.Pgsql) prometheus.Labels {
 	return labels
 }
 
-// cloneLabels 浅拷贝 labels，便于追加维度
+// cloneLabels Shallow copies labels for appending dimensions
 func cloneLabels(in prometheus.Labels) prometheus.Labels {
-    out := prometheus.Labels{}
-    for k, v := range in {
-        out[k] = v
-    }
-    return out
+	out := prometheus.Labels{}
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
-// extractDatabaseName 从连接字符串中提取数据库名称
+// extractDatabaseName Extracts database name from connection string
 func (pm *PrometheusMetrics) extractDatabaseName(source string) string {
-	// 解析 postgres://user:pass@host:port/dbname 格式
+	// Parse postgres://user:pass@host:port/dbname format
 	if strings.Contains(source, "://") {
 		parts := strings.Split(source, "/")
 		if len(parts) >= 2 {
 			dbPart := parts[len(parts)-1]
-			// 移除查询参数
+			// Remove query parameters
 			if idx := strings.Index(dbPart, "?"); idx != -1 {
 				dbPart = dbPart[:idx]
 			}

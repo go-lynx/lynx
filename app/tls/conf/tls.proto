@@ -4,20 +4,20 @@ package lynx.protobuf.plugin.tls;
 
 option go_package = "github.com/go-lynx/plugin-tls/conf;conf";
 
-// Tls 消息定义了 TLS 相关配置信息。
+// Tls message defines TLS related configuration information.
 message Tls {
-  // file_name 表示 TLS 配置文件的名称，用于指定配置文件的存储位置。
+  // file_name represents the name of the TLS configuration file, used to specify the storage location of the configuration file.
   string file_name = 1;
-  // group 表示 TLS 配置所属的组，可用于对不同的 TLS 配置进行分类管理。
+  // group represents the group to which the TLS configuration belongs, which can be used to classify and manage different TLS configurations.
   string group = 2;
 }
 
-// Cert 消息定义了 TLS 证书相关信息。
+// Cert message defines TLS certificate related information.
 message Cert {
-  // crt 表示 X.509 证书文件的路径，通常为 PEM 格式。
+  // crt represents the path to the X.509 certificate file, usually in PEM format.
   string crt = 1;
-  // key 表示与证书对应的私钥文件的路径，通常为 PEM 格式。
+  // key represents the path to the private key file corresponding to the certificate, usually in PEM format.
   string key = 2;
-  // rootCA 表示根证书颁发机构（CA）的证书文件路径，用于验证客户端或服务器身份。
+  // rootCA represents the path to the root certificate authority (CA) certificate file, used to verify client or server identity.
   string rootCA = 3;
 }

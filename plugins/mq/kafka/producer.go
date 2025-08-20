@@ -10,13 +10,13 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// initProducerInstance 初始化指定名称的生产者实例
+// initProducerInstance initializes a producer instance with the specified name
 func (k *Client) initProducerInstance(name string, p *conf.Producer) (*kgo.Client, error) {
 	if p == nil {
 		return nil, fmt.Errorf("producer config is nil for %s", name)
 	}
 
-	// 将 linger 与配置联动：若配置了 BatchTimeout 则用作 linger，以便更好批处理
+	// Link linger with configuration: if BatchTimeout is configured, use it as linger for better batching
 	linger := 5 * time.Millisecond
 	if d := p.BatchTimeout.AsDuration(); d > 0 {
 		linger = d
@@ -45,7 +45,7 @@ func (k *Client) initProducerInstance(name string, p *conf.Producer) (*kgo.Clien
 		opts = append(opts, kgo.ProducerBatchCompression(comp))
 	}
 
-	// RequiredAcks 数值映射：-1=AllISRAcks，1=LeaderAck（默认），0=NoAck
+	// RequiredAcks value mapping: -1=AllISRAcks, 1=LeaderAck (default), 0=NoAck
 	switch p.RequiredAcks {
 	case -1:
 		opts = append(opts, kgo.RequiredAcks(kgo.AllISRAcks()))
@@ -64,9 +64,9 @@ func (k *Client) initProducerInstance(name string, p *conf.Producer) (*kgo.Clien
 	return producer, nil
 }
 
-// Produce 发送消息到指定主题
+// Produce sends a message to the specified topic
 func (k *Client) Produce(ctx context.Context, topic string, key, value []byte) error {
-	// 路由到默认生产者
+	// Route to default producer
 	k.mu.RLock()
 	name := k.defaultProducer
 	k.mu.RUnlock()
@@ -76,21 +76,21 @@ func (k *Client) Produce(ctx context.Context, topic string, key, value []byte) e
 	return k.ProduceWith(ctx, name, topic, key, value)
 }
 
-// ProduceWith 按生产者实例名发送
+// ProduceWith sends by producer instance name
 func (k *Client) ProduceWith(ctx context.Context, producerName, topic string, key, value []byte) error {
-	// 验证参数
+	// Validate parameters
 	if err := k.validateTopic(topic); err != nil {
 		return fmt.Errorf("invalid topic %s: %w", topic, err)
 	}
 
-	// 若启用了异步批处理器，则优先入队，由后台统一批量发送与计量
+	// If async batch processor is enabled, prioritize enqueueing, with background unified batch sending and metrics
 	k.mu.RLock()
 	bp := k.batchProcessors[producerName]
 	k.mu.RUnlock()
 	if bp != nil {
 		record := &kgo.Record{Topic: topic, Key: key, Value: value}
 		if err := bp.AddRecord(ctx, record); err != nil {
-			// 入队失败则回退到同步发送路径
+			// If enqueue fails, fallback to sync sending path
 			log.WarnfCtx(ctx, "Batch enqueue failed, fallback to sync produce: %v", err)
 		} else {
 			return nil
@@ -122,7 +122,7 @@ func (k *Client) ProduceWith(ctx context.Context, producerName, topic string, ke
 		return fmt.Errorf("failed to produce message: %w", err)
 	}
 
-	// 更新指标（使用线程安全的封装方法）
+	// Update metrics (using thread-safe wrapper methods)
 	k.metrics.IncrementProducedMessages(1)
 	k.metrics.IncrementProducedBytes(int64(len(value)))
 	k.metrics.SetProducerLatency(time.Since(start))
@@ -130,9 +130,9 @@ func (k *Client) ProduceWith(ctx context.Context, producerName, topic string, ke
 	return nil
 }
 
-// ProduceBatch 批量发送消息
+// ProduceBatch sends messages in batch
 func (k *Client) ProduceBatch(ctx context.Context, topic string, records []*kgo.Record) error {
-	// 路由到默认生产者
+	// Route to default producer
 	k.mu.RLock()
 	name := k.defaultProducer
 	k.mu.RUnlock()
@@ -142,7 +142,7 @@ func (k *Client) ProduceBatch(ctx context.Context, topic string, records []*kgo.
 	return k.ProduceBatchWith(ctx, name, topic, records)
 }
 
-// ProduceBatchWith 按生产者实例名批量发送
+// ProduceBatchWith sends batch by producer instance name
 func (k *Client) ProduceBatchWith(ctx context.Context, producerName string, topic string, records []*kgo.Record) error {
 	k.mu.RLock()
 	producer := k.producers[producerName]
@@ -152,15 +152,15 @@ func (k *Client) ProduceBatchWith(ctx context.Context, producerName string, topi
 		return ErrProducerNotInitialized
 	}
 
-	// 规范 topic 语义：若入参 topic 非空，则将所有 record 的 Topic 统一设置为该 topic；
-	// 若入参 topic 为空，则要求每条 record 自带合法 Topic。
+	// Standardize topic semantics: if input topic is not empty, set all records' Topic to this topic;
+	// if input topic is empty, require each record to have its own valid Topic.
 	if topic != "" {
 		if err := k.validateTopic(topic); err != nil {
 			return fmt.Errorf("invalid topic %s: %w", topic, err)
 		}
 	}
 
-	// 过滤 nil 记录，避免后续 ProduceSync/统计时出现空指针
+	// Filter nil records to avoid null pointer in subsequent ProduceSync/statistics
 	nonNil := make([]*kgo.Record, 0, len(records))
 	for _, r := range records {
 		if r == nil {
@@ -176,7 +176,7 @@ func (k *Client) ProduceBatchWith(ctx context.Context, producerName string, topi
 		nonNil = append(nonNil, r)
 	}
 
-	// 若全部为 nil，直接返回
+	// If all are nil, return directly
 	if len(nonNil) == 0 {
 		return nil
 	}
@@ -188,13 +188,13 @@ func (k *Client) ProduceBatchWith(ctx context.Context, producerName string, topi
 
 	if err != nil {
 		k.metrics.IncrementProducerErrors()
-		// 当传入 topic 为空时，统计本批实际涉及的 topic 以便排障
+		// When input topic is empty, count the actual topics involved in this batch for troubleshooting
 		if topic == "" {
 			topicSet := make(map[string]struct{})
 			for _, r := range nonNil {
 				topicSet[r.Topic] = struct{}{}
 			}
-			// 构造稳定的 topic 列表展示（最多展示前 5 个）
+			// Construct stable topic list display (show at most first 5)
 			topics := make([]string, 0, len(topicSet))
 			for tp := range topicSet {
 				topics = append(topics, tp)
@@ -210,7 +210,7 @@ func (k *Client) ProduceBatchWith(ctx context.Context, producerName string, topi
 		return fmt.Errorf("failed to produce batch messages: %w", err)
 	}
 
-	// 更新指标（基于过滤后的数组）
+	// Update metrics (based on filtered array)
 	totalBytes := int64(0)
 	for _, record := range nonNil {
 		totalBytes += int64(len(record.Value))
@@ -222,7 +222,7 @@ func (k *Client) ProduceBatchWith(ctx context.Context, producerName string, topi
 	return nil
 }
 
-// getCompression 获取压缩算法（基于实例配置）
+// getCompression gets compression algorithm (based on instance configuration)
 func (k *Client) getCompression(p *conf.Producer) kgo.CompressionCodec {
 	if p == nil {
 		return kgo.SnappyCompression()
@@ -239,11 +239,11 @@ func (k *Client) getCompression(p *conf.Producer) kgo.CompressionCodec {
 	case CompressionNone:
 		return kgo.NoCompression()
 	default:
-		return kgo.SnappyCompression() // 默认使用 snappy 压缩
+		return kgo.SnappyCompression() // Default to snappy compression
 	}
 }
 
-// GetProducer 获取默认生产者客户端
+// GetProducer gets the default producer client
 func (k *Client) GetProducer() *kgo.Client {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
@@ -253,7 +253,7 @@ func (k *Client) GetProducer() *kgo.Client {
 	return k.producers[k.defaultProducer]
 }
 
-// IsProducerReady 检查默认生产者是否就绪
+// IsProducerReady checks if the default producer is ready
 func (k *Client) IsProducerReady() bool {
 	k.mu.RLock()
 	defer k.mu.RUnlock()

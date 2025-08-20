@@ -15,50 +15,49 @@ import (
 )
 
 // Plugin metadata
-// 插件元数据，包含插件名称、版本、描述和配置前缀
 const (
-	// 插件名称
+	// Plugin name
 	pluginName = "pgsql.client"
-	// 插件版本
+	// Plugin version
 	pluginVersion = "v2.0.0"
-	// 插件描述
+	// Plugin description
 	pluginDescription = "pgsql client plugin for lynx framework"
-	// 配置前缀
+	// Configuration prefix
 	confPrefix = "lynx.pgsql"
-	// 默认配置常量
+	// Default configuration constants
 	defaultDriver      = "postgres"
 	defaultSource      = "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable"
 	defaultMinConn     = 10
 	defaultMaxConn     = 20
 	defaultMaxIdleTime = 10 * time.Second
 	defaultMaxLifeTime = 300 * time.Second
-	// 健康检查超时时间
+	// Health check timeout
 	healthCheckTimeout = 5 * time.Second
-	// 最大重试次数
+	// Maximum retry attempts
 	maxRetryAttempts = 3
-	// 重试间隔
+	// Retry interval
 	retryInterval = 2 * time.Second
 )
 
-// DBPgsqlClient 表示 PgSQL 客户端插件实例
+// DBPgsqlClient represents a PgSQL client plugin instance
 type DBPgsqlClient struct {
-	// 继承基础插件
+	// Inherit base plugin
 	*plugins.BasePlugin
-	// 数据库驱动
+	// Database driver
 	dri *esql.Driver
-	// PgSQL 配置
+	// PgSQL configuration
 	conf *conf.Pgsql
-	// 连接池统计信息
+	// Connection pool statistics
 	stats *ConnectionPoolStats
-	// 关闭信号通道
+	// Close signal channel
 	closeChan chan struct{}
-	// 是否已关闭
+	// Whether it's closed
 	closed bool
-	// Prometheus 监控指标
+	// Prometheus monitoring metrics
 	prometheusMetrics *PrometheusMetrics
 }
 
-// ConnectionPoolStats 连接池统计信息
+// ConnectionPoolStats connection pool statistics
 type ConnectionPoolStats struct {
 	MaxOpenConnections int
 	OpenConnections    int
@@ -71,21 +70,21 @@ type ConnectionPoolStats struct {
 	MaxLifetimeClosed  int64
 }
 
-// NewPgsqlClient 创建一个新的 PgSQL 客户端插件实例
-// 返回一个指向 DBPgsqlClient 结构体的指针
+// NewPgsqlClient creates a new PgSQL client plugin instance
+// Returns a pointer to the DBPgsqlClient struct
 func NewPgsqlClient() *DBPgsqlClient {
 	return &DBPgsqlClient{
 		BasePlugin: plugins.NewBasePlugin(
-			// 生成插件 ID
+			// Generate plugin ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
 			pluginName,
-			// 插件描述
+			// Plugin description
 			pluginDescription,
-			// 插件版本
+			// Plugin version
 			pluginVersion,
-			// 配置前缀
+			// Configuration prefix
 			confPrefix,
-			// 权重
+			// Weight
 			101,
 		),
 		closeChan: make(chan struct{}),
@@ -93,20 +92,20 @@ func NewPgsqlClient() *DBPgsqlClient {
 	}
 }
 
-// validateConfig 验证配置参数的有效性
+// validateConfig validates the validity of configuration parameters
 func (p *DBPgsqlClient) validateConfig() error {
 	if p.conf == nil {
 		return fmt.Errorf("configuration is nil")
 	}
 
-	// 验证连接字符串格式
+	// Validate connection string format
 	if p.conf.Source != "" {
 		if !strings.Contains(p.conf.Source, "://") {
 			return fmt.Errorf("invalid connection string format, expected format: postgres://user:password@host:port/dbname")
 		}
 	}
 
-	// 验证连接池配置
+	// Validate connection pool configuration
 	if p.conf.MinConn < 0 {
 		return fmt.Errorf("min_conn cannot be negative")
 	}
@@ -117,7 +116,7 @@ func (p *DBPgsqlClient) validateConfig() error {
 		return fmt.Errorf("min_conn (%d) cannot be greater than max_conn (%d)", p.conf.MinConn, p.conf.MaxConn)
 	}
 
-	// 验证时间配置
+	// Validate time configuration
 	if p.conf.MaxIdleTime != nil {
 		if p.conf.MaxIdleTime.AsDuration() < 0 {
 			return fmt.Errorf("max_idle_time cannot be negative")
@@ -132,7 +131,7 @@ func (p *DBPgsqlClient) validateConfig() error {
 	return nil
 }
 
-// setDefaultConfig 设置默认配置
+// setDefaultConfig sets default configuration
 func (p *DBPgsqlClient) setDefaultConfig() {
 	if p.conf.Driver == "" {
 		p.conf.Driver = defaultDriver
@@ -153,28 +152,28 @@ func (p *DBPgsqlClient) setDefaultConfig() {
 		p.conf.MaxLifeTime = durationpb.New(defaultMaxLifeTime)
 	}
 
-	// Prometheus 监控配置可以通过环境变量或配置文件设置
-	// 暂时使用默认配置
+	// Prometheus monitoring configuration can be set via environment variables or configuration files
+	// Use default configuration for now
 }
 
-// InitializeResources 从运行时配置中扫描并加载 PgSQL 配置
-// 参数 rt 为运行时环境
-// 返回错误信息，如果配置加载失败则返回相应错误
+// InitializeResources scans and loads PgSQL configuration from runtime configuration
+// Parameter rt is the runtime environment
+// Returns error information, returns corresponding error if configuration loading fails
 func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
-	// 初始化一个空的配置结构
+	// Initialize an empty configuration structure
 	p.conf = &conf.Pgsql{}
 
-	// 从运行时配置中扫描并加载 PgSQL 配置
+	// Scan and load PgSQL configuration from runtime configuration
 	err := rt.GetConfig().Value(confPrefix).Scan(p.conf)
 	if err != nil {
 		log.Errorf("failed to scan pgsql configuration: %v", err)
 		return fmt.Errorf("failed to load pgsql configuration: %w", err)
 	}
 
-	// 设置默认配置
+	// Set default configuration
 	p.setDefaultConfig()
 
-	// 验证配置
+	// Validate configuration
 	if err := p.validateConfig(); err != nil {
 		log.Errorf("invalid pgsql configuration: %v", err)
 		return fmt.Errorf("configuration validation failed: %w", err)
@@ -185,14 +184,14 @@ func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
 	return nil
 }
 
-// connectWithRetry 带重试机制的数据库连接
+// connectWithRetry database connection with retry mechanism
 func (p *DBPgsqlClient) connectWithRetry() (*esql.Driver, error) {
 	var lastErr error
 
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		log.Infof("attempting to connect to database (attempt %d/%d)", attempt, maxRetryAttempts)
 
-		// 记录连接尝试/重试指标
+		// Record connection attempt/retry metrics
 		if p.prometheusMetrics != nil {
 			p.prometheusMetrics.IncConnectAttempt(p.conf)
 			if attempt > 1 {
@@ -200,10 +199,10 @@ func (p *DBPgsqlClient) connectWithRetry() (*esql.Driver, error) {
 			}
 		}
 
-		// 注册数据库驱动（根据构建标签，可能启用 hooks 包装）
+		// Register database driver (based on build tags, hooks wrapper may be enabled)
 		registerDriver()
 
-		// 打开数据库连接
+		// Open database connection
 		drv, err := esql.Open(p.conf.Driver, p.conf.Source)
 		if err != nil {
 			lastErr = err
@@ -214,26 +213,29 @@ func (p *DBPgsqlClient) connectWithRetry() (*esql.Driver, error) {
 				time.Sleep(retryInterval)
 				continue
 			}
-			// 最终失败，记录失败指标
+			// Final failure, record failure metrics
 			if p.prometheusMetrics != nil {
 				p.prometheusMetrics.IncConnectFailure(p.conf)
 			}
 			return nil, fmt.Errorf("failed to connect after %d attempts: %w", maxRetryAttempts, lastErr)
 		}
 
-		// 配置连接池
+		// Configure connection pool
 		db := drv.DB()
 		db.SetMaxIdleConns(int(p.conf.MinConn))
 		db.SetMaxOpenConns(int(p.conf.MaxConn))
 		db.SetConnMaxIdleTime(p.conf.MaxIdleTime.AsDuration())
 		db.SetConnMaxLifetime(p.conf.MaxLifeTime.AsDuration())
 
-		// 测试连接
+		// Test connection
 		ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
 		defer cancel()
 
 		if err := db.PingContext(ctx); err != nil {
-			drv.Close()
+			err := drv.Close()
+			if err != nil {
+				return nil, err
+			}
 			lastErr = err
 			log.Warnf("connection test failed on attempt %d: %v", attempt, err)
 
@@ -242,7 +244,7 @@ func (p *DBPgsqlClient) connectWithRetry() (*esql.Driver, error) {
 				time.Sleep(retryInterval)
 				continue
 			}
-			// 最终失败，记录失败指标
+			// Final failure, record failure metrics
 			if p.prometheusMetrics != nil {
 				p.prometheusMetrics.IncConnectFailure(p.conf)
 			}
@@ -256,26 +258,26 @@ func (p *DBPgsqlClient) connectWithRetry() (*esql.Driver, error) {
 		return drv, nil
 	}
 
-	// 理论上不会到这里（循环里已返回），兜底失败指标
+	// Theoretically won't reach here (already returned in the loop), fallback failure metrics
 	if p.prometheusMetrics != nil {
 		p.prometheusMetrics.IncConnectFailure(p.conf)
 	}
 	return nil, fmt.Errorf("failed to establish database connection: %w", lastErr)
 }
 
-// initPrometheusMetrics 初始化 Prometheus 监控指标
+// initPrometheusMetrics initializes Prometheus monitoring metrics
 func (p *DBPgsqlClient) initPrometheusMetrics() {
-	// 创建 Prometheus 配置
+	// Create Prometheus configuration
 	promConfig := createPrometheusConfig(p.conf)
 
-	// 创建 Prometheus 指标
+	// Create Prometheus metrics
 	p.prometheusMetrics = NewPrometheusMetrics(promConfig)
-	// 赋值全局指标/配置指针，供可选 hooks 或其他模块使用
+	// Assign global metrics/configuration pointer for optional hooks or other modules
 	globalPgsqlMetrics = p.prometheusMetrics
 	globalPgsqlConf = p.conf
 }
 
-// MetricsGatherer 返回该插件的 Prometheus Gatherer（用于统一注册聚合）
+// MetricsGatherer returns the Prometheus Gatherer for this plugin (for unified registration aggregation)
 func (p *DBPgsqlClient) MetricsGatherer() prometheus.Gatherer {
 	if p == nil || p.prometheusMetrics == nil {
 		return nil
@@ -283,7 +285,7 @@ func (p *DBPgsqlClient) MetricsGatherer() prometheus.Gatherer {
 	return p.prometheusMetrics.GetGatherer()
 }
 
-// updateStats 更新连接池统计信息
+// updateStats updates connection pool statistics
 func (p *DBPgsqlClient) updateStats() {
 	if p.dri == nil {
 		return
@@ -295,37 +297,37 @@ func (p *DBPgsqlClient) updateStats() {
 	p.stats.OpenConnections = stats.OpenConnections
 	p.stats.InUse = stats.InUse
 	p.stats.Idle = stats.Idle
-	p.stats.MaxIdleConnections = int(p.conf.MinConn) // 使用配置的最小连接数
+	p.stats.MaxIdleConnections = int(p.conf.MinConn) // Use configured minimum connections
 	p.stats.WaitCount = stats.WaitCount
 	p.stats.WaitDuration = stats.WaitDuration
 	p.stats.MaxIdleClosed = stats.MaxIdleClosed
 	p.stats.MaxLifetimeClosed = stats.MaxLifetimeClosed
 
-	// 更新 Prometheus 指标
+	// Update Prometheus metrics
 	if p.prometheusMetrics != nil {
 		p.prometheusMetrics.UpdateMetrics(p.stats, p.conf)
 	}
 }
 
-// StartupTasks 初始化数据库连接并进行健康检查
-// 返回错误信息，如果连接或健康检查失败则返回相应错误
+// StartupTasks initializes database connection and performs health check
+// Returns error information, returns corresponding error if connection or health check fails
 func (p *DBPgsqlClient) StartupTasks() error {
 	log.Infof("initializing pgsql database connection")
 
-	// 先初始化 Prometheus 监控（确保连接阶段的指标可被记录）
+	// Initialize Prometheus monitoring first (ensure connection phase metrics can be recorded)
 	p.initPrometheusMetrics()
 
-	// 使用重试机制连接数据库
+	// Connect to database with retry mechanism
 	drv, err := p.connectWithRetry()
 	if err != nil {
 		log.Errorf("failed to initialize database connection: %v", err)
 		return fmt.Errorf("database initialization failed: %w", err)
 	}
 
-	// 将数据库驱动赋值给实例
+	// Assign database driver to instance
 	p.dri = drv
 
-	// 更新统计信息
+	// Update statistics
 	p.updateStats()
 
 	log.Infof("pgsql database successfully initialized with connection pool: max_open=%d, max_idle=%d",
@@ -333,8 +335,8 @@ func (p *DBPgsqlClient) StartupTasks() error {
 	return nil
 }
 
-// CleanupTasks 优雅关闭数据库连接
-// 返回错误信息，如果关闭连接失败则返回相应错误
+// CleanupTasks gracefully closes database connection
+// Returns error information, returns corresponding error if closing connection fails
 func (p *DBPgsqlClient) CleanupTasks() error {
 	if p.dri == nil || p.closed {
 		return nil
@@ -342,11 +344,11 @@ func (p *DBPgsqlClient) CleanupTasks() error {
 
 	log.Infof("closing pgsql database connection")
 
-	// 标记为已关闭
+	// Mark as closed
 	p.closed = true
 	close(p.closeChan)
 
-	// 优雅关闭连接
+	// Gracefully close connection
 	if err := p.dri.Close(); err != nil {
 		log.Errorf("failed to close database connection: %v", err)
 		return fmt.Errorf("failed to close database connection: %w", err)
@@ -356,21 +358,21 @@ func (p *DBPgsqlClient) CleanupTasks() error {
 	return nil
 }
 
-// Configure 更新 PgSQL 配置
-// 该函数接收一个任意类型的参数，尝试将其转换为 *conf.Pgsql 类型，如果转换成功则更新配置
+// Configure updates PgSQL configuration
+// This function receives a parameter of any type, attempts to convert it to *conf.Pgsql type, and updates configuration if conversion succeeds
 func (p *DBPgsqlClient) Configure(c any) error {
-	// 尝试将传入的配置转换为 *conf.Pgsql 类型
+	// Try to convert the incoming configuration to *conf.Pgsql type
 	if pgsqlConf, ok := c.(*conf.Pgsql); ok {
-		// 保存旧配置用于回滚
+		// Save old configuration for rollback
 		oldConf := p.conf
 		p.conf = pgsqlConf
 
-		// 设置默认配置
+		// Set default configuration
 		p.setDefaultConfig()
 
-		// 验证新配置
+		// Validate new configuration
 		if err := p.validateConfig(); err != nil {
-			// 配置无效，回滚到旧配置
+			// Configuration invalid, rollback to old configuration
 			p.conf = oldConf
 			log.Errorf("invalid new configuration, rolling back: %v", err)
 			return fmt.Errorf("configuration validation failed: %w", err)
@@ -380,40 +382,40 @@ func (p *DBPgsqlClient) Configure(c any) error {
 		return nil
 	}
 
-	// 转换失败，返回配置无效错误
+	// Conversion failed, return invalid configuration error
 	return plugins.ErrInvalidConfiguration
 }
 
-// CheckHealth 对数据库连接进行全面的健康检查
-// 该函数检查连接池状态和数据库连接健康性
+// CheckHealth performs comprehensive health check on database connection
+// This function checks connection pool status and database connection health
 func (p *DBPgsqlClient) CheckHealth() error {
 	if p.dri == nil {
 		return fmt.Errorf("database driver is not initialized")
 	}
 
-	// 更新统计信息
+	// Update statistics
 	p.updateStats()
 
-	// 检查连接池状态
+	// Check connection pool status
 	if p.stats.OpenConnections >= p.stats.MaxOpenConnections {
 		log.Warnf("connection pool is at maximum capacity: %d/%d",
 			p.stats.OpenConnections, p.stats.MaxOpenConnections)
 	}
 
-	// 检查等待连接的情况
+	// Check connection waiting situation
 	if p.stats.WaitCount > 0 {
 		log.Warnf("connection pool has wait count: %d, total wait duration: %v",
 			p.stats.WaitCount, p.stats.WaitDuration)
 	}
 
-	// 创建一个带超时的上下文
+	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
 	defer cancel()
 
-	// 执行数据库连接健康检查
+	// Perform database connection health check
 	err := p.dri.DB().PingContext(ctx)
 
-	// 记录 Prometheus 健康检查指标
+	// Record Prometheus health check metrics
 	if p.prometheusMetrics != nil {
 		p.prometheusMetrics.RecordHealthCheck(err == nil, p.conf)
 	}
@@ -428,7 +430,7 @@ func (p *DBPgsqlClient) CheckHealth() error {
 	return nil
 }
 
-// GetStats 获取连接池统计信息
+// GetStats gets connection pool statistics
 func (p *DBPgsqlClient) GetStats() *ConnectionPoolStats {
 	if p.dri == nil {
 		return nil
@@ -437,17 +439,17 @@ func (p *DBPgsqlClient) GetStats() *ConnectionPoolStats {
 	return p.stats
 }
 
-// GetConfig 获取当前配置
+// GetConfig gets current configuration
 func (p *DBPgsqlClient) GetConfig() *conf.Pgsql {
 	return p.conf
 }
 
-// IsConnected 检查是否已连接
+// IsConnected checks if connected
 func (p *DBPgsqlClient) IsConnected() bool {
 	return p.dri != nil && !p.closed
 }
 
-// GetDriver 获取数据库驱动
+// GetDriver gets database driver
 func (p *DBPgsqlClient) GetDriver() *esql.Driver {
 	return p.dri
 }
