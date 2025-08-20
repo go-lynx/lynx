@@ -1,10 +1,16 @@
 {
   "schemaVersion": 38,
-  "title": "Lynx Redis Service Dashboard",
+  "title": "Lynx Redis Dashboard",
   "editable": true,
   "timezone": "browser",
   "version": 2,
-  "tags": ["lynx", "redis", "cache", "database", "monitoring"],
+  "tags": [
+    "lynx",
+    "redis",
+    "cache",
+    "database",
+    "monitoring"
+  ],
   "style": "dark",
   "graphTooltip": 1,
   "time": {
@@ -12,7 +18,18 @@
     "to": "now"
   },
   "timepicker": {
-    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
   },
   "templating": {
     "list": [
@@ -20,20 +37,29 @@
         "name": "DS_PROM",
         "type": "datasource",
         "query": "prometheus",
-        "current": {"text": "Prometheus", "value": "Prometheus"},
+        "current": {
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
         "hide": 2
       },
       {
         "name": "rate_interval",
         "type": "custom",
         "query": "1m,5m,15m",
-        "current": {"text": "5m", "value": "5m"},
+        "current": {
+          "text": "5m",
+          "value": "5m"
+        },
         "hide": 0
       },
       {
         "name": "job",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
         "query": "label_values(up, job)",
         "refresh": 2,
         "multi": true,
@@ -43,7 +69,10 @@
       {
         "name": "instance",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
         "query": "label_values(up{job=~\"$job\"}, instance)",
         "refresh": 2,
         "multi": true,
@@ -53,7 +82,10 @@
       {
         "name": "cmd",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
         "query": "label_values(lynx_redis_client_cmd_errors_total, cmd)",
         "refresh": 2,
         "multi": true,
@@ -67,8 +99,16 @@
       "id": 1,
       "type": "stat",
       "title": "Client Startups",
-      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "increase(lynx_redis_client_startup_total{job=~\"$job\",instance=~\"$instance\"}[1d])",
@@ -77,21 +117,38 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "displayMode": "gradient-gauge",
             "gradientMode": "hue",
             "orientation": "auto",
-            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 10},
-              {"color": "red", "value": 50}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
             ]
           },
           "unit": "short"
@@ -102,7 +159,13 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       }
     },
@@ -110,8 +173,16 @@
       "id": 2,
       "type": "stat",
       "title": "Startup Failures",
-      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "increase(lynx_redis_client_startup_failed_total{job=~\"$job\",instance=~\"$instance\"}[1d])",
@@ -120,21 +191,38 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "displayMode": "gradient-gauge",
             "gradientMode": "hue",
             "orientation": "auto",
-            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 1},
-              {"color": "red", "value": 5}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
             ]
           },
           "unit": "short"
@@ -145,7 +233,13 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       }
     },
@@ -153,8 +247,16 @@
       "id": 3,
       "type": "stat",
       "title": "PING Latency",
-      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "rate(lynx_redis_client_ping_latency_seconds_sum{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]) / rate(lynx_redis_client_ping_latency_seconds_count{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
@@ -163,21 +265,38 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "displayMode": "gradient-gauge",
             "gradientMode": "hue",
             "orientation": "auto",
-            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 0.001},
-              {"color": "red", "value": 0.01}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.001
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
             ]
           },
           "unit": "s"
@@ -188,16 +307,30 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       }
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "🔗 Connection Pool",
-      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "title": "Connection Pool",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "lynx_redis_client_pool_total_conns{job=~\"$job\",instance=~\"$instance\"}",
@@ -206,21 +339,38 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "displayMode": "gradient-gauge",
             "gradientMode": "hue",
             "orientation": "auto",
-            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
             "textMode": "auto"
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 50},
-              {"color": "red", "value": 100}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
             ]
           },
           "unit": "short"
@@ -231,7 +381,13 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       }
     },
@@ -239,8 +395,16 @@
       "id": 5,
       "type": "timeseries",
       "title": "Connection Pool Status",
-      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "lynx_redis_client_pool_total_conns{job=~\"$job\",instance=~\"$instance\"}",
@@ -255,7 +419,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -263,22 +429,39 @@
             "drawStyle": "line",
             "fillOpacity": 20,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "short"
@@ -300,9 +483,17 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "🎯 Pool Performance",
-      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "title": "Pool Performance",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "rate(lynx_redis_client_pool_hits_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
@@ -322,7 +513,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -330,22 +523,39 @@
             "drawStyle": "line",
             "fillOpacity": 15,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "none"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "reqps"
@@ -368,8 +578,16 @@
       "id": 7,
       "type": "timeseries",
       "title": "Command Errors by Type",
-      "gridPos": {"x": 0, "y": 12, "w": 24, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum by (cmd) (rate(lynx_redis_client_cmd_errors_total{job=~\"$job\",instance=~\"$instance\",cmd=~\"$cmd\"}[$rate_interval]))",
@@ -379,7 +597,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
@@ -387,22 +607,39 @@
             "drawStyle": "bars",
             "fillOpacity": 80,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            },
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
-            "scaleDistribution": {"type": "linear"},
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {"group": "A", "mode": "normal"},
-            "thresholdsStyle": {"mode": "off"}
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           },
           "unit": "reqps"
@@ -425,8 +662,16 @@
       "id": 8,
       "type": "heatmap",
       "title": "Redis Performance Heatmap",
-      "gridPos": {"x": 0, "y": 20, "w": 24, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
       "targets": [
         {
           "expr": "sum by (le) (rate(lynx_redis_client_ping_latency_seconds_bucket{job=~\"$job\",instance=~\"$instance\"}[5m]))",
@@ -436,16 +681,28 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "palette-classic"},
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
-            "hideFrom": {"legend": false, "tooltip": false, "vis": false}
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "vis": false
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 80}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
             ]
           }
         }
