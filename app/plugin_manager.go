@@ -42,7 +42,7 @@ type TypedPluginManager = PluginManager
 type DefaultPluginManager[T plugins.Plugin] struct {
 	pluginInstances sync.Map // Name() -> Plugin instance
 	pluginList      []plugins.Plugin
-	factory         *factory.TypedPluginFactory
+	factory         *factory.TypedFactory
 	mu              sync.RWMutex
 	runtime         plugins.Runtime
 	config          config.Config
@@ -52,7 +52,7 @@ type DefaultPluginManager[T plugins.Plugin] struct {
 func NewPluginManager[T plugins.Plugin](pluginList ...T) *DefaultPluginManager[T] {
 	manager := &DefaultPluginManager[T]{
 		pluginList: make([]plugins.Plugin, 0),
-		factory:    factory.GlobalTypedPluginFactory(),
+		factory:    factory.GlobalTypedFactory(),
 		runtime:    plugins.NewSimpleRuntime(),
 	}
 

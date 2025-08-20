@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
+	factory.GlobalPluginRegistry().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
 		return NewServiceHttp()
 	})
 }

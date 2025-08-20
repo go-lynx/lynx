@@ -50,8 +50,10 @@ type ServiceHttp struct {
 	requestCounter   *prometheus.CounterVec
 	requestDuration  *prometheus.HistogramVec
 	responseSize     *prometheus.HistogramVec
+	requestSize      *prometheus.HistogramVec
 	errorCounter     *prometheus.CounterVec
 	healthCheckTotal *prometheus.CounterVec
+	inflightRequests *prometheus.GaugeVec
 
 	// 限流器
 	rateLimiter *rate.Limiter
@@ -337,7 +339,13 @@ func (h *ServiceHttp) applyPerformanceConfig() {
 	httpServerField := serverValue.FieldByName("srv")
 
 	if httpServerField.IsValid() && !httpServerField.IsNil() {
-		httpServer := httpServerField.Interface().(*nhttp.Server)
+		// 安全类型断言，避免底层实现变更导致 panic
+		raw := httpServerField.Interface()
+		httpServer, ok := raw.(*nhttp.Server)
+		if !ok {
+			log.Warnf("Underlying HTTP server type unexpected: %T", raw)
+			return
+		}
 
 		// 应用性能配置
 		if h.idleTimeout > 0 {
@@ -352,17 +360,13 @@ func (h *ServiceHttp) applyPerformanceConfig() {
 			log.Infof("Applied KeepAliveTimeout (via ReadHeaderTimeout): %v", h.keepAliveTimeout)
 		}
 
-		// 设置读取头部超时
 		if h.readHeaderTimeout > 0 {
 			httpServer.ReadHeaderTimeout = h.readHeaderTimeout
 			log.Infof("Applied ReadHeaderTimeout: %v", h.readHeaderTimeout)
 		}
 
-		// 设置请求大小限制
-		if h.maxRequestSize > 0 {
-			httpServer.MaxHeaderBytes = int(h.maxRequestSize)
-			log.Infof("Applied MaxRequestSize: %d bytes", h.maxRequestSize)
-		}
+		// 注意：MaxHeaderBytes 仅限制请求头大小，不是请求体大小。
+		// 如需限制请求体，需在处理链路中包裹限制（此处不误用该字段）。
 
 		log.Infof("Performance configurations applied successfully")
 	} else {
@@ -427,4 +431,14 @@ func (h *ServiceHttp) Configure(c any) error {
 
 	// 转换失败，返回配置无效错误
 	return plugins.ErrInvalidConfiguration
+}
+
+// RegisterMetricsGatherer 允许注入外部 Prometheus 注册表到统一 /metrics 聚合
+// 用于某些插件或第三方库维护独立 *prometheus.Registry 的场景
+func (h *ServiceHttp) RegisterMetricsGatherer(g prometheus.Gatherer) {
+	if g == nil {
+		return
+	}
+	// 通过 observability.metrics 聚合
+	metrics.RegisterGatherer(g)
 }

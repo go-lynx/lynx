@@ -206,6 +206,20 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 			// 使用 Info 级别记录请求日志，便于生产环境监控
 			log.InfofCtx(ctx, httpRequestLogFormat, api, endpoint, clientIP, headersStr, reqBody)
 
+			// Inflight + 请求大小埋点
+			if service != nil && service.inflightRequests != nil {
+				service.inflightRequests.WithLabelValues(api).Inc()
+				defer service.inflightRequests.WithLabelValues(api).Dec()
+			}
+
+			if service != nil && service.requestSize != nil {
+				if msg, ok := req.(proto.Message); ok {
+					if data, e := proto.Marshal(msg); e == nil {
+						service.requestSize.WithLabelValues("POST", api).Observe(float64(len(data)))
+					}
+				}
+			}
+
 			// 处理请求
 			reply, err = handler(ctx, req)
 

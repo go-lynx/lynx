@@ -6,10 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"database/sql"
-
-	"github.com/jackc/pgx/v5/stdlib"
-
 	esql "entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
@@ -196,8 +192,16 @@ func (p *DBPgsqlClient) connectWithRetry() (*esql.Driver, error) {
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		log.Infof("attempting to connect to database (attempt %d/%d)", attempt, maxRetryAttempts)
 
-		// 注册数据库驱动
-		sql.Register("postgres", stdlib.GetDefaultDriver())
+		// 记录连接尝试/重试指标
+		if p.prometheusMetrics != nil {
+			p.prometheusMetrics.IncConnectAttempt(p.conf)
+			if attempt > 1 {
+				p.prometheusMetrics.IncConnectRetry(p.conf)
+			}
+		}
+
+		// 注册数据库驱动（根据构建标签，可能启用 hooks 包装）
+		registerDriver()
 
 		// 打开数据库连接
 		drv, err := esql.Open(p.conf.Driver, p.conf.Source)
@@ -209,6 +213,10 @@ func (p *DBPgsqlClient) connectWithRetry() (*esql.Driver, error) {
 				log.Infof("retrying in %v...", retryInterval)
 				time.Sleep(retryInterval)
 				continue
+			}
+			// 最终失败，记录失败指标
+			if p.prometheusMetrics != nil {
+				p.prometheusMetrics.IncConnectFailure(p.conf)
 			}
 			return nil, fmt.Errorf("failed to connect after %d attempts: %w", maxRetryAttempts, lastErr)
 		}
@@ -234,13 +242,24 @@ func (p *DBPgsqlClient) connectWithRetry() (*esql.Driver, error) {
 				time.Sleep(retryInterval)
 				continue
 			}
+			// 最终失败，记录失败指标
+			if p.prometheusMetrics != nil {
+				p.prometheusMetrics.IncConnectFailure(p.conf)
+			}
 			return nil, fmt.Errorf("connection test failed after %d attempts: %w", maxRetryAttempts, lastErr)
 		}
 
 		log.Infof("database connection established successfully on attempt %d", attempt)
+		if p.prometheusMetrics != nil {
+			p.prometheusMetrics.IncConnectSuccess(p.conf)
+		}
 		return drv, nil
 	}
 
+	// 理论上不会到这里（循环里已返回），兜底失败指标
+	if p.prometheusMetrics != nil {
+		p.prometheusMetrics.IncConnectFailure(p.conf)
+	}
 	return nil, fmt.Errorf("failed to establish database connection: %w", lastErr)
 }
 
@@ -251,6 +270,9 @@ func (p *DBPgsqlClient) initPrometheusMetrics() {
 
 	// 创建 Prometheus 指标
 	p.prometheusMetrics = NewPrometheusMetrics(promConfig)
+	// 赋值全局指标/配置指针，供可选 hooks 或其他模块使用
+	globalPgsqlMetrics = p.prometheusMetrics
+	globalPgsqlConf = p.conf
 }
 
 // MetricsGatherer 返回该插件的 Prometheus Gatherer（用于统一注册聚合）
@@ -290,6 +312,9 @@ func (p *DBPgsqlClient) updateStats() {
 func (p *DBPgsqlClient) StartupTasks() error {
 	log.Infof("initializing pgsql database connection")
 
+	// 先初始化 Prometheus 监控（确保连接阶段的指标可被记录）
+	p.initPrometheusMetrics()
+
 	// 使用重试机制连接数据库
 	drv, err := p.connectWithRetry()
 	if err != nil {
@@ -299,9 +324,6 @@ func (p *DBPgsqlClient) StartupTasks() error {
 
 	// 将数据库驱动赋值给实例
 	p.dri = drv
-
-	// 初始化 Prometheus 监控
-	p.initPrometheusMetrics()
 
 	// 更新统计信息
 	p.updateStats()
