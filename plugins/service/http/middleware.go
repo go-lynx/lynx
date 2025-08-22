@@ -167,7 +167,7 @@ func (h *ServiceHttp) metricsMiddleware() middleware.Middleware {
 					method = "POST" // Kratos uses POST by default
 				}
 				path = tr.Operation() // Operation path
-				route = path // Use operation path as route for now
+				route = path          // Use operation path as route for now
 			}
 
 			// Increment active connections
