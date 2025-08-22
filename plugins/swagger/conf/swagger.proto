@@ -1,0 +1,430 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.swagger;
+
+option go_package = "github.com/go-lynx/lynx/plugins/swagger/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Swagger configuration
+message Swagger {
+  // Enable Swagger documentation
+  bool enable = 1;
+  
+  // Swagger UI configuration
+  UI ui = 2;
+  
+  // API documentation configuration
+  API api = 3;
+  
+  // Security configuration
+  Security security = 4;
+  
+  // Server configuration
+  Server server = 5;
+  
+  // Documentation generation configuration
+  Generation generation = 6;
+  
+  // Custom configuration
+  Custom custom = 7;
+}
+
+// Swagger UI configuration
+message UI {
+  // Enable Swagger UI
+  bool enable = 1;
+  
+  // UI path (default: /swagger)
+  string path = 2;
+  
+  // UI title
+  string title = 3;
+  
+  // UI description
+  string description = 4;
+  
+  // UI version
+  string version = 5;
+  
+  // UI theme (default, dark, light)
+  string theme = 6;
+  
+  // Enable deep linking
+  bool deep_linking = 7;
+  
+  // Enable syntax highlighting
+  bool syntax_highlighting = 8;
+  
+  // Enable try it out feature
+  bool try_it_out_enabled = 9;
+  
+  // Enable request interceptor
+  bool request_interceptor = 10;
+  
+  // Enable response interceptor
+  bool response_interceptor = 11;
+  
+  // Custom CSS URL
+  string custom_css_url = 12;
+  
+  // Custom JS URL
+  string custom_js_url = 13;
+  
+  // OAuth2 configuration
+  OAuth2 oauth2 = 14;
+}
+
+// OAuth2 configuration for Swagger UI
+message OAuth2 {
+  // Client ID
+  string client_id = 1;
+  
+  // Client secret
+  string client_secret = 2;
+  
+  // Realm
+  string realm = 3;
+  
+  // App name
+  string app_name = 4;
+  
+  // Scopes
+  repeated string scopes = 5;
+  
+  // Use basic authentication
+  bool use_basic_authentication = 6;
+  
+  // Use password flow
+  bool use_password_flow = 7;
+  
+  // Use implicit flow
+  bool use_implicit_flow = 8;
+  
+  // Use access code flow
+  bool use_access_code_flow = 9;
+}
+
+// API documentation configuration
+message API {
+  // API title
+  string title = 1;
+  
+  // API description
+  string description = 2;
+  
+  // API version
+  string version = 3;
+  
+  // API terms of service
+  string terms_of_service = 4;
+  
+  // API contact information
+  Contact contact = 5;
+  
+  // API license information
+  License license = 6;
+  
+  // API host
+  string host = 7;
+  
+  // API base path
+  string base_path = 8;
+  
+  // API schemes (http, https, ws, wss)
+  repeated string schemes = 9;
+  
+  // API consumes (content types)
+  repeated string consumes = 10;
+  
+  // API produces (content types)
+  repeated string produces = 11;
+  
+  // API tags
+  repeated Tag tags = 12;
+  
+  // API external docs
+  ExternalDocs external_docs = 13;
+}
+
+// Contact information
+message Contact {
+  // Contact name
+  string name = 1;
+  
+  // Contact URL
+  string url = 2;
+  
+  // Contact email
+  string email = 3;
+}
+
+// License information
+message License {
+  // License name
+  string name = 1;
+  
+  // License URL
+  string url = 2;
+}
+
+// API tag information
+message Tag {
+  // Tag name
+  string name = 1;
+  
+  // Tag description
+  string description = 2;
+  
+  // Tag external docs
+  ExternalDocs external_docs = 3;
+}
+
+// External documentation
+message ExternalDocs {
+  // External docs description
+  string description = 1;
+  
+  // External docs URL
+  string url = 2;
+}
+
+// Security configuration
+message Security {
+  // Enable security
+  bool enable = 1;
+  
+  // Security definitions
+  repeated SecurityDefinition definitions = 2;
+  
+  // Global security requirements
+  repeated SecurityRequirement global_requirements = 3;
+  
+  // API key configuration
+  APIKey api_key = 4;
+  
+  // Basic authentication
+  BasicAuth basic_auth = 5;
+  
+  // OAuth2 configuration
+  OAuth2Config oauth2_config = 6;
+  
+  // JWT configuration
+  JWT jwt = 7;
+}
+
+// Security definition
+message SecurityDefinition {
+  // Security definition name
+  string name = 1;
+  
+  // Security definition type
+  string type = 2;
+  
+  // Security definition description
+  string description = 3;
+  
+  // Security definition in (header, query, cookie)
+  string in = 4;
+  
+  // Security definition name
+  string name_in = 5;
+  
+  // Security definition flow
+  string flow = 6;
+  
+  // Security definition authorization URL
+  string authorization_url = 7;
+  
+  // Security definition token URL
+  string token_url = 8;
+  
+  // Security definition scopes
+  map<string, string> scopes = 9;
+}
+
+// Security requirement
+message SecurityRequirement {
+  // Security requirement name
+  string name = 1;
+  
+  // Security requirement scopes
+  repeated string scopes = 2;
+}
+
+// API key configuration
+message APIKey {
+  // API key name
+  string name = 1;
+  
+  // API key in (header, query, cookie)
+  string in = 2;
+  
+  // API key description
+  string description = 3;
+}
+
+// Basic authentication configuration
+message BasicAuth {
+  // Enable basic authentication
+  bool enable = 1;
+  
+  // Basic auth description
+  string description = 2;
+}
+
+// OAuth2 configuration for security
+message OAuth2Config {
+  // Enable OAuth2
+  bool enable = 1;
+  
+  // OAuth2 description
+  string description = 2;
+  
+  // OAuth2 flow
+  string flow = 3;
+  
+  // OAuth2 authorization URL
+  string authorization_url = 4;
+  
+  // OAuth2 token URL
+  string token_url = 5;
+  
+  // OAuth2 scopes
+  map<string, string> scopes = 6;
+}
+
+// JWT configuration
+message JWT {
+  // Enable JWT
+  bool enable = 1;
+  
+  // JWT description
+  string description = 2;
+  
+  // JWT name
+  string name = 3;
+  
+  // JWT in (header, query, cookie)
+  string in = 4;
+}
+
+// Server configuration
+message Server {
+  // Server URL
+  string url = 1;
+  
+  // Server description
+  string description = 2;
+  
+  // Server variables
+  repeated ServerVariable variables = 3;
+}
+
+// Server variable
+message ServerVariable {
+  // Variable name
+  string name = 1;
+  
+  // Variable default value
+  string default_value = 2;
+  
+  // Variable description
+  string description = 3;
+  
+  // Variable enum values
+  repeated string enum_values = 4;
+}
+
+// Documentation generation configuration
+message Generation {
+  // Enable auto-generation
+  bool auto_generate = 1;
+  
+  // Generation interval
+  google.protobuf.Duration generation_interval = 2;
+  
+  // Output format (json, yaml)
+  string output_format = 3;
+  
+  // Output path
+  string output_path = 4;
+  
+  // Include deprecated APIs
+  bool include_deprecated = 5;
+  
+  // Include examples
+  bool include_examples = 6;
+  
+  // Include descriptions
+  bool include_descriptions = 7;
+  
+  // Include response schemas
+  bool include_response_schemas = 8;
+  
+  // Include request schemas
+  bool include_request_schemas = 9;
+  
+  // Include security definitions
+  bool include_security_definitions = 10;
+  
+  // Include tags
+  bool include_tags = 11;
+  
+  // Include external docs
+  bool include_external_docs = 12;
+  
+  // Custom templates path
+  string custom_templates_path = 13;
+  
+  // Custom functions path
+  string custom_functions_path = 14;
+}
+
+// Custom configuration
+message Custom {
+  // Custom CSS
+  string custom_css = 1;
+  
+  // Custom JavaScript
+  string custom_js = 2;
+  
+  // Custom HTML
+  string custom_html = 3;
+  
+  // Custom favicon
+  string custom_favicon = 4;
+  
+  // Custom logo
+  string custom_logo = 5;
+  
+  // Custom footer
+  string custom_footer = 6;
+  
+  // Custom header
+  string custom_header = 7;
+  
+  // Custom navigation
+  string custom_navigation = 8;
+  
+  // Custom sidebar
+  string custom_sidebar = 9;
+  
+  // Custom search
+  string custom_search = 10;
+  
+  // Custom authentication
+  string custom_authentication = 11;
+  
+  // Custom authorization
+  string custom_authorization = 12;
+  
+  // Custom validation
+  string custom_validation = 13;
+  
+  // Custom transformation
+  string custom_transformation = 14;
+  
+  // Custom formatting
+  string custom_formatting = 15;
+}

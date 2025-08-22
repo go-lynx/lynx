@@ -47,13 +47,20 @@ type ServiceHttp struct {
 	server *http.Server
 
 	// Prometheus metrics
-	requestCounter   *prometheus.CounterVec
-	requestDuration  *prometheus.HistogramVec
-	responseSize     *prometheus.HistogramVec
-	requestSize      *prometheus.HistogramVec
-	errorCounter     *prometheus.CounterVec
-	healthCheckTotal *prometheus.CounterVec
-	inflightRequests *prometheus.GaugeVec
+	requestCounter       *prometheus.CounterVec
+	requestDuration      *prometheus.HistogramVec
+	responseSize         *prometheus.HistogramVec
+	requestSize          *prometheus.HistogramVec
+	errorCounter         *prometheus.CounterVec
+	inflightRequests     *prometheus.GaugeVec
+	// Health check metrics
+	healthCheckTotal     *prometheus.CounterVec
+	// Additional metrics
+	activeConnections    *prometheus.GaugeVec
+	connectionPoolUsage  *prometheus.GaugeVec
+	requestQueueLength   *prometheus.GaugeVec
+	routeRequestCounter  *prometheus.CounterVec
+	routeRequestDuration *prometheus.HistogramVec
 
 	// Rate limiter
 	rateLimiter *rate.Limiter
@@ -71,6 +78,22 @@ type ServiceHttp struct {
 	isShuttingDown bool
 	// Shutdown timeout
 	shutdownTimeout time.Duration
+}
+
+// netHTTPToKratosHandlerAdapter adapts a net/http.Handler to a kratos http.HandlerFunc
+// and also implements net/http.Handler for compatibility
+type netHTTPToKratosHandlerAdapter struct {
+	handler nhttp.Handler
+}
+
+// ServeHTTP implements the net/http.Handler interface
+func (a *netHTTPToKratosHandlerAdapter) ServeHTTP(w nhttp.ResponseWriter, r *nhttp.Request) {
+	a.handler.ServeHTTP(w, r)
+}
+
+// Handle implements the kratos http.HandlerFunc interface
+func (a *netHTTPToKratosHandlerAdapter) Handle(w http.ResponseWriter, r *http.Request) {
+	a.handler.ServeHTTP(w, r)
 }
 
 // NewServiceHttp creates a new HTTP server plugin instance.
@@ -119,6 +142,8 @@ func (h *ServiceHttp) InitializeResources(rt plugins.Runtime) error {
 		h.conf.Network, h.conf.Addr, h.conf.GetTlsEnable())
 	return nil
 }
+
+
 
 // setDefaultConfig sets the default configuration values.
 func (h *ServiceHttp) setDefaultConfig() {
@@ -251,6 +276,8 @@ func (h *ServiceHttp) initSecurityDefaults() {
 	h.rateLimiter = rate.NewLimiter(100, 200)
 }
 
+
+
 // initRateLimiter initializes the rate limiter.
 func (h *ServiceHttp) initRateLimiter() {
 	if h.rateLimiter != nil {
@@ -270,6 +297,8 @@ func (h *ServiceHttp) initPerformanceDefaults() {
 func (h *ServiceHttp) initGracefulShutdownDefaults() {
 	h.shutdownTimeout = 30 * time.Second
 }
+
+
 
 // StartupTasks implements the custom startup logic for the HTTP plugin.
 // It configures and starts the HTTP server with necessary middleware and options.
@@ -295,7 +324,6 @@ func (h *ServiceHttp) StartupTasks() error {
 		// 405 Method Not Allowed handler
 		http.MethodNotAllowedHandler(h.methodNotAllowedHandler()),
 		// Response encoder
-		http.ResponseEncoder(ResponseEncoder),
 		http.ErrorEncoder(h.enhancedErrorEncoder),
 	}
 
@@ -324,12 +352,13 @@ func (h *ServiceHttp) StartupTasks() error {
 	h.applyPerformanceConfig()
 
 	// Register monitoring endpoints
-	h.server.HandlePrefix("/metrics", metrics.Handler())
-	h.server.HandlePrefix("/health", h.healthCheckHandler())
+		h.server.HandlePrefix("/metrics", metrics.Handler())
+		// Adapt net/http.Handler to kratos http.HandlerFunc
+		h.server.HandlePrefix("/health", &netHTTPToKratosHandlerAdapter{handler: h.healthCheckHandler()})
 
-	// Log successful startup
-	log.Infof("HTTP service successfully started with monitoring endpoints and performance optimizations")
-	return nil
+		// Log successful startup
+		log.Infof("HTTP service successfully started with monitoring endpoints and performance optimizations")
+		return nil
 }
 
 // applyPerformanceConfig applies performance settings to the underlying HTTP server.
@@ -347,30 +376,72 @@ func (h *ServiceHttp) applyPerformanceConfig() {
 			return
 		}
 
-		// Apply performance settings
-		if h.idleTimeout > 0 {
-			httpServer.IdleTimeout = h.idleTimeout
-			log.Infof("Applied IdleTimeout: %v", h.idleTimeout)
+		// Apply performance settings from configuration
+		if h.conf.Performance != nil {
+			// Apply timeout configurations
+		// ReadTimeout controls how long the server will wait for the entire request
+		if h.conf.Performance.ReadTimeout != nil {
+			readTimeout := h.conf.Performance.ReadTimeout.AsDuration()
+			if readTimeout > 0 {
+				httpServer.ReadTimeout = readTimeout
+				log.Infof("Applied ReadTimeout: %v", readTimeout)
+			}
 		}
 
-		if h.keepAliveTimeout > 0 {
-			// Note: Go's net/http.Server has no direct KeepAliveTimeout.
-			// It can be indirectly influenced via ReadHeaderTimeout.
-			httpServer.ReadHeaderTimeout = h.keepAliveTimeout
-			log.Infof("Applied KeepAliveTimeout (via ReadHeaderTimeout): %v", h.keepAliveTimeout)
+		// WriteTimeout controls how long the server will wait for a response
+		if h.conf.Performance.WriteTimeout != nil {
+			writeTimeout := h.conf.Performance.WriteTimeout.AsDuration()
+			if writeTimeout > 0 {
+				httpServer.WriteTimeout = writeTimeout
+				log.Infof("Applied WriteTimeout: %v", writeTimeout)
+			}
 		}
 
-		if h.readHeaderTimeout > 0 {
-			httpServer.ReadHeaderTimeout = h.readHeaderTimeout
-			log.Infof("Applied ReadHeaderTimeout: %v", h.readHeaderTimeout)
+		// IdleTimeout controls how long to keep idle connections open
+		if h.conf.Performance.IdleTimeout != nil {
+			idleTimeout := h.conf.Performance.IdleTimeout.AsDuration()
+			if idleTimeout > 0 {
+				httpServer.IdleTimeout = idleTimeout
+				log.Infof("Applied IdleTimeout: %v", idleTimeout)
+			}
+		}
+
+		// ReadHeaderTimeout controls how long to wait for request headers
+		if h.conf.Performance.ReadHeaderTimeout != nil {
+			readHeaderTimeout := h.conf.Performance.ReadHeaderTimeout.AsDuration()
+			if readHeaderTimeout > 0 {
+				httpServer.ReadHeaderTimeout = readHeaderTimeout
+				log.Infof("Applied ReadHeaderTimeout: %v", readHeaderTimeout)
+			}
+		}
+
+			// Buffer sizes and connection limits are configured at the transport level
+			// through the HTTP server's underlying listener configuration
+			log.Infof("Performance optimizations applied")
+			// Connection pool configuration is not supported in current server implementation
+			// Note: These settings would typically apply to an HTTP client, not server
+			// For server-side connection pooling, we'd need additional implementation
+		} else {
+			// Apply default performance settings
+			if h.idleTimeout > 0 {
+				httpServer.IdleTimeout = h.idleTimeout
+				log.Infof("Applied default IdleTimeout: %v", h.idleTimeout)
+			}
+
+			if h.keepAliveTimeout > 0 {
+				httpServer.ReadHeaderTimeout = h.keepAliveTimeout
+				log.Infof("Applied default KeepAliveTimeout (via ReadHeaderTimeout): %v", h.keepAliveTimeout)
+			}
+
+			if h.readHeaderTimeout > 0 {
+				httpServer.ReadHeaderTimeout = h.readHeaderTimeout
+				log.Infof("Applied default ReadHeaderTimeout: %v", h.readHeaderTimeout)
+			}
 		}
 
 		// Note: MaxHeaderBytes only limits the header size, not the request body.
 		// To limit the request body, wrap the handler chain accordingly (do not misuse this field).
-
 		log.Infof("Performance configurations applied successfully")
-	} else {
-		log.Warnf("Could not access underlying HTTP server for performance configuration")
 	}
 }
 

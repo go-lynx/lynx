@@ -7,36 +7,36 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// init 函数是 Go 语言的特殊函数，在包被加载时自动执行。
-// 此函数的作用是将 Redis 客户端插件注册到全局插件工厂中。
+// init function is a special function in Go that is automatically executed when the package is loaded.
+// This function registers the Redis client plugin to the global plugin factory.
 func init() {
-	// 调用全局插件工厂的 RegisterPlugin 方法进行插件注册。
-	// 第一个参数 pluginName 为插件的唯一名称，用于标识该插件。
-	// 第二个参数 confPrefix 是配置前缀，用于从配置中读取该插件相关的配置信息。
-	// 第三个参数是一个匿名函数，该函数返回一个 plugins.Plugin 接口类型的实例，
-	// 通过调用 NewRedisClient 函数创建一个新的 Redis 客户端插件实例。
+	// Call the RegisterPlugin method of the global plugin factory to register the plugin.
+	// The first parameter pluginName is the unique name of the plugin, used to identify the plugin.
+	// The second parameter confPrefix is the configuration prefix, used to read plugin-related configuration from the config.
+	// The third parameter is an anonymous function that returns an instance of plugins.Plugin interface type,
+	// by calling the NewRedisClient function to create a new Redis client plugin instance.
 	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
 		return NewRedisClient()
 	})
 }
 
-// GetRedis 函数用于获取 Redis 客户端实例。
-// 它通过全局 Lynx 应用实例获取插件管理器，再根据插件名称获取对应的插件实例，
-// 最后将插件实例转换为 *PlugRedis 类型并返回其 rdb 字段，即 Redis 客户端。
-// GetRedis 返回底层 *redis.Client，仅在单机模式下可用；若为 Cluster/Sentinel 返回 nil。
+// GetRedis function is used to get the Redis client instance.
+// It gets the plugin manager through the global Lynx application instance, then gets the corresponding plugin instance by plugin name,
+// finally converts the plugin instance to *PlugRedis type and returns its rdb field, which is the Redis client.
+// GetRedis returns the underlying *redis.Client, only available in single node mode; returns nil for Cluster/Sentinel.
 func GetRedis() *redis.Client {
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
 	if plugin == nil {
 		return nil
 	}
-	// 尝试断言为 *redis.Client（单机）
+	// Try to assert as *redis.Client (single node)
 	if c, ok := plugin.(*PlugRedis).rdb.(*redis.Client); ok {
 		return c
 	}
 	return nil
 }
 
-// GetUniversalRedis 返回通用客户端，可用于单机/集群/哨兵模式。
+// GetUniversalRedis returns the universal client, usable for single node/cluster/sentinel modes.
 func GetUniversalRedis() redis.UniversalClient {
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
 	if plugin == nil {

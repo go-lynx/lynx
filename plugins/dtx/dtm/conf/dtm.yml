@@ -1,0 +1,21 @@
+# DTM distributed transaction manager configuration example
+lynx:
+  dtm:
+    # Whether to enable DTM plugin
+    enabled: true
+    # DTM server HTTP address
+    server_url: "http://localhost:36789/api/dtmsvr"
+    # DTM server gRPC address (optional)
+    grpc_server: "localhost:36790"
+    # Request timeout (seconds)
+    timeout: 10
+    # Retry interval (seconds)
+    retry_interval: 10
+    # Global transaction timeout (seconds)
+    transaction_timeout: 60
+    # Branch transaction timeout (seconds)
+    branch_timeout: 30
+    # Request headers that need to be passed through
+    pass_through_headers:
+      - "X-Request-ID"
+      - "X-User-ID"

@@ -6,27 +6,27 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
-// 默认配置常量
+// Default configuration constants
 const (
-	// 命名空间相关
+	// Namespace related
 	DefaultNamespace = "default"
 
-	// 服务权重相关
+	// Service weight related
 	DefaultWeight = 100
 	MinWeight     = 1
 	MaxWeight     = 1000
 
-	// TTL 相关
+	// TTL related
 	DefaultTTL = 30
 	MinTTL     = 5
 	MaxTTL     = 300
 
-	// 超时相关
+	// Timeout related
 	DefaultTimeoutSeconds = 10
 	MinTimeoutSeconds     = 1
 	MaxTimeoutSeconds     = 60
 
-	// 重试相关
+	// Retry related
 	DefaultMaxRetryTimes = 3
 	MinRetryTimes        = 0
 	MaxRetryTimes        = 10
@@ -34,39 +34,39 @@ const (
 	MinRetryInterval     = 100 * time.Millisecond
 	MaxRetryInterval     = 30 * time.Second
 
-	// 熔断器相关
+	// Circuit breaker related
 	DefaultCircuitBreakerThreshold = 0.5
 	MinCircuitBreakerThreshold     = 0.1
 	MaxCircuitBreakerThreshold     = 0.9
 
-	// 健康检查相关
+	// Health check related
 	DefaultHealthCheckInterval = 30 * time.Second
 	MinHealthCheckInterval     = 5 * time.Second
 	MaxHealthCheckInterval     = 300 * time.Second
 
-	// 优雅关闭相关
+	// Graceful shutdown related
 	DefaultShutdownTimeout = 30 * time.Second
 	MinShutdownTimeout     = 5 * time.Second
 	MaxShutdownTimeout     = 300 * time.Second
 
-	// 负载均衡类型
+	// Load balancer types
 	LoadBalancerTypeWeightedRandom = "weighted_random"
 	LoadBalancerTypeRingHash       = "ring_hash"
 	LoadBalancerTypeMaglev         = "maglev"
 	LoadBalancerTypeL5CST          = "l5cst"
 
-	// 限流类型
+	// Rate limit types
 	RateLimitTypeLocal  = "local"
 	RateLimitTypeGlobal = "global"
 
-	// 日志级别
+	// Log levels
 	LogLevelDebug = "debug"
 	LogLevelInfo  = "info"
 	LogLevelWarn  = "warn"
 	LogLevelError = "error"
 )
 
-// 支持的负载均衡类型
+// Supported load balancer types
 var SupportedLoadBalancerTypes = []string{
 	LoadBalancerTypeWeightedRandom,
 	LoadBalancerTypeRingHash,
@@ -74,13 +74,13 @@ var SupportedLoadBalancerTypes = []string{
 	LoadBalancerTypeL5CST,
 }
 
-// 支持的限流类型
+// Supported rate limit types
 var SupportedRateLimitTypes = []string{
 	RateLimitTypeLocal,
 	RateLimitTypeGlobal,
 }
 
-// 支持的日志级别
+// Supported log levels
 var SupportedLogLevels = []string{
 	LogLevelDebug,
 	LogLevelInfo,
@@ -88,22 +88,22 @@ var SupportedLogLevels = []string{
 	LogLevelError,
 }
 
-// GetDefaultTimeout 获取默认超时时间
+// GetDefaultTimeout get default timeout duration
 func GetDefaultTimeout() *durationpb.Duration {
 	return &durationpb.Duration{Seconds: DefaultTimeoutSeconds}
 }
 
-// GetDefaultHealthCheckInterval 获取默认健康检查间隔
+// GetDefaultHealthCheckInterval get default health check interval
 func GetDefaultHealthCheckInterval() *durationpb.Duration {
 	return &durationpb.Duration{Seconds: int64(DefaultHealthCheckInterval.Seconds())}
 }
 
-// GetDefaultRetryInterval 获取默认重试间隔
+// GetDefaultRetryInterval get default retry interval
 func GetDefaultRetryInterval() *durationpb.Duration {
 	return &durationpb.Duration{Seconds: int64(DefaultRetryInterval.Seconds())}
 }
 
-// GetDefaultShutdownTimeout 获取默认关闭超时
+// GetDefaultShutdownTimeout get default shutdown timeout
 func GetDefaultShutdownTimeout() *durationpb.Duration {
 	return &durationpb.Duration{Seconds: int64(DefaultShutdownTimeout.Seconds())}
 }

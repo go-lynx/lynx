@@ -27,7 +27,7 @@ func NewExamplePlugin(name string) *ExamplePlugin {
 func (p *ExamplePlugin) Initialize(plugin plugins.Plugin, rt plugins.Runtime) error {
 	fmt.Printf("Plugin %s initializing...\n", p.name)
 
-	// 注册私有资源
+	// Register private resources
 	if err := rt.RegisterPrivateResource("private_config", map[string]string{
 		"plugin_name": p.name,
 		"created_at":  time.Now().Format(time.RFC3339),
@@ -35,12 +35,12 @@ func (p *ExamplePlugin) Initialize(plugin plugins.Plugin, rt plugins.Runtime) er
 		return err
 	}
 
-	// 注册共享资源
+	// Register shared resources
 	if err := rt.RegisterSharedResource("shared_counter", 0); err != nil {
 		return err
 	}
 
-	// 发出初始化事件
+	// Emit initialization event
 	rt.EmitPluginEvent(p.name, "initialized", map[string]any{
 		"timestamp": time.Now().Unix(),
 		"status":    "ready",
@@ -52,7 +52,7 @@ func (p *ExamplePlugin) Initialize(plugin plugins.Plugin, rt plugins.Runtime) er
 func (p *ExamplePlugin) Start(plugin plugins.Plugin) error {
 	fmt.Printf("Plugin %s starting...\n", p.name)
 
-	// 发出启动事件
+	// Emit start event
 	p.EmitEvent(plugins.PluginEvent{
 		Type:     "started",
 		PluginID: p.name,
@@ -70,7 +70,7 @@ func (p *ExamplePlugin) Start(plugin plugins.Plugin) error {
 func (p *ExamplePlugin) Stop(plugin plugins.Plugin) error {
 	fmt.Printf("Plugin %s stopping...\n", p.name)
 
-	// 发出停止事件
+	// Emit stop event
 	p.EmitEvent(plugins.PluginEvent{
 		Type:     "stopped",
 		PluginID: p.name,
@@ -93,7 +93,7 @@ func (p *ExamplePlugin) GetDependencies() []plugins.Dependency {
 	return []plugins.Dependency{}
 }
 
-// EventListener 事件监听器
+// EventListener event listener
 type EventListener struct {
 	name string
 }

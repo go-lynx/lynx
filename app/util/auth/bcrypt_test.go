@@ -5,24 +5,24 @@ import (
 	"testing"
 )
 
-// TestBcrypt 进行 bcrypt 加密和解密校验的单元测试
+// TestBcrypt unit test for bcrypt encryption and decryption verification
 func TestBcrypt(t *testing.T) {
-	// 定义明文密码
+	// Define plaintext password
 	plaintext := "123"
-	// 调用 HashPassword 生成哈希
+	// Call HashPassword to generate hash
 	encryption, err := HashPassword(plaintext, 10)
-	// 检查加密过程中是否出现错误
+	// Check if there is an error during encryption
 	if err != nil {
-		// 若出现错误，使用 panic 终止程序并输出错误信息
+		// If there is an error, use panic to terminate the program and output error message
 		panic(err)
 	}
-	// 打印加密后的密文
-	fmt.Printf("密文：%s\n", encryption)
-	// 调用 CheckPassword 对明文和密文进行校验
+	// Print the encrypted ciphertext
+	fmt.Printf("Ciphertext: %s\n", encryption)
+	// Call CheckPassword to verify plaintext and ciphertext
 	check := CheckPassword(encryption, plaintext)
-	// 检查校验结果是否为 false
+	// Check if the verification result is false
 	if !check {
-		// 若校验失败，使用 panic 终止程序并输出错误信息
+		// If verification fails, use panic to terminate the program and output error message
 		panic("check error")
 	}
 }

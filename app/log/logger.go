@@ -304,7 +304,6 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	}
 
 	// Log successful initialization
-	// 记录日志组件初始化成功的信息
 	lHelper.Info("lynx application logging component initialized successfully")
 
 	return nil

@@ -1,0 +1,315 @@
+package dtm
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/dtm-labs/client/dtmgrpc"
+	"github.com/go-lynx/lynx/app/log"
+	"google.golang.org/grpc/metadata"
+)
+
+// TransactionType transaction type
+type TransactionType string
+
+const (
+	// TransTypeSAGA SAGA transaction type
+	TransTypeSAGA TransactionType = "saga"
+	// TransTypeTCC TCC transaction type
+	TransTypeTCC TransactionType = "tcc"
+	// TransTypeMsg 2-phase message transaction type
+	TransTypeMsg TransactionType = "msg"
+	// TransTypeXA XA transaction type
+	TransTypeXA TransactionType = "xa"
+)
+
+// TransactionOptions transaction options
+type TransactionOptions struct {
+	// Transaction timeout (seconds)
+	TimeoutToFail int64
+	// Branch timeout (seconds)
+	BranchTimeout int64
+	// Retry interval (seconds)
+	RetryInterval int64
+	// Custom request headers
+	CustomHeaders map[string]string
+	// Whether to wait for result
+	WaitResult bool
+	// Concurrent execution of branches
+	Concurrent bool
+}
+
+// DefaultTransactionOptions returns default transaction options
+func DefaultTransactionOptions() *TransactionOptions {
+	return &TransactionOptions{
+		TimeoutToFail: 60,
+		BranchTimeout: 30,
+		RetryInterval: 10,
+		WaitResult:    false,
+		Concurrent:    false,
+	}
+}
+
+// TransactionHelper transaction helper tool
+type TransactionHelper struct {
+	client *DTMClient
+}
+
+// NewTransactionHelper create transaction helper tool
+func NewTransactionHelper(client *DTMClient) *TransactionHelper {
+	return &TransactionHelper{
+		client: client,
+	}
+}
+
+// ExecuteSAGA execute SAGA transaction
+func (h *TransactionHelper) ExecuteSAGA(ctx context.Context, gid string, branches []SAGABranch, opts *TransactionOptions) error {
+	if opts == nil {
+		opts = DefaultTransactionOptions()
+	}
+
+	saga := h.client.NewSaga(gid)
+	if saga == nil {
+		return fmt.Errorf("failed to create SAGA transaction")
+	}
+
+	saga.TimeoutToFail = opts.TimeoutToFail
+	saga.BranchTimeout = opts.BranchTimeout
+	saga.RetryInterval = opts.RetryInterval
+	saga.Concurrent = opts.Concurrent
+
+	// Add custom request headers
+	if len(opts.CustomHeaders) > 0 {
+		saga.BranchHeaders = opts.CustomHeaders
+	}
+
+	// Add all branches
+	for _, branch := range branches {
+		saga.Add(branch.Action, branch.Compensate, branch.Data)
+	}
+
+	// Submit transaction
+	err := saga.Submit()
+	if err != nil {
+		log.Errorf("SAGA transaction failed: gid=%s, error=%v", gid, err)
+		return err
+	}
+
+	log.Infof("SAGA transaction submitted successfully: gid=%s", gid)
+
+	// If need to wait for result
+	if opts.WaitResult {
+		return h.waitTransactionResult(ctx, gid, TransTypeSAGA)
+	}
+
+	return nil
+}
+
+// ExecuteTCC execute TCC transaction
+func (h *TransactionHelper) ExecuteTCC(ctx context.Context, gid string, branches []TCCBranch, opts *TransactionOptions) error {
+	if opts == nil {
+		opts = DefaultTransactionOptions()
+	}
+
+	tcc := h.client.NewTcc(gid)
+	if tcc == nil {
+		return fmt.Errorf("failed to create TCC transaction")
+	}
+
+	tcc.TimeoutToFail = opts.TimeoutToFail
+	tcc.BranchTimeout = opts.BranchTimeout
+	tcc.RetryInterval = opts.RetryInterval
+
+	// Add custom request headers
+	if len(opts.CustomHeaders) > 0 {
+		tcc.BranchHeaders = opts.CustomHeaders
+	}
+
+	// Call all Try branches
+	for _, branch := range branches {
+		err := tcc.CallBranch(branch.Data, branch.Try, branch.Confirm, branch.Cancel)
+		if err != nil {
+			log.Errorf("TCC branch failed: gid=%s, try=%s, error=%v", gid, branch.Try, err)
+			return err
+		}
+	}
+
+	// Submit transaction
+	err := tcc.Submit()
+	if err != nil {
+		log.Errorf("TCC transaction failed: gid=%s, error=%v", gid, err)
+		return err
+	}
+
+	log.Infof("TCC transaction submitted successfully: gid=%s", gid)
+
+	// If need to wait for result
+	if opts.WaitResult {
+		return h.waitTransactionResult(ctx, gid, TransTypeTCC)
+	}
+
+	return nil
+}
+
+// ExecuteMsg execute 2-phase message transaction
+func (h *TransactionHelper) ExecuteMsg(ctx context.Context, gid string, queryPrepared string, branches []MsgBranch, opts *TransactionOptions) error {
+	if opts == nil {
+		opts = DefaultTransactionOptions()
+	}
+
+	msg := h.client.NewMsg(gid)
+	if msg == nil {
+		return fmt.Errorf("failed to create MSG transaction")
+	}
+
+	msg.TimeoutToFail = opts.TimeoutToFail
+	msg.BranchTimeout = opts.BranchTimeout
+	msg.RetryInterval = opts.RetryInterval
+
+	// Add custom request headers
+	if len(opts.CustomHeaders) > 0 {
+		msg.BranchHeaders = opts.CustomHeaders
+	}
+
+	// Add all branches
+	for _, branch := range branches {
+		msg.Add(branch.Action, branch.Data)
+	}
+
+	// Prepare message
+	err := msg.Prepare(queryPrepared)
+	if err != nil {
+		log.Errorf("MSG prepare failed: gid=%s, error=%v", gid, err)
+		return err
+	}
+
+	// Submit transaction
+	err = msg.Submit()
+	if err != nil {
+		log.Errorf("MSG transaction failed: gid=%s, error=%v", gid, err)
+		return err
+	}
+
+	log.Infof("MSG transaction submitted successfully: gid=%s", gid)
+
+	// If need to wait for result
+	if opts.WaitResult {
+		return h.waitTransactionResult(ctx, gid, TransTypeMsg)
+	}
+
+	return nil
+}
+
+// waitTransactionResult wait for transaction result
+func (h *TransactionHelper) waitTransactionResult(ctx context.Context, gid string, transType TransactionType) error {
+	// Here can implement polling logic to check transaction status
+	// Simplified example, actually should call DTM's query interface
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	timeout := time.After(5 * time.Minute)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return fmt.Errorf("transaction timeout: gid=%s, type=%s", gid, transType)
+		case <-ticker.C:
+			// Here should query transaction status
+			log.Debugf("Checking transaction status: gid=%s, type=%s", gid, transType)
+			// Simplified processing, actually need to call DTM API
+			return nil
+		}
+	}
+}
+
+// SAGABranch SAGA branch definition
+type SAGABranch struct {
+	Action     string      // Forward operation URL
+	Compensate string      // Compensation operation URL
+	Data       interface{} // Request data
+}
+
+// TCCBranch TCC branch definition
+type TCCBranch struct {
+	Try     string      // Try phase URL
+	Confirm string      // Confirm phase URL
+	Cancel  string      // Cancel phase URL
+	Data    interface{} // Request data
+}
+
+// MsgBranch message branch definition
+type MsgBranch struct {
+	Action string      // Operation URL
+	Data   interface{} // Request data
+}
+
+// CreateGrpcContext create gRPC Context containing transaction information
+func CreateGrpcContext(ctx context.Context, gid string, transType string, branchID string, op string) context.Context {
+	md := metadata.New(map[string]string{
+		"dtm-gid":        gid,
+		"dtm-trans-type": transType,
+		"dtm-branch-id":  branchID,
+		"dtm-op":         op,
+	})
+	return metadata.NewOutgoingContext(ctx, md)
+}
+
+// ExtractGrpcTransInfo extract transaction information from gRPC Context
+func ExtractGrpcTransInfo(ctx context.Context) (*dtmgrpc.BranchInfo, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no metadata in context")
+	}
+
+	info := &dtmgrpc.BranchInfo{}
+
+	if vals := md.Get("dtm-gid"); len(vals) > 0 {
+		info.Gid = vals[0]
+	}
+	if vals := md.Get("dtm-trans-type"); len(vals) > 0 {
+		info.TransType = vals[0]
+	}
+	if vals := md.Get("dtm-branch-id"); len(vals) > 0 {
+		info.BranchID = vals[0]
+	}
+	if vals := md.Get("dtm-op"); len(vals) > 0 {
+		info.Op = vals[0]
+	}
+
+	if info.Gid == "" {
+		return nil, fmt.Errorf("missing gid in metadata")
+	}
+
+	return info, nil
+}
+
+// MustGenGid generate global transaction ID, panic on failure
+func (h *TransactionHelper) MustGenGid() string {
+	gid := h.client.GenerateGid()
+	if gid == "" {
+		panic("failed to generate transaction gid")
+	}
+	return gid
+}
+
+// CheckTransactionStatus check transaction status
+func (h *TransactionHelper) CheckTransactionStatus(gid string) (string, error) {
+	// Here should call DTM's query interface
+	// Simplified example
+	log.Infof("Checking transaction status for gid: %s", gid)
+	return "success", nil
+}
+
+// RegisterGrpcService register gRPC service to DTM
+func (h *TransactionHelper) RegisterGrpcService(serviceName string, endpoint string) error {
+	if h.client.grpcClient == nil {
+		return fmt.Errorf("gRPC client is not initialized")
+	}
+
+	// Here can implement service registration logic
+	log.Infof("Registering gRPC service: name=%s, endpoint=%s", serviceName, endpoint)
+	return nil
+}

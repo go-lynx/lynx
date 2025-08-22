@@ -162,7 +162,7 @@ func TestValidateRedisConfig(t *testing.T) {
 				Addrs:          []string{"localhost:6379"},
 				MinIdleConns:   10,
 				MaxActiveConns: 20,
-				DialTimeout:    durationpb.New(70 * time.Second), // 超过60秒限制
+				DialTimeout:    durationpb.New(70 * time.Second), // Exceeds 60 second limit
 				ReadTimeout:    durationpb.New(5 * time.Second),
 			},
 			expected: false,
@@ -184,7 +184,7 @@ func TestValidateRedisConfig(t *testing.T) {
 				Addrs:          []string{"localhost:6379"},
 				MinIdleConns:   10,
 				MaxActiveConns: 20,
-				MaxRetries:     15, // 超过10次限制
+				MaxRetries:     15, // Exceeds 10 retry limit
 			},
 			expected: false,
 		},
@@ -267,7 +267,7 @@ func TestSetDefaultValues(t *testing.T) {
 
 	setDefaultValues(config)
 
-	// 验证默认值是否正确设置
+	// Verify that default values are correctly set
 	if config.Network != "tcp" {
 		t.Errorf("Expected Network to be 'tcp', got %s", config.Network)
 	}
@@ -324,7 +324,7 @@ func TestValidationError(t *testing.T) {
 func TestValidationResult(t *testing.T) {
 	result := &ValidationResult{IsValid: true}
 
-	// 测试添加错误
+	// Test adding error
 	result.AddError("field1", "error1")
 	if result.IsValid {
 		t.Error("Expected IsValid to be false after adding error")
@@ -333,13 +333,13 @@ func TestValidationResult(t *testing.T) {
 		t.Errorf("Expected 1 error, got %d", len(result.Errors))
 	}
 
-	// 测试添加多个错误
+	// Test adding multiple errors
 	result.AddError("field2", "error2")
 	if len(result.Errors) != 2 {
 		t.Errorf("Expected 2 errors, got %d", len(result.Errors))
 	}
 
-	// 测试错误消息格式
+	// Test error message format
 	errorMsg := result.Error()
 	expected := "validation error in field 'field1': error1; validation error in field 'field2': error2"
 	if errorMsg != expected {

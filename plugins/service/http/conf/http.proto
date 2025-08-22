@@ -60,6 +60,18 @@ message MonitoringConfig {
 
   // Whether to enable error logging
   bool enable_error_logging = 5;
+
+  // Whether to enable detailed route metrics
+  bool enable_route_metrics = 6;
+
+  // Whether to enable connection metrics
+  bool enable_connection_metrics = 7;
+
+  // Whether to enable queue metrics
+  bool enable_queue_metrics = 8;
+
+  // Whether to enable error type metrics
+  bool enable_error_type_metrics = 9;
 }
 
 // Security configuration
@@ -133,6 +145,51 @@ message SecurityHeadersConfig {
 
 // Performance configuration
 message PerformanceConfig {
+  // Maximum number of concurrent connections
+  int32 max_connections = 1;
+
+  // Maximum number of concurrent requests
+  int32 max_concurrent_requests = 2;
+
+  // Read buffer size in bytes
+  int32 read_buffer_size = 3;
+
+  // Write buffer size in bytes
+  int32 write_buffer_size = 4;
+
+  // Connection pool configuration
+  ConnectionPoolConfig connection_pool = 5;
+
+  // Read timeout
+  google.protobuf.Duration read_timeout = 6;
+
+  // Write timeout
+  google.protobuf.Duration write_timeout = 7;
+
+  // Idle timeout
+  google.protobuf.Duration idle_timeout = 8;
+
+  // Header read timeout
+  google.protobuf.Duration read_header_timeout = 9;
+}
+
+// Connection pool configuration
+message ConnectionPoolConfig {
+  // Maximum number of idle connections
+  int32 max_idle_conns = 1;
+
+  // Maximum number of idle connections per host
+  int32 max_idle_conns_per_host = 2;
+
+  // Maximum number of connections per host
+  int32 max_conns_per_host = 3;
+
+   // Connection reuse duration
+  google.protobuf.Duration keep_alive_duration = 4;
+}
+
+// Legacy performance settings (deprecated)
+message LegacyPerformanceSettings {
   // Connection pool size
   int32 connection_pool_size = 1;
 
@@ -163,8 +220,14 @@ message MiddlewareConfig {
   // Whether to enable validation middleware
   bool enable_validation = 4;
 
+  // Whether to enable rate limiting middleware
+  bool enable_rate_limit = 5;
+
+  // Whether to enable metrics middleware
+  bool enable_metrics = 6;
+
   // Custom middleware configuration
-  repeated string custom_middleware = 5;
+  map<string, string> custom_middleware = 7;
 }
 
 // Graceful shutdown configuration

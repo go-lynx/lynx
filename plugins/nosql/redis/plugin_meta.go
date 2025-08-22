@@ -4,34 +4,34 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// 插件元数据
+// Plugin metadata
 const (
-	// 插件唯一名称
+	// Plugin unique name
 	pluginName = "redis.client"
-	// 插件版本号
+	// Plugin version number
 	pluginVersion = "v2.0.0"
-	// 插件描述信息
+	// Plugin description
 	pluginDescription = "redis plugin for lynx framework"
-	// 配置前缀，用于从配置中读取插件相关配置
+	// Configuration prefix, used to read plugin-related configuration from config
 	confPrefix = "lynx.redis"
 )
 
-// NewRedisClient 创建一个新的 Redis 插件实例
-// 返回一个指向 PlugRedis 结构体的指针
+// NewRedisClient creates a new Redis plugin instance
+// Returns a pointer to PlugRedis struct
 func NewRedisClient() *PlugRedis {
 	return &PlugRedis{
 		BasePlugin: plugins.NewBasePlugin(
-			// 生成插件唯一 ID
+			// Generate plugin unique ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
-			// 插件名称
+			// Plugin name
 			pluginName,
-			// 插件描述
+			// Plugin description
 			pluginDescription,
-			// 插件版本
+			// Plugin version
 			pluginVersion,
-			// 配置前缀
+			// Configuration prefix
 			confPrefix,
-			// 权重
+			// Weight
 			100,
 		),
 	}

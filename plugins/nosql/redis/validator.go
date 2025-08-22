@@ -12,7 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
-// ValidationError 表示配置验证错误
+// ValidationError represents a configuration validation error
 type ValidationError struct {
 	Field   string
 	Message string
@@ -22,19 +22,19 @@ func (e ValidationError) Error() string {
 	return fmt.Sprintf("validation error in field '%s': %s", e.Field, e.Message)
 }
 
-// ValidationResult 表示配置验证结果
+// ValidationResult represents the configuration validation result
 type ValidationResult struct {
 	IsValid bool
 	Errors  []ValidationError
 }
 
-// AddError 添加验证错误
+// AddError adds a validation error
 func (r *ValidationResult) AddError(field, message string) {
 	r.Errors = append(r.Errors, ValidationError{Field: field, Message: message})
 	r.IsValid = false
 }
 
-// Error 返回所有验证错误的字符串表示
+// Error returns a string representation of all validation errors
 func (r *ValidationResult) Error() string {
 	if r.IsValid {
 		return ""
@@ -47,7 +47,7 @@ func (r *ValidationResult) Error() string {
 	return strings.Join(messages, "; ")
 }
 
-// ValidateRedisConfig 验证Redis配置的完整性和合理性
+// ValidateRedisConfig validates the completeness and reasonableness of Redis configuration
 func ValidateRedisConfig(config *conf.Redis) *ValidationResult {
 	result := &ValidationResult{IsValid: true}
 
@@ -56,87 +56,87 @@ func ValidateRedisConfig(config *conf.Redis) *ValidationResult {
 		return result
 	}
 
-	// 基础连接验证
+	// Basic connection validation
 	validateBasicConnection(config, result)
 
-	// 连接池配置验证
+	// Connection pool configuration validation
 	validateConnectionPool(config, result)
 
-	// 超时配置验证
+	// Timeout configuration validation
 	validateTimeouts(config, result)
 
-	// 重试配置验证
+	// Retry configuration validation
 	validateRetryConfig(config, result)
 
-	// TLS配置验证
+	// TLS configuration validation
 	validateTLSConfig(config, result)
 
-	// Sentinel配置验证
+	// Sentinel configuration validation
 	validateSentinelConfig(config, result)
 
-	// 数据库配置验证
+	// Database configuration validation
 	validateDatabaseConfig(config, result)
 
-	// 客户端名称验证
+	// Client name validation
 	validateClientName(config, result)
 
-	// 网络配置验证
+	// Network configuration validation
 	validateNetworkConfig(config, result)
 
 	return result
 }
 
-// validateBasicConnection 验证基础连接配置
+// validateBasicConnection validates basic connection configuration
 func validateBasicConnection(config *conf.Redis, result *ValidationResult) {
-	// 验证地址列表
+	// Validate address list
 	if len(config.Addrs) == 0 {
 		result.AddError("addrs", "at least one address must be provided")
 		return
 	}
 
-	// 验证地址格式
+	// Validate address format
 	for i, addr := range config.Addrs {
 		if strings.TrimSpace(addr) == "" {
 			result.AddError(fmt.Sprintf("addrs[%d]", i), "address cannot be empty")
 			continue
 		}
 
-		// 验证地址格式
+		// Validate address format
 		if err := validateAddress(addr); err != nil {
 			result.AddError(fmt.Sprintf("addrs[%d]", i), err.Error())
 		}
 	}
 }
 
-// validateAddress 验证单个地址格式
+// validateAddress validates a single address format
 func validateAddress(addr string) error {
-	// 支持 rediss:// 前缀（TLS）
+	// Support rediss:// prefix (TLS)
 	if strings.HasPrefix(strings.ToLower(addr), "rediss://") {
 		addr = strings.TrimPrefix(addr, "rediss://")
 	}
 
-	// 支持 redis:// 前缀
+	// Support redis:// prefix
 	if strings.HasPrefix(strings.ToLower(addr), "redis://") {
 		addr = strings.TrimPrefix(addr, "redis://")
 	}
 
-	// 验证主机:端口格式
+	// Validate host:port format
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return fmt.Errorf("invalid address format: %s", err.Error())
 	}
 
-	// 验证主机
+	// Validate host
 	if host == "" {
 		return fmt.Errorf("host cannot be empty")
 	}
 
-	// 验证端口
+	// Validate port
 	if port == "" {
 		return fmt.Errorf("port cannot be empty")
 	}
 
-	// 验证端口范围
+	// Validate port range
 	if portNum, err := strconv.Atoi(port); err != nil || portNum <= 0 || portNum > 65535 {
 		return fmt.Errorf("invalid port number: %s (must be 1-65535)", port)
 	}
@@ -144,31 +144,31 @@ func validateAddress(addr string) error {
 	return nil
 }
 
-// validateConnectionPool 验证连接池配置
+// validateConnectionPool validates connection pool configuration
 func validateConnectionPool(config *conf.Redis, result *ValidationResult) {
-	// 验证最小空闲连接数
+	// Validate minimum idle connections
 	if config.MinIdleConns < 0 {
 		result.AddError("min_idle_conns", "cannot be negative")
 	}
 
-	// 验证最大空闲连接数
+	// Validate maximum idle connections
 	if config.MaxIdleConns < 0 {
 		result.AddError("max_idle_conns", "cannot be negative")
 	}
 
-	// 验证最大活跃连接数
+	// Validate maximum active connections
 	if config.MaxActiveConns <= 0 {
 		result.AddError("max_active_conns", "must be greater than 0")
 	}
 
-	// 验证连接池大小关系
+	// Validate connection pool size relationship
 	if config.MinIdleConns > 0 && config.MaxActiveConns > 0 {
 		if config.MinIdleConns > config.MaxActiveConns {
 			result.AddError("min_idle_conns", "cannot be greater than max_active_conns")
 		}
 	}
 
-	// 验证连接最大空闲时间
+	// Validate connection maximum idle time
 	if config.ConnMaxIdleTime != nil {
 		duration := config.ConnMaxIdleTime.AsDuration()
 		if duration < 0 {
@@ -179,7 +179,7 @@ func validateConnectionPool(config *conf.Redis, result *ValidationResult) {
 		}
 	}
 
-	// 验证连接最大存活时间
+	// Validate connection maximum lifetime
 	if config.MaxConnAge != nil {
 		duration := config.MaxConnAge.AsDuration()
 		if duration < 0 {
@@ -190,21 +190,22 @@ func validateConnectionPool(config *conf.Redis, result *ValidationResult) {
 		}
 	}
 
-	// 验证连接池超时
+	// Validate connection pool timeout
 	if config.PoolTimeout != nil {
 		duration := config.PoolTimeout.AsDuration()
 		if duration < 0 {
 			result.AddError("pool_timeout", "cannot be negative")
 		}
-		if duration > 30*time.Second {
-			result.AddError("pool_timeout", "cannot exceed 30 seconds")
+		// Relax limit to allow longer timeouts for high latency networks
+		if duration > 5*time.Minute {
+			result.AddError("pool_timeout", "cannot exceed 5 minutes")
 		}
 	}
 }
 
-// validateTimeouts 验证超时配置
+// validateTimeouts validates timeout configuration
 func validateTimeouts(config *conf.Redis, result *ValidationResult) {
-	// 验证建连超时
+	// Validate connection timeout
 	if config.DialTimeout != nil {
 		duration := config.DialTimeout.AsDuration()
 		if duration < 0 {
@@ -215,7 +216,7 @@ func validateTimeouts(config *conf.Redis, result *ValidationResult) {
 		}
 	}
 
-	// 验证读超时
+	// Validate read timeout
 	if config.ReadTimeout != nil {
 		duration := config.ReadTimeout.AsDuration()
 		if duration < 0 {
@@ -226,7 +227,7 @@ func validateTimeouts(config *conf.Redis, result *ValidationResult) {
 		}
 	}
 
-	// 验证写超时
+	// Validate write timeout
 	if config.WriteTimeout != nil {
 		duration := config.WriteTimeout.AsDuration()
 		if duration < 0 {
@@ -237,7 +238,7 @@ func validateTimeouts(config *conf.Redis, result *ValidationResult) {
 		}
 	}
 
-	// 验证超时时间的合理性
+	// Validate timeout reasonableness
 	if config.DialTimeout != nil && config.ReadTimeout != nil {
 		dialDuration := config.DialTimeout.AsDuration()
 		readDuration := config.ReadTimeout.AsDuration()
@@ -247,9 +248,9 @@ func validateTimeouts(config *conf.Redis, result *ValidationResult) {
 	}
 }
 
-// validateRetryConfig 验证重试配置
+// validateRetryConfig validates retry configuration
 func validateRetryConfig(config *conf.Redis, result *ValidationResult) {
-	// 验证最大重试次数
+	// Validate maximum retries
 	if config.MaxRetries < 0 {
 		result.AddError("max_retries", "cannot be negative")
 	}
@@ -257,7 +258,7 @@ func validateRetryConfig(config *conf.Redis, result *ValidationResult) {
 		result.AddError("max_retries", "cannot exceed 10")
 	}
 
-	// 验证重试退避时间
+	// Validate retry backoff time
 	if config.MinRetryBackoff != nil {
 		duration := config.MinRetryBackoff.AsDuration()
 		if duration < 0 {
@@ -278,7 +279,7 @@ func validateRetryConfig(config *conf.Redis, result *ValidationResult) {
 		}
 	}
 
-	// 验证退避时间的合理性
+	// Validate backoff time reasonableness
 	if config.MinRetryBackoff != nil && config.MaxRetryBackoff != nil {
 		minDuration := config.MinRetryBackoff.AsDuration()
 		maxDuration := config.MaxRetryBackoff.AsDuration()
@@ -288,13 +289,13 @@ func validateRetryConfig(config *conf.Redis, result *ValidationResult) {
 	}
 }
 
-// validateTLSConfig 验证TLS配置
+// validateTLSConfig validates TLS configuration
 func validateTLSConfig(config *conf.Redis, result *ValidationResult) {
 	if config.Tls == nil {
 		return
 	}
 
-	// 如果启用了TLS，检查地址是否支持TLS
+	// If TLS is enabled, check if addresses support TLS
 	if config.Tls.Enabled {
 		hasTLSSupport := false
 		for _, addr := range config.Addrs {
@@ -305,24 +306,24 @@ func validateTLSConfig(config *conf.Redis, result *ValidationResult) {
 		}
 
 		if !hasTLSSupport {
-			// 警告：启用了TLS但地址不是rediss://格式
-			// 这种情况下，TLS配置仍然有效，但建议使用rediss://前缀
+			// Warning: TLS enabled but addresses are not in rediss:// format
+			// In this case, TLS configuration is still valid, but it is recommended to use the rediss:// prefix
 		}
 	}
 }
 
-// validateSentinelConfig 验证Sentinel配置
+// validateSentinelConfig validates Sentinel configuration
 func validateSentinelConfig(config *conf.Redis, result *ValidationResult) {
 	if config.Sentinel == nil {
 		return
 	}
 
-	// 验证主节点名称
+	// Validate master node name
 	if strings.TrimSpace(config.Sentinel.MasterName) == "" {
 		result.AddError("sentinel.master_name", "cannot be empty when sentinel mode is enabled")
 	}
 
-	// 验证Sentinel地址
+	// Validate Sentinel addresses
 	if len(config.Sentinel.Addrs) > 0 {
 		for i, addr := range config.Sentinel.Addrs {
 			if strings.TrimSpace(addr) == "" {
@@ -337,26 +338,38 @@ func validateSentinelConfig(config *conf.Redis, result *ValidationResult) {
 	}
 }
 
-// validateDatabaseConfig 验证数据库配置
+// validateDatabaseConfig validates database configuration
 func validateDatabaseConfig(config *conf.Redis, result *ValidationResult) {
-	// 验证数据库编号
+	// Validate database number
 	if config.Db < 0 {
 		result.AddError("db", "database number cannot be negative")
 	}
-	if config.Db > 15 {
-		result.AddError("db", "database number cannot exceed 15 (Redis default limit)")
+	
+	// Check if it's cluster mode
+	isClusterMode := len(config.Addrs) > 1 && (config.Sentinel == nil || config.Sentinel.MasterName == "")
+	
+	if isClusterMode {
+		// Redis Cluster only supports database 0
+		if config.Db != 0 {
+			result.AddError("db", "Redis Cluster mode only supports database 0")
+		}
+	} else {
+		// Single node and sentinel mode support 0-15 databases
+		if config.Db > 15 {
+			result.AddError("db", "database number cannot exceed 15 (Redis default limit)")
+		}
 	}
 }
 
-// validateClientName 验证客户端名称
+// validateClientName validates client name
 func validateClientName(config *conf.Redis, result *ValidationResult) {
 	if config.ClientName != "" {
-		// 验证客户端名称长度
+		// Validate client name length
 		if len(config.ClientName) > 64 {
 			result.AddError("client_name", "cannot exceed 64 characters")
 		}
 
-		// 验证客户端名称格式（只允许字母、数字、下划线、连字符）
+		// Validate client name format (only letters, numbers, underscores, and hyphens allowed)
 		matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, config.ClientName)
 		if !matched {
 			result.AddError("client_name", "can only contain letters, numbers, underscores, and hyphens")
@@ -364,9 +377,9 @@ func validateClientName(config *conf.Redis, result *ValidationResult) {
 	}
 }
 
-// validateNetworkConfig 验证网络配置
+// validateNetworkConfig validates network configuration
 func validateNetworkConfig(config *conf.Redis, result *ValidationResult) {
-	// 验证网络类型
+	// Validate network type
 	if config.Network != "" {
 		validNetworks := []string{"tcp", "tcp4", "tcp6", "unix", "unixpacket"}
 		isValid := false
@@ -383,18 +396,18 @@ func validateNetworkConfig(config *conf.Redis, result *ValidationResult) {
 	}
 }
 
-// ValidateAndSetDefaults 验证配置并设置合理的默认值
+// ValidateAndSetDefaults validates configuration and sets reasonable defaults
 func ValidateAndSetDefaults(config *conf.Redis) error {
-	// 首先验证配置
+	// First validate the configuration
 	result := ValidateRedisConfig(config)
 	if !result.IsValid {
 		return fmt.Errorf("configuration validation failed: %s", result.Error())
 	}
 
-	// 设置默认值
+	// Set default values
 	setDefaultValues(config)
 
-	// 再次验证（确保默认值设置后配置仍然有效）
+	// Validate again (ensure configuration remains valid after default values are set)
 	result = ValidateRedisConfig(config)
 	if !result.IsValid {
 		return fmt.Errorf("configuration validation failed after setting defaults: %s", result.Error())
@@ -403,14 +416,14 @@ func ValidateAndSetDefaults(config *conf.Redis) error {
 	return nil
 }
 
-// setDefaultValues 设置默认值
+// setDefaultValues sets default values
 func setDefaultValues(config *conf.Redis) {
-	// 网络类型默认值
+	// Network type default value
 	if config.Network == "" {
 		config.Network = "tcp"
 	}
 
-	// 连接池默认值
+	// Connection pool default values
 	if config.MinIdleConns == 0 {
 		config.MinIdleConns = 10
 	}
@@ -421,7 +434,7 @@ func setDefaultValues(config *conf.Redis) {
 		config.MaxActiveConns = 20
 	}
 
-	// 超时默认值
+	// Timeout default values
 	if config.DialTimeout == nil {
 		config.DialTimeout = durationpb.New(10 * time.Second)
 	}
@@ -432,12 +445,12 @@ func setDefaultValues(config *conf.Redis) {
 		config.WriteTimeout = durationpb.New(10 * time.Second)
 	}
 
-	// 连接池超时默认值
+	// Connection pool timeout default value
 	if config.PoolTimeout == nil {
 		config.PoolTimeout = durationpb.New(3 * time.Second)
 	}
 
-	// 连接生命周期默认值
+	// Connection lifecycle default values
 	if config.ConnMaxIdleTime == nil {
 		config.ConnMaxIdleTime = durationpb.New(10 * time.Second)
 	}
@@ -445,7 +458,7 @@ func setDefaultValues(config *conf.Redis) {
 		config.MaxConnAge = durationpb.New(30 * time.Minute)
 	}
 
-	// 重试配置默认值
+	// Retry configuration default values
 	if config.MaxRetries == 0 {
 		config.MaxRetries = 3
 	}

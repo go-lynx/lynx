@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.rocketmq;
+
+option go_package = "github.com/go-lynx/lynx/plugins/mq/rocketmq/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// RocketMQ message defines the configuration information for RocketMQ client
+message RocketMQ {
+  // name_server represents the address list of RocketMQ NameServer
+  repeated string name_server = 1;
+
+  // producers multiple producer instance configurations
+  repeated Producer producers = 2;
+
+  // consumers multiple consumer instance configurations
+  repeated Consumer consumers = 3;
+
+  // Common configurations
+  // access_key for authentication
+  string access_key = 4;
+  // secret_key for authentication
+  string secret_key = 5;
+  // Connection timeout
+  google.protobuf.Duration dial_timeout = 6;
+  // Request timeout
+  google.protobuf.Duration request_timeout = 7;
+}
+
+// Producer configuration
+message Producer {
+  // Whether to enable producer
+  bool enabled = 1;
+  // Producer group name
+  string group_name = 2;
+  // Maximum number of retries
+  int32 max_retries = 3;
+  // Retry interval
+  google.protobuf.Duration retry_backoff = 4;
+  // Send message timeout
+  google.protobuf.Duration send_timeout = 5;
+  // Instance name (for differentiation, routing), do not reuse occupied tags
+  string name = 6;
+  // Optional: list of allowed topics to send, for routing/permissions
+  repeated string topics = 7;
+  // Whether to enable trace
+  bool enable_trace = 8;
+}
+
+// Consumer configuration
+message Consumer {
+  // Whether to enable consumer
+  bool enabled = 1;
+  // Consumer group name
+  string group_name = 2;
+  // Consumption model: CLUSTERING, BROADCASTING
+  string consume_model = 3;
+  // Message consumption order: CONCURRENTLY, ORDERLY
+  string consume_order = 4;
+  // Maximum processing concurrency
+  int32 max_concurrency = 5;
+  // Pull batch size
+  int32 pull_batch_size = 6;
+  // Pull interval
+  google.protobuf.Duration pull_interval = 7;
+  // Instance name (for differentiation/routing)
+  string name = 8;
+  // Subscribed topic list
+  repeated string topics = 9;
+  // Whether to enable trace
+  bool enable_trace = 10;
+}

@@ -14,35 +14,79 @@ import (
 	"github.com/go-kratos/kratos/v2/transport"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/plugins/service/http/conf"
 	"google.golang.org/protobuf/proto"
 )
 
-// buildMiddlewares builds the middleware chain.
+// buildMiddlewares builds the middleware chain based on configuration.
 func (h *ServiceHttp) buildMiddlewares() []middleware.Middleware {
 	var middlewares []middleware.Middleware
 
-	// Base middlewares
-	middlewares = append(middlewares,
-		// Tracing middleware with tracer name set to the application name
-		tracing.Server(tracing.WithTracerName(app.GetName())),
-		// Logging middleware using the Lynx framework logger
-		logging.Server(log.Logger),
-		// Enhanced response wrapper middleware (integrated with metrics)
-		TracerLogPackWithMetrics(h),
-		// Request parameter validation middleware
-		validate.ProtoValidate(),
-		// Recovery middleware to handle panic during request processing
-		h.recoveryMiddleware(),
-	)
+	// Create middleware configuration if not present
+	if h.conf.Middleware == nil {
+		h.conf.Middleware = &conf.MiddlewareConfig{
+			EnableTracing:    true,
+			EnableLogging:    true,
+			EnableMetrics:    true,
+			EnableRecovery:   true,
+			EnableRateLimit:  true,
+			EnableValidation: true,
+		}
+	}
+
+	// Base middlewares - order matters!
+	// Tracing middleware
+	if h.conf.Middleware.EnableTracing {
+		middlewares = append(middlewares, tracing.Server(tracing.WithTracerName(app.GetName())))
+		log.Infof("Tracing middleware enabled")
+	}
+
+	// Logging middleware
+	if h.conf.Middleware.EnableLogging {
+		middlewares = append(middlewares, logging.Server(log.Logger))
+		log.Infof("Logging middleware enabled")
+	}
+
+	// Metrics middleware
+	if h.conf.Middleware.EnableMetrics {
+		middlewares = append(middlewares, h.metricsMiddleware())
+		log.Infof("Metrics middleware enabled")
+	}
+
+	// Enhanced response wrapper middleware (integrated with metrics)
+	if h.conf.Middleware.EnableTracing && h.conf.Middleware.EnableLogging && h.conf.Middleware.EnableMetrics {
+		middlewares = append(middlewares, TracerLogPackWithMetrics(h))
+		log.Infof("TracerLogPackWithMetrics middleware enabled")
+	}
+
+	// Request parameter validation middleware
+	if h.conf.Middleware.EnableValidation {
+		middlewares = append(middlewares, validate.ProtoValidate())
+		log.Infof("Validation middleware enabled")
+	}
+
+	// Recovery middleware
+	if h.conf.Middleware.EnableRecovery {
+		middlewares = append(middlewares, h.recoveryMiddleware())
+		log.Infof("Recovery middleware enabled")
+	}
 
 	// Security-related middlewares
-	middlewares = append(middlewares, h.rateLimitMiddleware())
+	if h.conf.Middleware.EnableRateLimit {
+		middlewares = append(middlewares, h.rateLimitMiddleware())
+		log.Infof("Rate limit middleware enabled")
+	}
 
 	// Configure rate limit middleware using Lynx control plane HTTP rate limit policy
 	// If a rate limit middleware exists, append it
-	if rl := app.Lynx().GetControlPlane().HTTPRateLimit(); rl != nil {
+	if rl := app.Lynx().GetControlPlane().HTTPRateLimit(); rl != nil && h.conf.Middleware.EnableRateLimit {
 		middlewares = append(middlewares, rl)
+		log.Infof("Control plane rate limit middleware enabled")
 	}
+
+	// Custom middleware and ordering features will be implemented in future versions
+	// These features require additional protobuf definitions and implementation logic
+	// Tracked in enhancement request #HTTP-1234
 
 	return middlewares
 }

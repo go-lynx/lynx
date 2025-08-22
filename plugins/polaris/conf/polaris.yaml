@@ -1,15 +1,15 @@
-# Polaris SDK 配置文件示例
-# 这个文件展示了如何配置 Polaris SDK 连接到 Polaris 服务
-# 参考官方文档：https://polarismesh.cn/docs
+# Polaris SDK Configuration File Example
+# This file shows how to configure Polaris SDK to connect to Polaris service
+# Reference official documentation: https://polarismesh.cn/docs
 
 global:
-  # 服务连接器配置
+  # Service Connector Configuration
   serverConnector:
     protocol: grpc
     addresses:
-      - 127.0.0.1:8091  # Polaris 服务地址
+      - 127.0.0.1:8091  # Polaris service address
   
-  # 统计报告器配置
+  # Statistics Reporter Configuration
   statReporter:
     enable: true
     chain:
@@ -20,8 +20,8 @@ global:
         address: 127.0.0.1:9091
         interval: 10s
 
-# 配置中心配置
+# Configuration Center Configuration
 config:
   configConnector:
     addresses:
-      - 127.0.0.1:8093  # Polaris 配置中心地址
+      - 127.0.0.1:8093  # Polaris configuration center address

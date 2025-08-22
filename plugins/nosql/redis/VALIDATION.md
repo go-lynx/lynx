@@ -1,148 +1,148 @@
-# Redis 插件配置验证
+# Redis Plugin Configuration Validation
 
-本文档描述了 Redis 插件的配置验证功能，包括验证规则、使用方法和最佳实践。
+This document describes the configuration validation functionality of the Redis plugin, including validation rules, usage methods, and best practices.
 
-## 概述
+## Overview
 
-Redis 插件现在包含了完整的配置验证逻辑，确保在插件启动前配置的正确性和合理性。验证功能包括：
+The Redis plugin now includes complete configuration validation logic to ensure configuration correctness and reasonableness before plugin startup. Validation functionality includes:
 
-- **基础连接验证**：地址格式、网络类型等
-- **连接池配置验证**：连接数量关系、超时时间等
-- **超时配置验证**：各种超时时间的合理性和关系
-- **重试配置验证**：重试次数和退避时间的合理性
-- **TLS配置验证**：TLS启用与地址格式的匹配
-- **Sentinel配置验证**：哨兵模式的必要参数
-- **数据库配置验证**：数据库编号范围
-- **客户端名称验证**：名称格式和长度
+- **Basic Connection Validation**: address format, network type, etc.
+- **Connection Pool Configuration Validation**: connection count relationships, timeout times, etc.
+- **Timeout Configuration Validation**: reasonableness and relationships of various timeout times
+- **Retry Configuration Validation**: reasonableness of retry counts and backoff times
+- **TLS Configuration Validation**: matching of TLS enablement and address format
+- **Sentinel Configuration Validation**: necessary parameters for sentinel mode
+- **Database Configuration Validation**: database number range
+- **Client Name Validation**: name format and length
 
-## 验证规则详解
+## Validation Rules Details
 
-### 1. 基础连接验证
+### 1. Basic Connection Validation
 
-#### 地址格式验证
-- 支持 `redis://`、`rediss://` 前缀
-- 验证主机:端口格式
-- 端口范围：1-65535
-- 不允许空地址
+#### Address Format Validation
+- Supports `redis://`, `rediss://` prefixes
+- Validates host:port format
+- Port range: 1-65535
+- Empty addresses not allowed
 
 ```yaml
-# ✅ 有效地址
+# ✅ Valid addresses
 addrs: ["localhost:6379", "redis://127.0.0.1:6380", "rediss://secure.redis:6379"]
 
-# ❌ 无效地址
+# ❌ Invalid addresses
 addrs: ["invalid-address", ":6379", "localhost:", "localhost:99999"]
 ```
 
-#### 网络类型验证
-- 支持的网络类型：`tcp`、`tcp4`、`tcp6`、`unix`、`unixpacket`
-- 默认为 `tcp`
+#### Network Type Validation
+- Supported network types: `tcp`, `tcp4`, `tcp6`, `unix`, `unixpacket`
+- Default is `tcp`
 
-### 2. 连接池配置验证
+### 2. Connection Pool Configuration Validation
 
-#### 连接数量关系
+#### Connection Count Relationships
 - `MinIdleConns` ≥ 0
 - `MaxActiveConns` > 0
 - `MinIdleConns` ≤ `MaxActiveConns`
 
 ```yaml
-# ✅ 有效配置
+# ✅ Valid configuration
 min_idle_conns: 10
 max_active_conns: 20
 
-# ❌ 无效配置
+# ❌ Invalid configuration
 min_idle_conns: 30
-max_active_conns: 20  # 最小值不能大于最大值
+max_active_conns: 20  # Minimum cannot be greater than maximum
 ```
 
-#### 连接生命周期
-- `ConnMaxIdleTime`: 0-24小时
-- `MaxConnAge`: 0-7天
-- `PoolTimeout`: 0-30秒
+#### Connection Lifecycle
+- `ConnMaxIdleTime`: 0-24 hours
+- `MaxConnAge`: 0-7 days
+- `PoolTimeout`: 0-30 seconds
 
-### 3. 超时配置验证
+### 3. Timeout Configuration Validation
 
-#### 超时时间范围
-- `DialTimeout`: 0-60秒
-- `ReadTimeout`: 0-5分钟
-- `WriteTimeout`: 0-5分钟
+#### Timeout Time Ranges
+- `DialTimeout`: 0-60 seconds
+- `ReadTimeout`: 0-5 minutes
+- `WriteTimeout`: 0-5 minutes
 
-#### 超时时间关系
-- `DialTimeout` ≤ `ReadTimeout`（建议）
+#### Timeout Time Relationships
+- `DialTimeout` ≤ `ReadTimeout` (recommended)
 
 ```yaml
-# ✅ 有效配置
+# ✅ Valid configuration
 dial_timeout: { seconds: 5 }
 read_timeout: { seconds: 10 }
 
-# ❌ 无效配置
+# ❌ Invalid configuration
 dial_timeout: { seconds: 10 }
-read_timeout: { seconds: 5 }  # 建连超时不应大于读超时
+read_timeout: { seconds: 5 }  # Connection timeout should not be greater than read timeout
 ```
 
-### 4. 重试配置验证
+### 4. Retry Configuration Validation
 
-#### 重试次数
+#### Retry Count
 - `MaxRetries`: 0-10
 
-#### 退避时间
-- `MinRetryBackoff`: 0-1秒
-- `MaxRetryBackoff`: 0-30秒
+#### Backoff Time
+- `MinRetryBackoff`: 0-1 second
+- `MaxRetryBackoff`: 0-30 seconds
 - `MinRetryBackoff` ≤ `MaxRetryBackoff`
 
-### 5. TLS配置验证
+### 5. TLS Configuration Validation
 
-- 如果启用 TLS，建议使用 `rediss://` 前缀
-- 支持 `tls.enabled` 和 `tls.insecure_skip_verify` 配置
+- If TLS is enabled, it's recommended to use `rediss://` prefix
+- Supports `tls.enabled` and `tls.insecure_skip_verify` configuration
 
-### 6. Sentinel配置验证
+### 6. Sentinel Configuration Validation
 
-- 启用 Sentinel 模式时必须提供 `master_name`
-- Sentinel 地址格式验证
+- `master_name` must be provided when Sentinel mode is enabled
+- Sentinel address format validation
 
-### 7. 数据库配置验证
+### 7. Database Configuration Validation
 
-- 数据库编号范围：0-15（Redis 默认限制）
+- Database number range: 0-15 (Redis default limit)
 
-### 8. 客户端名称验证
+### 8. Client Name Validation
 
-- 长度限制：≤ 64 字符
-- 字符限制：只允许字母、数字、下划线、连字符
+- Length limit: ≤ 64 characters
+- Character restrictions: only letters, numbers, underscores, and hyphens allowed
 
-## 使用方法
+## Usage Methods
 
-### 1. 自动验证（推荐）
+### 1. Automatic Validation (Recommended)
 
-配置验证会在插件初始化时自动执行：
+Configuration validation is automatically executed during plugin initialization:
 
 ```go
-// 在 InitializeResources 中自动调用
+// Automatically called in InitializeResources
 if err := ValidateAndSetDefaults(r.conf); err != nil {
     return fmt.Errorf("redis configuration validation failed: %w", err)
 }
 ```
 
-### 2. 手动验证
+### 2. Manual Validation
 
-如果需要手动验证配置：
+If manual configuration validation is needed:
 
 ```go
 import "github.com/go-lynx/lynx/plugins/nosql/redis"
 
-// 验证配置
+// Validate configuration
 result := redis.ValidateRedisConfig(config)
 if !result.IsValid {
     log.Errorf("Configuration validation failed: %s", result.Error())
     return
 }
 
-// 验证并设置默认值
+// Validate and set default values
 if err := redis.ValidateAndSetDefaults(config); err != nil {
     log.Errorf("Configuration validation failed: %v", err)
     return
 }
 ```
 
-### 3. 获取验证错误详情
+### 3. Get Validation Error Details
 
 ```go
 result := redis.ValidateRedisConfig(config)
@@ -153,61 +153,61 @@ if !result.IsValid {
 }
 ```
 
-## 默认值设置
+## Default Value Settings
 
-如果配置验证通过，系统会自动设置合理的默认值：
+If configuration validation passes, the system will automatically set reasonable default values:
 
 ```go
-// 网络类型
+// Network type
 Network: "tcp"
 
-// 连接池
+// Connection pool
 MinIdleConns: 10
 MaxIdleConns: 20
 MaxActiveConns: 20
 
-// 超时时间
+// Timeout times
 DialTimeout: 10s
 ReadTimeout: 10s
 WriteTimeout: 10s
 PoolTimeout: 3s
 
-// 连接生命周期
+// Connection lifecycle
 ConnMaxIdleTime: 10s
 MaxConnAge: 30m
 
-// 重试配置
+// Retry configuration
 MaxRetries: 3
 MinRetryBackoff: 8ms
 MaxRetryBackoff: 512ms
 ```
 
-## 错误处理
+## Error Handling
 
-### 验证错误类型
+### Validation Error Types
 
 ```go
 type ValidationError struct {
-    Field   string  // 出错的字段名
-    Message string  // 错误描述
+    Field   string  // Field name with error
+    Message string  // Error description
 }
 ```
 
-### 验证结果
+### Validation Results
 
 ```go
 type ValidationResult struct {
-    IsValid bool              // 是否验证通过
-    Errors  []ValidationError // 错误列表
+    IsValid bool              // Whether validation passed
+    Errors  []ValidationError // Error list
 }
 ```
 
-## 最佳实践
+## Best Practices
 
-### 1. 配置模板
+### 1. Configuration Templates
 
 ```yaml
-# 生产环境配置模板
+# Production environment configuration template
 redis:
   network: tcp
   addrs: ["redis-master:6379", "redis-slave:6379"]
@@ -221,10 +221,10 @@ redis:
   client_name: "myapp-prod"
 ```
 
-### 2. 开发环境配置
+### 2. Development Environment Configuration
 
 ```yaml
-# 开发环境配置
+# Development environment configuration
 redis:
   addrs: ["localhost:6379"]
   min_idle_conns: 5
@@ -235,7 +235,7 @@ redis:
   client_name: "myapp-dev"
 ```
 
-### 3. 哨兵模式配置
+### 3. Sentinel Mode Configuration
 
 ```yaml
 redis:
@@ -247,61 +247,61 @@ redis:
   pool_timeout: { seconds: 1 }
 ```
 
-### 4. TLS配置
+### 4. TLS Configuration
 
 ```yaml
 redis:
   addrs: ["rediss://secure.redis:6379"]
   tls:
     enabled: true
-    insecure_skip_verify: false  # 生产环境应为 false
+    insecure_skip_verify: false  # Should be false in production
   min_idle_conns: 10
   max_active_conns: 20
 ```
 
-## 故障排除
+## Troubleshooting
 
-### 常见验证错误
+### Common Validation Errors
 
-1. **地址格式错误**
+1. **Address Format Error**
    ```
    validation error in field 'addrs[0]': invalid address format: address localhost: invalid port
    ```
 
-2. **连接池配置错误**
+2. **Connection Pool Configuration Error**
    ```
    validation error in field 'min_idle_conns': cannot be greater than max_active_conns
    ```
 
-3. **超时配置错误**
+3. **Timeout Configuration Error**
    ```
    validation error in field 'dial_timeout': should not be greater than read_timeout
    ```
 
-4. **数据库编号错误**
+4. **Database Number Error**
    ```
    validation error in field 'db': database number cannot exceed 15 (Redis default limit)
    ```
 
-### 调试建议
+### Debugging Suggestions
 
-1. 使用 `ValidateRedisConfig()` 进行预验证
-2. 检查配置文件的 YAML 语法
-3. 验证地址格式和端口号
-4. 确认连接池参数关系
-5. 检查超时时间设置
+1. Use `ValidateRedisConfig()` for pre-validation
+2. Check YAML syntax in configuration files
+3. Validate address format and port numbers
+4. Confirm connection pool parameter relationships
+5. Check timeout time settings
 
-## 测试
+## Testing
 
-运行配置验证测试：
+Run configuration validation tests:
 
 ```bash
 cd lynx/plugins/nosql/redis
 go test -v -run TestValidateRedisConfig
 ```
 
-测试覆盖了各种配置场景，包括：
-- 有效配置验证
-- 无效配置检测
-- 边界条件测试
-- 错误消息格式验证
+Tests cover various configuration scenarios, including:
+- Valid configuration validation
+- Invalid configuration detection
+- Boundary condition testing
+- Error message format validation

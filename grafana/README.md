@@ -1,83 +1,83 @@
-# 🎨 Lynx Grafana Dashboards
+# Lynx Grafana Dashboards
 
 ## Overview
 
 This is a set of modern Grafana dashboards specifically designed for the Lynx microservices framework, featuring stunning visual effects and intuitive data presentation.
 
-## 🚀 Key Features
+## Key Features
 
-### ✨ Modern Design
+### Modern Design
 - **Dark Theme**: Dark background to reduce eye strain
 - **Gradient Colors**: Gradient color schemes to enhance visual appeal
 - **Emoji Icons**: Intuitive emoji icons for quick panel type recognition
 - **Responsive Layout**: Adapts to different screen sizes
 
-### 📊 Rich Chart Types
+### Rich Chart Types
 - **Stat Cards**: KPI metrics with gradient dashboards
 - **Time Series**: Smooth curves with multiple display modes
 - **Heatmaps**: Performance distribution visualization
 - **Bar Charts**: Error rates and categorical statistics
 
-### 🎯 Smart Thresholds
+### Smart Thresholds
 - **Dynamic Thresholds**: Reasonable alert thresholds based on business scenarios
 - **Color Coding**: Green (normal) → Yellow (warning) → Red (abnormal)
 - **Unit Optimization**: Automatic selection of appropriate unit display
 
-## 📁 Dashboard List
+## Dashboard List
 
-### 1. 🌟 System Overview Dashboard
+### 1. System Overview Dashboard
 **File**: [overview.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/overview.json)
 **Function**: System-wide overview
-- 🚀 Total service count statistics
-- ✅ Healthy service monitoring
-- ❌ Failed service alerts
-- 📊 System availability
-- 📈 HTTP request rate
-- ⚡ System latency monitoring
-- ❌ Error rate trends
-- 🔥 Performance heatmap
+- Total service count statistics
+- Healthy service monitoring
+- Failed service alerts
+- System availability
+- HTTP request rate
+- System latency monitoring
+- Error rate trends
+- Performance heatmap
 
-### 2. 🚀 HTTP Service Dashboard
+### 2. HTTP Service Dashboard
 **File**: [http/dashboard.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/http/dashboard.json)
 **Function**: HTTP service monitoring
-- 📊 Request rate statistics
-- ⚡ Response time monitoring
-- ❌ Error rate analysis
-- 🔄 Active connections
-- 📈 Request method distribution
-- 🔥 Error path analysis
-- ⚡ Latency percentiles
-- 📦 Response size distribution
-- 🔄 In-flight requests
-- 📥 Request size distribution
-- 🔥 Request heatmap
+- Request rate statistics
+- Response time monitoring
+- Error rate analysis
+- Active connections
+- Request method distribution
+- Error path analysis
+- Latency percentiles
+- Response size distribution
+- In-flight requests
+- Request size distribution
+- Request heatmap
 
-### 3. 🔥 Redis Service Dashboard
+### 3. Redis Service Dashboard
 **File**: [redis/dashboard.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/redis/dashboard.json)
 **Function**: Redis cache monitoring
-- 🚀 Client startup statistics
-- ❌ Startup failure monitoring
-- ⚡ PING latency
-- 🔗 Connection pool status
-- 📊 Connection pool performance
-- 🎯 Pool hit rate analysis
-- 🔥 Command error analysis
-- 🔥 Redis performance heatmap
+- Client startup statistics
+- Startup failure monitoring
+- PING latency
+- Connection pool status
+- Connection pool performance
+- Pool hit rate analysis
+- Command error analysis
+- Redis performance heatmap
 
-### 4. 📊 Kafka Service Dashboard
+### 4. Kafka Service Dashboard
 **File**: [kafka/dashboard.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/kafka/dashboard.json)
 **Function**: Kafka message queue monitoring
-- 📤 Message production rate
-- 📥 Message consumption rate
-- ❌ Producer errors
-- ⚡ Producer latency
-- 📈 Topic production distribution
-- 📉 Topic consumption distribution
-- ⚡ Latency percentiles
-- 🔥 Error type analysis
-- 🔥 Kafka performance heatmap
+- Message production rate
+- Message consumption rate
+- Producer errors
+- Producer latency
+- Topic production distribution
+- Topic consumption distribution
+- Latency percentiles
+- Error type analysis
+- Kafka performance heatmap
 
-## 🎨 Design Features
+## Design Features
 
 ### Color Scheme
 - **Primary Tone**: Dark background (#1e1e1e)
@@ -98,7 +98,7 @@ This is a set of modern Grafana dashboards specifically designed for the Lynx mi
 - **Refresh Intervals**: Multiple auto-refresh options
 - **Template Variables**: Flexible data source selection
 
-## 🔧 Configuration Guide
+## Configuration Guide
 
 ### Data Source Configuration
 ```json
@@ -120,7 +120,7 @@ This is a set of modern Grafana dashboards specifically designed for the Lynx mi
 - **Default Time Range**: Last 1 hour
 - **Refresh Intervals**: 5s, 10s, 30s, 1m, 5m, 15m, 30m, 1h, 2h, 1d
 
-## 📈 Metrics Guide
+## Metrics Guide
 
 ### HTTP Metrics
 - `lynx_http_requests_total`: Total requests
@@ -143,7 +143,7 @@ This is a set of modern Grafana dashboards specifically designed for the Lynx mi
 - `lynx_kafka_producer_errors_total`: Producer errors
 - `lynx_kafka_producer_latency_seconds`: Producer latency
 
-## 🚀 Quick Start
+## Quick Start
 
 1. **Import Dashboard**:
    - Click "Import" in Grafana
@@ -159,7 +159,7 @@ This is a set of modern Grafana dashboards specifically designed for the Lynx mi
    - Set refresh interval
    - Configure alert rules
 
-## 🎯 Best Practices
+## Best Practices
 
 ### Monitoring Strategy
 - **Real-time Monitoring**: Use 5s refresh interval for real-time monitoring
@@ -176,7 +176,7 @@ This is a set of modern Grafana dashboards specifically designed for the Lynx mi
 - **Cache Strategy**: Reasonably set query cache
 - **Resource Monitoring**: Monitor Grafana's own resource usage
 
-## 🔮 Future Plans
+## Future Plans
 
 - [ ] Add dashboards for more service types
 - [ ] Support custom themes
