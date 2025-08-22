@@ -2,11 +2,12 @@
 package http
 
 import (
+	nhttp "net/http"
+
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/go-lynx/lynx/app/log"
 	"google.golang.org/protobuf/runtime/protoimpl"
-	nhttp "net/http"
 )
 
 // Response represents a standardized HTTP response structure.

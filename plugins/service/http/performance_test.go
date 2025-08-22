@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-lynx/lynx/app/observability/metrics"
 	"github.com/go-lynx/lynx/plugins/service/http/conf"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -60,18 +59,18 @@ func TestMonitoringMetrics(t *testing.T) {
 	// Test metrics behavior
 	// Simulate active connection
 	if service.conf.Monitoring.EnableMetrics {
-		httpActiveConnections.Inc()
+		httpActiveConnections.WithLabelValues("test-route").Inc()
 		assert.Equal(t, float64(1), testutil.ToFloat64(httpActiveConnections.WithLabelValues("test-route")))
-		httpActiveConnections.Dec()
+		httpActiveConnections.WithLabelValues("test-route").Dec()
 		assert.Equal(t, float64(0), testutil.ToFloat64(httpActiveConnections.WithLabelValues("test-route")))
 	}
 
 	// Simulate request queue
 	if service.conf.Monitoring.EnableMetrics {
-		httpRequestQueueLength.Inc()
-		assert.Equal(t, float64(1), testutil.ToFloat64(httpRequestQueueLength))
-		httpRequestQueueLength.Dec()
-		assert.Equal(t, float64(0), testutil.ToFloat64(httpRequestQueueLength))
+		httpRequestQueueLength.WithLabelValues("test-route").Inc()
+		assert.Equal(t, float64(1), testutil.ToFloat64(httpRequestQueueLength.WithLabelValues("test-route")))
+		httpRequestQueueLength.WithLabelValues("test-route").Dec()
+		assert.Equal(t, float64(0), testutil.ToFloat64(httpRequestQueueLength.WithLabelValues("test-route")))
 	}
 
 	// Simulate connection pool usage
