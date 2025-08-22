@@ -12,14 +12,14 @@ import (
 	jwt "github.com/golang-jwt/jwt/v5"
 )
 
-// baseClaims 为测试提供最小实现，满足 CustomClaims 接口。
+// baseClaims provides a minimal implementation for tests to satisfy the CustomClaims interface.
 type baseClaims struct{ jwt.RegisteredClaims }
 
 func (b *baseClaims) Init() error       { return nil }
 func (b *baseClaims) Valid() error      { return nil }
 func (b *baseClaims) Decoration() error { return nil }
 
-// TestClaims: 测试使用的 claims，避免在结构中出现接口字段导致的 JSON 反序列化问题。
+// TestClaims: claims used in tests to avoid JSON deserialization issues caused by interface fields in the struct.
 type TestClaims struct {
 	jwt.RegisteredClaims
 	ID       int64  `json:"id"`
@@ -73,7 +73,7 @@ func TestJwtTokenSigning(t *testing.T) {
 	fmt.Println("Public key:")
 	fmt.Println(string(pubKeyPem))
 
-	// Sign a JWT token（使用不含接口字段的 TestClaims）
+	// Sign a JWT token (using TestClaims without interface fields)
 	signing, err := Sign(&TestClaims{
 		ID:       123,
 		Nickname: "老王",
@@ -110,7 +110,7 @@ func TestJwtTokenSigning(t *testing.T) {
 }
 
 // LoginClaims represents the claims in a JWT token for user login
-// LoginClaims 表示用户登录的 JWT 令牌中的声明信息
+// LoginClaims describes the claims in a user's login JWT token
 type LoginClaims struct {
 	CustomClaims
 	Id       int64  `json:"id"`

@@ -6,8 +6,10 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-lynx/lynx/app/conf"
+	"github.com/go-lynx/lynx/app/events"
 	"github.com/go-lynx/lynx/app/log"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -182,6 +184,14 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 		return nil, fmt.Errorf("invalid bootstrap configuration: missing required fields")
 	}
 
+	// Initialize unified event system
+	if err := events.InitWithDefaultConfig(); err != nil {
+		return nil, fmt.Errorf("failed to initialize event system: %w", err)
+	}
+
+	// Start event system health check
+	events.StartHealthCheck(30 * time.Second) // Check every 30 seconds
+
 	// Create new application instance
 	typedMgr := NewTypedPluginManager(plugins...)
 	app := &LynxApp{
@@ -205,6 +215,13 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 	lynxMu.Lock()
 	lynxApp = app
 	lynxMu.Unlock()
+
+	// Emit system start event
+	app.emitSystemEvent(events.EventSystemStart, map[string]any{
+		"app_name":    app.name,
+		"app_version": app.version,
+		"host":        app.host,
+	})
 
 	return app, nil
 }
@@ -306,4 +323,71 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 	}
 
 	return nil
+}
+
+// emitSystemEvent emits a system event to the unified event system
+func (a *LynxApp) emitSystemEvent(eventType events.EventType, metadata map[string]any) {
+	if a.pluginManager == nil {
+		return
+	}
+
+	rt := a.pluginManager.GetRuntime()
+	if rt == nil {
+		return
+	}
+
+	// Create system event
+	pluginEvent := plugins.PluginEvent{
+		Type:      plugins.EventType(fmt.Sprintf("system.%d", eventType)),
+		Priority:  plugins.PriorityHigh,
+		Source:    "lynx-app",
+		Category:  "system",
+		PluginID:  "system",
+		Status:    plugins.StatusActive,
+		Timestamp: time.Now().Unix(),
+		Metadata:  metadata,
+	}
+
+	// Emit through runtime
+	rt.EmitEvent(pluginEvent)
+}
+
+// Close gracefully shuts down the Lynx application
+func (a *LynxApp) Close() error {
+	if a == nil {
+		return nil
+	}
+
+	// Emit system shutdown event
+	a.emitSystemEvent(events.EventSystemShutdown, map[string]any{
+		"app_name":    a.name,
+		"app_version": a.version,
+		"host":        a.host,
+		"reason":      "application_close",
+	})
+
+	// Close plugin manager
+	if a.pluginManager != nil {
+		a.pluginManager.UnloadPlugins()
+	}
+
+	// Stop health check before closing event bus
+	events.StopHealthCheck()
+
+	// Close global event bus
+	if err := events.CloseGlobalEventBus(); err != nil {
+		log.Errorf("Failed to close global event bus: %v", err)
+	}
+
+	// Clear global singleton instance
+	lynxMu.Lock()
+	lynxApp = nil
+	lynxMu.Unlock()
+
+	return nil
+}
+
+// Shutdown is an alias for Close for backward compatibility
+func (a *LynxApp) Shutdown() error {
+	return a.Close()
 }

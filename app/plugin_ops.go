@@ -3,6 +3,7 @@ package app
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/selector"
@@ -57,6 +58,9 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 		return
 	}
 
+	// Emit plugin manager shutdown event
+	m.emitPluginManagerShutdownEvent()
+
 	timeout := m.getStopTimeout()
 
 	var ordered []plugins.Plugin
@@ -80,11 +84,19 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 		if p == nil {
 			continue
 		}
+
+		// Emit plugin unloading event
+		m.emitPluginUnloadEvent(p.ID(), p.Name())
+
 		if err := m.safeStopPlugin(p, timeout); err != nil {
 			log.Errorf("Failed to unload plugin %s: %v", p.Name(), err)
+			// Emit error event
+			m.emitPluginErrorEvent(p.ID(), p.Name(), "unload", err)
 		}
 		if err := m.runtime.CleanupResources(p.ID()); err != nil {
 			log.Errorf("Failed to cleanup resources for plugin %s: %v", p.Name(), err)
+			// Emit resource cleanup error event
+			m.emitResourceCleanupErrorEvent(p.ID(), p.Name(), err)
 		}
 		m.pluginInstances.Delete(p.Name())
 	}
@@ -189,11 +201,19 @@ func (m *DefaultPluginManager[T]) UnloadPluginsByName(names []string) {
 		if p == nil {
 			continue
 		}
+
+		// Emit plugin unloading event
+		m.emitPluginUnloadEvent(p.ID(), p.Name())
+
 		if err := m.safeStopPlugin(p, timeout); err != nil {
 			log.Errorf("Failed to unload plugin %s: %v", p.Name(), err)
+			// Emit error event
+			m.emitPluginErrorEvent(p.ID(), p.Name(), "unload", err)
 		}
 		if err := m.runtime.CleanupResources(p.ID()); err != nil {
 			log.Errorf("Failed to cleanup resources for plugin %s: %v", p.Name(), err)
+			// Emit resource cleanup error event
+			m.emitResourceCleanupErrorEvent(p.ID(), p.Name(), err)
 		}
 		m.pluginInstances.Delete(p.Name())
 	}
@@ -229,11 +249,18 @@ func (m *DefaultPluginManager[T]) StopPlugin(pluginName string) error {
 		return nil
 	}
 
+	// Emit plugin stopping event
+	m.emitPluginUnloadEvent(p.ID(), p.Name())
+
 	timeout := m.getStopTimeout()
 	if err := m.safeStopPlugin(p, timeout); err != nil {
+		// Emit error event
+		m.emitPluginErrorEvent(p.ID(), p.Name(), "stop", err)
 		return fmt.Errorf("failed to stop plugin %s: %w", pluginName, err)
 	}
 	if err := m.runtime.CleanupResources(p.ID()); err != nil {
+		// Emit resource cleanup error event
+		m.emitResourceCleanupErrorEvent(p.ID(), p.Name(), err)
 		return fmt.Errorf("failed to cleanup resources for plugin %s: %w", pluginName, err)
 	}
 	m.pluginInstances.Delete(pluginName)
@@ -270,4 +297,98 @@ func Plugins(m PluginManager) []plugins.Plugin {
 		return l.listPluginsInternal()
 	}
 	return nil
+}
+
+// emitPluginUnloadEvent emits a plugin unload event
+func (m *DefaultPluginManager[T]) emitPluginUnloadEvent(pluginID, pluginName string) {
+	if m.runtime == nil {
+		return
+	}
+
+	pluginEvent := plugins.PluginEvent{
+		Type:      plugins.EventPluginStopping,
+		Priority:  plugins.PriorityNormal,
+		Source:    "plugin-manager",
+		Category:  "lifecycle",
+		PluginID:  pluginID,
+		Status:    plugins.StatusInactive,
+		Timestamp: time.Now().Unix(),
+		Metadata: map[string]any{
+			"plugin_name": pluginName,
+			"operation":   "unload",
+		},
+	}
+
+	m.runtime.EmitEvent(pluginEvent)
+}
+
+// emitPluginErrorEvent emits a plugin error event
+func (m *DefaultPluginManager[T]) emitPluginErrorEvent(pluginID, pluginName, operation string, err error) {
+	if m.runtime == nil {
+		return
+	}
+
+	pluginEvent := plugins.PluginEvent{
+		Type:      plugins.EventErrorOccurred,
+		Priority:  plugins.PriorityHigh,
+		Source:    "plugin-manager",
+		Category:  "error",
+		PluginID:  pluginID,
+		Status:    plugins.StatusFailed,
+		Timestamp: time.Now().Unix(),
+		Error:     err,
+		Metadata: map[string]any{
+			"plugin_name": pluginName,
+			"operation":   operation,
+		},
+	}
+
+	m.runtime.EmitEvent(pluginEvent)
+}
+
+// emitResourceCleanupErrorEvent emits a resource cleanup error event
+func (m *DefaultPluginManager[T]) emitResourceCleanupErrorEvent(pluginID, pluginName string, err error) {
+	if m.runtime == nil {
+		return
+	}
+
+	pluginEvent := plugins.PluginEvent{
+		Type:      plugins.EventErrorOccurred,
+		Priority:  plugins.PriorityNormal,
+		Source:    "plugin-manager",
+		Category:  "error",
+		PluginID:  pluginID,
+		Status:    plugins.StatusFailed,
+		Timestamp: time.Now().Unix(),
+		Error:     err,
+		Metadata: map[string]any{
+			"plugin_name": pluginName,
+			"operation":   "resource_cleanup",
+		},
+	}
+
+	m.runtime.EmitEvent(pluginEvent)
+}
+
+// emitPluginManagerShutdownEvent emits a plugin manager shutdown event
+func (m *DefaultPluginManager[T]) emitPluginManagerShutdownEvent() {
+	if m.runtime == nil {
+		return
+	}
+
+	pluginEvent := plugins.PluginEvent{
+		Type:      plugins.EventType("system.plugin_manager_shutdown"),
+		Priority:  plugins.PriorityHigh,
+		Source:    "plugin-manager",
+		Category:  "system",
+		PluginID:  "system",
+		Status:    plugins.StatusInactive,
+		Timestamp: time.Now().Unix(),
+		Metadata: map[string]any{
+			"operation": "shutdown",
+			"reason":    "application_close",
+		},
+	}
+
+	m.runtime.EmitEvent(pluginEvent)
 }

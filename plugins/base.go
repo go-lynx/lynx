@@ -487,7 +487,7 @@ func (p *TypedBasePlugin[T]) EmitEvent(event PluginEvent) {
 	p.EmitEventInternal(event)
 }
 
-// EmitEventInternal emits an event to the runtime event system.
+// EmitEventInternal emits an event to the unified event bus system.
 // This method adds standard fields to the event before emission.
 func (p *TypedBasePlugin[T]) EmitEventInternal(event PluginEvent) {
 	// Add standard fields
@@ -497,6 +497,7 @@ func (p *TypedBasePlugin[T]) EmitEventInternal(event PluginEvent) {
 
 	// Apply filters
 	if p.ShouldEmitEvent(event) {
+		// Use runtime's EmitEvent which now delegates to unified event bus
 		p.runtime.EmitEvent(event)
 	}
 }

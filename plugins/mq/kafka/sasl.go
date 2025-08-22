@@ -98,7 +98,7 @@ func DefaultSASLConfig() *SASLConfig {
 	}
 }
 
-// IsValidMechanism 检查 SASL 机制是否有效
+// IsValidMechanism checks whether the SASL mechanism is valid
 func IsValidMechanism(mechanism string) bool {
 	validMechanisms := map[string]bool{
 		SASLPlain:       true,
@@ -108,7 +108,7 @@ func IsValidMechanism(mechanism string) bool {
 	return validMechanisms[mechanism]
 }
 
-// GetSupportedMechanisms 获取支持的 SASL 机制列表
+// GetSupportedMechanisms returns the list of supported SASL mechanisms
 func GetSupportedMechanisms() []string {
 	return []string{
 		SASLPlain,

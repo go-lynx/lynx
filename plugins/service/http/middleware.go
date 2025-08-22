@@ -120,17 +120,26 @@ func (h *ServiceHttp) recoveryMiddleware() middleware.Middleware {
 func (h *ServiceHttp) rateLimitMiddleware() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
+			// Get request information
+			method := "unknown"
+			path := "unknown"
+			if tr, ok := transport.FromServerContext(ctx); ok {
+				method = tr.RequestHeader().Get("X-HTTP-Method")
+				if method == "" {
+					method = "POST" // Kratos uses POST by default
+				}
+				path = tr.Operation()
+			}
+
+			// Increment request queue length
+			if h.requestQueueLength != nil {
+				h.requestQueueLength.WithLabelValues(path).Inc()
+				defer h.requestQueueLength.WithLabelValues(path).Dec()
+			}
+
 			if h.rateLimiter != nil && !h.rateLimiter.Allow() {
 				// Record rate limit metrics
 				if h.errorCounter != nil {
-					method := "POST"
-					path := "unknown"
-					if tr, ok := transport.FromServerContext(ctx); ok {
-						if m := tr.RequestHeader().Get("X-HTTP-Method"); m != "" {
-							method = m
-						}
-						path = tr.Operation()
-					}
 					h.errorCounter.WithLabelValues(method, path, "rate_limit_exceeded").Inc()
 				}
 				return nil, fmt.Errorf("rate limit exceeded")
@@ -149,6 +158,7 @@ func (h *ServiceHttp) metricsMiddleware() middleware.Middleware {
 			// Get request information
 			method := "unknown"
 			path := "unknown"
+			route := "unknown"
 
 			// Use Kratos transport to get request information
 			if tr, ok := transport.FromServerContext(ctx); ok {
@@ -157,6 +167,19 @@ func (h *ServiceHttp) metricsMiddleware() middleware.Middleware {
 					method = "POST" // Kratos uses POST by default
 				}
 				path = tr.Operation() // Operation path
+				route = path // Use operation path as route for now
+			}
+
+			// Increment active connections
+			if h.activeConnections != nil {
+				h.activeConnections.WithLabelValues(h.conf.Addr).Inc()
+				defer h.activeConnections.WithLabelValues(h.conf.Addr).Dec()
+			}
+
+			// Increment inflight requests
+			if h.inflightRequests != nil {
+				h.inflightRequests.WithLabelValues(path).Inc()
+				defer h.inflightRequests.WithLabelValues(path).Dec()
 			}
 
 			// Handle the request
@@ -185,6 +208,19 @@ func (h *ServiceHttp) metricsMiddleware() middleware.Middleware {
 						h.responseSize.WithLabelValues(method, path).Observe(float64(len(data)))
 					}
 				}
+			}
+
+			// Record route metrics
+			if h.routeRequestDuration != nil {
+				h.routeRequestDuration.WithLabelValues(route, method).Observe(duration)
+			}
+
+			if h.routeRequestCounter != nil {
+				status := "success"
+				if err != nil {
+					status = "error"
+				}
+				h.routeRequestCounter.WithLabelValues(route, method, status).Inc()
 			}
 
 			return reply, err
