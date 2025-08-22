@@ -336,7 +336,11 @@ func (h *ServiceHttp) StartupTasks() error {
 	}
 	if h.conf.GetTlsEnable() {
 		// If TLS is enabled, append TLS options
-		opts = append(opts, h.tlsLoad())
+		tlsOption, err := h.tlsLoad()
+		if err != nil {
+			return fmt.Errorf("failed to load TLS configuration: %w", err)
+		}
+		opts = append(opts, tlsOption)
 	}
 
 	// Create the HTTP server instance
