@@ -47,14 +47,14 @@ type ServiceHttp struct {
 	server *http.Server
 
 	// Prometheus metrics
-	requestCounter       *prometheus.CounterVec
-	requestDuration      *prometheus.HistogramVec
-	responseSize         *prometheus.HistogramVec
-	requestSize          *prometheus.HistogramVec
-	errorCounter         *prometheus.CounterVec
-	inflightRequests     *prometheus.GaugeVec
+	requestCounter   *prometheus.CounterVec
+	requestDuration  *prometheus.HistogramVec
+	responseSize     *prometheus.HistogramVec
+	requestSize      *prometheus.HistogramVec
+	errorCounter     *prometheus.CounterVec
+	inflightRequests *prometheus.GaugeVec
 	// Health check metrics
-	healthCheckTotal     *prometheus.CounterVec
+	healthCheckTotal *prometheus.CounterVec
 	// Additional metrics
 	activeConnections    *prometheus.GaugeVec
 	connectionPoolUsage  *prometheus.GaugeVec
@@ -142,8 +142,6 @@ func (h *ServiceHttp) InitializeResources(rt plugins.Runtime) error {
 		h.conf.Network, h.conf.Addr, h.conf.GetTlsEnable())
 	return nil
 }
-
-
 
 // setDefaultConfig sets the default configuration values.
 func (h *ServiceHttp) setDefaultConfig() {
@@ -276,8 +274,6 @@ func (h *ServiceHttp) initSecurityDefaults() {
 	h.rateLimiter = rate.NewLimiter(100, 200)
 }
 
-
-
 // initRateLimiter initializes the rate limiter.
 func (h *ServiceHttp) initRateLimiter() {
 	if h.rateLimiter != nil {
@@ -297,8 +293,6 @@ func (h *ServiceHttp) initPerformanceDefaults() {
 func (h *ServiceHttp) initGracefulShutdownDefaults() {
 	h.shutdownTimeout = 30 * time.Second
 }
-
-
 
 // StartupTasks implements the custom startup logic for the HTTP plugin.
 // It configures and starts the HTTP server with necessary middleware and options.
@@ -352,13 +346,13 @@ func (h *ServiceHttp) StartupTasks() error {
 	h.applyPerformanceConfig()
 
 	// Register monitoring endpoints
-		h.server.HandlePrefix("/metrics", metrics.Handler())
-		// Adapt net/http.Handler to kratos http.HandlerFunc
-		h.server.HandlePrefix("/health", &netHTTPToKratosHandlerAdapter{handler: h.healthCheckHandler()})
+	h.server.HandlePrefix("/metrics", metrics.Handler())
+	// Adapt net/http.Handler to kratos http.HandlerFunc
+	h.server.HandlePrefix("/health", &netHTTPToKratosHandlerAdapter{handler: h.healthCheckHandler()})
 
-		// Log successful startup
-		log.Infof("HTTP service successfully started with monitoring endpoints and performance optimizations")
-		return nil
+	// Log successful startup
+	log.Infof("HTTP service successfully started with monitoring endpoints and performance optimizations")
+	return nil
 }
 
 // applyPerformanceConfig applies performance settings to the underlying HTTP server.
@@ -379,41 +373,41 @@ func (h *ServiceHttp) applyPerformanceConfig() {
 		// Apply performance settings from configuration
 		if h.conf.Performance != nil {
 			// Apply timeout configurations
-		// ReadTimeout controls how long the server will wait for the entire request
-		if h.conf.Performance.ReadTimeout != nil {
-			readTimeout := h.conf.Performance.ReadTimeout.AsDuration()
-			if readTimeout > 0 {
-				httpServer.ReadTimeout = readTimeout
-				log.Infof("Applied ReadTimeout: %v", readTimeout)
+			// ReadTimeout controls how long the server will wait for the entire request
+			if h.conf.Performance.ReadTimeout != nil {
+				readTimeout := h.conf.Performance.ReadTimeout.AsDuration()
+				if readTimeout > 0 {
+					httpServer.ReadTimeout = readTimeout
+					log.Infof("Applied ReadTimeout: %v", readTimeout)
+				}
 			}
-		}
 
-		// WriteTimeout controls how long the server will wait for a response
-		if h.conf.Performance.WriteTimeout != nil {
-			writeTimeout := h.conf.Performance.WriteTimeout.AsDuration()
-			if writeTimeout > 0 {
-				httpServer.WriteTimeout = writeTimeout
-				log.Infof("Applied WriteTimeout: %v", writeTimeout)
+			// WriteTimeout controls how long the server will wait for a response
+			if h.conf.Performance.WriteTimeout != nil {
+				writeTimeout := h.conf.Performance.WriteTimeout.AsDuration()
+				if writeTimeout > 0 {
+					httpServer.WriteTimeout = writeTimeout
+					log.Infof("Applied WriteTimeout: %v", writeTimeout)
+				}
 			}
-		}
 
-		// IdleTimeout controls how long to keep idle connections open
-		if h.conf.Performance.IdleTimeout != nil {
-			idleTimeout := h.conf.Performance.IdleTimeout.AsDuration()
-			if idleTimeout > 0 {
-				httpServer.IdleTimeout = idleTimeout
-				log.Infof("Applied IdleTimeout: %v", idleTimeout)
+			// IdleTimeout controls how long to keep idle connections open
+			if h.conf.Performance.IdleTimeout != nil {
+				idleTimeout := h.conf.Performance.IdleTimeout.AsDuration()
+				if idleTimeout > 0 {
+					httpServer.IdleTimeout = idleTimeout
+					log.Infof("Applied IdleTimeout: %v", idleTimeout)
+				}
 			}
-		}
 
-		// ReadHeaderTimeout controls how long to wait for request headers
-		if h.conf.Performance.ReadHeaderTimeout != nil {
-			readHeaderTimeout := h.conf.Performance.ReadHeaderTimeout.AsDuration()
-			if readHeaderTimeout > 0 {
-				httpServer.ReadHeaderTimeout = readHeaderTimeout
-				log.Infof("Applied ReadHeaderTimeout: %v", readHeaderTimeout)
+			// ReadHeaderTimeout controls how long to wait for request headers
+			if h.conf.Performance.ReadHeaderTimeout != nil {
+				readHeaderTimeout := h.conf.Performance.ReadHeaderTimeout.AsDuration()
+				if readHeaderTimeout > 0 {
+					httpServer.ReadHeaderTimeout = readHeaderTimeout
+					log.Infof("Applied ReadHeaderTimeout: %v", readHeaderTimeout)
+				}
 			}
-		}
 
 			// Buffer sizes and connection limits are configured at the transport level
 			// through the HTTP server's underlying listener configuration

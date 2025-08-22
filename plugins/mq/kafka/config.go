@@ -156,7 +156,7 @@ func (k *Client) setDefaultValues() {
 				BatchSize:    1000,
 				BatchTimeout: &durationpb.Duration{Seconds: 1},
 				Compression:  CompressionSnappy,
-				RequiredAcks: 1, // 默认 leader ack，避免默认 0 导致 no-ack 不安全
+				RequiredAcks: 1, // Default to leader ack to avoid unsafe no-ack when defaulting to 0
 			},
 		},
 		Consumers: []*conf.Consumer{

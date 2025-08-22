@@ -226,7 +226,7 @@ func (p *PlugPolaris) validateServerConnector(connector map[string]any) error {
 		}
 	}
 
-	// 验证地址列表
+	// Validate address list
 	if addresses, exists := connector["addresses"]; exists {
 		if addressList, ok := addresses.([]any); ok {
 			for i, addr := range addressList {

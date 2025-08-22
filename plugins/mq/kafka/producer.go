@@ -28,12 +28,12 @@ func (k *Client) initProducerInstance(name string, p *conf.Producer) (*kgo.Clien
 		kgo.DialTimeout(k.conf.DialTimeout.AsDuration()),
 	}
 
-	// TLS 对象配置
-	if k.conf.Tls != nil && k.conf.Tls.Enabled {
-		tlsCfg, err := buildTLSConfig(k.conf.Tls)
-		if err != nil {
-			return nil, fmt.Errorf("buildTLSConfig failed: %w", err)
-		}
+    // TLS configuration
+    if k.conf.Tls != nil && k.conf.Tls.Enabled {
+        tlsCfg, err := buildTLSConfig(k.conf.Tls)
+        if err != nil {
+            return nil, fmt.Errorf("buildTLSConfig failed: %w", err)
+        }
 		opts = append(opts, kgo.DialTLSConfig(tlsCfg))
 	}
 

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-lynx/lynx/app/events"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/app/observability/metrics"
 	"github.com/go-lynx/lynx/plugins"
@@ -55,15 +56,53 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 				defer func() { <-sem }()
 
 				rt := m.runtime.WithPluginContext(p.ID())
+				
+				// Emit plugin initializing event
+				m.emitPluginEvent(p.ID(), events.EventPluginInitializing, map[string]any{
+					"plugin_name": p.Name(),
+					"plugin_id":   p.ID(),
+				})
+				
 				if err := m.safeInitPlugin(p, rt, initTimeout); err != nil {
+					// Emit error event
+					m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
+						"error":       err.Error(),
+						"plugin_name": p.Name(),
+						"operation":   "initialize",
+					})
 					errCh <- fmt.Errorf("failed to initialize plugin %s: %w", p.ID(), err)
 					return
 				}
+				
+				// Emit plugin initialized event
+				m.emitPluginEvent(p.ID(), events.EventPluginInitialized, map[string]any{
+					"plugin_name": p.Name(),
+					"plugin_id":   p.ID(),
+				})
+				
+				// Emit plugin starting event
+				m.emitPluginEvent(p.ID(), events.EventPluginStarting, map[string]any{
+					"plugin_name": p.Name(),
+					"plugin_id":   p.ID(),
+				})
+				
 				if err := m.safeStartPlugin(p, startTimeout); err != nil {
 					_ = m.runtime.CleanupResources(p.ID())
+					// Emit error event
+					m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
+						"error":       err.Error(),
+						"plugin_name": p.Name(),
+						"operation":   "start",
+					})
 					errCh <- fmt.Errorf("failed to start plugin %s: %w", p.ID(), err)
 					return
 				}
+				
+				// Emit plugin started event
+				m.emitPluginEvent(p.ID(), events.EventPluginStarted, map[string]any{
+					"plugin_name": p.Name(),
+					"plugin_id":   p.ID(),
+				})
 
 				m.pluginInstances.Store(p.Name(), p)
 
@@ -197,6 +236,49 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 	}
 }
 
+// emitPluginEvent emits a plugin event to the unified event system
+func (m *DefaultPluginManager[T]) emitPluginEvent(pluginID string, eventType events.EventType, metadata map[string]any) {
+	if m.runtime == nil {
+		return
+	}
+	
+	// Convert events.EventType to plugins.EventType
+	var pluginEventType plugins.EventType
+	switch eventType {
+	case events.EventPluginInitializing:
+		pluginEventType = plugins.EventPluginInitializing
+	case events.EventPluginInitialized:
+		pluginEventType = plugins.EventPluginInitialized
+	case events.EventPluginStarting:
+		pluginEventType = plugins.EventPluginStarting
+	case events.EventPluginStarted:
+		pluginEventType = plugins.EventPluginStarted
+	case events.EventPluginStopping:
+		pluginEventType = plugins.EventPluginStopping
+	case events.EventPluginStopped:
+		pluginEventType = plugins.EventPluginStopped
+	case events.EventErrorOccurred:
+		pluginEventType = plugins.EventErrorOccurred
+	default:
+		pluginEventType = plugins.EventPluginInitializing
+	}
+	
+	// Create plugin event
+	pluginEvent := plugins.PluginEvent{
+		Type:      pluginEventType,
+		Priority:  plugins.PriorityNormal,
+		Source:    "plugin-manager",
+		Category:  "lifecycle",
+		PluginID:  pluginID,
+		Status:    plugins.StatusActive,
+		Timestamp: time.Now().Unix(),
+		Metadata:  metadata,
+	}
+	
+	// Emit through runtime
+	m.runtime.EmitEvent(pluginEvent)
+}
+
 // safeStartPlugin safely calls Start with timeout and panic protection.
 func (m *DefaultPluginManager[T]) safeStartPlugin(p plugins.Plugin, timeout time.Duration) error {
 	if p == nil {
@@ -227,6 +309,13 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 	if p == nil {
 		return nil
 	}
+	
+	// Emit plugin stopping event
+	m.emitPluginEvent(p.ID(), events.EventPluginStopping, map[string]any{
+		"plugin_name": p.Name(),
+		"plugin_id":   p.ID(),
+	})
+	
 	done := make(chan error, 1)
 	go func() {
 		defer func() {
@@ -242,8 +331,29 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 	}
 	select {
 	case err := <-done:
+		if err != nil {
+			// Emit error event
+			m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
+				"error":       err.Error(),
+				"plugin_name": p.Name(),
+				"operation":   "stop",
+			})
+		} else {
+			// Emit plugin stopped event
+			m.emitPluginEvent(p.ID(), events.EventPluginStopped, map[string]any{
+				"plugin_name": p.Name(),
+				"plugin_id":   p.ID(),
+			})
+		}
 		return err
 	case <-time.After(timeout):
-		return fmt.Errorf("stop timeout after %s for plugin %s", timeout.String(), p.Name())
+		timeoutErr := fmt.Errorf("stop timeout after %s for plugin %s", timeout.String(), p.Name())
+		// Emit timeout error event
+		m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
+			"error":       timeoutErr.Error(),
+			"plugin_name": p.Name(),
+			"operation":   "stop",
+		})
+		return timeoutErr
 	}
 }

@@ -127,31 +127,31 @@ func TestSASLConfigValidation(t *testing.T) {
 		},
 	}
 
-	// 测试有效的 SASL 配置
+	// Test valid SASL configuration
 	err := client.validateSASLConfig()
 	assert.NoError(t, err)
 
-	// 测试无效的机制
+	// Test invalid mechanism
 	client.conf.Sasl.Mechanism = "INVALID"
 	err = client.validateSASLConfig()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid SASL mechanism")
 
-	// 测试空的用户名
+	// Test empty username
 	client.conf.Sasl.Mechanism = SASLPlain
 	client.conf.Sasl.Username = ""
 	err = client.validateSASLConfig()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "SASL username is required")
 
-	// 测试空的密码
+	// Test empty password
 	client.conf.Sasl.Username = "testuser"
 	client.conf.Sasl.Password = ""
 	err = client.validateSASLConfig()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "SASL password is required")
 
-	// 测试禁用的 SASL
+	// Test SASL disabled
 	client.conf.Sasl.Enabled = false
 	err = client.validateSASLConfig()
 	assert.NoError(t, err)

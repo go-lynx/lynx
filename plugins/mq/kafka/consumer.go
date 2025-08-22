@@ -52,27 +52,27 @@ type ConsumerGroupOptions struct {
 	MaxConcurrency int
 }
 
-// RebalanceEvent 重平衡事件
+// RebalanceEvent represents partition rebalance events
 type RebalanceEvent struct {
 	Assigned map[string][]int32
 	Revoked  map[string][]int32
 }
 
-// NewConsumerGroup 创建新的消费者组（按实例配置）
+// NewConsumerGroup creates a new consumer group (based on instance configuration)
 func (k *Client) NewConsumerGroup(client *kgo.Client, c *conf.Consumer, topics []string, handler MessageHandler) *ConsumerGroup {
 	return k.NewConsumerGroupWithOptions(client, c, topics, handler, nil)
 }
 
-// NewConsumerGroupWithOptions 创建新的消费者组（支持覆盖并发等可选参数）
+// NewConsumerGroupWithOptions creates a new consumer group with optional overrides (e.g., concurrency)
 func (k *Client) NewConsumerGroupWithOptions(client *kgo.Client, c *conf.Consumer, topics []string, handler MessageHandler, opts *ConsumerGroupOptions) *ConsumerGroup {
 	ctx, cancel := context.WithCancel(k.ctx)
-	// 默认并发：来自 DefaultPoolConfig
+	// Default concurrency: from DefaultPoolConfig
 	maxConc := DefaultPoolConfig().Size
-	// 配置文件覆盖
+	// Override by configuration
 	if c != nil && c.MaxConcurrency > 0 {
 		maxConc = int(c.MaxConcurrency)
 	}
-	// 运行时 options 覆盖
+	// Override by runtime options
 	if opts != nil && opts.MaxConcurrency > 0 {
 		maxConc = opts.MaxConcurrency
 	}
@@ -96,7 +96,7 @@ func (k *Client) NewConsumerGroupWithOptions(client *kgo.Client, c *conf.Consume
 	}
 }
 
-// initConsumerInstance 初始化指定名称的消费者实例
+// initConsumerInstance initializes a consumer instance with the given name
 func (k *Client) initConsumerInstance(name string, cconf *conf.Consumer) (*kgo.Client, error) {
 	if cconf == nil {
 		return nil, fmt.Errorf("consumer config is nil for %s", name)
@@ -119,12 +119,12 @@ func (k *Client) initConsumerInstance(name string, cconf *conf.Consumer) (*kgo.C
 		)
 	}
 
-	// 重平衡事件分派到对应实例的活跃组
+	// Dispatch rebalance events to the active group of the corresponding instance
 	opts = append(opts,
 		kgo.OnPartitionsAssigned(func(ctx context.Context, c *kgo.Client, assigned map[string][]int32) {
 			var target *ConsumerGroup
 			k.mu.RLock()
-			// 通过客户端指针反查实例名
+			// Reverse lookup instance name via client pointer
 			for in, cli := range k.consumers {
 				if cli == c {
 					target = k.activeGroups[in]
@@ -184,7 +184,7 @@ func (k *Client) initConsumerInstance(name string, cconf *conf.Consumer) (*kgo.C
 	return consumer, nil
 }
 
-// getStartOffset 获取起始偏移量（按实例配置）
+// getStartOffset gets the start offset (based on instance configuration)
 func (k *Client) getStartOffset(c *conf.Consumer) kgo.Offset {
 	if c == nil {
 		return kgo.NewOffset().AtEnd()
@@ -199,12 +199,12 @@ func (k *Client) getStartOffset(c *conf.Consumer) kgo.Offset {
 	}
 }
 
-// Subscribe 订阅主题（路由到第一个启用的消费者实例）
+// Subscribe subscribes topics (route to the first enabled consumer instance)
 func (k *Client) Subscribe(ctx context.Context, topics []string, handler MessageHandler) error {
 	if len(topics) == 0 {
 		return fmt.Errorf("no topics provided")
 	}
-	// 选择第一个启用的消费者作为默认
+	// Select the first enabled consumer as default
 	var chosen *conf.Consumer
 	var name string
 	for _, c := range k.conf.Consumers {
@@ -220,17 +220,17 @@ func (k *Client) Subscribe(ctx context.Context, topics []string, handler Message
 	return k.SubscribeWith(ctx, name, topics, handler)
 }
 
-// SubscribeWith 按消费者实例名订阅
+// SubscribeWith subscribes by consumer instance name
 func (k *Client) SubscribeWith(ctx context.Context, consumerName string, topics []string, handler MessageHandler) error {
 	return k.SubscribeWithOptions(ctx, consumerName, topics, handler, nil)
 }
 
-// SubscribeWithOptions 按消费者实例名订阅（支持可选参数覆盖）
+// SubscribeWithOptions subscribes by consumer instance name (with optional overrides)
 func (k *Client) SubscribeWithOptions(ctx context.Context, consumerName string, topics []string, handler MessageHandler, opts *ConsumerGroupOptions) error {
 	if len(topics) == 0 {
 		return fmt.Errorf("no topics provided")
 	}
-	// 找到对应配置
+	// Find matching configuration
 	var cconf *conf.Consumer
 	for _, c := range k.conf.Consumers {
 		if c != nil && c.Enabled && c.GetName() == consumerName {
@@ -242,7 +242,7 @@ func (k *Client) SubscribeWithOptions(ctx context.Context, consumerName string, 
 		return fmt.Errorf("consumer instance %s not found or disabled", consumerName)
 	}
 
-	// 获取或初始化客户端
+	// Get or initialize client
 	k.mu.RLock()
 	consumer := k.consumers[consumerName]
 	k.mu.RUnlock()
@@ -254,19 +254,19 @@ func (k *Client) SubscribeWithOptions(ctx context.Context, consumerName string, 
 		k.mu.Lock()
 		k.consumers[consumerName] = cli
 		consumer = cli
-		// 启动消费者连接管理器
+		// Start the consumer connection manager
 		if _, ok := k.consConnMgrs[consumerName]; !ok {
 			cm := NewConnectionManager(cli, k.conf.GetBrokers())
 			k.consConnMgrs[consumerName] = cm
 			cm.Start()
 			log.Infof("Kafka consumer[%s] connection manager started", consumerName)
-			// 注册健康指标
+			// Register health metrics
 			k.registerHealthForConsumer(consumerName)
 		}
 		k.mu.Unlock()
 	}
 
-	// 若已有活跃组，先停止该实例对应的旧组
+	// If there is an active group, stop the old group for this instance first
 	k.mu.Lock()
 	if old := k.activeGroups[consumerName]; old != nil {
 		old.Stop()
@@ -274,7 +274,7 @@ func (k *Client) SubscribeWithOptions(ctx context.Context, consumerName string, 
 	}
 	cg := k.NewConsumerGroupWithOptions(consumer, cconf, topics, handler, opts)
 	k.activeGroups[consumerName] = cg
-	// 兼容旧字段：若 legacy 未设置，则设置为当前实例
+	// Backward compatibility: if legacy fields are not set, set to current instance
 	if k.consumer == nil {
 		k.consumer = consumer
 		k.activeConsumerGroup = cg
@@ -287,7 +287,7 @@ func (k *Client) SubscribeWithOptions(ctx context.Context, consumerName string, 
 	return nil
 }
 
-// Start 启动消费者组
+// Start starts the consumer group
 func (cg *ConsumerGroup) Start() error {
 	cg.mu.Lock()
 	if cg.isRunning {
@@ -303,17 +303,17 @@ func (cg *ConsumerGroup) Start() error {
 		cg.mu.Unlock()
 	}()
 
-	// 启动错误处理协程
+	// Start error handling goroutine
 	go cg.handleErrors()
 
-	// 启动重平衡处理协程
+	// Start rebalance handling goroutine
 	go cg.handleRebalances()
 
-	// 开始消费
+	// Begin consuming
 	for {
 		select {
 		case <-cg.ctx.Done():
-			// 正常关停不视为错误，减少日志噪声
+			// Graceful shutdown is not treated as an error to reduce log noise
 			return nil
 		default:
 		}
@@ -323,7 +323,7 @@ func (cg *ConsumerGroup) Start() error {
 			for _, fe := range errs {
 				cg.metrics.IncrementConsumerErrors()
 				e := fe.Err
-				// 分类：上下文取消/超时视为可预期；Kafka 可重试错误为 Warn；不可重试为 Error，并上报错误通道
+				// Categorization: context canceled/deadline exceeded are expected; retriable Kafka errors -> Warn; non-retriable -> Error and report via error channel
 				switch {
 				case errors.Is(e, context.Canceled):
 					log.InfofCtx(cg.ctx, "Consumer fetch canceled: %s[%d]: %v", fe.Topic, fe.Partition, e)
@@ -343,12 +343,12 @@ func (cg *ConsumerGroup) Start() error {
 			continue
 		}
 
-		// 处理消息
+		// Process messages
 		cg.processFetches(fetches)
 	}
 }
 
-// processFetches 处理获取的消息
+// processFetches processes fetched messages
 func (cg *ConsumerGroup) processFetches(fetches kgo.Fetches) {
 	for _, fetch := range fetches {
 		for _, topic := range fetch.Topics {
@@ -357,7 +357,7 @@ func (cg *ConsumerGroup) processFetches(fetches kgo.Fetches) {
 					continue
 				}
 
-				// 将记录送入该分区的串行通道，保证同分区顺序处理
+				// Send records to the serial channel of this partition to ensure in-partition ordering
 				ch := cg.getPartitionChan(topic.Topic, partition.Partition)
 				select {
 				case <-cg.ctx.Done():
@@ -369,7 +369,7 @@ func (cg *ConsumerGroup) processFetches(fetches kgo.Fetches) {
 	}
 }
 
-// getPartitionChan 获取或创建指定分区的串行通道，并启动对应 worker
+// getPartitionChan gets or creates the serial channel for the given partition and starts its worker
 func (cg *ConsumerGroup) getPartitionChan(topic string, partition int32) chan []*kgo.Record {
 	key := cg.partitionKey(topic, partition)
 	cg.partMu.Lock()
@@ -377,7 +377,7 @@ func (cg *ConsumerGroup) getPartitionChan(topic string, partition int32) chan []
 	if !ok {
 		ch = make(chan []*kgo.Record, 1)
 		cg.partChans[key] = ch
-		// 启动该分区的串行 worker
+		// Start the serial worker for this partition
 		go func(t string, p int32, c chan []*kgo.Record) {
 			for {
 				select {
@@ -387,8 +387,8 @@ func (cg *ConsumerGroup) getPartitionChan(topic string, partition int32) chan []
 					if !ok {
 						return
 					}
-					// 使用协程池处理该分区的一批记录，但保证分区内严格顺序：
-					// 提交到池后在本 worker 内同步等待完成，再读取下一批
+					// Use the goroutine pool to process a batch for this partition with strict in-partition order:
+					// submit to the pool, then synchronously wait within this worker before fetching the next batch
 					done := make(chan struct{})
 					cg.pool.Submit(func() {
 						cg.processRecordsSerial(t, p, recs)
@@ -407,7 +407,7 @@ func (cg *ConsumerGroup) getPartitionChan(topic string, partition int32) chan []
 	return ch
 }
 
-// closePartitionChan 关闭并移除指定分区通道
+// closePartitionChan closes and removes the channel for the specified partition
 func (cg *ConsumerGroup) closePartitionChan(topic string, partition int32) {
 	key := cg.partitionKey(topic, partition)
 	cg.partMu.Lock()
@@ -422,7 +422,7 @@ func (cg *ConsumerGroup) partitionKey(topic string, partition int32) string {
 	return fmt.Sprintf("%s:%d", topic, partition)
 }
 
-// processRecordsSerial 同步串行处理指定分区的一批记录，遇错即停，仅提交连续成功的最后一条
+// processRecordsSerial synchronously processes a batch of records for the given partition; stops on first error and only commits the last consecutive success
 func (cg *ConsumerGroup) processRecordsSerial(topic string, partition int32, records []*kgo.Record) {
 	var lastSuccess *kgo.Record
 	for _, record := range records {
@@ -439,7 +439,7 @@ func (cg *ConsumerGroup) processRecordsSerial(topic string, partition int32, rec
 			default:
 				log.ErrorfCtx(cg.ctx, "Error channel is full, dropping error: %v", err)
 			}
-			break // 遇错即停，保证不推进偏移
+			break // Stop on first error to avoid advancing offset
 		}
 
 		cg.metrics.IncrementConsumedMessages(1)
@@ -448,7 +448,7 @@ func (cg *ConsumerGroup) processRecordsSerial(topic string, partition int32, rec
 		lastSuccess = record
 	}
 
-	// 根据配置提交偏移量
+	// Commit offset according to configuration
 	if lastSuccess != nil && cg.client != nil {
 		if cg.autoCommit {
 			cg.client.MarkCommitRecords(lastSuccess)
@@ -463,7 +463,7 @@ func (cg *ConsumerGroup) processRecordsSerial(topic string, partition int32, rec
 	}
 }
 
-// handleErrors 处理错误
+// handleErrors handles errors
 func (cg *ConsumerGroup) handleErrors() {
 	for {
 		select {
@@ -471,12 +471,12 @@ func (cg *ConsumerGroup) handleErrors() {
 			return
 		case err := <-cg.errorChan:
 			log.ErrorfCtx(cg.ctx, "Consumer error: %v", err)
-			// 这里可以添加错误处理逻辑，比如发送到死信队列
+			// You can add error handling here, e.g., send to a dead-letter queue
 		}
 	}
 }
 
-// handleRebalances 处理重平衡
+// handleRebalances handles partition rebalances
 func (cg *ConsumerGroup) handleRebalances() {
 	for {
 		select {
@@ -485,7 +485,7 @@ func (cg *ConsumerGroup) handleRebalances() {
 		case ev := <-cg.rebalanceChan:
 			if len(ev.Revoked) > 0 {
 				log.InfofCtx(cg.ctx, "Partitions revoked: %+v", ev.Revoked)
-				// 在撤销前尝试提交未提交的偏移：仅在自动提交模式下才需要
+				// Try to commit uncommitted offsets before revocation: only needed in auto-commit mode
 				if cg.autoCommit {
 					if err := cg.client.CommitUncommittedOffsets(cg.ctx); err != nil {
 						cg.metrics.IncrementOffsetCommitErrors()
@@ -494,43 +494,43 @@ func (cg *ConsumerGroup) handleRebalances() {
 						cg.metrics.IncrementOffsetCommits()
 					}
 				}
-				// 关闭被撤销分区的 worker 通道，避免资源泄漏
+				// Close worker channels for revoked partitions to avoid resource leaks
 				for topic, parts := range ev.Revoked {
 					for _, p := range parts {
 						cg.closePartitionChan(topic, p)
 					}
 				}
-				// 可在此处添加本地资源清理/状态迁移
+				// Optionally add local resource cleanup/state migration here
 			}
 			if len(ev.Assigned) > 0 {
 				log.InfofCtx(cg.ctx, "Partitions assigned: %+v", ev.Assigned)
-				// 可在此处执行预热/恢复
+				// Optionally perform warm-up/recovery here
 			}
 		}
 	}
 }
 
-// Stop 停止消费者组
+// Stop stops the consumer group
 func (cg *ConsumerGroup) Stop() {
 	cg.cancel()
 	cg.pool.Wait()
 }
 
-// IsRunning 检查是否正在运行
+// IsRunning checks whether it is running
 func (cg *ConsumerGroup) IsRunning() bool {
 	cg.mu.RLock()
 	defer cg.mu.RUnlock()
 	return cg.isRunning
 }
 
-// GetConsumer 获取消费者客户端（用于高级操作）
+// GetConsumer returns the consumer client (for advanced operations)
 func (k *Client) GetConsumer() *kgo.Client {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	if k.consumer != nil {
 		return k.consumer
 	}
-	// 回退：返回任一已初始化消费者
+	// Fallback: return any initialized consumer
 	for _, c := range k.consumers {
 		if c != nil {
 			return c
@@ -539,7 +539,7 @@ func (k *Client) GetConsumer() *kgo.Client {
 	return nil
 }
 
-// IsConsumerReady 检查消费者是否就绪
+// IsConsumerReady checks whether the consumer is ready
 func (k *Client) IsConsumerReady() bool {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
