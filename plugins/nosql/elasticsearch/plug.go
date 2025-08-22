@@ -1,10 +1,10 @@
 package elasticsearch
 
 import (
+	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/factory"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/elastic/go-elasticsearch/v8"
 )
 
 // init function is a special function in Go that is automatically executed when the package is loaded.
@@ -15,7 +15,7 @@ func init() {
 	// The second parameter confPrefix is the configuration prefix, used to read plugin-related configuration from the config.
 	// The third parameter is an anonymous function that returns an instance of plugins.Plugin interface type,
 	// by calling the NewElasticsearchClient function to create a new Elasticsearch client plugin instance.
-	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
+	factory.GlobalTypedFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
 		return NewElasticsearchClient()
 	})
 }

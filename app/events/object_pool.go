@@ -14,8 +14,8 @@ func NewEventBufferPool() *EventBufferPool {
 	return &EventBufferPool{
 		pool: sync.Pool{
 			New: func() interface{} {
-				// Pre-allocate with reasonable capacity
-				return make([]LynxEvent, 0, 32)
+				// Pre-allocate with larger capacity to match typical batch sizes
+				return make([]LynxEvent, 0, 64)
 			},
 		},
 	}
@@ -36,11 +36,13 @@ func (p *EventBufferPool) Put(buf []LynxEvent) {
 // GetWithCapacity retrieves a buffer with specified capacity
 func (p *EventBufferPool) GetWithCapacity(capacity int) []LynxEvent {
 	buf := p.Get()
-	if cap(buf) < capacity {
-		// If pool buffer is too small, create a new one
-		return make([]LynxEvent, 0, capacity)
+	// 如果池中的 buffer 容量足够，直接使用
+	if cap(buf) >= capacity {
+		return buf
 	}
-	return buf
+	// 如果容量不够，先放回池中，然后创建新的
+	p.Put(buf)
+	return make([]LynxEvent, 0, capacity)
 }
 
 // MetadataPool provides a pool of metadata maps

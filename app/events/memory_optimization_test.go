@@ -103,9 +103,9 @@ func BenchmarkObjectPoolVsDirectAllocation(b *testing.B) {
 		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
-			buf := pool.GetWithCapacity(32)
+			buf := pool.GetWithCapacity(64) // 使用更大的容量
 			// Simulate some work
-			for j := 0; j < 16; j++ {
+			for j := 0; j < 32; j++ {
 				buf = append(buf, LynxEvent{})
 			}
 			pool.Put(buf)
@@ -118,9 +118,9 @@ func BenchmarkObjectPoolVsDirectAllocation(b *testing.B) {
 		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
-			buf := make([]LynxEvent, 0, 32)
+			buf := make([]LynxEvent, 0, 64) // 使用相同的容量
 			// Simulate some work
-			for j := 0; j < 16; j++ {
+			for j := 0; j < 32; j++ {
 				buf = append(buf, LynxEvent{})
 			}
 			// buf goes out of scope and gets GC'd

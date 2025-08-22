@@ -519,7 +519,10 @@ func (b *LynxEventBus) run() {
 				// batch drain with priority fill
 				bs := max(b.config.BatchSize, 1)
 				buf := b.bufferPool.GetWithCapacity(bs)
-				defer b.bufferPool.Put(buf)
+				// 处理完后立即放回池中
+				defer func() {
+					b.bufferPool.Put(buf)
+				}()
 				for len(buf) < bs {
 					if ev, ok := b.tryRecv(b.criticalQ); ok {
 						buf = append(buf, ev)
@@ -561,7 +564,10 @@ func (b *LynxEventBus) run() {
 			// 尝试批量收集非阻塞事件，按优先级填充
 			batchSize := max(b.config.BatchSize, 1)
 			buf := b.bufferPool.GetWithCapacity(batchSize)
-			defer b.bufferPool.Put(buf)
+			// 处理完后立即放回池中
+			defer func() {
+				b.bufferPool.Put(buf)
+			}()
 			for len(buf) < batchSize {
 				if ev, ok := b.tryRecv(b.criticalQ); ok {
 					buf = append(buf, ev)
@@ -593,8 +599,11 @@ func (b *LynxEventBus) run() {
 				GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
 			case ev := <-b.criticalQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
-				defer b.bufferPool.Put(buf)
 				buf = append(buf, ev)
+				// 处理完后立即放回池中
+				defer func() {
+					b.bufferPool.Put(buf)
+				}()
 				// 额外非阻塞填充
 				for len(buf) < max(b.config.BatchSize, 1) {
 					if ev2, ok := b.tryRecv(b.criticalQ); ok {
@@ -618,8 +627,11 @@ func (b *LynxEventBus) run() {
 				b.publishBatch(buf)
 			case ev := <-b.highQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
-				defer b.bufferPool.Put(buf)
 				buf = append(buf, ev)
+				// 处理完后立即放回池中
+				defer func() {
+					b.bufferPool.Put(buf)
+				}()
 				for len(buf) < max(b.config.BatchSize, 1) {
 					if ev2, ok := b.tryRecv(b.highQ); ok {
 						buf = append(buf, ev2)
@@ -638,8 +650,11 @@ func (b *LynxEventBus) run() {
 				b.publishBatch(buf)
 			case ev := <-b.normalQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
-				defer b.bufferPool.Put(buf)
 				buf = append(buf, ev)
+				// 处理完后立即放回池中
+				defer func() {
+					b.bufferPool.Put(buf)
+				}()
 				for len(buf) < max(b.config.BatchSize, 1) {
 					if ev2, ok := b.tryRecv(b.normalQ); ok {
 						buf = append(buf, ev2)
@@ -654,8 +669,11 @@ func (b *LynxEventBus) run() {
 				b.publishBatch(buf)
 			case ev := <-b.lowQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
-				defer b.bufferPool.Put(buf)
 				buf = append(buf, ev)
+				// 处理完后立即放回池中
+				defer func() {
+					b.bufferPool.Put(buf)
+				}()
 				for len(buf) < max(b.config.BatchSize, 1) {
 					if ev2, ok := b.tryRecv(b.lowQ); ok {
 						buf = append(buf, ev2)

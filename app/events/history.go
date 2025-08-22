@@ -90,18 +90,10 @@ func (h *EventHistory) GetEvents() []LynxEvent {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	// Use object pool for better memory efficiency
-	bufferPool := GetGlobalEventBufferPool()
-	result := bufferPool.GetWithCapacity(len(h.events))
-	defer bufferPool.Put(result)
-
-	// Copy events to result
-	result = append(result, h.events...)
-
-	// Create a new slice to return (caller owns this memory)
-	finalResult := make([]LynxEvent, len(result))
-	copy(finalResult, result)
-	return finalResult
+	// 直接创建结果 slice，避免不必要的中间分配
+	result := make([]LynxEvent, len(h.events))
+	copy(result, h.events)
+	return result
 }
 
 // GetEventsByType returns events filtered by type
