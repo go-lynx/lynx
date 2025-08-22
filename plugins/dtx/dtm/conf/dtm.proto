@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.dtm;
+
+option go_package = "github.com/go-lynx/lynx/plugins/dtm/dtm/conf;conf";
+
+// The DTM message defines the configuration information for the DTM plugin.
+message DTM {
+  // enabled indicates whether the DTM plugin is enabled.
+  // Set to true to enable the plugin, set to false to disable the plugin.
+  bool enabled = 1;
+  
+  // server_url represents the DTM server URL.
+  // Example: http://localhost:36789/api/dtmsvr
+  string server_url = 2;
+  
+  // grpc_server represents the DTM gRPC server address.
+  // Example: localhost:36790
+  string grpc_server = 3;
+  
+  // timeout represents the request timeout in seconds.
+  int32 timeout = 4;
+  
+  // retry_interval represents the retry interval in seconds.
+  int32 retry_interval = 5;
+  
+  // pass_through_headers represents the headers to pass through.
+  repeated string pass_through_headers = 6;
+  
+  // transaction_timeout represents the global transaction timeout in seconds.
+  int32 transaction_timeout = 7;
+  
+  // branch_timeout represents the branch transaction timeout in seconds.
+  int32 branch_timeout = 8;
+}

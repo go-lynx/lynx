@@ -5,7 +5,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// startPoolStatsCollector 周期性抓取 PoolStats 并上报 Prometheus
+// startPoolStatsCollector periodically collects PoolStats and reports to Prometheus
 func (r *PlugRedis) startPoolStatsCollector() {
 	r.statsQuit = make(chan struct{})
 	r.statsWG.Add(1)
@@ -22,7 +22,7 @@ func (r *PlugRedis) startPoolStatsCollector() {
 			}
 		}
 	}()
-	// 立即采集一次
+	// Collect immediately once
 	r.observePoolStats()
 }
 
@@ -30,7 +30,7 @@ func (r *PlugRedis) observePoolStats() {
 	if r.rdb == nil {
 		return
 	}
-	// 兼容不同客户端类型
+	// Compatible with different client types
 	switch c := r.rdb.(type) {
 	case *redis.Client:
 		ps := c.PoolStats()
@@ -42,7 +42,7 @@ func (r *PlugRedis) observePoolStats() {
 		ps := c.PoolStats()
 		r.setPoolStats(ps)
 	default:
-		// 尝试通过接口断言（某些版本 UniversalClient 可能直接实现 PoolStats 方法）
+		// Try interface assertion (some versions of UniversalClient may directly implement PoolStats method)
 		type poolStater interface{ PoolStats() *redis.PoolStats }
 		if pc, ok := any(r.rdb).(poolStater); ok {
 			r.setPoolStats(pc.PoolStats())

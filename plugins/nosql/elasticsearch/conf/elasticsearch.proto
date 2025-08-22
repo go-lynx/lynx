@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.elasticsearch;
+
+option go_package = "github.com/go-lynx/lynx/plugins/nosql/elasticsearch/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Elasticsearch message defines the configuration information for Elasticsearch client
+message Elasticsearch {
+  // addresses represents the list of Elasticsearch server addresses
+  repeated string addresses = 1;
+
+  // username for authentication
+  string username = 2;
+
+  // password for authentication
+  string password = 3;
+
+  // api_key for API key authentication
+  string api_key = 4;
+
+  // service_token for service token authentication
+  string service_token = 5;
+
+  // certificate_fingerprint for certificate-based authentication
+  string certificate_fingerprint = 6;
+
+  // compress_request_body enables request body compression
+  bool compress_request_body = 7;
+
+  // connect_timeout specifies the connection timeout
+  google.protobuf.Duration connect_timeout = 8;
+
+  // max_retries specifies the maximum number of retries
+  int32 max_retries = 9;
+
+  // enable_metrics enables metrics collection
+  bool enable_metrics = 10;
+
+  // enable_health_check enables health check
+  bool enable_health_check = 11;
+
+  // health_check_interval specifies the health check interval
+  google.protobuf.Duration health_check_interval = 12;
+
+  // index_prefix specifies the prefix for index names
+  string index_prefix = 13;
+
+  // log_level specifies the logging level
+  string log_level = 14;
+}

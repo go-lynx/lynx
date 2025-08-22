@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.db;
+
+option go_package = "github.com/go-lynx/lynx/plugins/sql/pgsql/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Defines a message type for PgSQL configuration.
+message Pgsql {
+  // The driver name for the PgSQL database.
+  string driver = 1;
+  // The data source name (DSN) for the PgSQL database.
+  string source = 2;
+  // The minimum number of connections to maintain in the connection pool.
+  int32 min_conn = 3;
+  // The maximum number of connections to maintain in the connection pool.
+  int32 max_conn = 4;
+  // The maximum lifetime for a connection in the connection pool.
+  google.protobuf.Duration max_life_time = 5;
+  // The maximum idle time for a connection in the connection pool.
+  google.protobuf.Duration max_idle_time = 6;
+  // The maximum number of idle connections.
+  int32 max_idle_conn = 7;
+  // Prometheus monitoring configuration (semantic only, no HTTP exposure here).
+  PrometheusConfig prometheus = 8;
+}
+
+// Prometheus monitoring configuration (semantic only).
+message PrometheusConfig {
+  // The namespace for Prometheus metrics.
+  string namespace = 1;
+  // The subsystem for Prometheus metrics.
+  string subsystem = 2;
+  // Additional labels for metrics.
+  map<string, string> labels = 3;
+}

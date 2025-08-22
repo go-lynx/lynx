@@ -76,7 +76,7 @@ func InitMetrics(reg prometheus.Registerer) {
 	if reg == nil {
 		reg = prometheus.DefaultRegisterer
 	}
-	// 使用 Register 并忽略 AlreadyRegistered 错误，避免重复初始化时 panic
+	// Use Register and ignore AlreadyRegistered errors to avoid panic during duplicate initialization
 	if err := reg.Register(lockAcquireTotal); err != nil {
 		var alreadyRegisteredError prometheus.AlreadyRegisteredError
 		if !errors.As(err, &alreadyRegisteredError) {

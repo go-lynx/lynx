@@ -2,7 +2,7 @@
 
 This plugin is based on go-redis v9's UniversalClient, providing unified support for standalone, Cluster, and Sentinel topologies, with built-in Prometheus metrics, startup health checks, command-level instrumentation, connection pool statistics, and TLS support.
 
-Note: Configuration is delivered through protobuf (`conf/redis.proto`), and the deprecated field `addr` has been removed, keeping only `addrs`. All comments are in Chinese.
+Note: Configuration is delivered through protobuf (`conf/redis.proto`), and the deprecated field `addr` has been removed, keeping only `addrs`. All comments are in English.
 
 ## Feature Overview
 - Supports three topologies: single / cluster / sentinel (auto-detection, or determined by `sentinel.master_name`)

@@ -7,14 +7,14 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// buildUniversalOptions 基于配置构建 redis.UniversalOptions
+// buildUniversalOptions builds redis.UniversalOptions based on configuration
 func (r *PlugRedis) buildUniversalOptions() *redis.UniversalOptions {
-	// 解析地址：优先使用 addrs；为空则回退到 addr（支持逗号分隔）
+	// Parse addresses: prioritize addrs; fallback to addr if empty (supports comma separation)
 	var addrs []string
 	if len(r.conf.Addrs) > 0 {
 		addrs = append(addrs, r.conf.Addrs...)
 	}
-	// TLS：配置优先；其次 rediss:// 推断
+	// TLS: configuration priority; then rediss:// inference
 	var tlsConfig *tls.Config
 	if r.conf.Tls != nil && r.conf.Tls.Enabled {
 		tlsConfig = &tls.Config{InsecureSkipVerify: r.conf.Tls.InsecureSkipVerify}
@@ -27,7 +27,7 @@ func (r *PlugRedis) buildUniversalOptions() *redis.UniversalOptions {
 			addrs[i] = strings.TrimPrefix(addrs[i], "rediss://")
 		}
 	}
-	// Sentinel：允许专用 sentinel 地址覆盖
+	// Sentinel: allow dedicated sentinel address override
 	masterName := ""
 	if r.conf.Sentinel != nil {
 		masterName = r.conf.Sentinel.MasterName

@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package openim.conf;
+
+import "google/protobuf/duration.proto";
+
+option go_package = "github.com/go-lynx/lynx/plugins/service/openim/conf;conf";
+
+// OpenIM configuration
+message OpenIM {
+  // Server configuration
+  Server server = 1;
+  // Client configuration
+  Client client = 2;
+  // Message configuration
+  Message message = 3;
+  // Security configuration
+  Security security = 4;
+  // Storage configuration
+  Storage storage = 5;
+}
+
+// Server configuration
+message Server {
+  // Server address (e.g., "localhost:10002")
+  string addr = 1;
+  // API version
+  string api_version = 2;
+  // Platform ID
+  int32 platform_id = 3;
+  // Server name
+  string server_name = 4;
+  // Log level
+  string log_level = 5;
+  // Log output path
+  string log_output_path = 6;
+  // Log rotation max size (MB)
+  int32 log_rotation_max_size = 7;
+  // Log rotation max age (days)
+  int32 log_rotation_max_age = 8;
+  // Log rotation max backups
+  int32 log_rotation_max_backups = 9;
+  // Log is stdout
+  bool log_is_stdout = 10;
+  // Log is json
+  bool log_is_json = 11;
+  // Log with stack
+  bool log_with_stack = 12;
+}
+
+// Client configuration
+message Client {
+  // Client user ID
+  string user_id = 1;
+  // Client token
+  string token = 2;
+  // Client platform ID
+  int32 platform_id = 3;
+  // Client server address
+  string server_addr = 4;
+  // Client API version
+  string api_version = 5;
+  // Client timeout
+  google.protobuf.Duration timeout = 6;
+  // Client heartbeat interval
+  google.protobuf.Duration heartbeat_interval = 7;
+}
+
+// Message configuration
+message Message {
+  // Message type (text, image, voice, video, file, etc.)
+  string type = 1;
+  // Message content
+  string content = 2;
+  // Message sender
+  string sender = 3;
+  // Message receiver
+  string receiver = 4;
+  // Message group ID (for group messages)
+  string group_id = 5;
+  // Message sequence number
+  int64 sequence = 6;
+  // Message timestamp
+  int64 timestamp = 7;
+  // Message status
+  string status = 8;
+}
+
+// Security configuration
+message Security {
+  // Enable TLS
+  bool tls_enable = 1;
+  // TLS certificate file
+  string tls_cert_file = 2;
+  // TLS key file
+  string tls_key_file = 3;
+  // TLS CA file
+  string tls_ca_file = 4;
+  // Enable authentication
+  bool auth_enable = 5;
+  // JWT secret
+  string jwt_secret = 6;
+  // JWT expire time
+  google.protobuf.Duration jwt_expire = 7;
+}
+
+// Storage configuration
+message Storage {
+  // Storage type (redis, mysql, mongodb, etc.)
+  string type = 1;
+  // Storage address
+  string addr = 2;
+  // Storage username
+  string username = 3;
+  // Storage password
+  string password = 4;
+  // Storage database
+  string database = 5;
+  // Storage pool size
+  int32 pool_size = 6;
+  // Storage timeout
+  google.protobuf.Duration timeout = 7;
+}

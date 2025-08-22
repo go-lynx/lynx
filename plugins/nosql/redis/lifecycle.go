@@ -11,21 +11,21 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// InitializeResources 实现 Redis 插件的自定义初始化逻辑
-// 从运行时配置中扫描并加载 Redis 配置，若配置未提供则使用默认配置
-// 参数 rt 为运行时环境
-// 返回错误信息，如果配置加载失败则返回相应错误
+// InitializeResources implements custom initialization logic for Redis plugin
+// Scans and loads Redis configuration from runtime config, uses default config if not provided
+// Parameter rt is the runtime environment
+// Returns error information, returns corresponding error if configuration loading fails
 func (r *PlugRedis) InitializeResources(rt plugins.Runtime) error {
-	// 初始化一个空的配置结构
+	// Initialize an empty configuration structure
 	r.conf = &conf.Redis{}
 
-	// 从运行时配置中扫描并加载 Redis 配置
+	// Scan and load Redis configuration from runtime config
 	err := rt.GetConfig().Value(confPrefix).Scan(r.conf)
 	if err != nil {
 		return err
 	}
 
-	// 验证配置并设置默认值
+	// Validate configuration and set default values
 	if err := ValidateAndSetDefaults(r.conf); err != nil {
 		return fmt.Errorf("redis configuration validation failed: %w", err)
 	}
@@ -33,92 +33,148 @@ func (r *PlugRedis) InitializeResources(rt plugins.Runtime) error {
 	return nil
 }
 
-// StartupTasks 启动 Redis 客户端并进行健康检查
-// 返回错误信息，如果启动或健康检查失败则返回相应错误
+// StartupTasks starts Redis client and performs health check
+// Returns error information, returns corresponding error if startup or health check fails
 func (r *PlugRedis) StartupTasks() error {
-	// 记录启动 Redis 客户端日志
+	// Log Redis client startup
 	log.Infof("starting redis client")
 
-	// 启动计数
+	// Increment startup counter
 	redisStartupTotal.Inc()
 
-	// 创建 Redis 通用客户端（支持单机/集群/哨兵）
+	// Create Redis universal client (supports single node/cluster/sentinel)
 	r.rdb = redis.NewUniversalClient(r.buildUniversalOptions())
 
-	// 注册命令级指标 Hook
+	// Register command-level metrics hook
 	r.rdb.AddHook(metricsHook{})
 
-	// 启动时做一次快速健康检查（短超时）
+	// Initialize collector channel
+	r.statsQuit = make(chan struct{})
+
+	// Perform quick health check at startup (short timeout)
 	pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	start := time.Now()
 	_, err := r.rdb.Ping(pingCtx).Result()
 	cancel()
 	if err != nil {
-		// 启动失败需回滚资源
-		_ = r.rdb.Close()
+		// Startup failure requires complete rollback of all resources
+		r.cleanupOnStartupFailure()
 		redisStartupFailedTotal.Inc()
-		return err
+		return fmt.Errorf("redis ping failed during startup: %w", err)
 	}
 	latency := time.Since(start)
 	redisPingLatency.Observe(latency.Seconds())
-	// 判定模式（单机/集群/哨兵）
+
+	// Determine mode (single node/cluster/sentinel)
 	mode := r.detectMode()
 	log.Infof("redis client successfully started, mode=%s, addrs=%v, ping_latency=%s", mode, r.currentAddrs(), latency)
 
-	// 在启动阶段做一次增强检查
+	// Perform enhanced check at startup stage
 	r.enhancedReadinessCheck(mode)
 
-	// 启动池统计采集器
+	// Start pool statistics collector
 	r.startPoolStatsCollector()
-	// 启动信息采集器
+	// Start info collector
 	r.startInfoCollector(mode)
 	return nil
 }
 
-// CleanupTasks 关闭 Redis 客户端
-// 返回错误信息，如果关闭客户端失败则返回相应错误
+// cleanupOnStartupFailure cleans up resources on startup failure
+func (r *PlugRedis) cleanupOnStartupFailure() {
+	// Close Redis client
+	if r.rdb != nil {
+		if err := r.rdb.Close(); err != nil {
+			log.Warnf("failed to close redis client during startup cleanup: %v", err)
+		}
+		r.rdb = nil
+	}
+
+	// Clean up collector channel
+	if r.statsQuit != nil {
+		close(r.statsQuit)
+		r.statsQuit = nil
+	}
+
+	// Wait for potentially started goroutines to exit
+	done := make(chan struct{})
+	go func() {
+		r.statsWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Infof("startup cleanup completed successfully")
+	case <-time.After(5 * time.Second):
+		log.Warnf("timeout waiting for goroutines cleanup during startup failure")
+	}
+}
+
+// CleanupTasks closes Redis client
+// Returns error information, returns corresponding error if client closing fails
 func (r *PlugRedis) CleanupTasks() error {
-	// 若 Redis 客户端未初始化，直接返回 nil
+	// If Redis client is not initialized, return nil directly
 	if r.rdb == nil {
 		return nil
 	}
-	// 停止采集器
+
+	// Stop collectors
 	if r.statsQuit != nil {
-		close(r.statsQuit)
-		r.statsWG.Wait()
+		// Safely close channel to avoid duplicate closing
+		select {
+		case <-r.statsQuit:
+			// Channel already closed
+		default:
+			close(r.statsQuit)
+		}
+
+		// Wait for all collector goroutines to exit, set timeout to avoid infinite waiting
+		done := make(chan struct{})
+		go func() {
+			r.statsWG.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			log.Infof("redis stats collectors stopped successfully")
+		case <-time.After(10 * time.Second):
+			log.Warnf("timeout waiting for redis stats collectors to stop")
+		}
 	}
-	// 关闭 Redis 客户端
+
+	// Close Redis client
 	if err := r.rdb.Close(); err != nil {
-		// 返回带插件信息的错误
+		// Return error with plugin information
 		return plugins.NewPluginError(r.ID(), "Stop", "Failed to stop Redis client", err)
 	}
 	return nil
 }
 
-// Configure 允许在运行时更新 Redis 服务器的配置
-// 参数 c 应为指向 conf.Redis 结构体的指针，包含新的配置信息
-// 返回错误信息，如果配置更新失败则返回相应错误
+// Configure allows updating Redis server configuration at runtime
+// Parameter c should be a pointer to a conf.Redis structure, containing new configuration information
+// Returns error information, returns corresponding error if configuration update fails
 func (r *PlugRedis) Configure(c any) error {
-	// 若传入的配置为 nil，直接返回 nil
+	// If the incoming configuration is nil, return nil directly
 	if c == nil {
 		return nil
 	}
-	// 将传入的配置转换为 *conf.Redis 类型并更新到插件配置中
+	// Convert the incoming configuration to *conf.Redis type and update to plugin configuration
 	r.conf = c.(*conf.Redis)
 	return nil
 }
 
-// CheckHealth 实现 Redis 服务器的健康检查接口
-// 对 Redis 服务器进行必要的健康检查，并更新提供的健康报告
-// 参数 report 为健康报告指针，用于记录健康检查结果
-// 返回错误信息，如果健康检查失败则返回相应错误
+// CheckHealth implements the health check interface for Redis server
+// Performs necessary health checks on the Redis server and updates the provided health report
+// Parameter report is a pointer to the health report, used to record health check results
+// Returns error information, returns corresponding error if health check fails
 func (r *PlugRedis) CheckHealth() error {
-	// 使用固定短超时进行健康检查，避免受连接空闲配置影响
+	// Perform health check with fixed short timeout to avoid being affected by idle connection configuration
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	// 确保在函数结束时取消上下文
+	// Ensure context is cancelled at the end of the function
 	defer cancel()
 
-	// 执行 Redis 客户端 Ping 操作进行健康检查
+	// Execute Redis client Ping operation for health check
 	start := time.Now()
 	_, err := r.rdb.Ping(ctx).Result()
 	latency := time.Since(start)

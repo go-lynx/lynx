@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.rabbitmq;
+
+option go_package = "github.com/go-lynx/lynx/plugins/mq/rabbitmq/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// RabbitMQ message defines the configuration information for RabbitMQ client
+message RabbitMQ {
+  // urls represents the address list of RabbitMQ servers
+  repeated string urls = 1;
+
+  // producers multiple producer instance configurations
+  repeated Producer producers = 2;
+
+  // consumers multiple consumer instance configurations
+  repeated Consumer consumers = 3;
+
+  // Common configurations
+  // username for authentication
+  string username = 4;
+  // password for authentication
+  string password = 5;
+  // virtual host
+  string virtual_host = 6;
+  // Connection timeout
+  google.protobuf.Duration dial_timeout = 7;
+  // Heartbeat interval
+  google.protobuf.Duration heartbeat = 8;
+  // Channel pool size
+  int32 channel_pool_size = 9;
+}
+
+// Producer configuration
+message Producer {
+  // Whether to enable producer
+  bool enabled = 1;
+  // Exchange name
+  string exchange = 2;
+  // Exchange type: direct, fanout, topic, headers
+  string exchange_type = 3;
+  // Routing key
+  string routing_key = 4;
+  // Maximum number of retries
+  int32 max_retries = 5;
+  // Retry interval
+  google.protobuf.Duration retry_backoff = 6;
+  // Publish timeout
+  google.protobuf.Duration publish_timeout = 7;
+  // Instance name (for differentiation, routing), do not reuse occupied tags
+  string name = 8;
+  // Whether exchange is durable
+  bool exchange_durable = 9;
+  // Whether exchange is auto-deleted
+  bool exchange_auto_delete = 10;
+  // Whether message is persistent
+  bool message_persistent = 11;
+}
+
+// Consumer configuration
+message Consumer {
+  // Whether to enable consumer
+  bool enabled = 1;
+  // Queue name
+  string queue = 2;
+  // Exchange name to bind
+  string exchange = 3;
+  // Routing key for binding
+  string routing_key = 4;
+  // Consumer tag
+  string consumer_tag = 5;
+  // Maximum processing concurrency
+  int32 max_concurrency = 6;
+  // Prefetch count
+  int32 prefetch_count = 7;
+  // Instance name (for differentiation/routing)
+  string name = 8;
+  // Whether queue is durable
+  bool queue_durable = 9;
+  // Whether queue is auto-deleted
+  bool queue_auto_delete = 10;
+  // Whether queue is exclusive
+  bool queue_exclusive = 11;
+  // Whether to auto-ack messages
+  bool auto_ack = 12;
+}

@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.mongodb;
+
+option go_package = "github.com/go-lynx/lynx/plugins/nosql/mongodb/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// MongoDB message defines the configuration information for MongoDB client
+message MongoDB {
+  // uri represents the MongoDB connection string
+  string uri = 1;
+
+  // database specifies the database name
+  string database = 2;
+
+  // username for authentication
+  string username = 3;
+
+  // password for authentication
+  string password = 4;
+
+  // auth_source specifies the authentication database
+  string auth_source = 5;
+
+  // max_pool_size specifies the maximum connection pool size
+  uint64 max_pool_size = 6;
+
+  // min_pool_size specifies the minimum connection pool size
+  uint64 min_pool_size = 7;
+
+  // connect_timeout specifies the connection timeout
+  google.protobuf.Duration connect_timeout = 8;
+
+  // server_selection_timeout specifies the server selection timeout
+  google.protobuf.Duration server_selection_timeout = 9;
+
+  // socket_timeout specifies the socket timeout
+  google.protobuf.Duration socket_timeout = 10;
+
+  // heartbeat_interval specifies the heartbeat interval
+  google.protobuf.Duration heartbeat_interval = 11;
+
+  // enable_metrics enables metrics collection
+  bool enable_metrics = 12;
+
+  // enable_health_check enables health check
+  bool enable_health_check = 13;
+
+  // health_check_interval specifies the health check interval
+  google.protobuf.Duration health_check_interval = 14;
+
+  // enable_tls enables TLS encryption
+  bool enable_tls = 15;
+
+  // tls_cert_file specifies the TLS certificate file path
+  string tls_cert_file = 16;
+
+  // tls_key_file specifies the TLS key file path
+  string tls_key_file = 17;
+
+  // tls_ca_file specifies the TLS CA file path
+  string tls_ca_file = 18;
+
+  // enable_compression enables compression
+  bool enable_compression = 19;
+
+  // compression_level specifies the compression level
+  int32 compression_level = 20;
+
+  // enable_retry_writes enables retry writes
+  bool enable_retry_writes = 21;
+
+  // enable_read_concern enables read concern
+  bool enable_read_concern = 22;
+
+  // read_concern_level specifies the read concern level
+  string read_concern_level = 23;
+
+  // enable_write_concern enables write concern
+  bool enable_write_concern = 24;
+
+  // write_concern_w specifies the write concern acknowledgment number
+  int32 write_concern_w = 25;
+
+  // write_concern_timeout specifies the write concern timeout
+  google.protobuf.Duration write_concern_timeout = 26;
+}

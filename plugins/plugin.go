@@ -92,19 +92,19 @@ type Plugin interface {
 
 // AddPluginListener adds a specific plugin event listener - fixes concurrency safety issues
 func (r *simpleRuntime) AddPluginListener(pluginName string, listener EventListener, filter *EventFilter) {
-    if listener == nil || pluginName == "" {
-        return
-    }
+	if listener == nil || pluginName == "" {
+		return
+	}
 
-    r.eventMu.Lock()
-    defer r.eventMu.Unlock()
+	r.eventMu.Lock()
+	defer r.eventMu.Unlock()
 
-    key := fmt.Sprintf("plugin_%s", pluginName)
-    if filter != nil {
-        key = fmt.Sprintf("plugin_%s_filter_%p", pluginName, filter)
-    }
+	key := fmt.Sprintf("plugin_%s", pluginName)
+	if filter != nil {
+		key = fmt.Sprintf("plugin_%s_filter_%p", pluginName, filter)
+	}
 
-    r.listeners[key] = append(r.listeners[key], listener)
+	r.listeners[key] = append(r.listeners[key], listener)
 }
 
 // TypedPlugin generic plugin interface, T is the specific plugin type
@@ -116,70 +116,47 @@ type TypedPlugin[T any] interface {
 
 // Metadata defines methods for retrieving plugin metadata
 // This interface provides essential information about the plugin
-// Metadata 定义了用于获取插件元数据的方法。
-// 此接口提供了有关插件的基本信息。
 type Metadata interface {
 	// ID returns the unique identifier of the plugin
 	// This ID must be unique across all plugins in the system
-	// ID 返回插件的唯一标识符。
-	// 该 ID 在系统中的所有插件中必须是唯一的。
 	ID() string
 
 	// Name returns the display name of the plugin
 	// This is a human-readable name used for display purposes
-	// Name 返回插件的显示名称。
-	// 这是一个用于显示目的的易读名称。
 	Name() string
 
 	// Description returns a detailed description of the plugin
 	// Should provide information about the plugin's purpose and functionality
-	// Description 返回插件的详细描述。
-	// 应提供有关插件用途和功能的信息。
 	Description() string
 
 	// Version returns the semantic version of the plugin
 	// Should follow semver format (MAJOR.MINOR.PATCH)
-	// Version 返回插件的语义化版本。
-	// 应遵循语义化版本格式（MAJOR.MINOR.PATCH）。
 	Version() string
 
-	// Weight 权重获取
+	// Weight returns the weight value
 	Weight() int
 }
 
 // Lifecycle defines the basic lifecycle methods for a plugin
 // Handles initialization, operation, and termination of the plugin
-// Lifecycle 定义了插件的基本生命周期方法。
-// 处理插件的初始化、运行和终止操作。
 type Lifecycle interface {
 	// Initialize prepares the plugin for use
 	// Sets up resources, connections, and internal state
 	// Returns error if initialization fails
-	// Initialize 为插件的使用做准备。
-	// 设置资源、连接和内部状态。
-	// 如果初始化失败，则返回错误。
 	Initialize(plugin Plugin, rt Runtime) error
 
 	// Start begins the plugin's main functionality
 	// Should only be called after successful initialization
 	// Returns error if startup fails
-	// Start 启动插件的主要功能。
-	// 仅应在初始化成功后调用。
-	// 如果启动失败，则返回错误。
 	Start(plugin Plugin) error
 
 	// Stop gracefully terminates the plugin's functionality
 	// Releases resources and closes connections
 	// Returns error if shutdown fails
-	// Stop 优雅地终止插件的功能。
-	// 释放资源并关闭连接。
-	// 如果关闭失败，则返回错误。
 	Stop(plugin Plugin) error
 
 	// Status returns the current status of the plugin
 	// Provides real-time state information
-	// Status 返回插件的当前状态。
-	// 提供实时状态信息。
 	Status(plugin Plugin) PluginStatus
 }
 
@@ -190,7 +167,7 @@ type LifecycleSteps interface {
 	CheckHealth() error
 }
 
-// ResourceInfo 资源信息
+// ResourceInfo resource information
 type ResourceInfo struct {
 	Name        string
 	Type        string
@@ -199,37 +176,33 @@ type ResourceInfo struct {
 	CreatedAt   time.Time
 	LastUsedAt  time.Time
 	AccessCount int64
-	Size        int64 // 资源大小（字节）
+	Size        int64 // Resource size (bytes)
 	Metadata    map[string]any
 }
 
-// ResourceManager 资源管理器接口
+// ResourceManager resource manager interface
 type ResourceManager interface {
 	// GetResource retrieves a shared plugin resource by name
 	// Returns the resource and any error encountered
-	// GetResource 根据名称获取插件共享资源。
-	// 返回资源和可能遇到的错误。
 	GetResource(name string) (any, error)
 
 	// RegisterResource registers a resource to be shared with other plugins
 	// Returns error if registration fails
-	// RegisterResource 注册一个资源，以便与其他插件共享。
-	// 如果注册失败，则返回错误。
 	RegisterResource(name string, resource any) error
 
-	// 新增：资源生命周期管理
+	// New: Resource lifecycle management
 	GetResourceInfo(name string) (*ResourceInfo, error)
 	ListResources() []*ResourceInfo
 	CleanupResources(pluginID string) error
 	GetResourceStats() map[string]any
 }
 
-// TypedResourceManager 泛型资源管理器接口
+// TypedResourceManager generic resource manager interface
 type TypedResourceManager interface {
 	ResourceManager
 }
 
-// GetTypedResource 获取类型安全的资源（独立函数）
+// GetTypedResource get type-safe resource (standalone function)
 func GetTypedResource[T any](manager ResourceManager, name string) (T, error) {
 	var zero T
 	resource, err := manager.GetResource(name)
@@ -245,97 +218,71 @@ func GetTypedResource[T any](manager ResourceManager, name string) (T, error) {
 	return typed, nil
 }
 
-// RegisterTypedResource 注册类型安全的资源（独立函数）
+// RegisterTypedResource register type-safe resource (standalone function)
 func RegisterTypedResource[T any](manager ResourceManager, name string, resource T) error {
 	return manager.RegisterResource(name, resource)
 }
 
 // ConfigProvider provides access to plugin configuration
 // Manages plugin configuration loading and access
-// ConfigProvider 提供对插件配置的访问。
-// 管理插件配置的加载和访问。
 type ConfigProvider interface {
 	// GetConfig returns the plugin configuration manager
 	// Provides access to configuration values and updates
-	// GetConfig 返回插件配置管理器。
-	// 提供对配置值和更新的访问。
 	GetConfig() config.Config
 }
 
 // LogProvider provides access to logging functionality
 // Manages plugin logging capabilities
-// LogProvider 提供对日志记录功能的访问。
-// 管理插件的日志记录能力。
 type LogProvider interface {
 	// GetLogger returns the plugin logger instance
 	// Provides structured logging capabilities
-	// GetLogger 返回插件日志记录器实例。
-	// 提供结构化的日志记录功能。
 	GetLogger() log.Logger
 }
 
 // Suspendable defines methods for temporary plugin suspension
 // Manages temporary plugin deactivation and reactivation
-// Suspendable 定义了插件临时暂停的方法。
-// 管理插件的临时停用和重新激活。
 type Suspendable interface {
 	// Suspend temporarily suspends plugin operations
 	// Pauses plugin activity while maintaining state
-	// Suspend 临时暂停插件操作。
-	// 在保持状态的同时暂停插件活动。
 	Suspend() error
 
 	// Resume restores plugin operations from a suspended state
 	// Resumes normal operation without reinitialization
-	// Resume 从暂停状态恢复插件操作。
-	// 无需重新初始化即可恢复正常运行。
 	Resume() error
 }
 
 // Configurable defines methods for plugin configuration management
 // Manages plugin configuration updates and validation
-// Configurable 定义了插件配置管理的方法。
-// 管理插件配置的更新和验证。
 type Configurable interface {
 	// Configure applies and validates the given configuration
 	// Updates plugin configuration during runtime
-	// Configure 应用并验证给定的配置。
-	// 在运行时更新插件配置。
 	Configure(conf any) error
 }
 
 // DependencyAware defines methods for plugin dependency management
 // Manages plugin dependencies and their relationships
-// DependencyAware 定义了插件依赖管理的方法。
-// 管理插件依赖项及其关系。
 type DependencyAware interface {
 	// GetDependencies returns the list of plugin dependencies
 	// Lists all required and optional dependencies
-	// GetDependencies 返回插件依赖项列表。
-	// 列出所有必需和可选的依赖项。
 	GetDependencies() []Dependency
 }
 
 // EventHandler defines methods for plugin event handling
 // Processes plugin-related events and notifications
-// EventHandler 定义了插件事件处理的方法。
-// 处理与插件相关的事件和通知。
 type EventHandler interface {
 	// HandleEvent processes plugin lifecycle events
 	// Handles various plugin system events
-	// HandleEvent 处理插件生命周期事件。
-	// 处理各种插件系统事件。
 	HandleEvent(event PluginEvent)
 }
 
-// ServicePlugin 服务插件约束接口
+// ServicePlugin service plugin constraint interface
 type ServicePlugin[T any] interface {
 	Plugin
 	GetServer() T
 	GetServerType() string
 }
 
-// DatabasePlugin 数据库插件约束接口
+// DatabasePlugin database plugin constraint interface
 type DatabasePlugin[T any] interface {
 	Plugin
 	GetDriver() T
@@ -344,37 +291,37 @@ type DatabasePlugin[T any] interface {
 	CheckHealth() error
 }
 
-// CachePlugin 缓存插件约束接口
+// CachePlugin cache plugin constraint interface
 type CachePlugin[T any] interface {
 	Plugin
 	GetClient() T
 	GetConnectionStats() map[string]any
 }
 
-// MessagingPlugin 消息队列插件约束接口
+// MessagingPlugin messaging plugin constraint interface
 type MessagingPlugin[T any] interface {
 	Plugin
 	GetProducer() T
 	GetConsumer() T
 }
 
-// ServiceDiscoveryPlugin 服务发现插件约束接口
+// ServiceDiscoveryPlugin service discovery plugin constraint interface
 type ServiceDiscoveryPlugin[T any] interface {
 	Plugin
 	GetRegistry() T
 	GetDiscovery() T
 }
 
-// ========== 向后兼容的接口 ==========
+// ========== Backward Compatible Interfaces ==========
 
-// ServicePluginAny 保持向后兼容的服务插件接口
+// ServicePluginAny backward compatible service plugin interface
 type ServicePluginAny interface {
 	Plugin
 	GetServer() any
 	GetServerType() string
 }
 
-// DatabasePluginAny 保持向后兼容的数据库插件接口
+// DatabasePluginAny backward compatible database plugin interface
 type DatabasePluginAny interface {
 	Plugin
 	GetDriver() any
@@ -383,856 +330,856 @@ type DatabasePluginAny interface {
 	CheckHealth() error
 }
 
-// CachePluginAny 保持向后兼容的缓存插件接口
+// CachePluginAny backward compatible cache plugin interface
 type CachePluginAny interface {
 	Plugin
 	GetClient() any
 	GetConnectionStats() map[string]any
 }
 
-// MessagingPluginAny 保持向后兼容的消息队列插件接口
+// MessagingPluginAny backward compatible messaging plugin interface
 type MessagingPluginAny interface {
 	Plugin
 	GetProducer() any
 	GetConsumer() any
 }
 
-// ServiceDiscoveryPluginAny 保持向后兼容的服务发现插件接口
+// ServiceDiscoveryPluginAny backward compatible service discovery plugin interface
 type ServiceDiscoveryPluginAny interface {
 	Plugin
 	GetRegistry() any
 	GetDiscovery() any
 }
 
-// Runtime 运行时接口
+// Runtime runtime interface
 type Runtime interface {
-    TypedResourceManager
-    ConfigProvider
-    LogProvider
-    EventEmitter
-    // 新增：逻辑分离的资源管理
-    GetPrivateResource(name string) (any, error)
-    RegisterPrivateResource(name string, resource any) error
-    GetSharedResource(name string) (any, error)
-    RegisterSharedResource(name string, resource any) error
-    // 新增：改进的事件系统
-    EmitPluginEvent(pluginName string, eventType string, data map[string]any)
-    AddPluginListener(pluginName string, listener EventListener, filter *EventFilter)
-    GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent
-    // 新增：事件系统配置与指标
-    SetEventDispatchMode(mode string) error
-    SetEventWorkerPoolSize(size int)
-    SetEventTimeout(timeout time.Duration)
-    GetEventStats() map[string]any
-    // 新增：插件上下文管理
-    WithPluginContext(pluginName string) Runtime
-    GetCurrentPluginContext() string
-    // 新增：配置管理
-    SetConfig(conf config.Config)
+	TypedResourceManager
+	ConfigProvider
+	LogProvider
+	EventEmitter
+	// New: Logically separated resource management
+	GetPrivateResource(name string) (any, error)
+	RegisterPrivateResource(name string, resource any) error
+	GetSharedResource(name string) (any, error)
+	RegisterSharedResource(name string, resource any) error
+	// New: Improved event system
+	EmitPluginEvent(pluginName string, eventType string, data map[string]any)
+	AddPluginListener(pluginName string, listener EventListener, filter *EventFilter)
+	GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent
+	// New: Event system configuration and metrics
+	SetEventDispatchMode(mode string) error
+	SetEventWorkerPoolSize(size int)
+	SetEventTimeout(timeout time.Duration)
+	GetEventStats() map[string]any
+	// New: Plugin context management
+	WithPluginContext(pluginName string) Runtime
+	GetCurrentPluginContext() string
+	// New: Configuration management
+	SetConfig(conf config.Config)
 }
 
-// TypedRuntime 泛型运行时接口
+// TypedRuntime generic runtime interface
 type TypedRuntime interface {
-    Runtime
+	Runtime
 }
 
-// TypedRuntimeImpl 泛型运行时实现
+// TypedRuntimeImpl generic runtime implementation
 type TypedRuntimeImpl struct {
-    runtime Runtime
+	runtime Runtime
 }
 
-// NewTypedRuntime 创建泛型运行时环境
+// NewTypedRuntime create generic runtime environment
 func NewTypedRuntime() *TypedRuntimeImpl {
-    return &TypedRuntimeImpl{
-        runtime: NewSimpleRuntime(),
-    }
+	return &TypedRuntimeImpl{
+		runtime: NewSimpleRuntime(),
+	}
 }
 
-// simpleRuntime 简单的运行时实现
+// simpleRuntime simple runtime implementation
 type simpleRuntime struct {
-    // 私有资源：每个插件独立管理
-    privateResources map[string]map[string]any
-    // 共享资源：所有插件共享
-    sharedResources map[string]any
-    // 资源信息：跟踪资源生命周期
-    resourceInfo map[string]*ResourceInfo
-    // 配置
-    config config.Config
-    // 互斥锁
-    mu sync.RWMutex
+	// Private resources: each plugin manages independently
+	privateResources map[string]map[string]any
+	// Shared resources: shared by all plugins
+	sharedResources map[string]any
+	// Resource info: track resource lifecycle
+	resourceInfo map[string]*ResourceInfo
+	// Configuration
+	config config.Config
+	// Mutex
+	mu sync.RWMutex
 
-    // 事件系统
-    listeners    map[string][]EventListener
-    eventHistory []PluginEvent
-    eventMu      sync.RWMutex
-    maxHistory   int
+	// Event system
+	listeners    map[string][]EventListener
+	eventHistory []PluginEvent
+	eventMu      sync.RWMutex
+	maxHistory   int
 
-    // 插件上下文
-    currentPluginContext string
-    contextMu            sync.RWMutex
+	// Plugin context
+	currentPluginContext string
+	contextMu            sync.RWMutex
 
-    // 新增：事件处理工作池
-    eventWorkerPool chan struct{}
-    eventPoolSize   int
-    eventTimeout    time.Duration
-    dispatchMode    string // async/sync/bounded
-    shutdown        chan struct{}
-    shutdownOnce    sync.Once
+	// New: Event processing worker pool
+	eventWorkerPool chan struct{}
+	eventPoolSize   int
+	eventTimeout    time.Duration
+	dispatchMode    string // async/sync/bounded
+	shutdown        chan struct{}
+	shutdownOnce    sync.Once
 
-    // 指标
-    eventsEmitted     int64
-    eventsDelivered   int64
-    eventsDropped     int64
-    listenerPanics    int64
-    listenerTimeouts  int64
+	// Metrics
+	eventsEmitted    int64
+	eventsDelivered  int64
+	eventsDropped    int64
+	listenerPanics   int64
+	listenerTimeouts int64
 }
 
 func NewSimpleRuntime() *simpleRuntime {
-    return &simpleRuntime{
-        privateResources: make(map[string]map[string]any),
-        sharedResources:  make(map[string]any),
-        resourceInfo:     make(map[string]*ResourceInfo),
-        listeners:        make(map[string][]EventListener),
-        eventHistory:     make([]PluginEvent, 0),
-        maxHistory:       1000,                    // 最多保留1000个事件
-        eventWorkerPool:  make(chan struct{}, 50), // 限制并发goroutine数量
-        eventPoolSize:    50,
-        eventTimeout:     30 * time.Second,
-        dispatchMode:     "async",
-        shutdown:         make(chan struct{}),
-    }
+	return &simpleRuntime{
+		privateResources: make(map[string]map[string]any),
+		sharedResources:  make(map[string]any),
+		resourceInfo:     make(map[string]*ResourceInfo),
+		listeners:        make(map[string][]EventListener),
+		eventHistory:     make([]PluginEvent, 0),
+		maxHistory:       1000,                    // Keep at most 1000 events
+		eventWorkerPool:  make(chan struct{}, 50), // Limit concurrent goroutine count
+		eventPoolSize:    50,
+		eventTimeout:     30 * time.Second,
+		dispatchMode:     "async",
+		shutdown:         make(chan struct{}),
+	}
 }
 
-// EmitEvent 发出事件 - 修复并发安全问题
+// EmitEvent emit event - fix concurrency safety issues
 func (r *simpleRuntime) EmitEvent(event PluginEvent) {
-    r.eventMu.Lock()
-    defer r.eventMu.Unlock()
+	r.eventMu.Lock()
+	defer r.eventMu.Unlock()
 
-    // 检查是否已关闭
-    select {
-    case <-r.shutdown:
-        return
-    default:
-    }
+	// Check if already closed
+	select {
+	case <-r.shutdown:
+		return
+	default:
+	}
 
-    // 添加到事件历史
-    r.eventHistory = append(r.eventHistory, event)
+	// Add to event history
+	r.eventHistory = append(r.eventHistory, event)
 
-    // 限制历史记录大小
-    if len(r.eventHistory) > r.maxHistory {
-        r.eventHistory = r.eventHistory[1:]
-    }
+	// Limit history size
+	if len(r.eventHistory) > r.maxHistory {
+		r.eventHistory = r.eventHistory[1:]
+	}
 
-    // 统计：事件发出
-    r.eventsEmitted++
+	// Statistics: events emitted
+	r.eventsEmitted++
 
-    // 复制监听器列表以避免在通知过程中修改
-    listenersCopy := make(map[string][]EventListener)
-    for key, listeners := range r.listeners {
-        listenersCopy[key] = make([]EventListener, len(listeners))
-        copy(listenersCopy[key], listeners)
-    }
+	// Copy listener lists to avoid modifying during notification
+	listenersCopy := make(map[string][]EventListener)
+	for key, listeners := range r.listeners {
+		listenersCopy[key] = make([]EventListener, len(listeners))
+		copy(listenersCopy[key], listeners)
+	}
 
-    // 在锁外通知监听器，避免死锁
-    go r.notifyListeners(listenersCopy, event)
+	// Notify listeners outside the lock to avoid deadlocks
+	go r.notifyListeners(listenersCopy, event)
 }
 
-// notifyListeners 通知监听器 - 新增方法
+// notifyListeners notify listeners - new method
 func (r *simpleRuntime) notifyListeners(listeners map[string][]EventListener, event PluginEvent) {
-    for _, listeners := range listeners {
-        for _, listener := range listeners {
-            switch r.dispatchMode {
-            case "sync":
-                // 同步处理
-                r.safeHandleEvent(listener, event)
-            default: // async 或未识别，按异步处理
-                select {
-                case r.eventWorkerPool <- struct{}{}:
-                    go func(l EventListener) {
-                        defer func() { <-r.eventWorkerPool }()
-                        r.safeHandleEvent(l, event)
-                    }(listener)
-                default:
-                    if r.dispatchMode == "bounded" {
-                        // 有界分发：丢弃并计数
-                        r.eventMu.Lock()
-                        r.eventsDropped++
-                        r.eventMu.Unlock()
-                    } else {
-                        // 默认异步：在当前goroutine回退处理
-                        r.safeHandleEvent(listener, event)
-                    }
-                }
-            }
-        }
-    }
+	for _, listeners := range listeners {
+		for _, listener := range listeners {
+			switch r.dispatchMode {
+			case "sync":
+				// Synchronous handling
+				r.safeHandleEvent(listener, event)
+			default: // async or unrecognized, handle asynchronously
+				select {
+				case r.eventWorkerPool <- struct{}{}:
+					go func(l EventListener) {
+						defer func() { <-r.eventWorkerPool }()
+						r.safeHandleEvent(l, event)
+					}(listener)
+				default:
+					if r.dispatchMode == "bounded" {
+						// Bounded dispatch: drop and count
+						r.eventMu.Lock()
+						r.eventsDropped++
+						r.eventMu.Unlock()
+					} else {
+						// Default async: fallback to current goroutine
+						r.safeHandleEvent(listener, event)
+					}
+				}
+			}
+		}
+	}
 }
 
-// safeHandleEvent 安全处理事件 - 新增方法
+// safeHandleEvent safe handle event - new method
 func (r *simpleRuntime) safeHandleEvent(listener EventListener, event PluginEvent) {
-    defer func() {
-        if rec := recover(); rec != nil {
-            // 防止监听器panic影响其他监听器
-            fmt.Printf("Event listener panic: %v\n", rec)
-            // 统计
-            r.eventMu.Lock()
-            r.listenerPanics++
-            r.eventMu.Unlock()
-        }
-    }()
+	defer func() {
+		if rec := recover(); rec != nil {
+			// Prevent listener panic from affecting other listeners
+			fmt.Printf("Event listener panic: %v\n", rec)
+			// Statistics
+			r.eventMu.Lock()
+			r.listenerPanics++
+			r.eventMu.Unlock()
+		}
+	}()
 
-    // 添加超时控制
-    ctx, cancel := context.WithTimeout(context.Background(), r.eventTimeout)
-    defer cancel()
+	// Add timeout control
+	ctx, cancel := context.WithTimeout(context.Background(), r.eventTimeout)
+	defer cancel()
 
-    // 使用select确保不会无限等待
-    done := make(chan struct{})
-    go func() {
-        defer close(done)
-        listener.HandleEvent(event)
-    }()
+	// Use select to ensure no infinite waiting
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		listener.HandleEvent(event)
+	}()
 
-    select {
-    case <-done:
-        // 正常完成
-        r.eventMu.Lock()
-        r.eventsDelivered++
-        r.eventMu.Unlock()
-    case <-ctx.Done():
-        // 超时
-        fmt.Printf("Event listener timeout for event: %s\n", event.Type)
-        r.eventMu.Lock()
-        r.listenerTimeouts++
-        r.eventMu.Unlock()
-    case <-r.shutdown:
-        // 系统关闭
-        return
-    }
+	select {
+	case <-done:
+		// Normal completion
+		r.eventMu.Lock()
+		r.eventsDelivered++
+		r.eventMu.Unlock()
+	case <-ctx.Done():
+		// Timeout
+		fmt.Printf("Event listener timeout for event: %s\n", event.Type)
+		r.eventMu.Lock()
+		r.listenerTimeouts++
+		r.eventMu.Unlock()
+	case <-r.shutdown:
+		// System shutdown
+		return
+	}
 }
 
-// Shutdown 关闭运行时 - 新增方法
+// Shutdown close runtime - new method
 func (r *simpleRuntime) Shutdown() {
-    r.shutdownOnce.Do(func() {
-        close(r.shutdown)
-        // 等待所有事件处理完成
-        time.Sleep(100 * time.Millisecond)
-    })
+	r.shutdownOnce.Do(func() {
+		close(r.shutdown)
+		// Wait for all event processing to complete
+		time.Sleep(100 * time.Millisecond)
+	})
 }
 
-// SetEventDispatchMode 设置事件分发模式："async"、"sync"、"bounded"
+// SetEventDispatchMode set event dispatch mode: "async", "sync", "bounded"
 func (r *simpleRuntime) SetEventDispatchMode(mode string) error {
-    switch mode {
-    case "async", "sync", "bounded":
-        r.eventMu.Lock()
-        r.dispatchMode = mode
-        r.eventMu.Unlock()
-        return nil
-    default:
-        return fmt.Errorf("invalid dispatch mode: %s", mode)
-    }
+	switch mode {
+	case "async", "sync", "bounded":
+		r.eventMu.Lock()
+		r.dispatchMode = mode
+		r.eventMu.Unlock()
+		return nil
+	default:
+		return fmt.Errorf("invalid dispatch mode: %s", mode)
+	}
 }
 
-// SetEventWorkerPoolSize 设置事件工作池大小
+// SetEventWorkerPoolSize set event worker pool size
 func (r *simpleRuntime) SetEventWorkerPoolSize(size int) {
-    if size <= 0 {
-        size = 1
-    }
-    r.eventMu.Lock()
-    defer r.eventMu.Unlock()
-    // 重建工作池通道
-    r.eventWorkerPool = make(chan struct{}, size)
-    r.eventPoolSize = size
+	if size <= 0 {
+		size = 1
+	}
+	r.eventMu.Lock()
+	defer r.eventMu.Unlock()
+	// Rebuild worker pool channel
+	r.eventWorkerPool = make(chan struct{}, size)
+	r.eventPoolSize = size
 }
 
-// SetEventTimeout 设置事件处理超时
+// SetEventTimeout set event processing timeout
 func (r *simpleRuntime) SetEventTimeout(timeout time.Duration) {
-    if timeout <= 0 {
-        timeout = 30 * time.Second
-    }
-    r.eventMu.Lock()
-    r.eventTimeout = timeout
-    r.eventMu.Unlock()
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	r.eventMu.Lock()
+	r.eventTimeout = timeout
+	r.eventMu.Unlock()
 }
 
-// GetEventStats 获取事件系统统计指标
+// GetEventStats get event system statistics
 func (r *simpleRuntime) GetEventStats() map[string]any {
-    r.eventMu.RLock()
-    defer r.eventMu.RUnlock()
-    return map[string]any{
-        "events_emitted":      r.eventsEmitted,
-        "events_delivered":    r.eventsDelivered,
-        "events_dropped":      r.eventsDropped,
-        "listener_panics":     r.listenerPanics,
-        "listener_timeouts":   r.listenerTimeouts,
-        "worker_pool_size":    r.eventPoolSize,
-        "dispatch_mode":       r.dispatchMode,
-        "event_timeout_ms":    int64(r.eventTimeout / time.Millisecond),
-        "history_size":        len(r.eventHistory),
-        "max_history":         r.maxHistory,
-        "listeners_groups_cnt": len(r.listeners),
-    }
+	r.eventMu.RLock()
+	defer r.eventMu.RUnlock()
+	return map[string]any{
+		"events_emitted":       r.eventsEmitted,
+		"events_delivered":     r.eventsDelivered,
+		"events_dropped":       r.eventsDropped,
+		"listener_panics":      r.listenerPanics,
+		"listener_timeouts":    r.listenerTimeouts,
+		"worker_pool_size":     r.eventPoolSize,
+		"dispatch_mode":        r.dispatchMode,
+		"event_timeout_ms":     int64(r.eventTimeout / time.Millisecond),
+		"history_size":         len(r.eventHistory),
+		"max_history":          r.maxHistory,
+		"listeners_groups_cnt": len(r.listeners),
+	}
 }
 
-// AddListener 添加事件监听器 - 修复并发安全问题
+// AddListener add event listener - fix concurrency safety issues
 func (r *simpleRuntime) AddListener(listener EventListener, filter *EventFilter) {
-    if listener == nil {
-        return
-    }
+	if listener == nil {
+		return
+	}
 
-    r.eventMu.Lock()
-    defer r.eventMu.Unlock()
+	r.eventMu.Lock()
+	defer r.eventMu.Unlock()
 
-    key := "global"
-    if filter != nil {
-        // 如果有过滤器，使用过滤器的标识作为key
-        key = fmt.Sprintf("filter_%p", filter)
-    }
+	key := "global"
+	if filter != nil {
+		// If there is a filter, use the filter's identifier as the key
+		key = fmt.Sprintf("filter_%p", filter)
+	}
 
-    r.listeners[key] = append(r.listeners[key], listener)
+	r.listeners[key] = append(r.listeners[key], listener)
 }
 
-// RemoveListener 移除事件监听器 - 修复并发安全问题
+// RemoveListener remove event listener - fix concurrency safety issues
 func (r *simpleRuntime) RemoveListener(listener EventListener) {
-    if listener == nil {
-        return
-    }
+	if listener == nil {
+		return
+	}
 
-    r.eventMu.Lock()
-    defer r.eventMu.Unlock()
+	r.eventMu.Lock()
+	defer r.eventMu.Unlock()
 
-    // 遍历所有监听器组，移除指定的监听器
-    for key, listeners := range r.listeners {
-        for i, l := range listeners {
-            if l == listener {
-                // 移除监听器
-                r.listeners[key] = append(listeners[:i], listeners[i+1:]...)
-                break
-            }
-        }
-        // 如果该组没有监听器了，删除该组
-        if len(r.listeners[key]) == 0 {
-            delete(r.listeners, key)
-        }
-    }
+	// Iterate through all listener groups and remove the specified listener
+	for key, listeners := range r.listeners {
+		for i, l := range listeners {
+			if l == listener {
+				// Remove listener
+				r.listeners[key] = append(listeners[:i], listeners[i+1:]...)
+				break
+			}
+		}
+		// If the group has no listeners, delete the group
+		if len(r.listeners[key]) == 0 {
+			delete(r.listeners, key)
+		}
+	}
 }
 
-// GetEventHistory 获取事件历史 - 修复并发安全问题
+// GetEventHistory get event history - fix concurrency safety issues
 func (r *simpleRuntime) GetEventHistory(filter EventFilter) []PluginEvent {
-    r.eventMu.RLock()
-    defer r.eventMu.RUnlock()
+	r.eventMu.RLock()
+	defer r.eventMu.RUnlock()
 
-    if r.isEmptyFilter(filter) {
-        // 返回所有事件
-        result := make([]PluginEvent, len(r.eventHistory))
-        copy(result, r.eventHistory)
-        return result
-    }
+	if r.isEmptyFilter(filter) {
+		// Return all events
+		result := make([]PluginEvent, len(r.eventHistory))
+		copy(result, r.eventHistory)
+		return result
+	}
 
-    // 根据过滤器筛选事件
-    var result []PluginEvent
-    for _, event := range r.eventHistory {
-        if r.matchesFilter(event, filter) {
-            result = append(result, event)
-        }
-    }
+	// Filter events based on the filter
+	var result []PluginEvent
+	for _, event := range r.eventHistory {
+		if r.matchesFilter(event, filter) {
+			result = append(result, event)
+		}
+	}
 
-    return result
+	return result
 }
 
-// GetPluginEventHistory 获取插件事件历史 - 修复并发安全问题
+// GetPluginEventHistory get plugin event history - fix concurrency safety issues
 func (r *simpleRuntime) GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent {
-    r.eventMu.RLock()
-    defer r.eventMu.RUnlock()
+	r.eventMu.RLock()
+	defer r.eventMu.RUnlock()
 
-    var result []PluginEvent
-    for _, event := range r.eventHistory {
-        if event.PluginID == pluginName && r.matchesFilter(event, filter) {
-            result = append(result, event)
-        }
-    }
+	var result []PluginEvent
+	for _, event := range r.eventHistory {
+		if event.PluginID == pluginName && r.matchesFilter(event, filter) {
+			result = append(result, event)
+		}
+	}
 
-    return result
+	return result
 }
 
-// isEmptyFilter 检查过滤器是否为空 - 新增方法
+// isEmptyFilter check if filter is empty - new method
 func (r *simpleRuntime) isEmptyFilter(filter EventFilter) bool {
-    return len(filter.Types) == 0 && len(filter.PluginIDs) == 0 && len(filter.Categories) == 0
+	return len(filter.Types) == 0 && len(filter.PluginIDs) == 0 && len(filter.Categories) == 0
 }
 
-// matchesFilter 检查事件是否匹配过滤器 - 新增方法
+// matchesFilter check if event matches filter - new method
 func (r *simpleRuntime) matchesFilter(event PluginEvent, filter EventFilter) bool {
-    // 检查事件类型
-    if len(filter.Types) > 0 {
-        found := false
-        for _, filterType := range filter.Types {
-            if event.Type == filterType {
-                found = true
-                break
-            }
-        }
-        if !found {
-            return false
-        }
-    }
+	// Check event type
+	if len(filter.Types) > 0 {
+		found := false
+		for _, filterType := range filter.Types {
+			if event.Type == filterType {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
 
-    // 检查插件ID
-    if len(filter.PluginIDs) > 0 {
-        found := false
-        for _, pluginID := range filter.PluginIDs {
-            if event.PluginID == pluginID {
-                found = true
-                break
-            }
-        }
-        if !found {
-            return false
-        }
-    }
+	// Check plugin ID
+	if len(filter.PluginIDs) > 0 {
+		found := false
+		for _, pluginID := range filter.PluginIDs {
+			if event.PluginID == pluginID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
 
-    // 检查类别
-    if len(filter.Categories) > 0 {
-        found := false
-        for _, category := range filter.Categories {
-            if event.Category == category {
-                found = true
-                break
-            }
-        }
-        if !found {
-            return false
-        }
-    }
+	// Check category
+	if len(filter.Categories) > 0 {
+		found := false
+		for _, category := range filter.Categories {
+			if event.Category == category {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
 
-    return true
+	return true
 }
 
-// getListenerID 获取监听器ID - 新增方法
+// getListenerID get listener ID - new method
 func getListenerID(listener EventListener) string {
-    return fmt.Sprintf("%p", listener)
+	return fmt.Sprintf("%p", listener)
 }
 
-// GetResource 获取资源 - 修复并发安全问题
+// GetResource get resource - fix concurrency safety issues
 func (r *simpleRuntime) GetResource(name string) (any, error) {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-    // 优先查找共享资源
-    if value, ok := r.sharedResources[name]; ok {
-        return value, nil
-    }
+	// Prioritize shared resources
+	if value, ok := r.sharedResources[name]; ok {
+		return value, nil
+	}
 
-    return nil, NewPluginError("runtime", "GetResource", "Resource not found: "+name, nil)
+	return nil, NewPluginError("runtime", "GetResource", "Resource not found: "+name, nil)
 }
 
-// RegisterResource 注册资源（兼容旧接口，注册为共享资源）
+// RegisterResource register resource (compatible with old interface, register as shared resource)
 func (r *simpleRuntime) RegisterResource(name string, resource any) error {
-    return r.RegisterSharedResource(name, resource)
+	return r.RegisterSharedResource(name, resource)
 }
 
-// GetPrivateResource 获取私有资源
+// GetPrivateResource get private resource
 func (r *simpleRuntime) GetPrivateResource(name string) (any, error) {
-    r.contextMu.RLock()
-    pluginName := r.currentPluginContext
-    r.contextMu.RUnlock()
+	r.contextMu.RLock()
+	pluginName := r.currentPluginContext
+	r.contextMu.RUnlock()
 
-    if pluginName == "" {
-        return nil, NewPluginError("runtime", "GetPrivateResource", "Plugin context not available", nil)
-    }
+	if pluginName == "" {
+		return nil, NewPluginError("runtime", "GetPrivateResource", "Plugin context not available", nil)
+	}
 
-    r.mu.RLock()
-    defer r.mu.RUnlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-    if pluginResources, ok := r.privateResources[pluginName]; ok {
-        if resource, exists := pluginResources[name]; exists {
-            return resource, nil
-        }
-    }
+	if pluginResources, ok := r.privateResources[pluginName]; ok {
+		if resource, exists := pluginResources[name]; exists {
+			return resource, nil
+		}
+	}
 
-    return nil, NewPluginError("runtime", "GetPrivateResource", "Private resource not found: "+name, nil)
+	return nil, NewPluginError("runtime", "GetPrivateResource", "Private resource not found: "+name, nil)
 }
 
-// RegisterPrivateResource 注册私有资源
+// RegisterPrivateResource register private resource
 func (r *simpleRuntime) RegisterPrivateResource(name string, resource any) error {
-    if name == "" {
-        return NewPluginError("runtime", "RegisterPrivateResource", "Resource name cannot be empty", nil)
-    }
-    if resource == nil {
-        return NewPluginError("runtime", "RegisterPrivateResource", "Resource cannot be nil", nil)
-    }
+	if name == "" {
+		return NewPluginError("runtime", "RegisterPrivateResource", "Resource name cannot be empty", nil)
+	}
+	if resource == nil {
+		return NewPluginError("runtime", "RegisterPrivateResource", "Resource cannot be nil", nil)
+	}
 
-    r.contextMu.RLock()
-    pluginName := r.currentPluginContext
-    r.contextMu.RUnlock()
+	r.contextMu.RLock()
+	pluginName := r.currentPluginContext
+	r.contextMu.RUnlock()
 
-    if pluginName == "" {
-        return NewPluginError("runtime", "RegisterPrivateResource", "Plugin context not available", nil)
-    }
+	if pluginName == "" {
+		return NewPluginError("runtime", "RegisterPrivateResource", "Plugin context not available", nil)
+	}
 
-    r.mu.Lock()
-    defer r.mu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-    // 确保插件的私有资源映射存在
-    if r.privateResources[pluginName] == nil {
-        r.privateResources[pluginName] = make(map[string]any)
-    }
+	// Ensure the plugin's private resource map exists
+	if r.privateResources[pluginName] == nil {
+		r.privateResources[pluginName] = make(map[string]any)
+	}
 
-    r.privateResources[pluginName][name] = resource
-    return nil
+	r.privateResources[pluginName][name] = resource
+	return nil
 }
 
-// GetSharedResource 获取共享资源 - 修复并发安全问题
+// GetSharedResource get shared resource - fix concurrency safety issues
 func (r *simpleRuntime) GetSharedResource(name string) (any, error) {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-    if value, ok := r.sharedResources[name]; ok {
-        return value, nil
-    }
-    return nil, NewPluginError("runtime", "GetSharedResource", "Shared resource not found: "+name, nil)
+	if value, ok := r.sharedResources[name]; ok {
+		return value, nil
+	}
+	return nil, NewPluginError("runtime", "GetSharedResource", "Shared resource not found: "+name, nil)
 }
 
-// RegisterSharedResource 注册共享资源 - 修复并发安全问题
+// RegisterSharedResource register shared resource - fix concurrency safety issues
 func (r *simpleRuntime) RegisterSharedResource(name string, resource any) error {
-    if name == "" {
-        return NewPluginError("runtime", "RegisterSharedResource", "Resource name cannot be empty", nil)
-    }
-    if resource == nil {
-        return NewPluginError("runtime", "RegisterSharedResource", "Resource cannot be nil", nil)
-    }
+	if name == "" {
+		return NewPluginError("runtime", "RegisterSharedResource", "Resource name cannot be empty", nil)
+	}
+	if resource == nil {
+		return NewPluginError("runtime", "RegisterSharedResource", "Resource cannot be nil", nil)
+	}
 
-    r.contextMu.RLock()
-    pluginName := r.currentPluginContext
-    r.contextMu.RUnlock()
+	r.contextMu.RLock()
+	pluginName := r.currentPluginContext
+	r.contextMu.RUnlock()
 
-    r.mu.Lock()
-    defer r.mu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-    r.sharedResources[name] = resource
+	r.sharedResources[name] = resource
 
-    // 记录资源信息
-    r.resourceInfo[name] = &ResourceInfo{
-        Name:        name,
-        Type:        fmt.Sprintf("%T", resource),
-        PluginID:    pluginName,
-        IsPrivate:   false,
-        CreatedAt:   time.Now(),
-        LastUsedAt:  time.Now(),
-        AccessCount: 0,
-        Size:        r.estimateResourceSize(resource),
-        Metadata:    make(map[string]any),
-    }
+	// Record resource info
+	r.resourceInfo[name] = &ResourceInfo{
+		Name:        name,
+		Type:        fmt.Sprintf("%T", resource),
+		PluginID:    pluginName,
+		IsPrivate:   false,
+		CreatedAt:   time.Now(),
+		LastUsedAt:  time.Now(),
+		AccessCount: 0,
+		Size:        r.estimateResourceSize(resource),
+		Metadata:    make(map[string]any),
+	}
 
-    return nil
+	return nil
 }
 
-// GetConfig 获取配置
+// GetConfig get configuration
 func (r *simpleRuntime) GetConfig() config.Config {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
-    return r.config
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.config
 }
 
-// SetConfig 设置配置
+// SetConfig set configuration
 func (r *simpleRuntime) SetConfig(conf config.Config) {
-    r.mu.Lock()
-    defer r.mu.Unlock()
-    r.config = conf
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.config = conf
 }
 
-// GetLogger 获取日志器
+// GetLogger get logger
 func (r *simpleRuntime) GetLogger() log.Logger {
-    return log.DefaultLogger
+	return log.DefaultLogger
 }
 
-// WithPluginContext 创建带有插件上下文的运行时
+// WithPluginContext create runtime with plugin context
 func (r *simpleRuntime) WithPluginContext(pluginName string) Runtime {
-    if pluginName == "" {
-        return r
-    }
+	if pluginName == "" {
+		return r
+	}
 
-    // 创建一个新的运行时实例，共享底层资源但有不同的上下文
-    contextRuntime := &simpleRuntime{
-        privateResources:     r.privateResources,
-        sharedResources:      r.sharedResources,
-        config:               r.config,
-        listeners:            r.listeners,
-        eventHistory:         r.eventHistory,
-        maxHistory:           r.maxHistory,
-        currentPluginContext: pluginName,
-        eventWorkerPool:      r.eventWorkerPool,
-        eventPoolSize:        r.eventPoolSize,
-        eventTimeout:         r.eventTimeout,
-        dispatchMode:         r.dispatchMode,
-        shutdown:             r.shutdown,
-        shutdownOnce:         r.shutdownOnce,
-    }
+	// Create a new runtime instance, sharing underlying resources but with a different context
+	contextRuntime := &simpleRuntime{
+		privateResources:     r.privateResources,
+		sharedResources:      r.sharedResources,
+		config:               r.config,
+		listeners:            r.listeners,
+		eventHistory:         r.eventHistory,
+		maxHistory:           r.maxHistory,
+		currentPluginContext: pluginName,
+		eventWorkerPool:      r.eventWorkerPool,
+		eventPoolSize:        r.eventPoolSize,
+		eventTimeout:         r.eventTimeout,
+		dispatchMode:         r.dispatchMode,
+		shutdown:             r.shutdown,
+		shutdownOnce:         r.shutdownOnce,
+	}
 
-    return contextRuntime
+	return contextRuntime
 }
 
-// GetCurrentPluginContext 获取当前插件上下文
+// GetCurrentPluginContext get current plugin context
 func (r *simpleRuntime) GetCurrentPluginContext() string {
-    r.contextMu.RLock()
-    defer r.contextMu.RUnlock()
-    return r.currentPluginContext
+	r.contextMu.RLock()
+	defer r.contextMu.RUnlock()
+	return r.currentPluginContext
 }
 
-// GetResourceInfo 获取资源信息
+// GetResourceInfo get resource info
 func (r *simpleRuntime) GetResourceInfo(name string) (*ResourceInfo, error) {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-    if info, exists := r.resourceInfo[name]; exists {
-        return info, nil
-    }
-    return nil, NewPluginError("runtime", "GetResourceInfo", "Resource info not found: "+name, nil)
+	if info, exists := r.resourceInfo[name]; exists {
+		return info, nil
+	}
+	return nil, NewPluginError("runtime", "GetResourceInfo", "Resource info not found: "+name, nil)
 }
 
-// ListResources 列出所有资源
+// ListResources list all resources
 func (r *simpleRuntime) ListResources() []*ResourceInfo {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-    var resources []*ResourceInfo
-    for _, info := range r.resourceInfo {
-        resources = append(resources, info)
-    }
-    return resources
+	var resources []*ResourceInfo
+	for _, info := range r.resourceInfo {
+		resources = append(resources, info)
+	}
+	return resources
 }
 
-// CleanupResources 清理指定插件的资源
+// CleanupResources clean up resources for a specific plugin
 func (r *simpleRuntime) CleanupResources(pluginID string) error {
-    r.mu.Lock()
-    defer r.mu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-    // 清理私有资源
-    if pluginResources, exists := r.privateResources[pluginID]; exists {
-        for resourceName := range pluginResources {
-            delete(r.resourceInfo, resourceName)
-        }
-        delete(r.privateResources, pluginID)
-    }
+	// Clean up private resources
+	if pluginResources, exists := r.privateResources[pluginID]; exists {
+		for resourceName := range pluginResources {
+			delete(r.resourceInfo, resourceName)
+		}
+		delete(r.privateResources, pluginID)
+	}
 
-    // 清理共享资源（如果插件是所有者）
-    var sharedResourcesToRemove []string
-    for name, info := range r.resourceInfo {
-        if info.PluginID == pluginID && !info.IsPrivate {
-            sharedResourcesToRemove = append(sharedResourcesToRemove, name)
-        }
-    }
+	// Clean up shared resources (if the plugin is the owner)
+	var sharedResourcesToRemove []string
+	for name, info := range r.resourceInfo {
+		if info.PluginID == pluginID && !info.IsPrivate {
+			sharedResourcesToRemove = append(sharedResourcesToRemove, name)
+		}
+	}
 
-    for _, name := range sharedResourcesToRemove {
-        delete(r.sharedResources, name)
-        delete(r.resourceInfo, name)
-    }
+	for _, name := range sharedResourcesToRemove {
+		delete(r.sharedResources, name)
+		delete(r.resourceInfo, name)
+	}
 
-    return nil
+	return nil
 }
 
-// GetResourceStats 获取资源统计信息
+// GetResourceStats get resource statistics
 func (r *simpleRuntime) GetResourceStats() map[string]any {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-    stats := map[string]any{
-        "total_resources":        len(r.resourceInfo),
-        "private_resources":      0,
-        "shared_resources":       0,
-        "total_size_bytes":       int64(0),
-        "plugins_with_resources": 0,
-    }
+	stats := map[string]any{
+		"total_resources":        len(r.resourceInfo),
+		"private_resources":      0,
+		"shared_resources":       0,
+		"total_size_bytes":       int64(0),
+		"plugins_with_resources": 0,
+	}
 
-    pluginSet := make(map[string]bool)
+	pluginSet := make(map[string]bool)
 
-    for _, info := range r.resourceInfo {
-        if info.IsPrivate {
-            stats["private_resources"] = stats["private_resources"].(int) + 1
-        } else {
-            stats["shared_resources"] = stats["shared_resources"].(int) + 1
-        }
-        stats["total_size_bytes"] = stats["total_size_bytes"].(int64) + info.Size
-        pluginSet[info.PluginID] = true
-    }
+	for _, info := range r.resourceInfo {
+		if info.IsPrivate {
+			stats["private_resources"] = stats["private_resources"].(int) + 1
+		} else {
+			stats["shared_resources"] = stats["shared_resources"].(int) + 1
+		}
+		stats["total_size_bytes"] = stats["total_size_bytes"].(int64) + info.Size
+		pluginSet[info.PluginID] = true
+	}
 
-    stats["plugins_with_resources"] = len(pluginSet)
-    return stats
+	stats["plugins_with_resources"] = len(pluginSet)
+	return stats
 }
 
-// estimateResourceSize 估算资源大小
+// estimateResourceSize estimate resource size
 func (r *simpleRuntime) estimateResourceSize(resource any) int64 {
-    if resource == nil {
-        return 0
-    }
+	if resource == nil {
+		return 0
+	}
 
-    // 使用反射估算大小
-    val := reflect.ValueOf(resource)
-    return r.estimateValueSize(val)
+	// Use reflection to estimate size
+	val := reflect.ValueOf(resource)
+	return r.estimateValueSize(val)
 }
 
-// estimateValueSize 递归估算值的大小
+// estimateValueSize recursively estimate value size
 func (r *simpleRuntime) estimateValueSize(val reflect.Value) int64 {
-    if !val.IsValid() {
-        return 0
-    }
+	if !val.IsValid() {
+		return 0
+	}
 
-    switch val.Kind() {
-    case reflect.String:
-        return int64(val.Len())
-    case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-        return 8
-    case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-        return 8
-    case reflect.Float32, reflect.Float64:
-        return 8
-    case reflect.Bool:
-        return 1
-    case reflect.Slice, reflect.Array:
-        size := int64(0)
-        for i := 0; i < val.Len(); i++ {
-            size += r.estimateValueSize(val.Index(i))
-        }
-        return size
-    case reflect.Map:
-        size := int64(0)
-        for _, key := range val.MapKeys() {
-            size += r.estimateValueSize(key)
-            size += r.estimateValueSize(val.MapIndex(key))
-        }
-        return size
-    case reflect.Struct:
-        size := int64(0)
-        for i := 0; i < val.NumField(); i++ {
-            size += r.estimateValueSize(val.Field(i))
-        }
-        return size
-    case reflect.Ptr:
-        if val.IsNil() {
-            return 8 // 指针本身的大小
-        }
-        return 8 + r.estimateValueSize(val.Elem())
-    default:
-        return 8 // 默认大小
-    }
+	switch val.Kind() {
+	case reflect.String:
+		return int64(val.Len())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return 8
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return 8
+	case reflect.Float32, reflect.Float64:
+		return 8
+	case reflect.Bool:
+		return 1
+	case reflect.Slice, reflect.Array:
+		size := int64(0)
+		for i := 0; i < val.Len(); i++ {
+			size += r.estimateValueSize(val.Index(i))
+		}
+		return size
+	case reflect.Map:
+		size := int64(0)
+		for _, key := range val.MapKeys() {
+			size += r.estimateValueSize(key)
+			size += r.estimateValueSize(val.MapIndex(key))
+		}
+		return size
+	case reflect.Struct:
+		size := int64(0)
+		for i := 0; i < val.NumField(); i++ {
+			size += r.estimateValueSize(val.Field(i))
+		}
+		return size
+	case reflect.Ptr:
+		if val.IsNil() {
+			return 8 // Size of pointer itself
+		}
+		return 8 + r.estimateValueSize(val.Elem())
+	default:
+		return 8 // Default size
+	}
 }
 
-// EmitPluginEvent 发出插件命名空间事件
+// EmitPluginEvent emit plugin namespace event
 func (r *simpleRuntime) EmitPluginEvent(pluginName string, eventType string, data map[string]any) {
-    event := PluginEvent{
-        Type:      EventType(eventType),
-        PluginID:  pluginName,
-        Source:    pluginName,
-        Metadata:  data,
-        Timestamp: time.Now().Unix(),
-    }
-    r.EmitEvent(event)
+	event := PluginEvent{
+		Type:      EventType(eventType),
+		PluginID:  pluginName,
+		Source:    pluginName,
+		Metadata:  data,
+		Timestamp: time.Now().Unix(),
+	}
+	r.EmitEvent(event)
 }
 
-// AddListener 添加事件监听器
+// AddListener add event listener
 func (r *TypedRuntimeImpl) AddListener(listener EventListener, filter *EventFilter) {
-    r.runtime.AddListener(listener, filter)
+	r.runtime.AddListener(listener, filter)
 }
 
-// RemoveListener 移除事件监听器
+// RemoveListener remove event listener
 func (r *TypedRuntimeImpl) RemoveListener(listener EventListener) {
-    r.runtime.RemoveListener(listener)
+	r.runtime.RemoveListener(listener)
 }
 
-// GetEventHistory 获取事件历史
+// GetEventHistory get event history
 func (r *TypedRuntimeImpl) GetEventHistory(filter EventFilter) []PluginEvent {
-    return r.runtime.GetEventHistory(filter)
+	return r.runtime.GetEventHistory(filter)
 }
 
-// GetPrivateResource 获取私有资源
+// GetPrivateResource get private resource
 func (r *TypedRuntimeImpl) GetPrivateResource(name string) (any, error) {
-    return r.runtime.GetPrivateResource(name)
+	return r.runtime.GetPrivateResource(name)
 }
 
-// RegisterPrivateResource 注册私有资源
+// RegisterPrivateResource register private resource
 func (r *TypedRuntimeImpl) RegisterPrivateResource(name string, resource any) error {
-    return r.runtime.RegisterPrivateResource(name, resource)
+	return r.runtime.RegisterPrivateResource(name, resource)
 }
 
-// GetSharedResource 获取共享资源
+// GetSharedResource get shared resource
 func (r *TypedRuntimeImpl) GetSharedResource(name string) (any, error) {
-    return r.runtime.GetSharedResource(name)
+	return r.runtime.GetSharedResource(name)
 }
 
-// RegisterSharedResource 注册共享资源
+// RegisterSharedResource register shared resource
 func (r *TypedRuntimeImpl) RegisterSharedResource(name string, resource any) error {
-    return r.runtime.RegisterSharedResource(name, resource)
+	return r.runtime.RegisterSharedResource(name, resource)
 }
 
-// GetResource 获取资源（兼容旧接口）
+// GetResource get resource (compatible with old interface)
 func (r *TypedRuntimeImpl) GetResource(name string) (any, error) {
-    return r.runtime.GetResource(name)
+	return r.runtime.GetResource(name)
 }
 
-// RegisterResource 注册资源（兼容旧接口）
+// RegisterResource register resource (compatible with old interface)
 func (r *TypedRuntimeImpl) RegisterResource(name string, resource any) error {
-    return r.runtime.RegisterResource(name, resource)
+	return r.runtime.RegisterResource(name, resource)
 }
 
-// EmitPluginEvent 发出插件命名空间事件
+// EmitPluginEvent emit plugin namespace event
 func (r *TypedRuntimeImpl) EmitPluginEvent(pluginName string, eventType string, data map[string]any) {
-    r.runtime.EmitPluginEvent(pluginName, eventType, data)
+	r.runtime.EmitPluginEvent(pluginName, eventType, data)
 }
 
-// WithPluginContext 创建带有插件上下文的运行时
+// WithPluginContext create runtime with plugin context
 func (r *TypedRuntimeImpl) WithPluginContext(pluginName string) Runtime {
-    return r.runtime.WithPluginContext(pluginName)
+	return r.runtime.WithPluginContext(pluginName)
 }
 
-// GetCurrentPluginContext 获取当前插件上下文
+// GetCurrentPluginContext get current plugin context
 func (r *TypedRuntimeImpl) GetCurrentPluginContext() string {
-    return r.runtime.GetCurrentPluginContext()
+	return r.runtime.GetCurrentPluginContext()
 }
 
-// GetResourceInfo 获取资源信息
+// GetResourceInfo get resource info
 func (r *TypedRuntimeImpl) GetResourceInfo(name string) (*ResourceInfo, error) {
-    return r.runtime.GetResourceInfo(name)
+	return r.runtime.GetResourceInfo(name)
 }
 
-// ListResources 列出所有资源
+// ListResources list all resources
 func (r *TypedRuntimeImpl) ListResources() []*ResourceInfo {
-    return r.runtime.ListResources()
+	return r.runtime.ListResources()
 }
 
-// CleanupResources 清理指定插件的资源
+// CleanupResources clean up resources for a specific plugin
 func (r *TypedRuntimeImpl) CleanupResources(pluginID string) error {
-    return r.runtime.CleanupResources(pluginID)
+	return r.runtime.CleanupResources(pluginID)
 }
 
-// GetResourceStats 获取资源统计信息
+// GetResourceStats get resource statistics
 func (r *TypedRuntimeImpl) GetResourceStats() map[string]any {
-    return r.runtime.GetResourceStats()
+	return r.runtime.GetResourceStats()
 }
 
-// GetConfig 获取配置
+// GetConfig get configuration
 func (r *TypedRuntimeImpl) GetConfig() config.Config {
-    return r.runtime.GetConfig()
+	return r.runtime.GetConfig()
 }
 
-// SetConfig 设置配置
+// SetConfig set configuration
 func (r *TypedRuntimeImpl) SetConfig(conf config.Config) {
 	r.runtime.SetConfig(conf)
 }
 
-// GetLogger 获取日志器
+// GetLogger get logger
 func (r *TypedRuntimeImpl) GetLogger() log.Logger {
 	return r.runtime.GetLogger()
 }
 
-// EmitEvent 发出事件
+// EmitEvent emit event
 func (r *TypedRuntimeImpl) EmitEvent(event PluginEvent) {
 	r.runtime.EmitEvent(event)
 }
 
-// AddPluginListener 添加特定插件的事件监听器
+// AddPluginListener add specific plugin event listener
 func (r *TypedRuntimeImpl) AddPluginListener(pluginName string, listener EventListener, filter *EventFilter) {
 	r.runtime.AddPluginListener(pluginName, listener, filter)
 }
 
-// GetPluginEventHistory 获取特定插件的事件历史
+// GetPluginEventHistory get specific plugin event history
 func (r *TypedRuntimeImpl) GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent {
 	return r.runtime.GetPluginEventHistory(pluginName, filter)
 }

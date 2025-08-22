@@ -1,36 +1,36 @@
-# 增强版 Polaris 插件配置示例
-# 充分利用 Polaris SDK 的所有功能
+# Enhanced Polaris Plugin Configuration Example
+# Fully utilize all features of Polaris SDK
 lynx:
   polaris:
-    # 基础配置
-    namespace: "default"                    # 命名空间
-    token: "your-polaris-token"            # 认证令牌（可选）
-    weight: 100                            # 服务权重 (0-1000)
-    ttl: 30                                # 服务生存时间（秒）
-    timeout: "10s"                         # 操作超时时间
+    # Basic Configuration
+    namespace: "default"                    # Namespace
+    token: "your-polaris-token"            # Authentication token (optional)
+    weight: 100                            # Service weight (0-1000)
+    ttl: 30                                # Service TTL (seconds)
+    timeout: "10s"                         # Operation timeout
     
-    # 高级功能配置
-    config_path: "./conf/polaris.yaml"     # SDK 配置文件路径（可选）
-    enable_health_check: true              # 启用健康检查
-    health_check_interval: "30s"           # 健康检查间隔
-    enable_metrics: true                   # 启用监控指标
-    enable_retry: true                     # 启用重试机制
-    max_retry_times: 3                     # 最大重试次数
-    retry_interval: "1s"                   # 重试间隔
-    enable_circuit_breaker: true           # 启用熔断器
-    circuit_breaker_threshold: 0.5         # 熔断器阈值
-    enable_service_watch: true             # 启用服务监听
-    enable_config_watch: true              # 启用配置监听
-    load_balancer_type: "weighted_random" # 负载均衡类型
-    enable_route_rule: true                # 启用路由规则
-    enable_rate_limit: true                # 启用限流
-    rate_limit_type: "local"               # 限流类型
-    enable_graceful_shutdown: true         # 启用优雅关闭
-    shutdown_timeout: "30s"                # 优雅关闭超时
-    enable_logging: true                   # 启用详细日志
-    log_level: "info"                      # 日志级别
+    # Advanced Feature Configuration
+    config_path: "./conf/polaris.yaml"     # SDK config file path (optional)
+    enable_health_check: true              # Enable health check
+    health_check_interval: "30s"           # Health check interval
+    enable_metrics: true                   # Enable monitoring metrics
+    enable_retry: true                     # Enable retry mechanism
+    max_retry_times: 3                     # Maximum retry times
+    retry_interval: "1s"                   # Retry interval
+    enable_circuit_breaker: true           # Enable circuit breaker
+    circuit_breaker_threshold: 0.5         # Circuit breaker threshold
+    enable_service_watch: true             # Enable service watch
+    enable_config_watch: true              # Enable config watch
+    load_balancer_type: "weighted_random" # Load balancer type
+    enable_route_rule: true                # Enable route rules
+    enable_rate_limit: true                # Enable rate limiting
+    rate_limit_type: "local"               # Rate limit type
+    enable_graceful_shutdown: true         # Enable graceful shutdown
+    shutdown_timeout: "30s"                # Graceful shutdown timeout
+    enable_logging: true                   # Enable detailed logging
+    log_level: "info"                      # Log level
 
-  # 服务注册信息（可选）
+  # Service Registration Information (optional)
   service_info:
     service_name: "my-service"
     namespace: "default"

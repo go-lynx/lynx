@@ -1,0 +1,141 @@
+rabbitmq:
+  # RabbitMQ server URLs
+  urls:
+    - "amqp://guest:guest@localhost:5672/"
+    - "amqp://guest:guest@localhost:5673/"
+  
+  # Authentication
+  username: "guest"
+  password: "guest"
+  virtual_host: "/"
+  
+  # Connection settings
+  dial_timeout: "3s"
+  heartbeat: "30s"
+  channel_pool_size: 10
+  
+  # Producer configurations
+  producers:
+    # Default producer
+    - name: "default-producer"
+      enabled: true
+      exchange: "lynx.exchange"
+      exchange_type: "direct"
+      routing_key: "lynx.routing.key"
+      max_retries: 3
+      retry_backoff: "100ms"
+      publish_timeout: "3s"
+      exchange_durable: true
+      exchange_auto_delete: false
+      message_persistent: true
+    
+    # Fanout producer
+    - name: "fanout-producer"
+      enabled: true
+      exchange: "lynx.fanout.exchange"
+      exchange_type: "fanout"
+      routing_key: ""  # Not used for fanout
+      max_retries: 2
+      retry_backoff: "200ms"
+      publish_timeout: "5s"
+      exchange_durable: true
+      exchange_auto_delete: false
+      message_persistent: false
+    
+    # Topic producer
+    - name: "topic-producer"
+      enabled: true
+      exchange: "lynx.topic.exchange"
+      exchange_type: "topic"
+      routing_key: "user.*.created"
+      max_retries: 3
+      retry_backoff: "100ms"
+      publish_timeout: "3s"
+      exchange_durable: true
+      exchange_auto_delete: false
+      message_persistent: true
+    
+    # Headers producer
+    - name: "headers-producer"
+      enabled: true
+      exchange: "lynx.headers.exchange"
+      exchange_type: "headers"
+      routing_key: ""  # Not used for headers
+      max_retries: 2
+      retry_backoff: "150ms"
+      publish_timeout: "4s"
+      exchange_durable: true
+      exchange_auto_delete: false
+      message_persistent: true
+  
+  # Consumer configurations
+  consumers:
+    # Default consumer
+    - name: "default-consumer"
+      enabled: true
+      queue: "lynx.queue"
+      exchange: "lynx.exchange"
+      routing_key: "lynx.routing.key"
+      consumer_tag: "lynx.consumer"
+      max_concurrency: 4
+      prefetch_count: 10
+      queue_durable: true
+      queue_auto_delete: false
+      queue_exclusive: false
+      auto_ack: false
+    
+    # Fanout consumer
+    - name: "fanout-consumer"
+      enabled: true
+      queue: "lynx.fanout.queue"
+      exchange: "lynx.fanout.exchange"
+      routing_key: ""  # Not used for fanout
+      consumer_tag: "lynx.fanout.consumer"
+      max_concurrency: 2
+      prefetch_count: 5
+      queue_durable: true
+      queue_auto_delete: false
+      queue_exclusive: false
+      auto_ack: false
+    
+    # Topic consumer
+    - name: "topic-consumer"
+      enabled: true
+      queue: "lynx.topic.queue"
+      exchange: "lynx.topic.exchange"
+      routing_key: "user.*.created"
+      consumer_tag: "lynx.topic.consumer"
+      max_concurrency: 3
+      prefetch_count: 8
+      queue_durable: true
+      queue_auto_delete: false
+      queue_exclusive: false
+      auto_ack: false
+    
+    # Headers consumer
+    - name: "headers-consumer"
+      enabled: true
+      queue: "lynx.headers.queue"
+      exchange: "lynx.headers.exchange"
+      routing_key: ""  # Not used for headers
+      consumer_tag: "lynx.headers.consumer"
+      max_concurrency: 2
+      prefetch_count: 6
+      queue_durable: true
+      queue_auto_delete: false
+      queue_exclusive: false
+      auto_ack: false
+    
+    # High-priority consumer
+    - name: "high-priority-consumer"
+      enabled: true
+      queue: "lynx.high.priority.queue"
+      exchange: "lynx.exchange"
+      routing_key: "high.priority.*"
+      consumer_tag: "lynx.high.priority.consumer"
+      max_concurrency: 1
+      prefetch_count: 1
+      queue_durable: true
+      queue_auto_delete: false
+      queue_exclusive: false
+      auto_ack: false

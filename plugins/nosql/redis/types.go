@@ -8,15 +8,15 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// PlugRedis 表示 Redis 插件实例
+// PlugRedis represents a Redis plugin instance
 type PlugRedis struct {
-	// 继承基础插件
+	// Inherits from base plugin
 	*plugins.BasePlugin
-	// Redis 配置
+	// Redis configuration
 	conf *conf.Redis
-	// Redis 客户端实例（支持单机/集群/哨兵）
+	// Redis client instance (supports single node/cluster/sentinel)
 	rdb redis.UniversalClient
-	// 指标采集
+	// Metrics collection
 	statsQuit chan struct{}
 	statsWG   sync.WaitGroup
 }

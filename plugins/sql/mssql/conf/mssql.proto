@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.db;
+
+option go_package = "github.com/go-lynx/lynx/plugins/sql/mssql/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Defines a message type for Microsoft SQL Server configuration.
+message Mssql {
+  // The driver name for the Microsoft SQL Server database.
+  string driver = 1;
+  // The data source name (DSN) for the Microsoft SQL Server database.
+  string source = 2;
+  // The minimum number of connections to maintain in the connection pool.
+  int32 min_conn = 3;
+  // The maximum number of connections to maintain in the connection pool.
+  int32 max_conn = 4;
+  // The maximum lifetime for a connection in the connection pool.
+  google.protobuf.Duration max_life_time = 5;
+  // The maximum idle time for a connection in the connection pool.
+  google.protobuf.Duration max_idle_time = 6;
+  // The maximum number of idle connections.
+  int32 max_idle_conn = 7;
+  // SQL Server specific configuration
+  ServerConfig server_config = 8;
+}
+
+// SQL Server specific configuration options
+message ServerConfig {
+  // SQL Server instance name
+  string instance_name = 1;
+  // SQL Server port (default: 1433)
+  int32 port = 2;
+  // Database name
+  string database = 3;
+  // Username for authentication
+  string username = 4;
+  // Password for authentication
+  string password = 5;
+  // Enable encryption (default: true for Azure, false for on-premise)
+  bool encrypt = 6;
+  // Trust server certificate (default: false)
+  bool trust_server_certificate = 7;
+  // Connection timeout in seconds
+  int32 connection_timeout = 8;
+  // Command timeout in seconds
+  int32 command_timeout = 9;
+  // Application name for connection identification
+  string application_name = 10;
+  // Workstation ID for connection identification
+  string workstation_id = 11;
+  // Enable connection pooling (default: true)
+  bool connection_pooling = 12;
+  // Maximum pool size
+  int32 max_pool_size = 13;
+  // Minimum pool size
+  int32 min_pool_size = 14;
+  // Pool blocking timeout in seconds
+  int32 pool_blocking_timeout = 15;
+  // Pool lifetime timeout in seconds
+  int32 pool_lifetime_timeout = 16;
+}

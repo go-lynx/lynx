@@ -78,6 +78,19 @@ func (h *ServiceHttp) enhancedErrorEncoder(w http.ResponseWriter, r *http.Reques
 		h.errorCounter.WithLabelValues(r.Method, r.URL.Path, "server_error").Inc()
 	}
 
-	// Delegate to the original error encoder
-	EncodeErrorFunc(w, r, err)
+	// Encode error response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	response := map[string]interface{}{
+		"error": err.Error(),
+		"code": http.StatusInternalServerError,
+		"message": "Internal server error",
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+	if data, err := json.Marshal(response); err == nil {
+		w.Write(data)
+	} else {
+		log.Errorf("Failed to encode error response: %v", err)
+		w.Write([]byte(`{"error": "Failed to serialize response"}`))
+	}
 }

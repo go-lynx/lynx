@@ -9,7 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// detectMode 返回 single/cluster/sentinel
+// detectMode returns single/cluster/sentinel
 func (r *PlugRedis) detectMode() string {
 	if r.conf.Sentinel != nil && r.conf.Sentinel.MasterName != "" {
 		return "sentinel"
@@ -31,7 +31,7 @@ func (r *PlugRedis) currentAddrs() []string {
 	return nil
 }
 
-// enhancedReadinessCheck 基于模式做更严格的就绪检查
+// enhancedReadinessCheck performs stricter readiness checks based on mode
 func (r *PlugRedis) enhancedReadinessCheck(mode string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -50,7 +50,7 @@ func (r *PlugRedis) enhancedReadinessCheck(mode string) {
 			}
 		}
 	default:
-		// 单机/哨兵：读取 INFO replication 判定角色
+		// Single node/Sentinel: read INFO replication to determine role
 		info, err := r.rdb.Info(ctx, "replication").Result()
 		if err == nil {
 			if strings.Contains(info, "role:master") {
@@ -58,7 +58,7 @@ func (r *PlugRedis) enhancedReadinessCheck(mode string) {
 			} else {
 				redisIsMaster.Set(0)
 			}
-			// 解析 connected_slaves:N
+			// Parse connected_slaves:N
 			if idx := strings.Index(info, "connected_slaves:"); idx >= 0 {
 				rest := info[idx+len("connected_slaves:"):]
 				n := 0
@@ -72,7 +72,7 @@ func (r *PlugRedis) enhancedReadinessCheck(mode string) {
 			}
 		}
 	}
-	// 写一次 server_info 指标
+	// Write server_info metrics once
 	version := r.readRedisVersion()
 	redisServerInfo.WithLabelValues(version, mode, r.conf.ClientName).Set(1)
 }
@@ -98,7 +98,7 @@ func (r *PlugRedis) readRedisVersion() string {
 	return "unknown"
 }
 
-// startInfoCollector 周期性采集 INFO 与 cluster 状态
+// startInfoCollector periodically collects INFO and cluster status
 func (r *PlugRedis) startInfoCollector(mode string) {
 	r.statsWG.Add(1)
 	quit := r.statsQuit

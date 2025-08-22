@@ -1,12 +1,12 @@
-# Lynx 分层 Runtime 架构设计
+# Lynx Layered Runtime Architecture Design
 
-## 架构概览
+## Architecture Overview
 
-Lynx 框架采用分层 Runtime 设计，提供统一的资源管理、事件系统和插件生命周期管理。整个架构分为三个主要层次：
+The Lynx framework adopts a layered Runtime design, providing unified resource management, event systems, and plugin lifecycle management. The entire architecture is divided into three main layers:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Lynx 应用层 (Application Layer)              │
+│                    Lynx Application Layer                      │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
 │  │ LynxApp     │  │ Boot        │  │ Control     │           │
@@ -16,7 +16,7 @@ Lynx 框架采用分层 Runtime 设计，提供统一的资源管理、事件系
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  插件管理层 (Plugin Management Layer)            │
+│                  Plugin Management Layer                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
 │  │ Plugin      │  │ TypedPlugin │  │ Plugin      │           │
@@ -26,7 +26,7 @@ Lynx 框架采用分层 Runtime 设计，提供统一的资源管理、事件系
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  运行时层 (Runtime Layer)                       │
+│                    Runtime Layer                               │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
 │  │ Runtime     │  │ TypedRuntime│  │ Simple      │           │
@@ -36,7 +36,7 @@ Lynx 框架采用分层 Runtime 设计，提供统一的资源管理、事件系
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  资源管理层 (Resource Management Layer)          │
+│                Resource Management Layer                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
 │  │ Private     │  │ Shared      │  │ Resource    │           │
@@ -45,9 +45,9 @@ Lynx 框架采用分层 Runtime 设计，提供统一的资源管理、事件系
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## 详细架构图
+## Detailed Architecture Diagram
 
-### 1. Runtime 接口层次结构
+### 1. Runtime Interface Hierarchy
 
 ```mermaid
 graph TB
@@ -104,7 +104,7 @@ graph TB
     end
 ```
 
-### 2. 插件管理器架构
+### 2. Plugin Manager Architecture
 
 ```mermaid
 graph TB
@@ -152,7 +152,7 @@ graph TB
     end
 ```
 
-### 3. 事件系统架构
+### 3. Event System Architecture
 
 ```mermaid
 graph TB
@@ -201,7 +201,7 @@ graph TB
     end
 ```
 
-### 4. 资源管理架构
+### 4. Resource Management Architecture
 
 ```mermaid
 graph TB
@@ -251,9 +251,9 @@ graph TB
     end
 ```
 
-## 核心组件详解
+## Core Component Details
 
-### 1. Runtime 接口
+### 1. Runtime Interface
 
 ```go
 type Runtime interface {
@@ -262,54 +262,54 @@ type Runtime interface {
     LogProvider
     EventEmitter
     
-    // 逻辑分离的资源管理
+    // Logically separated resource management
     GetPrivateResource(name string) (any, error)
     RegisterPrivateResource(name string, resource any) error
     GetSharedResource(name string) (any, error)
     RegisterSharedResource(name string, resource any) error
     
-    // 改进的事件系统
+    // Improved event system
     EmitPluginEvent(pluginName string, eventType string, data map[string]any)
     AddPluginListener(pluginName string, listener EventListener, filter *EventFilter)
     GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent
     
-    // 插件上下文管理
+    // Plugin context management
     WithPluginContext(pluginName string) Runtime
     GetCurrentPluginContext() string
     
-    // 配置管理
+    // Configuration management
     SetConfig(conf config.Config)
 }
 ```
 
-### 2. simpleRuntime 实现
+### 2. simpleRuntime Implementation
 
 ```go
 type simpleRuntime struct {
-    // 私有资源：每个插件独立管理
+    // Private resources: each plugin manages independently
     privateResources map[string]map[string]any
-    // 共享资源：所有插件共享
+    // Shared resources: shared by all plugins
     sharedResources map[string]any
-    // 资源信息：跟踪资源生命周期
+    // Resource info: track resource lifecycle
     resourceInfo map[string]*ResourceInfo
-    // 配置
+    // Configuration
     config config.Config
-    // 互斥锁
+    // Mutex
     mu sync.RWMutex
     
-    // 事件系统
+    // Event system
     listeners    map[string][]EventListener
     eventHistory []PluginEvent
     eventMu      sync.RWMutex
     maxHistory   int
     
-    // 插件上下文
+    // Plugin context
     currentPluginContext string
     contextMu           sync.RWMutex
 }
 ```
 
-### 3. 资源信息结构
+### 3. Resource Info Structure
 
 ```go
 type ResourceInfo struct {
@@ -320,98 +320,98 @@ type ResourceInfo struct {
     CreatedAt   time.Time
     LastUsedAt  time.Time
     AccessCount int64
-    Size        int64 // 资源大小（字节）
+    Size        int64 // Resource size (bytes)
     Metadata    map[string]any
 }
 ```
 
-## 设计优势
+## Design Advantages
 
-### 1. 分层设计优势
+### 1. Layered Design Advantages
 
-- **关注点分离**：每层专注于特定功能
-- **可扩展性**：易于添加新的运行时实现
-- **可测试性**：各层可以独立测试
-- **可维护性**：清晰的层次结构便于维护
+- **Separation of Concerns**: Each layer focuses on specific functionality
+- **Extensibility**: Easy to add new runtime implementations
+- **Testability**: Each layer can be tested independently
+- **Maintainability**: Clear hierarchical structure for easy maintenance
 
-### 2. 资源管理优势
+### 2. Resource Management Advantages
 
-- **逻辑分离**：私有资源和共享资源分离管理
-- **生命周期管理**：完整的资源跟踪和清理
-- **类型安全**：泛型支持类型安全的资源访问
-- **性能监控**：资源统计和大小估算
+- **Logical Separation**: Private and shared resources are managed separately
+- **Lifecycle Management**: Complete resource tracking and cleanup
+- **Type Safety**: Generic support for type-safe resource access
+- **Performance Monitoring**: Resource statistics and size estimation
 
-### 3. 事件系统优势
+### 3. Event System Advantages
 
-- **插件隔离**：插件命名空间事件避免冲突
-- **事件过滤**：支持多种过滤条件
-- **历史记录**：完整的事件历史查询
-- **并发安全**：线程安全的事件处理
+- **Plugin Isolation**: Plugin namespace events avoid conflicts
+- **Event Filtering**: Support for multiple filtering conditions
+- **History Records**: Complete event history queries
+- **Concurrency Safety**: Thread-safe event processing
 
-### 4. 插件上下文优势
+### 4. Plugin Context Advantages
 
-- **资源隔离**：每个插件有独立的资源上下文
-- **灵活共享**：支持跨插件的资源共享
-- **热更新支持**：上下文隔离支持插件热更新
-- **调试友好**：清晰的资源归属关系
+- **Resource Isolation**: Each plugin has independent resource context
+- **Flexible Sharing**: Support for cross-plugin resource sharing
+- **Hot Update Support**: Context isolation supports plugin hot updates
+- **Debug Friendly**: Clear resource ownership relationships
 
-## 使用示例
+## Usage Examples
 
-### 1. 基本使用
+### 1. Basic Usage
 
 ```go
-// 创建插件管理器
+// Create plugin manager
 manager := app.NewPluginManager()
 
-// 获取运行时
+// Get runtime
 runtime := manager.GetRuntime()
 
-// 注册共享资源
+// Register shared resources
 runtime.RegisterSharedResource("database", db)
 
-// 为插件创建上下文
+// Create context for plugin
 pluginRuntime := runtime.WithPluginContext("my-plugin")
 
-// 注册私有资源
+// Register private resources
 pluginRuntime.RegisterPrivateResource("config", config)
 ```
 
-### 2. 事件处理
+### 2. Event Handling
 
 ```go
-// 添加事件监听器
+// Add event listener
 listener := &MyEventListener{}
 runtime.AddListener(listener, nil)
 
-// 添加插件特定监听器
+// Add plugin-specific listener
 runtime.AddPluginListener("my-plugin", listener, nil)
 
-// 发出事件
+// Emit events
 runtime.EmitPluginEvent("my-plugin", "started", map[string]any{
     "timestamp": time.Now().Unix(),
 })
 ```
 
-### 3. 资源管理
+### 3. Resource Management
 
 ```go
-// 获取资源统计
+// Get resource statistics
 stats := manager.GetResourceStats()
 
-// 列出所有资源
+// List all resources
 resources := manager.ListResources()
 
-// 清理插件资源
+// Clean up plugin resources
 manager.CleanupResources("my-plugin")
 ```
 
-## 总结
+## Summary
 
-Lynx 的分层 Runtime 设计提供了一个强大、灵活且类型安全的插件系统架构。通过分层设计、逻辑分离的资源管理、完善的事件系统和插件上下文支持，为复杂的插件系统提供了坚实的基础。
+Lynx's layered Runtime design provides a powerful, flexible, and type-safe plugin system architecture. Through layered design, logically separated resource management, comprehensive event systems, and plugin context support, it provides a solid foundation for complex plugin systems.
 
-这个架构特别适合：
-- 微服务架构中的插件化设计
-- 需要热更新能力的系统
-- 复杂的资源管理场景
-- 需要严格类型安全的系统
-- 需要完善监控和调试能力的系统
+This architecture is particularly suitable for:
+- Plugin design in microservice architectures
+- Systems requiring hot update capabilities
+- Complex resource management scenarios
+- Systems requiring strict type safety
+- Systems requiring comprehensive monitoring and debugging capabilities
