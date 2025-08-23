@@ -277,7 +277,7 @@ func (h *ServiceHttp) initSecurityDefaults() {
 // initRateLimiter initializes the rate limiter.
 func (h *ServiceHttp) initRateLimiter() {
 	if h.rateLimiter != nil {
-		log.Infof("Rate limiter initialized: %d req/s, burst: %d",
+		log.Infof("Rate limiter initialized: %v req/s, burst: %d",
 			h.rateLimiter.Limit(), h.rateLimiter.Burst())
 	}
 }

@@ -25,10 +25,16 @@ func (h *ServiceHttp) notFoundHandler() http.Handler {
 
 		// Serialize and write the response
 		if data, err := json.Marshal(response); err == nil {
-			w.Write(data)
+			_, err := w.Write(data)
+			if err != nil {
+				return
+			}
 		} else {
 			log.Errorf("Failed to marshal 404 response: %v", err)
-			w.Write([]byte(`{"error": "Failed to serialize response"}`))
+			_, err := w.Write([]byte(`{"error": "Failed to serialize response"}`))
+			if err != nil {
+				return
+			}
 		}
 
 		// Record 404 errors
@@ -56,10 +62,16 @@ func (h *ServiceHttp) methodNotAllowedHandler() http.Handler {
 
 		// Serialize and write the response
 		if data, err := json.Marshal(response); err == nil {
-			w.Write(data)
+			_, err := w.Write(data)
+			if err != nil {
+				return
+			}
 		} else {
 			log.Errorf("Failed to marshal 405 response: %v", err)
-			w.Write([]byte(`{"error": "Failed to serialize response"}`))
+			_, err := w.Write([]byte(`{"error": "Failed to serialize response"}`))
+			if err != nil {
+				return
+			}
 		}
 
 		// Record 405 errors
@@ -82,15 +94,21 @@ func (h *ServiceHttp) enhancedErrorEncoder(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusInternalServerError)
 	response := map[string]interface{}{
-		"error": err.Error(),
-		"code": http.StatusInternalServerError,
-		"message": "Internal server error",
+		"error":     err.Error(),
+		"code":      http.StatusInternalServerError,
+		"message":   "Internal server error",
 		"timestamp": time.Now().Format(time.RFC3339),
 	}
 	if data, err := json.Marshal(response); err == nil {
-		w.Write(data)
+		_, err := w.Write(data)
+		if err != nil {
+			return
+		}
 	} else {
 		log.Errorf("Failed to encode error response: %v", err)
-		w.Write([]byte(`{"error": "Failed to serialize response"}`))
+		_, err := w.Write([]byte(`{"error": "Failed to serialize response"}`))
+		if err != nil {
+			return
+		}
 	}
 }
