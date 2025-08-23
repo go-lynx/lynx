@@ -2,6 +2,7 @@
 package plugins
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -87,6 +88,32 @@ type Plugin interface {
 	Lifecycle
 	LifecycleSteps
 	DependencyAware
+}
+
+// LifecycleWithContext defines optional context-aware lifecycle methods.
+// Plugins implementing this interface can receive cancellation/timeout signals
+// and are encouraged to stop work promptly when the context is done.
+// This interface is backward-compatible and optional; if not implemented,
+// the manager will fall back to calling the non-context methods.
+type LifecycleWithContext interface {
+    // InitializeContext prepares the plugin with context support.
+    InitializeContext(ctx context.Context, plugin Plugin, rt Runtime) error
+
+    // StartContext starts the plugin with context support.
+    StartContext(ctx context.Context, plugin Plugin) error
+
+    // StopContext stops the plugin with context support.
+    StopContext(ctx context.Context, plugin Plugin) error
+}
+
+// ContextAwareness defines an optional marker for real context awareness.
+// Some plugins may satisfy LifecycleWithContext via embedded base types but
+// still ignore ctx. Implement this interface on the concrete plugin type and
+// return true only when lifecycle methods actually observe ctx cancellation.
+type ContextAwareness interface {
+    // IsContextAware returns true if the plugin genuinely honors context
+    // cancellation/timeout within Initialize/Start/Stop.
+    IsContextAware() bool
 }
 
 // AddPluginListener adds a specific plugin event listener - simplified for unified event bus

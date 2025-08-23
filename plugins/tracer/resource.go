@@ -18,23 +18,39 @@ func buildResource(c *conf.Tracer) *resource.Resource {
 	if c != nil && c.GetConfig() != nil {
 		r = c.GetConfig().GetResource()
 	}
+
 	attrs := []attribute.KeyValue{
 		semconv.ServiceInstanceIDKey.String(app.GetHost()),
 		semconv.ServiceVersionKey.String(app.GetVersion()),
-		semconv.ServiceNamespaceKey.String(app.Lynx().GetControlPlane().GetNamespace()),
 	}
 
-	// service.name: prefer config override
+	// Safely get namespace from control plane
+	if lynx := app.Lynx(); lynx != nil {
+		if cp := lynx.GetControlPlane(); cp != nil {
+			attrs = append(attrs, semconv.ServiceNamespaceKey.String(cp.GetNamespace()))
+		}
+	}
+
+	// service.name: prefer config override, with validation
 	serviceName := app.GetName()
 	if r != nil && r.GetServiceName() != "" {
 		serviceName = r.GetServiceName()
 	}
+
+	// Validate service name is not empty
+	if serviceName == "" {
+		serviceName = "unknown-service" // Provide a fallback service name
+	}
+
 	attrs = append(attrs, semconv.ServiceNameKey.String(serviceName))
 
 	// extra attributes
 	if r != nil {
 		for k, v := range r.GetAttributes() {
-			attrs = append(attrs, attribute.String(k, v))
+			// Validate attribute key and value
+			if k != "" && v != "" {
+				attrs = append(attrs, attribute.String(k, v))
+			}
 		}
 	}
 

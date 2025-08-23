@@ -1,100 +1,259 @@
-# Lynx Swagger Plugin
+# Swagger Plugin for Lynx Framework
 
-## Overview
+A secure and feature-rich Swagger/OpenAPI documentation generator and UI server for the Lynx microservice framework.
 
-The Lynx Swagger plugin provides automated API documentation generation and Swagger UI service functionality for the Lynx microservices framework. By parsing annotations in code, it automatically generates Swagger documentation that conforms to OpenAPI 2.0 specifications and provides an interactive Web UI interface.
+## ⚠️ **SECURITY WARNING**
+
+**This plugin is designed for development and testing environments only. It will automatically disable itself in production environments for security reasons.**
 
 ## Features
 
-- 🚀 **Automatic Documentation Generation**: Scans code annotations to automatically generate Swagger JSON documentation
-- 📝 **Annotation-Driven**: Supports rich Swagger annotation formats
-- 🔄 **Hot Updates**: Automatically regenerates documentation when files change
-- 🌐 **Built-in UI Service**: Provides Swagger UI interface with online debugging support
-- ⚙️ **Flexible Configuration**: Supports multiple configuration options to meet different needs
-- 🔌 **Plugin Design**: Seamlessly integrates with the Lynx framework
+- **Automatic API documentation generation** from Go code annotations
+- **Interactive Swagger UI** for API exploration and testing
+- **Real-time documentation updates** with file watching
+- **Secure by default** with environment-based restrictions
+- **Path traversal protection** and file access validation
+- **XSS protection** with HTML escaping
+- **Secure HTTP headers** and CORS configuration
+- **Environment-aware** - automatically disabled in production
+
+## Security Features
+
+### 🔒 **Environment Restrictions**
+- Automatically disabled in production environments
+- Configurable allowed environments (development, testing only)
+- Environment variable detection (`ENV`, `GO_ENV`, `APP_ENV`)
+
+### 🛡️ **Path Security**
+- Prevents path traversal attacks
+- Restricts file scanning to safe directories
+- Validates scan directories against current working directory
+- File size limits and type restrictions
+
+### 🌐 **HTTP Security**
+- Secure HTTP server configuration with timeouts
+- Security headers (X-Frame-Options, X-XSS-Protection, etc.)
+- Content Security Policy (CSP)
+- Restricted CORS policy (localhost only by default)
+
+### 📝 **Input Validation**
+- HTML escaping to prevent XSS attacks
+- Safe annotation parsing without regex injection
+- Input sanitization and validation
+
+## Installation
+
+```bash
+go get github.com/go-lynx/lynx/plugins/swagger
+```
 
 ## Quick Start
 
-### 1. Import Plugin
+### 1. Import the plugin
 
 ```go
-import (
-    _ "github.com/go-lynx/lynx/plugins/swagger"
-)
+import _ "github.com/go-lynx/lynx/plugins/swagger"
 ```
 
-### 2. Configuration File
-
-Add Swagger configuration in `config.yaml`:
+### 2. Basic configuration
 
 ```yaml
 lynx:
   swagger:
     enabled: true
-    info:
-      title: "My API"
-      version: "1.0.0"
-      description: "API description"
-    gen:
-      enabled: true
-      auto_generate: true
-      scan_dirs:
-        - "./internal/controller"
-      output_path: "./docs/swagger.json"
+    security:
+      environment: "development"
     ui:
       enabled: true
-      port: 8080
+      port: 8081
       path: "/swagger"
+    gen:
+      enabled: true
+      scan_dirs: ["./app"]
+      output_path: "./docs/swagger.json"
 ```
 
-### 3. Add Annotations
-
-Add Swagger annotations to controller methods:
+### 3. Add annotations to your code
 
 ```go
-// CreateUser creates a user
-// @Summary Create new user
-// @Description Create a new user account
-// @Tags User Management
-// @Accept json
-// @Produce json
-// @Param user body UserRequest true "User information"
-// @Success 201 {object} UserResponse "Created successfully"
-// @Failure 400 {object} ErrorResponse "Request parameter error"
-// @Router /api/v1/users [post]
-func (c *UserController) CreateUser(w http.ResponseWriter, r *http.Request) {
-    // Implementation logic
+// @title My API
+// @version 1.0
+// @description API documentation
+
+// @Router /users [get]
+// @Summary Get users
+// @Description Retrieve list of users
+// @Param page query int false "Page number"
+// @Success 200 {object} []User
+func GetUsers(w http.ResponseWriter, r *http.Request) {
+    // Your handler code
 }
 ```
 
-### 4. Start Application
+## Configuration
 
-```go
-func main() {
-    app := lynx.New()
-    app.Run(context.Background())
-}
+### Security Configuration
+
+```yaml
+security:
+  # Environment detection
+  environment: "development"  # Auto-detected from ENV vars
+  
+  # Allowed environments (Swagger will only run in these)
+  allowed_environments:
+    - "development"
+    - "testing"
+  
+  # Automatically disable in production
+  disable_in_production: true
+  
+  # Trusted origins for CORS
+  trusted_origins:
+    - "http://localhost:8080"
+    - "http://localhost:8081"
+  
+  # Require authentication (optional)
+  require_auth: false
 ```
 
-Visit `http://localhost:8080/swagger` to view the API documentation.
+### UI Configuration
 
-## Supported Annotations
+```yaml
+ui:
+  enabled: true
+  port: 8081                    # Must be >= 1024
+  path: "/swagger"
+  title: "API Documentation"
+  deep_linking: true
+  display_request_duration: true
+  doc_expansion: "list"
+  default_models_expand_depth: 1
+```
 
-### General Annotations
+### Generator Configuration
 
-| Annotation | Description | Example |
-|------------|-------------|---------|
-| @Summary | Interface summary | `@Summary Create user` |
-| @Description | Detailed description | `@Description Create a new user account` |
-| @Tags | Interface grouping | `@Tags User Management` |
-| @Accept | Request format | `@Accept json` |
-| @Produce | Response format | `@Produce json` |
-| @Router | Route information | `@Router /api/v1/users [post]` |
+```yaml
+gen:
+  enabled: true
+  
+  # Safe scan directories (within current working directory only)
+  scan_dirs:
+    - "./app/controllers"
+    - "./app/handlers"
+  
+  # Exclude directories
+  exclude_dirs:
+    - "./vendor"
+    - "./test"
+    - "./.git"
+  
+  output_path: "./docs/swagger.json"
+  watch_enabled: true
+  watch_interval: 5s
+  gen_on_startup: true
+```
 
-### Parameter Annotations
+## Environment Variables
 
-| Annotation | Description | Example |
-|------------|-------------|---------|
-| @Param | Parameter definition | `@Param id path int true "User ID"` |
-| | | `@Param user body UserRequest true "User information"` |
-| | | `@Param page query int false "Page number" default(1)` |
+The plugin automatically detects the environment from these variables:
+
+```bash
+export ENV=development          # Primary environment variable
+export GO_ENV=development       # Go-specific environment
+export APP_ENV=development      # Application-specific environment
+```
+
+## Production Deployment
+
+### Option 1: Explicit Disable
+
+```yaml
+lynx:
+  swagger:
+    enabled: false
+```
+
+### Option 2: Environment-Based Disable
+
+```bash
+export ENV=production
+```
+
+The plugin will automatically detect the production environment and disable itself.
+
+### Option 3: Security Configuration
+
+```yaml
+lynx:
+  swagger:
+    enabled: true
+    security:
+      environment: "production"
+      disable_in_production: true  # Will disable automatically
+```
+
+## Security Best Practices
+
+### 1. **Environment Isolation**
+- Never run Swagger in production
+- Use separate configurations for different environments
+- Leverage environment variables for configuration
+
+### 2. **Network Security**
+- Bind to localhost only in development
+- Use non-privileged ports (>= 1024)
+- Restrict CORS to trusted origins only
+
+### 3. **File Access Control**
+- Limit scan directories to application code only
+- Never scan system directories (`/etc`, `/var`, etc.)
+- Validate all file paths before access
+
+### 4. **Input Validation**
+- Always escape user input in HTML generation
+- Validate configuration parameters
+- Use safe parsing methods
+
+## Troubleshooting
+
+### Plugin Won't Start
+
+**Error**: "swagger plugin is not allowed in environment: production"
+
+**Solution**: This is expected behavior. Swagger is automatically disabled in production for security.
+
+### Permission Denied
+
+**Error**: "scanning directory /etc is not allowed for security reasons"
+
+**Solution**: Only scan directories within your application. Never scan system directories.
+
+### Port Already in Use
+
+**Error**: "Failed to start Swagger UI server: address already in use"
+
+**Solution**: Change the port in configuration or stop the conflicting service.
+
+## Examples
+
+See the `example/` directory for complete working examples:
+
+- `full_example.go` - Complete API with annotations
+- `swagger-secure.yml` - Secure configuration example
+
+## Contributing
+
+When contributing to this plugin:
+
+1. **Security First**: Always consider security implications
+2. **Environment Awareness**: Ensure changes respect environment restrictions
+3. **Input Validation**: Validate and sanitize all inputs
+4. **Testing**: Test security features thoroughly
+
+## License
+
+Apache 2.0 License - see LICENSE file for details.
+
+## Security Reporting
+
+If you discover a security vulnerability, please report it privately to the maintainers before public disclosure.

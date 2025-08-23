@@ -9,6 +9,7 @@ package conf
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -24,10 +25,24 @@ const (
 // Tls message defines TLS related configuration information.
 type Tls struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// source_type represents the type of certificate source:
+	// "local_file" - load certificates from local files
+	// "control_plane" - load certificates from control plane
+	// "memory" - load certificates from memory content
+	// Default: "control_plane" (for backward compatibility)
+	SourceType string `protobuf:"bytes,1,opt,name=source_type,json=sourceType,proto3" json:"source_type,omitempty"`
 	// file_name represents the name of the TLS configuration file, used to specify the storage location of the configuration file.
-	FileName string `protobuf:"bytes,1,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
+	// This field is kept for backward compatibility when source_type is "control_plane"
+	FileName string `protobuf:"bytes,2,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
 	// group represents the group to which the TLS configuration belongs, which can be used to classify and manage different TLS configurations.
-	Group         string `protobuf:"bytes,2,opt,name=group,proto3" json:"group,omitempty"`
+	// This field is kept for backward compatibility when source_type is "control_plane"
+	Group string `protobuf:"bytes,3,opt,name=group,proto3" json:"group,omitempty"`
+	// local_file configuration for loading certificates from local files
+	LocalFile *LocalFileConfig `protobuf:"bytes,4,opt,name=local_file,json=localFile,proto3" json:"local_file,omitempty"`
+	// memory configuration for loading certificates from memory content
+	Memory *MemoryConfig `protobuf:"bytes,5,opt,name=memory,proto3" json:"memory,omitempty"`
+	// common configuration options for TLS
+	Common        *CommonConfig `protobuf:"bytes,6,opt,name=common,proto3" json:"common,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -62,6 +77,13 @@ func (*Tls) Descriptor() ([]byte, []int) {
 	return file_tls_proto_rawDescGZIP(), []int{0}
 }
 
+func (x *Tls) GetSourceType() string {
+	if x != nil {
+		return x.SourceType
+	}
+	return ""
+}
+
 func (x *Tls) GetFileName() string {
 	if x != nil {
 		return x.FileName
@@ -76,7 +98,290 @@ func (x *Tls) GetGroup() string {
 	return ""
 }
 
+func (x *Tls) GetLocalFile() *LocalFileConfig {
+	if x != nil {
+		return x.LocalFile
+	}
+	return nil
+}
+
+func (x *Tls) GetMemory() *MemoryConfig {
+	if x != nil {
+		return x.Memory
+	}
+	return nil
+}
+
+func (x *Tls) GetCommon() *CommonConfig {
+	if x != nil {
+		return x.Common
+	}
+	return nil
+}
+
+// LocalFileConfig defines configuration for loading certificates from local files
+type LocalFileConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// cert_file represents the path to the X.509 certificate file, usually in PEM format
+	CertFile string `protobuf:"bytes,1,opt,name=cert_file,json=certFile,proto3" json:"cert_file,omitempty"`
+	// key_file represents the path to the private key file corresponding to the certificate, usually in PEM format
+	KeyFile string `protobuf:"bytes,2,opt,name=key_file,json=keyFile,proto3" json:"key_file,omitempty"`
+	// root_ca_file represents the path to the root certificate authority (CA) certificate file, used to verify client or server identity
+	RootCaFile string `protobuf:"bytes,3,opt,name=root_ca_file,json=rootCaFile,proto3" json:"root_ca_file,omitempty"`
+	// watch_files indicates whether to monitor certificate files for changes and reload automatically
+	// Default: false
+	WatchFiles bool `protobuf:"varint,4,opt,name=watch_files,json=watchFiles,proto3" json:"watch_files,omitempty"`
+	// reload_interval specifies the interval for checking file changes when watch_files is enabled
+	// Default: "5s"
+	ReloadInterval *durationpb.Duration `protobuf:"bytes,5,opt,name=reload_interval,json=reloadInterval,proto3" json:"reload_interval,omitempty"`
+	// cert_format specifies the format of certificate files
+	// Supported: "pem", "der"
+	// Default: "pem"
+	CertFormat    string `protobuf:"bytes,6,opt,name=cert_format,json=certFormat,proto3" json:"cert_format,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LocalFileConfig) Reset() {
+	*x = LocalFileConfig{}
+	mi := &file_tls_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LocalFileConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LocalFileConfig) ProtoMessage() {}
+
+func (x *LocalFileConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_tls_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LocalFileConfig.ProtoReflect.Descriptor instead.
+func (*LocalFileConfig) Descriptor() ([]byte, []int) {
+	return file_tls_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *LocalFileConfig) GetCertFile() string {
+	if x != nil {
+		return x.CertFile
+	}
+	return ""
+}
+
+func (x *LocalFileConfig) GetKeyFile() string {
+	if x != nil {
+		return x.KeyFile
+	}
+	return ""
+}
+
+func (x *LocalFileConfig) GetRootCaFile() string {
+	if x != nil {
+		return x.RootCaFile
+	}
+	return ""
+}
+
+func (x *LocalFileConfig) GetWatchFiles() bool {
+	if x != nil {
+		return x.WatchFiles
+	}
+	return false
+}
+
+func (x *LocalFileConfig) GetReloadInterval() *durationpb.Duration {
+	if x != nil {
+		return x.ReloadInterval
+	}
+	return nil
+}
+
+func (x *LocalFileConfig) GetCertFormat() string {
+	if x != nil {
+		return x.CertFormat
+	}
+	return ""
+}
+
+// MemoryConfig defines configuration for loading certificates from memory content
+type MemoryConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// cert_data represents the X.509 certificate content in PEM format
+	CertData string `protobuf:"bytes,1,opt,name=cert_data,json=certData,proto3" json:"cert_data,omitempty"`
+	// key_data represents the private key content in PEM format
+	KeyData string `protobuf:"bytes,2,opt,name=key_data,json=keyData,proto3" json:"key_data,omitempty"`
+	// root_ca_data represents the root CA certificate content in PEM format
+	RootCaData    string `protobuf:"bytes,3,opt,name=root_ca_data,json=rootCaData,proto3" json:"root_ca_data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MemoryConfig) Reset() {
+	*x = MemoryConfig{}
+	mi := &file_tls_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MemoryConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MemoryConfig) ProtoMessage() {}
+
+func (x *MemoryConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_tls_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MemoryConfig.ProtoReflect.Descriptor instead.
+func (*MemoryConfig) Descriptor() ([]byte, []int) {
+	return file_tls_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *MemoryConfig) GetCertData() string {
+	if x != nil {
+		return x.CertData
+	}
+	return ""
+}
+
+func (x *MemoryConfig) GetKeyData() string {
+	if x != nil {
+		return x.KeyData
+	}
+	return ""
+}
+
+func (x *MemoryConfig) GetRootCaData() string {
+	if x != nil {
+		return x.RootCaData
+	}
+	return ""
+}
+
+// CommonConfig defines common TLS configuration options
+type CommonConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// auth_type specifies the TLS authentication type:
+	// 0: No client authentication (default)
+	// 1: Request client certificate, but not mandatory
+	// 2: Require client certificate
+	// 3: Verify client certificate
+	// 4: Verify client certificate if provided
+	// Default: 0
+	AuthType int32 `protobuf:"varint,1,opt,name=auth_type,json=authType,proto3" json:"auth_type,omitempty"`
+	// verify_hostname indicates whether to verify the hostname in the certificate
+	// Default: true
+	VerifyHostname bool `protobuf:"varint,2,opt,name=verify_hostname,json=verifyHostname,proto3" json:"verify_hostname,omitempty"`
+	// min_tls_version specifies the minimum TLS version to support
+	// Supported: "1.0", "1.1", "1.2", "1.3"
+	// Default: "1.2"
+	MinTlsVersion string `protobuf:"bytes,3,opt,name=min_tls_version,json=minTlsVersion,proto3" json:"min_tls_version,omitempty"`
+	// cipher_suites specifies the cipher suites to use (comma-separated)
+	// If empty, default cipher suites will be used
+	CipherSuites string `protobuf:"bytes,4,opt,name=cipher_suites,json=cipherSuites,proto3" json:"cipher_suites,omitempty"`
+	// session_cache_size specifies the size of the TLS session cache
+	// Default: 32
+	SessionCacheSize int32 `protobuf:"varint,5,opt,name=session_cache_size,json=sessionCacheSize,proto3" json:"session_cache_size,omitempty"`
+	// session_ticket_key specifies the session ticket key for session resumption
+	SessionTicketKey string `protobuf:"bytes,6,opt,name=session_ticket_key,json=sessionTicketKey,proto3" json:"session_ticket_key,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *CommonConfig) Reset() {
+	*x = CommonConfig{}
+	mi := &file_tls_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommonConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommonConfig) ProtoMessage() {}
+
+func (x *CommonConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_tls_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommonConfig.ProtoReflect.Descriptor instead.
+func (*CommonConfig) Descriptor() ([]byte, []int) {
+	return file_tls_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *CommonConfig) GetAuthType() int32 {
+	if x != nil {
+		return x.AuthType
+	}
+	return 0
+}
+
+func (x *CommonConfig) GetVerifyHostname() bool {
+	if x != nil {
+		return x.VerifyHostname
+	}
+	return false
+}
+
+func (x *CommonConfig) GetMinTlsVersion() string {
+	if x != nil {
+		return x.MinTlsVersion
+	}
+	return ""
+}
+
+func (x *CommonConfig) GetCipherSuites() string {
+	if x != nil {
+		return x.CipherSuites
+	}
+	return ""
+}
+
+func (x *CommonConfig) GetSessionCacheSize() int32 {
+	if x != nil {
+		return x.SessionCacheSize
+	}
+	return 0
+}
+
+func (x *CommonConfig) GetSessionTicketKey() string {
+	if x != nil {
+		return x.SessionTicketKey
+	}
+	return ""
+}
+
 // Cert message defines TLS certificate related information.
+// This message is kept for backward compatibility when using control plane source
 type Cert struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// crt represents the path to the X.509 certificate file, usually in PEM format.
@@ -91,7 +396,7 @@ type Cert struct {
 
 func (x *Cert) Reset() {
 	*x = Cert{}
-	mi := &file_tls_proto_msgTypes[1]
+	mi := &file_tls_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -103,7 +408,7 @@ func (x *Cert) String() string {
 func (*Cert) ProtoMessage() {}
 
 func (x *Cert) ProtoReflect() protoreflect.Message {
-	mi := &file_tls_proto_msgTypes[1]
+	mi := &file_tls_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -116,7 +421,7 @@ func (x *Cert) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Cert.ProtoReflect.Descriptor instead.
 func (*Cert) Descriptor() ([]byte, []int) {
-	return file_tls_proto_rawDescGZIP(), []int{1}
+	return file_tls_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Cert) GetCrt() string {
@@ -144,14 +449,42 @@ var File_tls_proto protoreflect.FileDescriptor
 
 const file_tls_proto_rawDesc = "" +
 	"\n" +
-	"\ttls.proto\x12\x18lynx.protobuf.plugin.tls\"8\n" +
-	"\x03Tls\x12\x1b\n" +
-	"\tfile_name\x18\x01 \x01(\tR\bfileName\x12\x14\n" +
-	"\x05group\x18\x02 \x01(\tR\x05group\"B\n" +
+	"\ttls.proto\x12\x18lynx.protobuf.plugin.tls\x1a\x1egoogle/protobuf/duration.proto\"\xa3\x02\n" +
+	"\x03Tls\x12\x1f\n" +
+	"\vsource_type\x18\x01 \x01(\tR\n" +
+	"sourceType\x12\x1b\n" +
+	"\tfile_name\x18\x02 \x01(\tR\bfileName\x12\x14\n" +
+	"\x05group\x18\x03 \x01(\tR\x05group\x12H\n" +
+	"\n" +
+	"local_file\x18\x04 \x01(\v2).lynx.protobuf.plugin.tls.LocalFileConfigR\tlocalFile\x12>\n" +
+	"\x06memory\x18\x05 \x01(\v2&.lynx.protobuf.plugin.tls.MemoryConfigR\x06memory\x12>\n" +
+	"\x06common\x18\x06 \x01(\v2&.lynx.protobuf.plugin.tls.CommonConfigR\x06common\"\xf1\x01\n" +
+	"\x0fLocalFileConfig\x12\x1b\n" +
+	"\tcert_file\x18\x01 \x01(\tR\bcertFile\x12\x19\n" +
+	"\bkey_file\x18\x02 \x01(\tR\akeyFile\x12 \n" +
+	"\froot_ca_file\x18\x03 \x01(\tR\n" +
+	"rootCaFile\x12\x1f\n" +
+	"\vwatch_files\x18\x04 \x01(\bR\n" +
+	"watchFiles\x12B\n" +
+	"\x0freload_interval\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x0ereloadInterval\x12\x1f\n" +
+	"\vcert_format\x18\x06 \x01(\tR\n" +
+	"certFormat\"h\n" +
+	"\fMemoryConfig\x12\x1b\n" +
+	"\tcert_data\x18\x01 \x01(\tR\bcertData\x12\x19\n" +
+	"\bkey_data\x18\x02 \x01(\tR\akeyData\x12 \n" +
+	"\froot_ca_data\x18\x03 \x01(\tR\n" +
+	"rootCaData\"\xfd\x01\n" +
+	"\fCommonConfig\x12\x1b\n" +
+	"\tauth_type\x18\x01 \x01(\x05R\bauthType\x12'\n" +
+	"\x0fverify_hostname\x18\x02 \x01(\bR\x0everifyHostname\x12&\n" +
+	"\x0fmin_tls_version\x18\x03 \x01(\tR\rminTlsVersion\x12#\n" +
+	"\rcipher_suites\x18\x04 \x01(\tR\fcipherSuites\x12,\n" +
+	"\x12session_cache_size\x18\x05 \x01(\x05R\x10sessionCacheSize\x12,\n" +
+	"\x12session_ticket_key\x18\x06 \x01(\tR\x10sessionTicketKey\"B\n" +
 	"\x04Cert\x12\x10\n" +
 	"\x03crt\x18\x01 \x01(\tR\x03crt\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x16\n" +
-	"\x06rootCA\x18\x03 \x01(\tR\x06rootCAB)Z'github.com/go-lynx/plugin-tls/conf;confb\x06proto3"
+	"\x06rootCA\x18\x03 \x01(\tR\x06rootCAB+Z)github.com/go-lynx/lynx/app/tls/conf;confb\x06proto3"
 
 var (
 	file_tls_proto_rawDescOnce sync.Once
@@ -165,17 +498,25 @@ func file_tls_proto_rawDescGZIP() []byte {
 	return file_tls_proto_rawDescData
 }
 
-var file_tls_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_tls_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_tls_proto_goTypes = []any{
-	(*Tls)(nil),  // 0: lynx.protobuf.plugin.tls.Tls
-	(*Cert)(nil), // 1: lynx.protobuf.plugin.tls.Cert
+	(*Tls)(nil),                 // 0: lynx.protobuf.plugin.tls.Tls
+	(*LocalFileConfig)(nil),     // 1: lynx.protobuf.plugin.tls.LocalFileConfig
+	(*MemoryConfig)(nil),        // 2: lynx.protobuf.plugin.tls.MemoryConfig
+	(*CommonConfig)(nil),        // 3: lynx.protobuf.plugin.tls.CommonConfig
+	(*Cert)(nil),                // 4: lynx.protobuf.plugin.tls.Cert
+	(*durationpb.Duration)(nil), // 5: google.protobuf.Duration
 }
 var file_tls_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	1, // 0: lynx.protobuf.plugin.tls.Tls.local_file:type_name -> lynx.protobuf.plugin.tls.LocalFileConfig
+	2, // 1: lynx.protobuf.plugin.tls.Tls.memory:type_name -> lynx.protobuf.plugin.tls.MemoryConfig
+	3, // 2: lynx.protobuf.plugin.tls.Tls.common:type_name -> lynx.protobuf.plugin.tls.CommonConfig
+	5, // 3: lynx.protobuf.plugin.tls.LocalFileConfig.reload_interval:type_name -> google.protobuf.Duration
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_tls_proto_init() }
@@ -189,7 +530,7 @@ func file_tls_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_tls_proto_rawDesc), len(file_tls_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

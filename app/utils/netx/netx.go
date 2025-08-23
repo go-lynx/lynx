@@ -7,6 +7,7 @@ import (
 )
 
 // IsTemporary reports whether the error is a temporary network error.
+// Note: net.Error.Temporary() may be deprecated in future Go versions
 func IsTemporary(err error) bool {
 	var ne net.Error
 	if errors.As(err, &ne) {
@@ -16,6 +17,7 @@ func IsTemporary(err error) bool {
 }
 
 // IsTimeout reports whether the error is a timeout.
+// Note: net.Error.Timeout() may be deprecated in future Go versions
 func IsTimeout(err error) bool {
 	var ne net.Error
 	if errors.As(err, &ne) {

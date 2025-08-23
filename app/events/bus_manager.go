@@ -258,7 +258,7 @@ func (manager *EventBusManager) Resume(busType BusType) error {
 	return nil
 }
 
-// PauseAll pauses consumption on all buses; publishing仍可入队
+// PauseAll pauses consumption on all buses; publishing still enqueues
 // Returns the number of buses successfully transitioned to paused and the last error if any
 func (manager *EventBusManager) PauseAll() (int, error) {
 	manager.mu.RLock()
@@ -266,8 +266,8 @@ func (manager *EventBusManager) PauseAll() (int, error) {
 	count := 0
 	var lastErr error
 	for bt, bus := range manager.buses {
-		// Pause() 自带幂等检查，这里直接调用
-		// 若未来 Pause() 返回错误，此处可接入错误汇总
+		// Pause() has idempotent check, call directly here
+		// If Pause() returns error in the future, error aggregation can be added here
 		bus.Pause()
 		if bus.IsPaused() {
 			count++

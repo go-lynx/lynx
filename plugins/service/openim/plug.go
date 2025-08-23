@@ -13,14 +13,15 @@ const (
 
 // init function registers the OpenIM service plugin to the global plugin factory.
 // This function is automatically called when the package is imported.
-// It creates a new ServiceOpenIM instance and registers it to the plugin factory with the configured plugin name and configuration prefix.
+// It creates a new ServiceOpenIM instance and registers it to the package openim
+
 func init() {
-	// Call the RegisterPlugin method of the global plugin factory for plugin registration
-	// Pass in the plugin name, configuration prefix, and a function that returns a plugins.Plugin interface instance
-	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
-		// Create and return a new ServiceOpenIM instance
-		return NewServiceOpenIM()
-	})
+    // Call the RegisterPlugin method of the global plugin factory for plugin registration
+    // Pass in the plugin name, configuration prefix, and a function that returns a plugins.Plugin interface instance
+    factory.GlobalTypedFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
+        // Create and return a new ServiceOpenIM instance
+        return NewServiceOpenIM()
+    })
 }
 
 // GetOpenIMService gets the OpenIM service instance from the plugin manager.

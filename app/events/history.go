@@ -90,7 +90,7 @@ func (h *EventHistory) GetEvents() []LynxEvent {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	// 直接创建结果 slice，避免不必要的中间分配
+	// Directly create result slice to avoid unnecessary intermediate allocation
 	result := make([]LynxEvent, len(h.events))
 	copy(result, h.events)
 	return result

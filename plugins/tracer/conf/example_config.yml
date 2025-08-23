@@ -1,71 +1,281 @@
-# Lynx Tracer Plugin Configuration Example
+# Tracer Plugin Configuration Example
+# This file demonstrates all available configuration options for the tracer plugin
 
-# gRPC Exporter Configuration Example
-lynx:
-  tracer:
-    enable: true                # Whether to enable tracing; bool, true/false; default false
-    addr: "otel-collector:4317" # Export endpoint address; host:port; gRPC commonly uses 4317 (e.g., otel-collector:4317)
-    config:
-      protocol: PROTOCOL_OTLP_GRPC   # Export protocol; options: PROTOCOL_OTLP_GRPC / PROTOCOL_OTLP_HTTP
-      insecure: true                 # Plaintext transmission; bool, true/false; mutually exclusive with tls (set to false when tls is present)
-      compression: COMPRESSION_GZIP  # Compression algorithm; options: COMPRESSION_NONE/COMPRESSION_GZIP (default NONE)
-      headers: # Custom request headers; map[string]string, can be used for authentication, etc.
-        Authorization: Bearer ${OTEL_TOKEN}
-      timeout: 10s                   # Export request timeout; time.Duration format, such as 500ms/10s/1m
-      retry: # Retry configuration (only supported by gRPC exporter)
-        enabled: true                # Whether to enable retry; bool
-        initial_interval: 500ms      # Initial backoff interval; recommended 10ms-5s
-        max_interval: 5s             # Maximum backoff interval; recommended not to exceed 1m
-      batch: # Batch processing (recommended to enable for improved throughput)
-        enabled: true                # Whether to enable batch processing; bool
-        max_queue_size: 2048         # Batch processing queue limit; int > 0, recommended 1k-10k
-        scheduled_delay: 200ms       # Batch scheduling period; time.Duration, smaller delay means lower latency but lower throughput
-        export_timeout: 30s          # Single batch export timeout; time.Duration
-        max_batch_size: 512          # Maximum entries per batch; int > 0, recommended <= max_queue_size
-      sampler:
-        type: SAMPLER_TRACEID_RATIO  # Sampler type; options: ALWAYS_ON/ALWAYS_OFF/SAMPLER_TRACEID_RATIO/PARENT_BASED_TRACEID_RATIO
-        ratio: 0.1                   # Sampling rate; 0.0-1.0, commonly 0.1-0.3 in production
-      propagators: [ W3C_TRACE_CONTEXT, W3C_BAGGAGE, B3 ] # Context propagators; options: W3C_TRACE_CONTEXT/W3C_BAGGAGE/B3/B3_MULTI/JAEGER
-      resource:
-        service_name: my-service      # Service name; string; recommended to be consistent with the application
-        attributes: # Additional resource attributes; map[string]string
-          env: prod                   # Example: environment identifier
-          team: core                  # Example: team identifier
-      limits:
-        attribute_count_limit: 128        # Maximum attributes per span; int > 0
-        attribute_value_length_limit: 2048 # Maximum length of single attribute (characters); int > 0
-        event_count_limit: 128            # Maximum events per span; int > 0
-        link_count_limit: 128             # Maximum links per span; int > 0
+# Basic Configuration
+enabled: true
+address: "localhost:4317"  # OTLP gRPC endpoint
+protocol: "OTLP_GRPC"      # OTLP_GRPC or OTLP_HTTP
 
-# HTTP Export (OTLP/HTTP)
-# Note: Collector needs to enable port 4318, and the path is usually /v1/traces
-#lynx:
-#  tracer:
-#    enable: true                 # Whether to enable; bool
-#    addr: "otel-collector:4318" # Export endpoint address; HTTP commonly uses 4318
-#    config:
-#      protocol: PROTOCOL_OTLP_HTTP     # Export protocol; HTTP mode
-#      http_path: /v1/traces            # OTLP/HTTP reporting path; default /v1/traces
-#      insecure: true                   # Plaintext HTTP; for HTTPS, provide tls and set this to false
-#      compression: COMPRESSION_GZIP    # Compression; same as gRPC
-#      headers:                         # Custom Header; map[string]string
-#        Authorization: Bearer ${OTEL_TOKEN}
-#      batch:
-#        enabled: true                  # Batch processing; other parameters can be the same as the above example as needed
-#      propagators: [B3, W3C_BAGGAGE]   # Propagators; HTTP is also applicable
+# Advanced Connection Management (gRPC Only)
+connection:
+  # Connection timeout for establishing new connections
+  connect_timeout: "10s"
+  
+  # Automatic reconnection settings
+  reconnection_period: "5s"
+  
+  # Connection pool management
+  max_conn_idle_time: "5m"      # Maximum time a connection can be idle
+  max_conn_age: "10m"           # Maximum age of a connection
+  max_conn_age_grace: "10s"     # Grace period for connection closure
 
-# gRPC + TLS Mutual Authentication Example
-#lynx:
-#  tracer:
-#    enable: true                 # Enable tracing
-#    addr: "otel-collector:4317" # gRPC port
-#    config:
-#      protocol: PROTOCOL_OTLP_GRPC      # gRPC protocol
-#      insecure: false                   # Must be false when using TLS/mTLS
-#      tls:
-#        ca_file: /etc/otel/ca.pem       # CA root certificate path; used to verify peer certificates
-#        cert_file: /etc/otel/client.crt # Client certificate (mTLS); optional, empty for one-way TLS
-#        key_file: /etc/otel/client.key  # Client private key (mTLS); paired with cert_file
-#        insecure_skip_verify: false     # Whether to skip server certificate verification; not recommended to enable in production
-#      batch:
-#        enabled: true                   # Recommended to enable batch processing
+# Load Balancing Configuration (gRPC Only)
+load_balancing:
+  policy: "round_robin"         # pick_first, round_robin, least_conn
+  health_check: true             # Enable health checking for load balancing
+
+# Batch Processing Configuration
+batch:
+  enabled: true
+  max_queue_size: 1000          # Maximum number of spans in the queue
+  max_batch_size: 100           # Maximum number of spans per batch
+  batch_timeout: "1s"           # Time to wait before sending a batch
+  export_timeout: "30s"         # Time to wait for export to complete
+
+# Retry Configuration
+retry:
+  enabled: true
+  max_attempts: 3               # Maximum number of retry attempts
+  initial_interval: "100ms"     # Initial retry interval
+  max_interval: "1s"            # Maximum retry interval
+  multiplier: 2.0               # Exponential backoff multiplier
+
+# Sampling Configuration
+sampler:
+  type: "TRACEID_RATIO"         # ALWAYS_ON, ALWAYS_OFF, TRACEID_RATIO, PARENT_BASED_TRACEID_RATIO
+  ratio: 0.1                    # Sampling ratio (0.0 to 1.0) for TRACEID_RATIO
+
+# Context Propagation
+propagators:
+  - "W3C_TRACECONTEXT"          # W3C TraceContext (default)
+  - "W3C_BAGGAGE"               # W3C Baggage
+  - "B3"                        # B3 single/multi header
+  - "JAEGER"                    # Jaeger headers
+
+# Resource Configuration
+resource:
+  service_name: "my-service"    # Service name for traces
+  service_version: "1.0.0"      # Service version
+  service_namespace: "my-namespace"  # Service namespace
+  attributes:
+    environment: "production"
+    region: "us-west-2"
+    team: "platform"
+
+# Span Limits
+limits:
+  max_attributes_per_span: 128
+  max_events_per_span: 128
+  max_links_per_span: 128
+  max_attribute_value_length: 256
+
+# HTTP Path (for OTLP_HTTP protocol)
+http_path: "/v1/traces"
+
+# TLS Configuration
+tls:
+  enabled: false
+  ca_file: "/path/to/ca.crt"
+  cert_file: "/path/to/client.crt"
+  key_file: "/path/to/client.key"
+  insecure_skip_verify: false
+
+# Compression
+compression: "COMPRESSION_GZIP"  # COMPRESSION_NONE or COMPRESSION_GZIP
+
+# =============================================================================
+# Production Environment Example
+# =============================================================================
+production_example:
+  enabled: true
+  address: "otel-collector:4317"
+  protocol: "OTLP_GRPC"
+  
+  # High-performance connection management
+  connection:
+    connect_timeout: "5s"
+    reconnection_period: "2s"
+    max_conn_idle_time: "2m"
+    max_conn_age: "5m"
+    max_conn_age_grace: "5s"
+  
+  # Load balancing for high availability
+  load_balancing:
+    policy: "round_robin"
+    health_check: true
+  
+  # Optimized batch processing
+  batch:
+    enabled: true
+    max_queue_size: 5000
+    max_batch_size: 500
+    batch_timeout: "500ms"
+    export_timeout: "10s"
+  
+  # Aggressive retry strategy
+  retry:
+    enabled: true
+    max_attempts: 5
+    initial_interval: "50ms"
+    max_interval: "2s"
+    multiplier: 1.5
+  
+  # Production sampling
+  sampler:
+    type: "PARENT_BASED_TRACEID_RATIO"
+    ratio: 0.01  # 1% sampling for high-traffic production
+  
+  # Production resource attributes
+  resource:
+    service_name: "production-service"
+    service_version: "2.1.0"
+    service_namespace: "production"
+    attributes:
+      environment: "production"
+      region: "us-east-1"
+      datacenter: "dc-01"
+      team: "sre"
+  
+  # Strict limits for production
+  limits:
+    max_attributes_per_span: 64
+    max_events_per_span: 64
+    max_links_per_span: 32
+    max_attribute_value_length: 128
+  
+  # Production TLS
+  tls:
+    enabled: true
+    ca_file: "/etc/ssl/certs/ca-bundle.crt"
+    cert_file: "/etc/ssl/certs/client.crt"
+    key_file: "/etc/ssl/private/client.key"
+    insecure_skip_verify: false
+  
+  compression: "COMPRESSION_GZIP"
+
+# =============================================================================
+# Development Environment Example
+# =============================================================================
+development_example:
+  enabled: true
+  address: "localhost:4317"
+  protocol: "OTLP_GRPC"
+  
+  # Simple connection management for development
+  connection:
+    connect_timeout: "30s"
+    reconnection_period: "10s"
+  
+  # Basic load balancing
+  load_balancing:
+    policy: "pick_first"
+    health_check: false
+  
+  # Simple batch processing
+  batch:
+    enabled: true
+    max_queue_size: 100
+    max_batch_size: 10
+    batch_timeout: "5s"
+    export_timeout: "60s"
+  
+  # Simple retry
+  retry:
+    enabled: true
+    max_attempts: 2
+    initial_interval: "1s"
+    max_interval: "5s"
+    multiplier: 2.0
+  
+  # Development sampling (capture more traces)
+  sampler:
+    type: "ALWAYS_ON"  # Capture all traces in development
+  
+  # Development resource attributes
+  resource:
+    service_name: "dev-service"
+    service_version: "dev"
+    service_namespace: "development"
+    attributes:
+      environment: "development"
+      developer: "john.doe"
+  
+  # Relaxed limits for development
+  limits:
+    max_attributes_per_span: 256
+    max_events_per_span: 256
+    max_links_per_span: 256
+    max_attribute_value_length: 1024
+  
+  # No TLS for local development
+  tls:
+    enabled: false
+  
+  compression: "COMPRESSION_NONE"
+
+# =============================================================================
+# High-Performance Example
+# =============================================================================
+high_performance_example:
+  enabled: true
+  address: "otel-collector-cluster:4317"
+  protocol: "OTLP_GRPC"
+  
+  # Ultra-fast connection management
+  connection:
+    connect_timeout: "1s"
+    reconnection_period: "100ms"
+    max_conn_idle_time: "30s"
+    max_conn_age: "2m"
+    max_conn_age_grace: "1s"
+  
+  # Advanced load balancing
+  load_balancing:
+    policy: "least_conn"
+    health_check: true
+  
+  # High-throughput batch processing
+  batch:
+    enabled: true
+    max_queue_size: 10000
+    max_batch_size: 1000
+    batch_timeout: "100ms"
+    export_timeout: "5s"
+  
+  # Fast retry strategy
+  retry:
+    enabled: true
+    max_attempts: 3
+    initial_interval: "10ms"
+    max_interval: "500ms"
+    multiplier: 1.2
+  
+  # Minimal sampling for performance
+  sampler:
+    type: "TRACEID_RATIO"
+    ratio: 0.001  # 0.1% sampling for ultra-high performance
+  
+  # Minimal resource attributes
+  resource:
+    service_name: "high-perf-service"
+    service_version: "3.0.0"
+    attributes:
+      environment: "production"
+      performance_tier: "ultra"
+  
+  # Minimal limits for performance
+  limits:
+    max_attributes_per_span: 32
+    max_events_per_span: 16
+    max_links_per_span: 16
+    max_attribute_value_length: 64
+  
+  # High-performance TLS
+  tls:
+    enabled: true
+    ca_file: "/etc/ssl/certs/ca-bundle.crt"
+    cert_file: "/etc/ssl/certs/client.crt"
+    key_file: "/etc/ssl/private/client.key"
+    insecure_skip_verify: false
+  
+  compression: "COMPRESSION_GZIP"

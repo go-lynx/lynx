@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,14 +22,38 @@ const (
 	pluginVersion     = "v1.0.0"
 	pluginDescription = "Swagger API documentation generator and UI server"
 	confPrefix        = "lynx.swagger"
+
+	// Security constants
+	maxRequestSize = 1 << 20 // 1MB max request size
+	readTimeout    = 30 * time.Second
+	writeTimeout   = 30 * time.Second
+	idleTimeout    = 60 * time.Second
+)
+
+// Environment types
+const (
+	EnvDevelopment = "development"
+	EnvTesting     = "testing"
+	EnvStaging     = "staging"
+	EnvProduction  = "production"
 )
 
 // SwaggerConfig plugin configuration
 type SwaggerConfig struct {
-	Enabled bool       `json:"enabled" yaml:"enabled"`
-	Info    InfoConfig `json:"info" yaml:"info"`
-	UI      UIConfig   `json:"ui" yaml:"ui"`
-	Gen     GenConfig  `json:"generator" yaml:"generator"`
+	Enabled  bool           `json:"enabled" yaml:"enabled"`
+	Info     InfoConfig     `json:"info" yaml:"info"`
+	UI       UIConfig       `json:"ui" yaml:"ui"`
+	Gen      GenConfig      `json:"generator" yaml:"generator"`
+	Security SecurityConfig `json:"security" yaml:"security"`
+}
+
+// SecurityConfig security configuration
+type SecurityConfig struct {
+	Environment    string   `json:"environment" yaml:"environment"`
+	AllowedEnvs    []string `json:"allowed_environments" yaml:"allowed_environments"`
+	DisableInProd  bool     `json:"disable_in_production" yaml:"disable_in_production"`
+	TrustedOrigins []string `json:"trusted_origins" yaml:"trusted_origins"`
+	RequireAuth    bool     `json:"require_auth" yaml:"require_auth"`
 }
 
 // InfoConfig API basic information
@@ -61,12 +86,11 @@ type UIConfig struct {
 
 // GenConfig generator configuration
 type GenConfig struct {
-	ScanDirs         []string `json:"scanDirs" yaml:"scanDirs"`
-	ExcludeDirs      []string `json:"excludeDirs" yaml:"excludeDirs"`
-	AutoGenerate     bool     `json:"autoGenerate" yaml:"autoGenerate"`
-	OutputPath       string   `json:"outputPath" yaml:"outputPath"`
-	ParseComments    bool     `json:"parseComments" yaml:"parseComments"`
-	GenerateExamples bool     `json:"generateExamples" yaml:"generateExamples"`
+	Enabled     bool              `json:"enabled" yaml:"enabled"`
+	ScanDirs    []string          `json:"scan_dirs" yaml:"scan_dirs"`
+	OutputPath  string            `json:"output_path" yaml:"output_path"`
+	WatchFiles  bool              `json:"watch_files" yaml:"watch_files"`
+	FileWatcher FileWatcherConfig `json:"file_watcher" yaml:"file_watcher"`
 }
 
 // PlugSwagger Swagger plugin
@@ -145,11 +169,27 @@ type Response struct {
 	Examples    map[string]interface{}
 }
 
-// FileWatcher file watcher
+// FileWatcherConfig configuration for file watching
+type FileWatcherConfig struct {
+	Enabled       bool          `json:"enabled" yaml:"enabled"`
+	Interval      time.Duration `json:"interval" yaml:"interval"`
+	DebounceDelay time.Duration `json:"debounce_delay" yaml:"debounce_delay"`
+	MaxRetries    int           `json:"max_retries" yaml:"max_retries"`
+	RetryDelay    time.Duration `json:"retry_delay" yaml:"retry_delay"`
+	BatchSize     int           `json:"batch_size" yaml:"batch_size"`
+	HealthCheck   bool          `json:"health_check" yaml:"health_check"`
+}
+
+// FileWatcher enhanced file monitoring
 type FileWatcher struct {
-	paths    []string
-	callback func()
-	stop     chan struct{}
+	paths       []string
+	callback    func() error
+	stop        chan struct{}
+	config      FileWatcherConfig
+	lastChange  time.Time
+	changeCount int
+	mu          sync.RWMutex
+	healthy     bool
 }
 
 // NewSwaggerPlugin creates a Swagger plugin
@@ -170,9 +210,19 @@ func NewSwaggerPlugin() *PlugSwagger {
 				Enabled: true,
 			},
 			Gen: GenConfig{
-				AutoGenerate:  true,
-				OutputPath:    "./docs/swagger.json",
-				ParseComments: true,
+				Enabled:    true,
+				ScanDirs:   []string{"./app"},
+				OutputPath: "./docs/swagger.json",
+				WatchFiles: true,
+				FileWatcher: FileWatcherConfig{
+					Enabled:       true,
+					Interval:      1 * time.Second,
+					DebounceDelay: 500 * time.Millisecond,
+					MaxRetries:    3,
+					RetryDelay:    1 * time.Second,
+					BatchSize:     10,
+					HealthCheck:   true,
+				},
 			},
 		},
 	}
@@ -198,6 +248,9 @@ func (p *PlugSwagger) InitializeResources(rt plugins.Runtime) error {
 	if p.config.Gen.OutputPath == "" {
 		p.config.Gen.OutputPath = "./docs/swagger.json"
 	}
+
+	// Set default values
+	p.SetDefaultValues()
 
 	// Initialize generator
 	p.generator = &Generator{
@@ -250,8 +303,13 @@ func (p *PlugSwagger) StartupTasks() error {
 		return nil
 	}
 
+	// Validate configuration
+	if err := p.validateConfiguration(); err != nil {
+		return fmt.Errorf("invalid swagger configuration: %w", err)
+	}
+
 	// Generate initial documentation
-	if p.config.Gen.AutoGenerate {
+	if p.config.Gen.Enabled {
 		if err := p.generateSwaggerDocs(); err != nil {
 			log.Errorf("Failed to generate swagger docs: %v", err)
 		}
@@ -266,7 +324,7 @@ func (p *PlugSwagger) StartupTasks() error {
 	}
 
 	// Start file monitoring
-	if p.config.Gen.AutoGenerate {
+	if p.config.Gen.WatchFiles {
 		p.startFileWatcher()
 	}
 
@@ -303,8 +361,8 @@ func (p *PlugSwagger) generateSwaggerDocs() error {
 
 	log.Info("Starting Swagger documentation generation...")
 
-	// Create annotation parser
-	parser := NewAnnotationParser(p.swagger)
+	// Create annotation parser with allowed directories
+	parser := NewAnnotationParser(p.swagger, p.config.Gen.ScanDirs)
 
 	// Scan directories
 	for _, dir := range p.config.Gen.ScanDirs {
@@ -407,10 +465,14 @@ func (p *PlugSwagger) startSwaggerUI() error {
 		port = 8081 // Default port
 	}
 
-	// Create HTTP server
+	// Create HTTP server with security configuration
 	p.uiServer = &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: mux,
+		Addr:           fmt.Sprintf(":%d", port),
+		Handler:        p.createSecureHandler(mux),
+		ReadTimeout:    readTimeout,
+		WriteTimeout:   writeTimeout,
+		IdleTimeout:    idleTimeout,
+		MaxHeaderBytes: maxRequestSize,
 	}
 
 	// Start server in the background
@@ -424,14 +486,70 @@ func (p *PlugSwagger) startSwaggerUI() error {
 	return nil
 }
 
+// createSecureHandler creates a secure HTTP handler with security headers
+func (p *PlugSwagger) createSecureHandler(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Add security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' cdn.jsdelivr.net; font-src 'self' cdn.jsdelivr.net; img-src 'self' data:;")
+
+		// Add CORS headers with restricted origins
+		if p.isCORSAllowed(r.Header.Get("Origin")) {
+			w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "null")
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+
+		// Handle preflight requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Check request size
+		if r.ContentLength > maxRequestSize {
+			http.Error(w, "Request too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		// Call the actual handler
+		handler.ServeHTTP(w, r)
+	})
+}
+
+// isCORSAllowed checks if the origin is allowed for CORS
+func (p *PlugSwagger) isCORSAllowed(origin string) bool {
+	// If no trusted origins configured, only allow localhost
+	if len(p.config.Security.TrustedOrigins) == 0 {
+		return strings.HasPrefix(origin, "http://localhost:") ||
+			strings.HasPrefix(origin, "https://localhost:") ||
+			strings.HasPrefix(origin, "http://127.0.0.1:") ||
+			strings.HasPrefix(origin, "https://127.0.0.1:")
+	}
+
+	// Check against configured trusted origins
+	for _, trusted := range p.config.Security.TrustedOrigins {
+		if origin == trusted {
+			return true
+		}
+	}
+
+	return false
+}
+
 // serveSwaggerJSON provides Swagger JSON documentation
 func (p *PlugSwagger) serveSwaggerJSON(w http.ResponseWriter, r *http.Request) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	// CORS headers are now handled by createSecureHandler
 
 	if err := json.NewEncoder(w).Encode(p.swagger); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -440,12 +558,19 @@ func (p *PlugSwagger) serveSwaggerJSON(w http.ResponseWriter, r *http.Request) {
 
 // serveSwaggerUI provides Swagger UI page
 func (p *PlugSwagger) serveSwaggerUI(w http.ResponseWriter, r *http.Request) {
-	// Simple Swagger UI HTML page
+	// Escape user input to prevent XSS
+	title := p.escapeHTML(p.config.Info.Title)
+	path := p.escapeHTML(p.config.UI.Path)
+	deepLinking := p.config.UI.DeepLinking
+	docExpansion := p.escapeHTML(p.config.UI.DocExpansion)
+
+	// Simple Swagger UI HTML page with escaped content
 	html := `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>` + p.config.Info.Title + ` - Swagger UI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>` + title + ` - Swagger UI</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
     <style>
         body { margin: 0; padding: 0; }
@@ -459,10 +584,10 @@ func (p *PlugSwagger) serveSwaggerUI(w http.ResponseWriter, r *http.Request) {
     <script>
         window.onload = function() {
             window.ui = SwaggerUIBundle({
-                url: "` + p.config.UI.Path + `/doc.json",
+                url: "` + path + `/doc.json",
                 dom_id: '#swagger-ui',
-                deepLinking: ` + fmt.Sprintf("%v", p.config.UI.DeepLinking) + `,
-                docExpansion: "` + p.config.UI.DocExpansion + `",
+                deepLinking: ` + fmt.Sprintf("%v", deepLinking) + `,
+                docExpansion: "` + docExpansion + `",
                 presets: [
                     SwaggerUIBundle.presets.apis,
                     SwaggerUIStandalonePreset
@@ -478,34 +603,141 @@ func (p *PlugSwagger) serveSwaggerUI(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
+// escapeHTML escapes HTML special characters to prevent XSS
+func (p *PlugSwagger) escapeHTML(s string) string {
+	escaped := strings.ReplaceAll(s, "&", "&amp;")
+	escaped = strings.ReplaceAll(escaped, "<", "&lt;")
+	escaped = strings.ReplaceAll(escaped, ">", "&gt;")
+	escaped = strings.ReplaceAll(escaped, `"`, "&quot;")
+	escaped = strings.ReplaceAll(escaped, "'", "&#39;")
+	return escaped
+}
+
 // startFileWatcher starts file monitoring
 func (p *PlugSwagger) startFileWatcher() {
 	p.watcher = &FileWatcher{
 		paths: p.config.Gen.ScanDirs,
-		callback: func() {
+		callback: func() error {
 			if err := p.generateSwaggerDocs(); err != nil {
 				log.Errorf("Failed to regenerate docs: %v", err)
+				return err
 			}
+			return nil
 		},
-		stop: make(chan struct{}),
+		config: FileWatcherConfig{
+			Enabled:       true,
+			Interval:      1 * time.Second,
+			DebounceDelay: 500 * time.Millisecond,
+			MaxRetries:    3,
+			RetryDelay:    1 * time.Second,
+			BatchSize:     10,
+			HealthCheck:   true,
+		},
+		lastChange:  time.Now(),
+		changeCount: 0,
+		mu:          sync.RWMutex{},
+		healthy:     true,
 	}
 
 	go p.watcher.watch()
 }
 
-// watch monitors file changes
+// watch monitors file changes with enhanced logic
 func (w *FileWatcher) watch() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(w.config.Interval)
 	defer ticker.Stop()
+
+	debounceTimer := time.NewTimer(w.config.DebounceDelay)
+	debounceTimer.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			// Simple periodic regeneration, actual file change monitoring can use fsnotify
-			w.callback()
+			if w.checkForChanges() {
+				// Reset debounce timer
+				debounceTimer.Reset(w.config.DebounceDelay)
+			}
+		case <-debounceTimer.C:
+			// Debounced change processing
+			w.processChanges()
 		case <-w.stop:
+			debounceTimer.Stop()
 			return
 		}
+	}
+}
+
+// checkForChanges checks if any files have changed
+func (w *FileWatcher) checkForChanges() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Simple file modification check
+	for _, path := range w.paths {
+		if info, err := os.Stat(path); err == nil {
+			if info.ModTime().After(w.lastChange) {
+				w.lastChange = info.ModTime()
+				w.changeCount++
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// processChanges processes file changes with retry logic
+func (w *FileWatcher) processChanges() {
+	w.mu.Lock()
+	changeCount := w.changeCount
+	w.changeCount = 0
+	w.mu.Unlock()
+
+	if changeCount == 0 {
+		return
+	}
+
+	// Retry logic with exponential backoff
+	for attempt := 0; attempt < w.config.MaxRetries; attempt++ {
+		if err := w.callback(); err == nil {
+			w.mu.Lock()
+			w.healthy = true
+			w.mu.Unlock()
+			log.Infof("Successfully processed %d file changes", changeCount)
+			return
+		}
+
+		if attempt < w.config.MaxRetries-1 {
+			delay := w.config.RetryDelay * time.Duration(1<<attempt)
+			log.Warnf("Failed to process changes (attempt %d/%d), retrying in %v",
+				attempt+1, w.config.MaxRetries, delay)
+			time.Sleep(delay)
+		}
+	}
+
+	// All retries failed
+	w.mu.Lock()
+	w.healthy = false
+	w.mu.Unlock()
+	log.Errorf("Failed to process file changes after %d attempts", w.config.MaxRetries)
+}
+
+// IsHealthy returns the health status of the file watcher
+func (w *FileWatcher) IsHealthy() bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.healthy
+}
+
+// GetStats returns file watcher statistics
+func (w *FileWatcher) GetStats() map[string]interface{} {
+	w.mu.RLock()
+	defer w.mu.Unlock()
+
+	return map[string]interface{}{
+		"healthy":      w.healthy,
+		"change_count": w.changeCount,
+		"last_change":  w.lastChange,
+		"paths":        w.paths,
 	}
 }
 
@@ -606,4 +838,178 @@ func (p *PlugSwagger) CheckHealth() error {
 	}
 
 	return nil
+}
+
+// isEnvironmentAllowed checks if the current environment allows Swagger to run
+func (p *PlugSwagger) isEnvironmentAllowed() bool {
+	// Check if explicitly disabled in production
+	if p.config.Security.DisableInProd && p.isProductionEnvironment() {
+		return false
+	}
+
+	// Check allowed environments list
+	if len(p.config.Security.AllowedEnvs) > 0 {
+		currentEnv := p.getCurrentEnvironment()
+		for _, allowed := range p.config.Security.AllowedEnvs {
+			if currentEnv == allowed {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Default: allow in development and testing, deny in production
+	return !p.isProductionEnvironment()
+}
+
+// isProductionEnvironment checks if current environment is production
+func (p *PlugSwagger) isProductionEnvironment() bool {
+	env := p.getCurrentEnvironment()
+	return env == EnvProduction || env == EnvStaging
+}
+
+// getCurrentEnvironment gets current environment
+func (p *PlugSwagger) getCurrentEnvironment() string {
+	// Check environment variable first
+	if env := os.Getenv("ENV"); env != "" {
+		return strings.ToLower(env)
+	}
+	if env := os.Getenv("GO_ENV"); env != "" {
+		return strings.ToLower(env)
+	}
+	if env := os.Getenv("APP_ENV"); env != "" {
+		return strings.ToLower(env)
+	}
+
+	// Check config
+	if p.config.Security.Environment != "" {
+		return strings.ToLower(p.config.Security.Environment)
+	}
+
+	// Default to development
+	return EnvDevelopment
+}
+
+// validateConfiguration validates configuration for security
+func (p *PlugSwagger) validateConfiguration() error {
+	// Check if environment allows Swagger
+	if !p.isEnvironmentAllowed() {
+		return fmt.Errorf("swagger plugin is not allowed in environment: %s", p.getCurrentEnvironment())
+	}
+
+	// Validate scan directories
+	for _, dir := range p.config.Gen.ScanDirs {
+		if err := p.validateScanDirectory(dir); err != nil {
+			return fmt.Errorf("invalid scan directory %s: %w", dir, err)
+		}
+	}
+
+	// Validate UI configuration
+	if p.config.UI.Enabled {
+		if err := p.validateUIConfig(); err != nil {
+			return fmt.Errorf("invalid UI configuration: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// validateScanDirectory validates scan directory for security
+func (p *PlugSwagger) validateScanDirectory(dir string) error {
+	// Convert to absolute path
+	absPath, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path: %w", err)
+	}
+
+	// Check if directory exists
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return fmt.Errorf("directory does not exist: %s", absPath)
+	}
+
+	// Check for suspicious paths
+	suspicious := []string{"/etc", "/var", "/usr", "/bin", "/sbin", "/tmp", "/root", "/home"}
+	for _, s := range suspicious {
+		if strings.HasPrefix(absPath, s) {
+			return fmt.Errorf("scanning directory %s is not allowed for security reasons", absPath)
+		}
+	}
+
+	// Check if it's a subdirectory of current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current working directory: %w", err)
+	}
+
+	if !strings.HasPrefix(absPath, cwd) {
+		return fmt.Errorf("scan directory %s must be within current working directory %s", absPath, cwd)
+	}
+
+	return nil
+}
+
+// validateUIConfig validates UI configuration for security
+func (p *PlugSwagger) validateUIConfig() error {
+	// Check port range
+	if p.config.UI.Port < 1024 || p.config.UI.Port > 65535 {
+		return fmt.Errorf("UI port must be between 1024 and 65535, got: %d", p.config.UI.Port)
+	}
+
+	// Check path
+	if p.config.UI.Path == "" {
+		return fmt.Errorf("UI path cannot be empty")
+	}
+
+	// Ensure path starts with /
+	if !strings.HasPrefix(p.config.UI.Path, "/") {
+		return fmt.Errorf("UI path must start with /, got: %s", p.config.UI.Path)
+	}
+
+	return nil
+}
+
+// SetDefaultValues sets default values for configuration
+func (p *PlugSwagger) SetDefaultValues() {
+	// Set default security configuration
+	if p.config.Security.Environment == "" {
+		p.config.Security.Environment = EnvDevelopment
+	}
+
+	// Set default allowed environments (development and testing only)
+	if len(p.config.Security.AllowedEnvs) == 0 {
+		p.config.Security.AllowedEnvs = []string{EnvDevelopment, EnvTesting}
+	}
+
+	// Default to disable in production
+	if !p.config.Security.DisableInProd {
+		p.config.Security.DisableInProd = true
+	}
+
+	// Set default trusted origins (localhost only)
+	if len(p.config.Security.TrustedOrigins) == 0 {
+		p.config.Security.TrustedOrigins = []string{
+			"http://localhost:8080",
+			"http://localhost:8081",
+			"http://127.0.0.1:8080",
+			"http://127.0.0.1:8081",
+		}
+	}
+
+	// Set default UI configuration
+	if p.config.UI.Path == "" {
+		p.config.UI.Path = "/swagger"
+	}
+
+	if p.config.UI.Port == 0 {
+		p.config.UI.Port = 8081
+	}
+
+	// Set default generator configuration
+	if len(p.config.Gen.ScanDirs) == 0 {
+		p.config.Gen.ScanDirs = []string{"./"}
+	}
+
+	if p.config.Gen.OutputPath == "" {
+		p.config.Gen.OutputPath = "./docs/swagger.json"
+	}
 }

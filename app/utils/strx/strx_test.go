@@ -10,14 +10,14 @@ func TestStrX(t *testing.T) {
 		t.Fatalf("HasSuffixAny")
 	}
 
-	if Truncate("中文ABC", 0, "…") != "" {
+	if Truncate("ChineseABC", 0, "…") != "" {
 		t.Fatalf("Truncate max<=0")
 	}
-	if Truncate("中文ABC", 2, "") != "中文" {
+	if Truncate("ChineseABC", 2, "") != "Chinese" {
 		t.Fatalf("Truncate runes no ellipsis")
 	}
-	got := Truncate("中文ABC", 3, "…")
-	if got == "中文ABC" || len([]rune(got)) != 3 {
+	got := Truncate("ChineseABC", 3, "…")
+	if got == "ChineseABC" || len([]rune(got)) != 3 {
 		t.Fatalf("Truncate with ellipsis: %q", got)
 	}
 

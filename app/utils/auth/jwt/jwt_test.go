@@ -76,7 +76,7 @@ func TestJwtTokenSigning(t *testing.T) {
 	// Sign a JWT token (using TestClaims without interface fields)
 	signing, err := Sign(&TestClaims{
 		ID:       123,
-		Nickname: "老王",
+		Nickname: "John",
 	}, "ES256", privateKey)
 	if err != nil {
 		panic(err)

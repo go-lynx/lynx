@@ -58,6 +58,35 @@ message Retry {
   google.protobuf.Duration max_interval = 4; // Maximum backoff
 }
 
+// Connection management configuration for gRPC exporter.
+// - max_conn_idle_time: Maximum time a connection can be idle before being closed.
+// - max_conn_age: Maximum age of a connection before it is closed.
+// - max_conn_age_grace: Additional grace period for connection closure.
+// - time: Time to wait for connection establishment.
+// - reconnection_period: Minimum time between reconnection attempts.
+message Connection {
+  // Maximum time a connection can be idle before being closed
+  google.protobuf.Duration max_conn_idle_time = 1;
+  // Maximum age of a connection before it is closed
+  google.protobuf.Duration max_conn_age = 2;
+  // Additional grace period for connection closure
+  google.protobuf.Duration max_conn_age_grace = 3;
+  // Time to wait for connection establishment
+  google.protobuf.Duration connect_timeout = 4;
+  // Minimum time between reconnection attempts
+  google.protobuf.Duration reconnection_period = 5;
+}
+
+// Load balancing configuration for gRPC exporter.
+// - policy: Load balancing policy (pick_first, round_robin, etc.).
+// - health_check: Whether to enable health checking for load balancing.
+message LoadBalancing {
+  // Load balancing policy
+  string policy = 1;
+  // Whether to enable health checking
+  bool health_check = 2;
+}
+
 // Batch processing configuration (BatchSpanProcessor). Enabling can significantly reduce export overhead and improve throughput.
 // - enabled: Whether to enable batch processing.
 // - max_queue_size: Maximum number of spans in queue (>0); recommended 1k-10k.
@@ -137,23 +166,29 @@ message Config {
   // Retry configuration (only used by gRPC exporter).
   Retry retry = 7;
 
+  // Connection management configuration (only used by gRPC exporter).
+  Connection connection = 8;
+
+  // Load balancing configuration (only used by gRPC exporter).
+  LoadBalancing load_balancing = 9;
+
   // Batch processing configuration (strongly recommended to enable for improved throughput).
-  Batch batch = 8;
+  Batch batch = 10;
 
   // Sampler configuration (recommended to use PARENT_BASED_TRACEID_RATIO + reasonable ratio).
-  Sampler sampler = 9;
+  Sampler sampler = 11;
 
   // Context propagator list (recommended to include at least W3C_TRACE_CONTEXT + W3C_BAGGAGE).
-  repeated Propagator propagators = 10;
+  repeated Propagator propagators = 12;
 
   // Resource information (service.name and additional attributes).
-  Resource resource = 11;
+  Resource resource = 13;
 
   // Span limits (see Limits).
-  Limits limits = 12;
+  Limits limits = 14;
 
   // Only effective in OTLP HTTP mode; default "/v1/traces".
-  string http_path = 13;
+  string http_path = 15;
 }
 
 // Tracer defines the configuration information for the tracing plugin.

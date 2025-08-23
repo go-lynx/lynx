@@ -1,6 +1,6 @@
 package idx
 
-import "github.com/go-lynx/lynx/app/util/randx"
+import "github.com/go-lynx/lynx/app/utils/randx"
 
 // NanoID generates a URL-safe short ID of length n. The default alphabet matches RandString.
 // A typical length is 21 (~128-bit entropy).

@@ -87,15 +87,141 @@ func (t *PlugTracer) InitializeResources(rt plugins.Runtime) error {
 // validateConfiguration validates configuration legality:
 // - ratio must be in [0,1]
 // - when enable=true, valid addr must be provided
+// - additional validation for config fields when present
 func (t *PlugTracer) validateConfiguration() error {
-	// Validate sampling ratio
+	// Validate sampling ratio (even when disabled, ratio should be valid for future use)
 	if t.conf.Ratio < 0 || t.conf.Ratio > 1 {
 		return fmt.Errorf("sampling ratio must be between 0 and 1, got %f", t.conf.Ratio)
 	}
 
-	// Validate address configuration
+	// Validate address configuration when tracing is enabled
 	if t.conf.Enable && t.conf.Addr == "" {
 		return fmt.Errorf("tracer address is required when tracing is enabled")
+	}
+
+	// Additional validation for config fields when present
+	if t.conf.Config != nil {
+		if err := t.validateConfigFields(); err != nil {
+			return fmt.Errorf("config validation failed: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// validateConfigFields validates the nested config fields
+func (t *PlugTracer) validateConfigFields() error {
+	cfg := t.conf.Config
+
+	// Validate batch configuration
+	if cfg.Batch != nil && cfg.Batch.GetEnabled() {
+		if cfg.Batch.GetMaxQueueSize() < 0 {
+			return fmt.Errorf("batch max_queue_size must be non-negative")
+		}
+		if cfg.Batch.GetMaxBatchSize() < 0 {
+			return fmt.Errorf("batch max_batch_size must be non-negative")
+		}
+		// Validate batch size vs queue size relationship
+		if cfg.Batch.GetMaxBatchSize() > 0 && cfg.Batch.GetMaxQueueSize() > 0 {
+			if cfg.Batch.GetMaxBatchSize() > cfg.Batch.GetMaxQueueSize() {
+				return fmt.Errorf("batch max_batch_size cannot exceed max_queue_size")
+			}
+		}
+		// Validate that at least one of the batch limits is set
+		if cfg.Batch.GetMaxQueueSize() == 0 && cfg.Batch.GetMaxBatchSize() == 0 {
+			return fmt.Errorf("batch processing enabled but no limits configured (max_queue_size or max_batch_size must be set)")
+		}
+	}
+
+	// Validate retry configuration
+	if cfg.Retry != nil && cfg.Retry.GetEnabled() {
+		if cfg.Retry.GetMaxAttempts() < 1 {
+			return fmt.Errorf("retry max_attempts must be at least 1")
+		}
+		if cfg.Retry.GetInitialInterval() != nil && cfg.Retry.GetInitialInterval().AsDuration() < 0 {
+			return fmt.Errorf("retry initial_interval must be non-negative")
+		}
+		if cfg.Retry.GetMaxInterval() != nil && cfg.Retry.GetMaxInterval().AsDuration() < 0 {
+			return fmt.Errorf("retry max_interval must be non-negative")
+		}
+		// Validate interval relationship
+		if cfg.Retry.GetInitialInterval() != nil && cfg.Retry.GetMaxInterval() != nil {
+			if cfg.Retry.GetInitialInterval().AsDuration() > cfg.Retry.GetMaxInterval().AsDuration() {
+				return fmt.Errorf("retry initial_interval cannot exceed max_interval")
+			}
+		}
+	}
+
+	// Validate sampler configuration
+	if cfg.Sampler != nil {
+		if cfg.Sampler.GetRatio() < 0 || cfg.Sampler.GetRatio() > 1 {
+			return fmt.Errorf("sampler ratio must be between 0 and 1, got %f", cfg.Sampler.GetRatio())
+		}
+	}
+
+	// Validate connection management configuration
+	if cfg.Connection != nil {
+		if err := t.validateConnectionConfig(cfg.Connection); err != nil {
+			return fmt.Errorf("connection configuration validation failed: %w", err)
+		}
+	}
+
+	// Validate load balancing configuration
+	if cfg.LoadBalancing != nil {
+		if err := t.validateLoadBalancingConfig(cfg.LoadBalancing); err != nil {
+			return fmt.Errorf("load balancing configuration validation failed: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// validateConnectionConfig validates connection management configuration
+func (t *PlugTracer) validateConnectionConfig(conn *conf.Connection) error {
+	// Validate connection timeout
+	if conn.GetConnectTimeout() != nil && conn.GetConnectTimeout().AsDuration() < 0 {
+		return fmt.Errorf("connection connect_timeout must be non-negative")
+	}
+
+	// Validate reconnection period
+	if conn.GetReconnectionPeriod() != nil && conn.GetReconnectionPeriod().AsDuration() < 0 {
+		return fmt.Errorf("connection reconnection_period must be non-negative")
+	}
+
+	// Validate connection age settings
+	if conn.GetMaxConnAge() != nil && conn.GetMaxConnAge().AsDuration() < 0 {
+		return fmt.Errorf("connection max_conn_age must be non-negative")
+	}
+
+	if conn.GetMaxConnIdleTime() != nil && conn.GetMaxConnIdleTime().AsDuration() < 0 {
+		return fmt.Errorf("connection max_conn_idle_time must be non-negative")
+	}
+
+	if conn.GetMaxConnAgeGrace() != nil && conn.GetMaxConnAgeGrace().AsDuration() < 0 {
+		return fmt.Errorf("connection max_conn_age_grace must be non-negative")
+	}
+
+	// Validate relationship between connection age and idle time
+	if conn.GetMaxConnAge() != nil && conn.GetMaxConnIdleTime() != nil {
+		if conn.GetMaxConnAge().AsDuration() < conn.GetMaxConnIdleTime().AsDuration() {
+			return fmt.Errorf("connection max_conn_age cannot be less than max_conn_idle_time")
+		}
+	}
+
+	return nil
+}
+
+// validateLoadBalancingConfig validates load balancing configuration
+func (t *PlugTracer) validateLoadBalancingConfig(lb *conf.LoadBalancing) error {
+	// Validate load balancing policy
+	validPolicies := map[string]bool{
+		"pick_first":  true,
+		"round_robin": true,
+		"least_conn":  true,
+	}
+
+	if lb.GetPolicy() != "" && !validPolicies[lb.GetPolicy()] {
+		return fmt.Errorf("load balancing policy must be one of: pick_first, round_robin, least_conn, got: %s", lb.GetPolicy())
 	}
 
 	return nil
@@ -123,8 +249,8 @@ func (t *PlugTracer) StartupTasks() error {
 		return nil
 	}
 
-	// Use Lynx application Helper to log, indicating that link monitoring component is being initialized
-	log.Infof("Initializing link monitoring component")
+	// Use Lynx application Helper to log, indicating that tracing component is being initialized
+	log.Infof("Initializing tracing component")
 
 	var tracerProviderOptions []trace.TracerProviderOption
 
@@ -170,8 +296,8 @@ func (t *PlugTracer) StartupTasks() error {
 		return fmt.Errorf("failed to create tracer provider")
 	}
 
-	// Use Lynx application Helper to log, indicating that link monitoring component initialization was successful
-	log.Infof("link monitoring component successfully initialized")
+	// Use Lynx application Helper to log, indicating that tracing component initialization was successful
+	log.Infof("Tracing component successfully initialized")
 	return nil
 }
 

@@ -391,11 +391,11 @@ func (b *LynxEventBus) IsHealthy() bool {
 		return false
 	}
 	if b.paused.Load() {
-		// paused 视为不健康，便于外部告警
+		// paused is considered unhealthy for external alerting
 		return false
 	}
 	if b.isDegraded.Load() {
-		// degraded 视为不健康
+		// degraded is considered unhealthy
 		return false
 	}
 	// mark unhealthy if queue usage exceeds 80% capacity
@@ -519,7 +519,7 @@ func (b *LynxEventBus) run() {
 				// batch drain with priority fill
 				bs := max(b.config.BatchSize, 1)
 				buf := b.bufferPool.GetWithCapacity(bs)
-				// 处理完后立即放回池中
+				// Return to pool immediately after processing
 				defer func() {
 					b.bufferPool.Put(buf)
 				}()
@@ -557,14 +557,14 @@ func (b *LynxEventBus) run() {
 			GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
 		default:
 			if b.paused.Load() {
-				// 当暂停时，不消费队列，仅维持心跳监控
+				// When paused, do not consume queue, only maintain heartbeat monitoring
 				time.Sleep(10 * time.Millisecond)
 				continue
 			}
-			// 尝试批量收集非阻塞事件，按优先级填充
+			// Try to batch collect non-blocking events, fill by priority
 			batchSize := max(b.config.BatchSize, 1)
 			buf := b.bufferPool.GetWithCapacity(batchSize)
-			// 处理完后立即放回池中
+			// Return to pool immediately after processing
 			defer func() {
 				b.bufferPool.Put(buf)
 			}()
@@ -600,11 +600,11 @@ func (b *LynxEventBus) run() {
 			case ev := <-b.criticalQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
 				buf = append(buf, ev)
-				// 处理完后立即放回池中
+				// Return to pool immediately after processing
 				defer func() {
 					b.bufferPool.Put(buf)
 				}()
-				// 额外非阻塞填充
+				// Additional non-blocking fill
 				for len(buf) < max(b.config.BatchSize, 1) {
 					if ev2, ok := b.tryRecv(b.criticalQ); ok {
 						buf = append(buf, ev2)
@@ -628,7 +628,7 @@ func (b *LynxEventBus) run() {
 			case ev := <-b.highQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
 				buf = append(buf, ev)
-				// 处理完后立即放回池中
+				// Return to pool immediately after processing
 				defer func() {
 					b.bufferPool.Put(buf)
 				}()
@@ -651,7 +651,7 @@ func (b *LynxEventBus) run() {
 			case ev := <-b.normalQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
 				buf = append(buf, ev)
-				// 处理完后立即放回池中
+				// Return to pool immediately after processing
 				defer func() {
 					b.bufferPool.Put(buf)
 				}()
@@ -670,7 +670,7 @@ func (b *LynxEventBus) run() {
 			case ev := <-b.lowQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
 				buf = append(buf, ev)
-				// 处理完后立即放回池中
+				// Return to pool immediately after processing
 				defer func() {
 					b.bufferPool.Put(buf)
 				}()
@@ -821,7 +821,7 @@ func (b *LynxEventBus) UpdateConfig(cfg BusConfig) {
 			b.config.HistorySize = size
 		}
 	}
-	// Note: FlushInterval/MaxQueue 变更需重建运行循环/队列，暂不在线更改
+	// Note: Changing FlushInterval/MaxQueue requires rebuilding the run loop/queue, not currently supported online
 }
 
 // wrapHandler wraps user handler to collect metrics & latency and recover panics

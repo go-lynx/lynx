@@ -18,6 +18,49 @@ type TypedFactory struct {
 	mu sync.RWMutex
 }
 
+// RegisterPlugin registers a plugin (backward-compatible signature for TypedFactory).
+// Recommended usage in plugins: factory.GlobalTypedFactory().RegisterPlugin(...)
+func (f *TypedFactory) RegisterPlugin(name string, configPrefix string, creator func() plugins.Plugin) {
+    f.mu.Lock()
+    defer f.mu.Unlock()
+
+    // Check if already registered
+    if _, exists := f.creators[name]; exists {
+        panic(fmt.Errorf("plugin already registered: %s", name))
+    }
+
+    // Cross-prefix duplicate name detection (defensive)
+    for prefix, names := range f.configMapping {
+        if prefix == configPrefix {
+            continue
+        }
+        for _, n := range names {
+            if n == name {
+                log.Warnf("plugin name '%s' registered under multiple prefixes: existing='%s', new='%s'", name, prefix, configPrefix)
+            }
+        }
+    }
+
+    // Store creation function
+    f.creators[name] = creator
+
+    // Configuration mapping
+    if f.configMapping[configPrefix] == nil {
+        f.configMapping[configPrefix] = make([]string, 0)
+    }
+    // Deduplicate within prefix
+    exists := false
+    for _, n := range f.configMapping[configPrefix] {
+        if n == name {
+            exists = true
+            break
+        }
+    }
+    if !exists {
+        f.configMapping[configPrefix] = append(f.configMapping[configPrefix], name)
+    }
+}
+
 // NewTypedFactory creates a type-safe plugin factory
 func NewTypedFactory() *TypedFactory {
 	return &TypedFactory{
@@ -33,46 +76,8 @@ func RegisterTypedPlugin[T plugins.Plugin](
 	configPrefix string,
 	creator func() T,
 ) {
-	factory.mu.Lock()
-	defer factory.mu.Unlock()
-
-	// Check if already registered
-	if _, exists := factory.creators[name]; exists {
-		panic(fmt.Errorf("plugin already registered: %s", name))
-	}
-
-	// Cross-prefix duplicate name detection (defensive): if the name already appears in other prefix mappings, log a warning
-	for prefix, names := range factory.configMapping {
-		if prefix == configPrefix {
-			continue
-		}
-		for _, n := range names {
-			if n == name {
-				log.Warnf("plugin name '%s' registered under multiple prefixes: existing='%s', new='%s'", name, prefix, configPrefix)
-			}
-		}
-	}
-
-	// Store creation function
-	factory.creators[name] = func() plugins.Plugin {
-		return creator()
-	}
-
-	// Configuration mapping
-	if factory.configMapping[configPrefix] == nil {
-		factory.configMapping[configPrefix] = make([]string, 0)
-	}
-	// Deduplication within prefix to avoid duplicate appending
-	exists := false
-	for _, n := range factory.configMapping[configPrefix] {
-		if n == name {
-			exists = true
-			break
-		}
-	}
-	if !exists {
-		factory.configMapping[configPrefix] = append(factory.configMapping[configPrefix], name)
-	}
+	// Delegate to non-generic RegisterPlugin for centralized logic
+	factory.RegisterPlugin(name, configPrefix, func() plugins.Plugin { return creator() })
 }
 
 // GetTypedPlugin gets a type-safe plugin instance

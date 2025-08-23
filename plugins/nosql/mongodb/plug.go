@@ -9,13 +9,17 @@ import (
 
 // init function is a special function in Go that is automatically executed when the package is loaded.
 // This function registers the MongoDB client plugin to the global plugin factory.
+// The first parameter pluginName is the unique name of the plugin, used to identify the plugin.
+// The second parameter confPrefix is the configuration prefix, used to read plugin-related configuration from the config.
+// The third parameter is an anonymous function that returns an instance of plugins.Plugin interface type,
+// by calling the NewMongoDBClient function to create a new MongoDB client plugin instance.
 func init() {
-	// Call the RegisterPlugin method of the global plugin factory to register the plugin.
-	// The first parameter pluginName is the unique name of the plugin, used to identify the plugin.
+	// Register the MongoDB client plugin to the global plugin factory.
+	// The first parameter pluginName is the unique plugin name used for identification.
 	// The second parameter confPrefix is the configuration prefix, used to read plugin-related configuration from the config.
 	// The third parameter is an anonymous function that returns an instance of plugins.Plugin interface type,
 	// by calling the NewMongoDBClient function to create a new MongoDB client plugin instance.
-	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
+	factory.GlobalTypedFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
 		return NewMongoDBClient()
 	})
 }
