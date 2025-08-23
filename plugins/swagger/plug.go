@@ -7,7 +7,7 @@ import (
 
 func init() {
 	// Register Swagger plugin to global plugin registry
-	factory.GlobalPluginRegistry().RegisterPlugin(
+	factory.GlobalTypedFactory().RegisterPlugin(
 		pluginName,
 		confPrefix,
 		func() plugins.Plugin {

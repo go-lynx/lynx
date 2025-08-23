@@ -9,14 +9,15 @@ import (
 
 // init function registers the gRPC server plugin to the global plugin factory.
 // This function is automatically called when the package is imported.
-// It creates a new ServiceGrpc instance and registers it to the plugin factory with the configured plugin name and configuration prefix.
+// It creates a new ServiceGrpc instance and registers it to the package grpc
+
 func init() {
-	// Call the RegisterPlugin method of the global plugin factory for plugin registration
-	// Pass in the plugin name, configuration prefix, and a function that returns a plugins.Plugin interface instance
-	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
-		// Create and return a new ServiceGrpc instance
-		return NewServiceGrpc()
-	})
+    // Call the RegisterPlugin method of the global plugin factory for plugin registration
+    // Pass in the plugin name, configuration prefix, and a function that returns a plugins.Plugin interface instance
+    factory.GlobalTypedFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
+        // Create and return a new ServiceGrpc instance
+        return NewServiceGrpc()
+    })
 }
 
 // GetGrpcServer gets the gRPC server instance from the plugin manager.

@@ -7,6 +7,7 @@ Lynx distributed tracing plugin, implementing distributed tracing functionality 
 - ✅ OpenTelemetry standard compliant
 - ✅ Export protocols: OTLP gRPC, OTLP HTTP
 - ✅ Transport capabilities: TLS (including mutual), timeout, retry, compression (gzip), custom headers
+- ✅ **Connection management**: Connection pooling, load balancing, health checking, automatic reconnection
 - ✅ Batch processing: configurable queue, batch size, export timeout, and scheduling delay
 - ✅ Propagators: W3C tracecontext, baggage, B3 (single/multi-header), Jaeger
 - ✅ Samplers: AlwaysOn/AlwaysOff/TraceIDRatio/ParentBased-TraceIDRatio
@@ -89,10 +90,158 @@ lynx:
         attribute_value_length_limit: 2048
         event_count_limit: 128
         link_count_limit: 128
+      # Connection management (gRPC only)
+      connection:
+        max_conn_idle_time: 30s
+        max_conn_age: 10m
+        max_conn_age_grace: 5s
+        connect_timeout: 10s
+        reconnection_period: 5s
+      # Load balancing (gRPC only)
+      load_balancing:
+        policy: "round_robin"
+        health_check: true
+```
+
+### Connection Management (gRPC Only)
+
+The Tracer plugin supports advanced connection management for gRPC exporters, including connection pooling, load balancing, and automatic reconnection.
+
+#### Connection Options
+
+- **`max_conn_idle_time`**: Maximum time a connection can be idle before being closed
+  - Default: gRPC default (typically 30 minutes)
+  - Recommended: 30s - 5m for production environments
+  
+- **`max_conn_age`**: Maximum age of a connection before it is closed
+  - Default: gRPC default (typically unlimited)
+  - Recommended: 10m - 1h for production environments
+  
+- **`max_conn_age_grace`**: Additional grace period for connection closure
+  - Default: gRPC default (typically 10s)
+  - Recommended: 5s - 30s
+  
+- **`connect_timeout`**: Time to wait for connection establishment
+  - Default: gRPC default (typically 20s)
+  - Recommended: 5s - 30s
+  
+- **`reconnection_period`**: Minimum time between reconnection attempts
+  - Default: 5s
+  - Recommended: 5s - 30s
+
+#### Load Balancing Options
+
+- **`policy`**: Load balancing policy
+  - `"pick_first"`: Use the first available connection (default)
+  - `"round_robin"`: Distribute requests across all connections
+  - `"least_conn"`: Use the connection with the least active requests
+  
+- **`health_check`**: Enable health checking for load balancing
+  - `true`: Enable health checking (recommended for production)
+  - `false`: Disable health checking
+
+#### Implementation Details
+
+The plugin uses gRPC's built-in connection pool management with:
+- **Automatic Connection Pooling**: gRPC automatically manages connection pools
+- **Connection Reuse**: Connections are reused across multiple requests
+- **Load Balancing**: Built-in support for multiple backend instances
+- **Health Checking**: Automatic health checking of connections
+
+If connection management is not configured, the plugin uses sensible defaults:
+- **Reconnection Period**: 5 seconds
+- **Load Balancing**: Round-robin policy
+- **Connection Timeout**: gRPC default (20 seconds)
 ```
 
 
-### HTTP Export Example (OTLP/HTTP)
+### Best Practices
+
+### Production Environments
+
+1. **Set Connection Limits**: Configure `max_conn_age` and `max_conn_idle_time`
+2. **Enable Health Checking**: Set `health_check: true`
+3. **Use Round-Robin**: Set `policy: "round_robin"` for better load distribution
+4. **Configure Timeouts**: Set appropriate `connect_timeout` values
+
+### High Availability
+
+1. **Multiple Endpoints**: Use multiple collector endpoints for redundancy
+2. **Connection Pooling**: Let gRPC handle connection pooling automatically
+3. **Health Monitoring**: Monitor connection health and reconnection events
+
+### Performance Tuning
+
+1. **Batch Processing**: Enable batch processing to reduce connection overhead
+2. **Compression**: Use gzip compression to reduce bandwidth usage
+3. **Connection Limits**: Balance between connection reuse and resource usage
+
+## Example Configurations
+
+### Minimal Configuration
+
+```yaml
+lynx:
+  tracer:
+    enable: true
+    addr: "otel-collector:4317"
+    config:
+      connection:
+        reconnection_period: 10s
+      load_balancing:
+        policy: "round_robin"
+```
+
+### Production Configuration
+
+```yaml
+lynx:
+  tracer:
+    enable: true
+    addr: "otel-collector:4317"
+    config:
+      connection:
+        max_conn_idle_time: 1m
+        max_conn_age: 30m
+        max_conn_age_grace: 10s
+        connect_timeout: 15s
+        reconnection_period: 10s
+      load_balancing:
+        policy: "round_robin"
+        health_check: true
+      batch:
+        enabled: true
+        max_queue_size: 10000
+        max_batch_size: 1000
+```
+
+### High-Performance Configuration
+
+```yaml
+lynx:
+  tracer:
+    enable: true
+    addr: "otel-collector:4317"
+    config:
+      connection:
+        max_conn_idle_time: 5m
+        max_conn_age: 1h
+        max_conn_age_grace: 30s
+        connect_timeout: 10s
+        reconnection_period: 5s
+      load_balancing:
+        policy: "round_robin"
+        health_check: true
+      batch:
+        enabled: true
+        max_queue_size: 50000
+        max_batch_size: 5000
+        scheduled_delay: 1s
+        export_timeout: 10s
+      compression: COMPRESSION_GZIP
+```
+
+## HTTP Export Example (OTLP/HTTP)
 
 ```yaml
 lynx:
@@ -215,10 +364,27 @@ Support the following features:
 The plugin outputs detailed log information:
 
 ```
-[INFO] Initializing link monitoring component
+[INFO] Initializing tracing component
 [INFO] Tracing component successfully initialized
 [INFO] Tracer provider shutdown successfully
 ```
+
+### Connection Management Metrics
+
+Monitor the following connection-related metrics:
+
+- **Connection Establishment**: Time to establish new connections
+- **Reconnection Frequency**: How often reconnections occur
+- **Connection Pool Size**: Current number of active connections
+- **Load Balancing Distribution**: How requests are distributed across connections
+- **Export Success/Failure Rates**: Success rate of trace exports
+- **Connection Health**: Health status of individual connections
+
+### Recommended Monitoring Tools
+
+- **Prometheus + Grafana**: For metrics collection and visualization
+- **Jaeger**: For distributed tracing visualization
+- **OpenTelemetry Collector**: For metrics aggregation and export
 
 
 ## Troubleshooting
@@ -262,6 +428,34 @@ tracer address is required when tracing is enabled
 - Set correct `addr` configuration item (gRPC: 4317 / HTTP: 4318 + http_path)
 - Or disable tracing functionality
 
+#### 4. Connection Management Issues
+
+**Issue**: Connection failures or poor performance
+```
+failed to create OTLP exporter: connection timeout
+```
+
+
+**Solution**:
+- Check `connect_timeout` and network connectivity
+- Verify connection pool settings (`max_conn_age`, `max_conn_idle_time`)
+- Ensure load balancing policy is appropriate
+- Monitor reconnection frequency
+
+#### 5. Load Balancing Problems
+
+**Issue**: Uneven load distribution or connection failures
+```
+load balancing policy not working as expected
+```
+
+
+**Solution**:
+- Verify load balancing policy configuration
+- Enable health checking (`health_check: true`)
+- Check if multiple endpoints are available
+- Monitor connection pool size and distribution
+
 ### Debug Mode
 
 Enable detailed log output:
@@ -295,6 +489,9 @@ log.SetLevel(log.DebugLevel)
 - ✅ Exporter supports OTLP HTTP
 - ✅ Configurable samplers and propagators
 - ✅ Graceful shutdown mechanism
+- ✅ **Advanced connection management** (connection pooling, load balancing, health checking)
+- ✅ **Automatic reconnection** and connection lifecycle management
+- ✅ **Production-ready configurations** with best practices
 
 ### v1.0.0
 

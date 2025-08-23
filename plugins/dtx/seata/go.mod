@@ -3,10 +3,12 @@ module github.com/go-lynx/lynx/plugins/seata
 go 1.24.3
 
 require (
-	github.com/go-lynx/lynx v1.2.1
+	github.com/go-lynx/lynx v0.0.0
 	github.com/seata/seata-go v1.2.0
 	google.golang.org/protobuf v1.36.6
 )
+
+replace github.com/go-lynx/lynx => ../../../../
 
 require (
 	dario.cat/mergo v1.0.0 // indirect

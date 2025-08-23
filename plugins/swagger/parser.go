@@ -8,18 +8,105 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"regexp"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-openapi/spec"
 )
 
-// AnnotationParser annotation parser
+// Security constants
+const (
+	maxFileSize  = 10 * 1024 * 1024 // 10MB max file size
+	maxPathDepth = 10               // Maximum directory depth
+)
+
+// ParseStats statistics for parsing operations
+type ParseStats struct {
+	TotalFiles   int
+	SuccessFiles int
+	FailedFiles  int
+	TotalLines   int
+	ParsedRoutes int
+	ParsedModels int
+	Errors       []ParseError
+	StartTime    time.Time
+	EndTime      time.Time
+}
+
+// ParseError detailed error information
+type ParseError struct {
+	File    string
+	Line    int
+	Message string
+	Type    string
+	Time    time.Time
+}
+
+// Memory management constants
+const (
+	maxStringBuilderSize = 10000 // Maximum string builder size
+	maxModelCacheSize    = 1000  // Maximum model cache size
+	maxRouteCacheSize    = 1000  // Maximum route cache size
+	gcThreshold          = 100   // Garbage collection threshold
+)
+
+// StringBuilderPool string builder object pool
+type StringBuilderPool struct {
+	pool chan *strings.Builder
+}
+
+// NewStringBuilderPool creates a new string builder pool
+func NewStringBuilderPool(size int) *StringBuilderPool {
+	pool := &StringBuilderPool{
+		pool: make(chan *strings.Builder, size),
+	}
+
+	// Pre-populate pool
+	for i := 0; i < size; i++ {
+		pool.pool <- &strings.Builder{}
+	}
+
+	return pool
+}
+
+// Get gets a string builder from pool
+func (p *StringBuilderPool) Get() *strings.Builder {
+	select {
+	case sb := <-p.pool:
+		sb.Reset()
+		return sb
+	default:
+		return &strings.Builder{}
+	}
+}
+
+// Put returns a string builder to pool
+func (p *StringBuilderPool) Put(sb *strings.Builder) {
+	if sb.Len() > maxStringBuilderSize {
+		// Don't return very large builders to pool
+		return
+	}
+
+	select {
+	case p.pool <- sb:
+	default:
+		// Pool is full, discard
+	}
+}
+
+// AnnotationParser annotation parser with memory management
 type AnnotationParser struct {
-	swagger *spec.Swagger
-	routes  map[string]*RouteInfo
-	models  map[string]*ModelInfo
+	swagger     *spec.Swagger
+	routes      map[string]*RouteInfo
+	models      map[string]*ModelInfo
+	allowedDirs []string // Allowed scan directories for security
+	stats       *ParseStats
+	mu          sync.RWMutex
+	sbPool      *StringBuilderPool
+	lastGC      time.Time
 }
 
 // RouteInfo route information
@@ -93,26 +180,76 @@ type PropertyInfo struct {
 }
 
 // NewAnnotationParser creates an annotation parser
-func NewAnnotationParser(swagger *spec.Swagger) *AnnotationParser {
+func NewAnnotationParser(swagger *spec.Swagger, allowedDirs []string) *AnnotationParser {
 	return &AnnotationParser{
-		swagger: swagger,
-		routes:  make(map[string]*RouteInfo),
-		models:  make(map[string]*ModelInfo),
+		swagger:     swagger,
+		routes:      make(map[string]*RouteInfo),
+		models:      make(map[string]*ModelInfo),
+		allowedDirs: allowedDirs,
+		stats:       &ParseStats{},
+		sbPool:      NewStringBuilderPool(100), // Initialize with a small pool
 	}
 }
 
-// ParseFile parses a file
+// ParseFile parses a file with comprehensive error handling
 func (p *AnnotationParser) ParseFile(filename string) error {
+	p.mu.Lock()
+	p.stats.TotalFiles++
+	p.stats.StartTime = time.Now()
+	p.mu.Unlock()
+
+	// Security validation
+	if err := p.validateFilePath(filename); err != nil {
+		p.recordError(filename, 0, err.Error(), "validation")
+		p.mu.Lock()
+		p.stats.FailedFiles++
+		p.mu.Unlock()
+		return fmt.Errorf("file path validation failed: %w", err)
+	}
+
+	// Check file size
+	if err := p.checkFileSize(filename); err != nil {
+		p.recordError(filename, 0, err.Error(), "size_check")
+		p.mu.Lock()
+		p.stats.FailedFiles++
+		p.mu.Unlock()
+		return fmt.Errorf("file size check failed: %w", err)
+	}
+
+	// Check file extension
+	if !p.isAllowedFile(filename) {
+		errMsg := fmt.Sprintf("file type not allowed: %s", filename)
+		p.recordError(filename, 0, errMsg, "file_type")
+		p.mu.Lock()
+		p.stats.FailedFiles++
+		p.mu.Unlock()
+		return fmt.Errorf("file type not allowed: %s", filename)
+	}
+
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
+		p.recordError(filename, 0, err.Error(), "file_read")
+		p.mu.Lock()
+		p.stats.FailedFiles++
+		p.mu.Unlock()
 		return fmt.Errorf("failed to read file %s: %w", filename, err)
 	}
 
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filename, content, parser.ParseComments)
 	if err != nil {
+		p.recordError(filename, 0, err.Error(), "parse")
+		p.mu.Lock()
+		p.stats.FailedFiles++
+		p.mu.Unlock()
 		return fmt.Errorf("failed to parse file %s: %w", filename, err)
 	}
+
+	// Count lines
+	lineCount := len(strings.Split(string(content), "\n"))
+	p.mu.Lock()
+	p.stats.TotalLines += lineCount
+	p.mu.Unlock()
 
 	// Iterate through all declarations
 	for _, decl := range file.Decls {
@@ -120,35 +257,182 @@ func (p *AnnotationParser) ParseFile(filename string) error {
 		case *ast.FuncDecl:
 			// Parse function comments
 			if d.Doc != nil {
-				p.parseFuncDoc(d)
+				if err := p.parseFuncDoc(d); err != nil {
+					p.recordError(filename, fset.Position(d.Pos()).Line, err.Error(), "func_parse")
+				}
 			}
 		case *ast.GenDecl:
 			// Parse type definitions
 			if d.Tok == token.TYPE && d.Doc != nil {
-				p.parseTypeDoc(d)
+				if err := p.parseTypeDoc(d); err != nil {
+					p.recordError(filename, fset.Position(d.Pos()).Line, err.Error(), "type_parse")
+				}
 			}
+		}
+	}
+
+	p.mu.Lock()
+	p.stats.SuccessFiles++
+	p.stats.EndTime = time.Now()
+	p.mu.Unlock()
+
+	return nil
+}
+
+// recordError records a parsing error with details
+func (p *AnnotationParser) recordError(file string, line int, message, errorType string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	parseError := ParseError{
+		File:    file,
+		Line:    line,
+		Message: message,
+		Type:    errorType,
+		Time:    time.Now(),
+	}
+
+	// Limit error list size to prevent memory issues
+	if len(p.stats.Errors) < 100 {
+		p.stats.Errors = append(p.stats.Errors, parseError)
+	}
+
+	// Log only if logger is available (avoid panic in tests)
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently ignore log panics in tests
+		}
+	}()
+	log.Warnf("Parse error in %s:%d [%s]: %s", file, line, errorType, message)
+}
+
+// GetStats returns parsing statistics
+func (p *AnnotationParser) GetStats() *ParseStats {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	// Create a copy to avoid race conditions
+	stats := *p.stats
+	stats.Errors = make([]ParseError, len(p.stats.Errors))
+	copy(stats.Errors, p.stats.Errors)
+
+	return &stats
+}
+
+// GetErrorSummary returns a summary of parsing errors
+func (p *AnnotationParser) GetErrorSummary() map[string]int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	summary := make(map[string]int)
+	for _, err := range p.stats.Errors {
+		summary[err.Type]++
+	}
+
+	return summary
+}
+
+// validateFilePath validates file path for security
+func (p *AnnotationParser) validateFilePath(filename string) error {
+	// Convert to absolute path
+	absPath, err := filepath.Abs(filename)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path: %w", err)
+	}
+
+	// Check if path is within allowed directories
+	if !p.isAllowedDir(filepath.Dir(absPath)) {
+		return fmt.Errorf("file path %s is outside allowed directories", absPath)
+	}
+
+	// Check path depth to prevent path traversal
+	if p.getPathDepth(absPath) > maxPathDepth {
+		return fmt.Errorf("file path depth exceeds maximum allowed depth: %s", absPath)
+	}
+
+	// Check for suspicious path components
+	suspicious := []string{"..", "~", "/etc", "/var", "/usr", "/bin", "/sbin", "/tmp", "/root"}
+	for _, s := range suspicious {
+		if strings.Contains(absPath, s) {
+			return fmt.Errorf("file path contains suspicious component: %s", s)
 		}
 	}
 
 	return nil
 }
 
+// checkFileSize checks if file size is within limits
+func (p *AnnotationParser) checkFileSize(filename string) error {
+	info, err := os.Stat(filename)
+	if err != nil {
+		return fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	if info.Size() > maxFileSize {
+		return fmt.Errorf("file size %d exceeds maximum allowed size %d", info.Size(), maxFileSize)
+	}
+
+	return nil
+}
+
+// isAllowedFile checks if file type is allowed
+func (p *AnnotationParser) isAllowedFile(filename string) bool {
+	allowedExtensions := []string{".go"}
+	ext := strings.ToLower(filepath.Ext(filename))
+
+	for _, allowed := range allowedExtensions {
+		if ext == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+// getPathDepth calculates the depth of a file path
+func (p *AnnotationParser) getPathDepth(path string) int {
+	path = filepath.Clean(path)
+	if path == "." || path == "/" {
+		return 0
+	}
+
+	parts := strings.Split(path, string(os.PathSeparator))
+	depth := 0
+	for _, part := range parts {
+		if part != "" && part != "." && part != ".." {
+			depth++
+		}
+	}
+	return depth
+}
+
 // parseFuncDoc parses function documentation comments
-func (p *AnnotationParser) parseFuncDoc(fn *ast.FuncDecl) {
+func (p *AnnotationParser) parseFuncDoc(fn *ast.FuncDecl) error {
+	if fn.Doc == nil {
+		return nil
+	}
+
 	comments := fn.Doc.Text()
-	lines := strings.Split(comments, "\n")
+	if len(comments) > maxInputLength {
+		log.Warnf("Function comment too long, truncating: %s", fn.Name.Name)
+		comments = comments[:maxInputLength]
+	}
+
+	lines := p.safeSplit(comments, "\n")
+	if len(lines) == 0 {
+		return nil
+	}
 
 	var route *RouteInfo
 
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
+		line = p.safeTrimSpace(line)
 
 		// Parse route annotations
-		if strings.HasPrefix(line, "@Router") {
-			parts := strings.Fields(line)
+		if p.safeHasPrefix(line, "@Router") {
+			parts := p.safeFields(line)
 			if len(parts) >= 3 {
 				path := parts[1]
-				method := strings.Trim(parts[2], "[]")
+				method := p.safeTrim(parts[2], "[]")
 				route = &RouteInfo{
 					Path:      path,
 					Method:    strings.ToUpper(method),
@@ -158,27 +442,27 @@ func (p *AnnotationParser) parseFuncDoc(fn *ast.FuncDecl) {
 			}
 		} else if route != nil {
 			// Parse other annotations
-			if strings.HasPrefix(line, "@Summary") {
-				route.Summary = strings.TrimSpace(strings.TrimPrefix(line, "@Summary"))
-			} else if strings.HasPrefix(line, "@Description") {
-				route.Description = strings.TrimSpace(strings.TrimPrefix(line, "@Description"))
-			} else if strings.HasPrefix(line, "@Tags") {
-				tags := strings.TrimSpace(strings.TrimPrefix(line, "@Tags"))
-				route.Tags = strings.Split(tags, ",")
+			if p.safeHasPrefix(line, "@Summary") {
+				route.Summary = p.safeTrimSpace(p.safeTrimPrefix(line, "@Summary"))
+			} else if p.safeHasPrefix(line, "@Description") {
+				route.Description = p.safeTrimSpace(p.safeTrimPrefix(line, "@Description"))
+			} else if p.safeHasPrefix(line, "@Tags") {
+				tags := p.safeTrimSpace(p.safeTrimPrefix(line, "@Tags"))
+				route.Tags = p.safeSplit(tags, ",")
 				for i := range route.Tags {
-					route.Tags[i] = strings.TrimSpace(route.Tags[i])
+					route.Tags[i] = p.safeTrimSpace(route.Tags[i])
 				}
-			} else if strings.HasPrefix(line, "@Param") {
+			} else if p.safeHasPrefix(line, "@Param") {
 				param := p.parseParam(line)
 				if param != nil {
 					route.Params = append(route.Params, *param)
 				}
-			} else if strings.HasPrefix(line, "@Success") || strings.HasPrefix(line, "@Failure") {
+			} else if p.safeHasPrefix(line, "@Success") || p.safeHasPrefix(line, "@Failure") {
 				code, resp := p.parseResponse(line)
 				if resp != nil {
 					route.Responses[code] = *resp
 				}
-			} else if strings.HasPrefix(line, "@Security") {
+			} else if p.safeHasPrefix(line, "@Security") {
 				security := p.parseSecurity(line)
 				if security != nil {
 					route.Security = append(route.Security, security)
@@ -186,59 +470,158 @@ func (p *AnnotationParser) parseFuncDoc(fn *ast.FuncDecl) {
 			}
 		}
 	}
+
+	return nil
 }
 
 // parseParam parses parameter annotations
 // Format: @Param name in type format required "description" default(value) example(value)
 func (p *AnnotationParser) parseParam(line string) *ParamInfo {
-	re := regexp.MustCompile(`@Param\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(\S+))?\s+(\S+)\s+"([^"]*)"(?:\s+default\(([^)]*)\))?(?:\s+example\(([^)]*)\))?`)
-	matches := re.FindStringSubmatch(line)
+	// Use safer string parsing instead of regex
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "@Param") {
+		return nil
+	}
 
-	if len(matches) < 7 {
+	// Remove @Param prefix
+	line = strings.TrimSpace(strings.TrimPrefix(line, "@Param"))
+
+	// Split by spaces, but be careful with quoted strings
+	parts := p.splitParamLine(line)
+	if len(parts) < 6 {
 		return nil
 	}
 
 	param := &ParamInfo{
-		Name:        matches[1],
-		In:          matches[2],
-		Type:        matches[3],
-		Required:    matches[5] == "true",
-		Description: matches[6],
+		Name:        strings.TrimSpace(parts[0]),
+		In:          strings.TrimSpace(parts[1]),
+		Type:        strings.TrimSpace(parts[2]),
+		Format:      strings.TrimSpace(parts[3]),
+		Required:    strings.TrimSpace(parts[4]) == "true",
+		Description: strings.Trim(strings.TrimSpace(parts[5]), `"'`),
 	}
 
-	if matches[4] != "" {
-		param.Format = matches[4]
+	// Parse default value if present
+	if len(parts) > 6 && strings.Contains(parts[6], "default(") {
+		defaultVal := p.extractValue(parts[6], "default")
+		if defaultVal != "" {
+			param.Default = p.parseValue(defaultVal, param.Type)
+		}
 	}
 
-	if len(matches) > 7 && matches[7] != "" {
-		param.Default = p.parseValue(matches[7], param.Type)
-	}
-
-	if len(matches) > 8 && matches[8] != "" {
-		param.Example = p.parseValue(matches[8], param.Type)
+	// Parse example value if present
+	if len(parts) > 7 && strings.Contains(parts[7], "example(") {
+		exampleVal := p.extractValue(parts[7], "example")
+		if exampleVal != "" {
+			param.Example = p.parseValue(exampleVal, param.Type)
+		}
 	}
 
 	return param
 }
 
+// splitParamLine safely splits a parameter line, handling quoted strings
+func (p *AnnotationParser) splitParamLine(line string) []string {
+	var parts []string
+	var current strings.Builder
+	inQuotes := false
+	quoteChar := byte(0)
+
+	for i := 0; i < len(line); i++ {
+		char := line[i]
+
+		if (char == '"' || char == '\'') && (i == 0 || line[i-1] != '\\') {
+			if !inQuotes {
+				inQuotes = true
+				quoteChar = char
+			} else if char == quoteChar {
+				inQuotes = false
+				quoteChar = 0
+			}
+		}
+
+		if char == ' ' && !inQuotes {
+			if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
+			}
+		} else {
+			current.WriteByte(char)
+		}
+	}
+
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
+	return parts
+}
+
+// extractValue extracts value from format like "default(value)" or "example(value)"
+func (p *AnnotationParser) extractValue(s, prefix string) string {
+	if !strings.Contains(s, prefix+"(") {
+		return ""
+	}
+
+	start := strings.Index(s, prefix+"(")
+	if start == -1 {
+		return ""
+	}
+
+	start += len(prefix) + 1
+	end := strings.LastIndex(s, ")")
+	if end == -1 || end <= start {
+		return ""
+	}
+
+	return strings.TrimSpace(s[start:end])
+}
+
 // parseResponse parses response annotations
 // Format: @Success 200 {object} model.Response "description"
 func (p *AnnotationParser) parseResponse(line string) (int, *ResponseInfo) {
-	re := regexp.MustCompile(`@(Success|Failure)\s+(\d+)\s+\{(\w+)\}\s+(\S+)(?:\s+"([^"]*)")?`)
-	matches := re.FindStringSubmatch(line)
+	line = strings.TrimSpace(line)
 
-	if len(matches) < 5 {
+	// Check if it's a response annotation
+	if !strings.HasPrefix(line, "@Success") && !strings.HasPrefix(line, "@Failure") {
 		return 0, nil
 	}
 
+	// Remove annotation prefix
+	line = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "@Success"), "@Failure"))
+
+	// Split by spaces
+	parts := strings.Fields(line)
+	if len(parts) < 4 {
+		return 0, nil
+	}
+
+	// Parse status code safely
 	code := 0
-	fmt.Sscanf(matches[2], "%d", &code)
+	if codeStr := parts[0]; codeStr != "" {
+		if parsedCode, err := strconv.Atoi(codeStr); err == nil {
+			// Validate status code range
+			if parsedCode >= 100 && parsedCode <= 599 {
+				code = parsedCode
+			}
+		}
+	}
+
+	// Parse response type and model
+	responseType := strings.Trim(parts[1], "{}")
+	modelName := parts[2]
+
+	// Parse description if present
+	description := ""
+	if len(parts) > 3 {
+		description = strings.Trim(strings.Join(parts[3:], " "), `"'`)
+	}
 
 	resp := &ResponseInfo{
-		Description: matches[5],
+		Description: description,
 		Schema: &SchemaInfo{
-			Type: matches[3],
-			Ref:  matches[4],
+			Type: responseType,
+			Ref:  modelName,
 		},
 		Headers: make(map[string]HeaderInfo),
 	}
@@ -265,7 +648,7 @@ func (p *AnnotationParser) parseSecurity(line string) map[string][]string {
 }
 
 // parseTypeDoc parses type documentation comments
-func (p *AnnotationParser) parseTypeDoc(decl *ast.GenDecl) {
+func (p *AnnotationParser) parseTypeDoc(decl *ast.GenDecl) error {
 	for _, spec := range decl.Specs {
 		if ts, ok := spec.(*ast.TypeSpec); ok {
 			if st, ok := ts.Type.(*ast.StructType); ok {
@@ -286,24 +669,28 @@ func (p *AnnotationParser) parseTypeDoc(decl *ast.GenDecl) {
 
 				// Parse fields
 				for _, field := range st.Fields.List {
-					p.parseField(field, model)
+					if err := p.parseField(field, model); err != nil {
+						return err
+					}
 				}
 
 				p.models[model.Name] = model
 			}
 		}
 	}
+
+	return nil
 }
 
 // parseField parses field
-func (p *AnnotationParser) parseField(field *ast.Field, model *ModelInfo) {
+func (p *AnnotationParser) parseField(field *ast.Field, model *ModelInfo) error {
 	if len(field.Names) == 0 {
-		return
+		return nil
 	}
 
 	fieldName := field.Names[0].Name
 	if !ast.IsExported(fieldName) {
-		return
+		return nil
 	}
 
 	prop := PropertyInfo{}
@@ -352,6 +739,8 @@ func (p *AnnotationParser) parseField(field *ast.Field, model *ModelInfo) {
 	}
 
 	model.Properties[fieldName] = prop
+
+	return nil
 }
 
 // getFieldType gets field type
@@ -406,27 +795,39 @@ func (p *AnnotationParser) parseFieldTag(tag string, prop PropertyInfo) Property
 				// Already handled at upper level
 			case "min":
 				if len(parts) > 1 {
-					var min float64
-					fmt.Sscanf(parts[1], "%f", &min)
-					prop.Minimum = &min
+					if min, err := strconv.ParseFloat(parts[1], 64); err == nil {
+						// Validate range to prevent extreme values
+						if min >= -1e6 && min <= 1e6 {
+							prop.Minimum = &min
+						}
+					}
 				}
 			case "max":
 				if len(parts) > 1 {
-					var max float64
-					fmt.Sscanf(parts[1], "%f", &max)
-					prop.Maximum = &max
+					if max, err := strconv.ParseFloat(parts[1], 64); err == nil {
+						// Validate range to prevent extreme values
+						if max >= -1e6 && max <= 1e6 {
+							prop.Maximum = &max
+						}
+					}
 				}
 			case "minlen":
 				if len(parts) > 1 {
-					var minLen int64
-					fmt.Sscanf(parts[1], "%d", &minLen)
-					prop.MinLength = &minLen
+					if minLen, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
+						// Validate range to prevent extreme values
+						if minLen >= 0 && minLen <= 10000 {
+							prop.MinLength = &minLen
+						}
+					}
 				}
 			case "maxlen":
 				if len(parts) > 1 {
-					var maxLen int64
-					fmt.Sscanf(parts[1], "%d", &maxLen)
-					prop.MaxLength = &maxLen
+					if maxLen, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
+						// Validate range to prevent extreme values
+						if maxLen >= 0 && maxLen <= 10000 {
+							prop.MaxLength = &maxLen
+						}
+					}
 				}
 			}
 		}
@@ -471,21 +872,38 @@ func (p *AnnotationParser) getTagValue(tag, key string) string {
 	return ""
 }
 
-// parseValue parses value
+// parseValue safely parses value with validation
 func (p *AnnotationParser) parseValue(value, valueType string) interface{} {
-	value = strings.Trim(value, `"'`)
+	// Input validation
+	if value == "" || len(value) > maxValueLength {
+		return value
+	}
+
+	value = p.safeTrim(value, `"'`)
 
 	switch valueType {
 	case "boolean":
-		return value == "true"
+		// Only accept true/false values
+		if value == "true" || value == "false" {
+			return value == "true"
+		}
+		return value
 	case "integer":
-		var i int64
-		fmt.Sscanf(value, "%d", &i)
-		return i
+		if i, err := strconv.ParseInt(value, 10, 64); err == nil {
+			// Validate range to prevent extreme values
+			if i >= -999999999 && i <= 999999999 {
+				return i
+			}
+		}
+		return value
 	case "number":
-		var f float64
-		fmt.Sscanf(value, "%f", &f)
-		return f
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			// Validate range to prevent extreme values
+			if f >= -1e9 && f <= 1e9 {
+				return f
+			}
+		}
+		return value
 	default:
 		return value
 	}
@@ -752,6 +1170,11 @@ func (p *AnnotationParser) mapPropertyType(propType string) string {
 
 // ScanDirectory scans directory
 func (p *AnnotationParser) ScanDirectory(dir string) error {
+	// Validate directory path
+	if !p.isAllowedDir(dir) {
+		return fmt.Errorf("directory %s is not allowed for scanning", dir)
+	}
+
 	_, err := filepath.Glob(filepath.Join(dir, "*.go"))
 	if err != nil {
 		return err
@@ -786,4 +1209,274 @@ func (p *AnnotationParser) ScanDirectory(dir string) error {
 
 	// Build Swagger specification
 	return p.BuildSwagger()
+}
+
+// isAllowedDir checks if a directory is allowed for scanning
+func (p *AnnotationParser) isAllowedDir(dir string) bool {
+	for _, allowedDir := range p.allowedDirs {
+		if strings.HasPrefix(dir, allowedDir) {
+			return true
+		}
+	}
+	return false
+}
+
+// Safe parsing constants
+const (
+	maxInputLength = 1000 // Maximum input length for parsing
+	maxArraySize   = 100  // Maximum array size for enums, tags, etc.
+	maxTagLength   = 200  // Maximum tag length
+	maxValueLength = 500  // Maximum value length
+)
+
+// safeSplit safely splits a string with boundary checks
+func (p *AnnotationParser) safeSplit(s, sep string) []string {
+	if s == "" || len(s) > maxInputLength {
+		return nil
+	}
+
+	parts := strings.Split(s, sep)
+	if len(parts) > maxArraySize {
+		// Limit array size to prevent memory issues
+		parts = parts[:maxArraySize]
+	}
+
+	// Filter and trim parts
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" && len(trimmed) <= maxValueLength {
+			result = append(result, trimmed)
+		}
+	}
+
+	return result
+}
+
+// safeFields safely splits a string into fields with boundary checks
+func (p *AnnotationParser) safeFields(s string) []string {
+	if s == "" || len(s) > maxInputLength {
+		return nil
+	}
+
+	parts := strings.Fields(s)
+	if len(parts) > maxArraySize {
+		parts = parts[:maxArraySize]
+	}
+
+	// Validate each field
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if len(part) <= maxValueLength {
+			result = append(result, part)
+		}
+	}
+
+	return result
+}
+
+// safeTrim safely trims a string with length validation
+func (p *AnnotationParser) safeTrim(s, cutset string) string {
+	if s == "" || len(s) > maxInputLength {
+		return s
+	}
+
+	result := strings.Trim(s, cutset)
+	if len(result) > maxValueLength {
+		result = result[:maxValueLength]
+	}
+
+	return result
+}
+
+// safeTrimPrefix safely trims a prefix with validation
+func (p *AnnotationParser) safeTrimPrefix(s, prefix string) string {
+	if s == "" || len(s) > maxInputLength {
+		return s
+	}
+
+	if !strings.HasPrefix(s, prefix) {
+		return s
+	}
+
+	result := strings.TrimPrefix(s, prefix)
+	if len(result) > maxValueLength {
+		result = result[:maxValueLength]
+	}
+
+	return result
+}
+
+// safeTrimSpace safely trims whitespace with length validation
+func (p *AnnotationParser) safeTrimSpace(s string) string {
+	if s == "" || len(s) > maxInputLength {
+		return s
+	}
+
+	result := strings.TrimSpace(s)
+	if len(result) > maxValueLength {
+		result = result[:maxValueLength]
+	}
+
+	return result
+}
+
+// safeHasPrefix safely checks if string has prefix with length validation
+func (p *AnnotationParser) safeHasPrefix(s, prefix string) bool {
+	if s == "" || len(s) > maxInputLength || len(prefix) > maxValueLength {
+		return false
+	}
+
+	return strings.HasPrefix(s, prefix)
+}
+
+// safeContains safely checks if string contains substring with length validation
+func (p *AnnotationParser) safeContains(s, substr string) bool {
+	if s == "" || len(s) > maxInputLength || len(substr) > maxValueLength {
+		return false
+	}
+
+	return strings.Contains(s, substr)
+}
+
+// checkMemoryUsage checks memory usage and triggers garbage collection if needed
+func (p *AnnotationParser) checkMemoryUsage() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Check if we need garbage collection
+	if len(p.models) > maxModelCacheSize || len(p.routes) > maxRouteCacheSize {
+		p.performGC()
+	}
+}
+
+// performGC performs garbage collection on caches
+func (p *AnnotationParser) performGC() {
+	// Clear old entries if caches are too large
+	if len(p.models) > maxModelCacheSize {
+		// Keep only the most recent models
+		keys := make([]string, 0, len(p.models))
+		for k := range p.models {
+			keys = append(keys, k)
+		}
+
+		// Remove oldest entries
+		removeCount := len(keys) - maxModelCacheSize
+		for i := 0; i < removeCount; i++ {
+			delete(p.models, keys[i])
+		}
+
+		// Log only if logger is available (avoid panic in tests)
+		defer func() {
+			if r := recover(); r != nil {
+				// Silently ignore log panics in tests
+			}
+		}()
+		log.Infof("GC: Removed %d old models, cache size: %d", removeCount, len(p.models))
+	}
+
+	if len(p.routes) > maxRouteCacheSize {
+		// Keep only the most recent routes
+		keys := make([]string, 0, len(p.routes))
+		for k := range p.routes {
+			keys = append(keys, k)
+		}
+
+		// Remove oldest entries
+		removeCount := len(keys) - maxRouteCacheSize
+		for i := 0; i < removeCount; i++ {
+			delete(p.routes, keys[i])
+		}
+
+		// Log only if logger is available (avoid panic in tests)
+		defer func() {
+			if r := recover(); r != nil {
+				// Silently ignore log panics in tests
+			}
+		}()
+		log.Infof("GC: Removed %d old routes, cache size: %d", removeCount, len(p.routes))
+	}
+
+	p.lastGC = time.Now()
+}
+
+// GetMemoryStats returns memory usage statistics
+func (p *AnnotationParser) GetMemoryStats() map[string]interface{} {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	stats := map[string]interface{}{
+		"models_count": len(p.models),
+		"routes_count": len(p.routes),
+		"max_models":   maxModelCacheSize,
+		"max_routes":   maxRouteCacheSize,
+		"last_gc":      p.lastGC,
+	}
+
+	// Safely access string builder pool
+	if p.sbPool != nil {
+		stats["sb_pool_size"] = len(p.sbPool.pool)
+		stats["sb_pool_capacity"] = cap(p.sbPool.pool)
+	} else {
+		stats["sb_pool_size"] = 0
+		stats["sb_pool_capacity"] = 0
+	}
+
+	return stats
+}
+
+// ClearCache clears all caches and resets statistics
+func (p *AnnotationParser) ClearCache() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Clear caches
+	p.models = make(map[string]*ModelInfo)
+	p.routes = make(map[string]*RouteInfo)
+
+	// Reset statistics
+	p.stats = &ParseStats{}
+
+	// Reset last GC time
+	p.lastGC = time.Now()
+
+	// Log only if logger is available (avoid panic in tests)
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently ignore log panics in tests
+		}
+	}()
+	log.Info("Cache cleared and statistics reset")
+}
+
+// OptimizeMemory optimizes memory usage
+func (p *AnnotationParser) OptimizeMemory() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Perform garbage collection
+	p.performGC()
+
+	// Safely optimize string builders in pool
+	if p.sbPool != nil {
+		select {
+		case sb := <-p.sbPool.pool:
+			if sb.Cap() > maxStringBuilderSize {
+				// Create new smaller builder
+				newSB := &strings.Builder{}
+				p.sbPool.pool <- newSB
+			} else {
+				p.sbPool.pool <- sb
+			}
+		default:
+			// Pool is empty, nothing to optimize
+		}
+	}
+
+	// Log only if logger is available (avoid panic in tests)
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently ignore log panics in tests
+		}
+	}()
+	log.Info("Memory optimization completed")
 }

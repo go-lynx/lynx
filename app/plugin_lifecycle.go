@@ -2,6 +2,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -56,36 +58,77 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 				defer func() { <-sem }()
 
 				rt := m.runtime.WithPluginContext(p.ID())
-				
+
+				// Detect whether plugin supports context-aware lifecycle and truly honors ctx
+				supportsLC := false
+				if _, ok := p.(plugins.LifecycleWithContext); ok {
+					supportsLC = true
+				}
+				ctxAware := false
+				if supportsLC {
+					if ca, ok := p.(plugins.ContextAwareness); ok && ca.IsContextAware() {
+						ctxAware = true
+					}
+				}
+				// Warn if not context-aware for initialize step
+				if !supportsLC {
+					log.Warnf("plugin %s (%s) does not implement LifecycleWithContext; step=initialize. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
+				} else if !ctxAware {
+					log.Warnf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=initialize. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
+				}
+
 				// Emit plugin initializing event
 				m.emitPluginEvent(p.ID(), events.EventPluginInitializing, map[string]any{
 					"plugin_name": p.Name(),
 					"plugin_id":   p.ID(),
+					"step":        "initialize",
+					"timeout_ms":  initTimeout.Milliseconds(),
+					"ctx_aware":   ctxAware,
+					"deadline_unix": time.Now().Add(initTimeout).Unix(),
 				})
-				
+
+				initStart := time.Now()
 				if err := m.safeInitPlugin(p, rt, initTimeout); err != nil {
+					// Cleanup any partially registered resources to avoid leaks on init failure
+					_ = m.runtime.CleanupResources(p.ID())
 					// Emit error event
 					m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
 						"error":       err.Error(),
 						"plugin_name": p.Name(),
 						"operation":   "initialize",
+						"took_ms":     time.Since(initStart).Milliseconds(),
+						"timeout":     errors.Is(err, context.DeadlineExceeded),
+						"ctx_aware":   ctxAware,
 					})
 					errCh <- fmt.Errorf("failed to initialize plugin %s: %w", p.ID(), err)
 					return
 				}
-				
+
 				// Emit plugin initialized event
 				m.emitPluginEvent(p.ID(), events.EventPluginInitialized, map[string]any{
 					"plugin_name": p.Name(),
 					"plugin_id":   p.ID(),
+					"took_ms":     time.Since(initStart).Milliseconds(),
+					"ctx_aware":   ctxAware,
 				})
-				
+
+				// Warn if not context-aware for start step
+				if !supportsLC {
+					log.Warnf("plugin %s (%s) does not implement LifecycleWithContext; step=start. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
+				} else if !ctxAware {
+					log.Warnf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=start. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
+				}
 				// Emit plugin starting event
 				m.emitPluginEvent(p.ID(), events.EventPluginStarting, map[string]any{
 					"plugin_name": p.Name(),
 					"plugin_id":   p.ID(),
+					"step":        "start",
+					"timeout_ms":  startTimeout.Milliseconds(),
+					"ctx_aware":   ctxAware,
+					"deadline_unix": time.Now().Add(startTimeout).Unix(),
 				})
-				
+
+				startStart := time.Now()
 				if err := m.safeStartPlugin(p, startTimeout); err != nil {
 					_ = m.runtime.CleanupResources(p.ID())
 					// Emit error event
@@ -93,15 +136,20 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 						"error":       err.Error(),
 						"plugin_name": p.Name(),
 						"operation":   "start",
+						"took_ms":     time.Since(startStart).Milliseconds(),
+						"timeout":     errors.Is(err, context.DeadlineExceeded),
+						"ctx_aware":   ctxAware,
 					})
 					errCh <- fmt.Errorf("failed to start plugin %s: %w", p.ID(), err)
 					return
 				}
-				
+
 				// Emit plugin started event
 				m.emitPluginEvent(p.ID(), events.EventPluginStarted, map[string]any{
 					"plugin_name": p.Name(),
 					"plugin_id":   p.ID(),
+					"took_ms":     time.Since(startStart).Milliseconds(),
+					"ctx_aware":   ctxAware,
 				})
 
 				m.pluginInstances.Store(p.Name(), p)
@@ -213,27 +261,45 @@ func (m *DefaultPluginManager[T]) getStopTimeout() time.Duration {
 
 // safeInitPlugin safely calls Initialize with timeout and panic protection.
 func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Runtime, timeout time.Duration) error {
-	if p == nil {
-		return nil
-	}
-	done := make(chan error, 1)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				done <- fmt.Errorf("panic in Initialize of %s: %v", p.ID(), r)
-			}
-		}()
-		done <- p.Initialize(p, rt)
-	}()
-	if timeout <= 0 {
-		timeout = 5 * time.Second
-	}
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(timeout):
-		return fmt.Errorf("initialize timeout after %s for plugin %s", timeout.String(), p.Name())
-	}
+    if p == nil {
+        return nil
+    }
+    if timeout <= 0 {
+        timeout = 5 * time.Second
+    }
+    t0 := time.Now()
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
+    defer cancel()
+    done := make(chan error, 1)
+    go func() {
+        defer func() {
+            if r := recover(); r != nil {
+                done <- fmt.Errorf("panic in Initialize of %s: %v", p.ID(), r)
+            }
+        }()
+        if lc, ok := p.(plugins.LifecycleWithContext); ok {
+            done <- lc.InitializeContext(ctx, p, rt)
+            return
+        }
+        done <- p.Initialize(p, rt)
+    }()
+    select {
+    case err := <-done:
+        return err
+    case <-ctx.Done():
+        // Mark plugin as failed to avoid lingering in an initializing state
+        setPluginStatusIfSupported(p, plugins.StatusFailed)
+        // Watchdog: log if the underlying goroutine returns late or keeps running
+        go func(start time.Time) {
+            select {
+            case err := <-done:
+                log.Warnf("plugin %s (%s) initialize returned after deadline; delay_ms=%d, err=%v", p.Name(), p.ID(), time.Since(start).Milliseconds(), err)
+            case <-time.After(30 * time.Second):
+                log.Errorf("plugin %s (%s) initialize still running 30s after timeout; potential goroutine leak", p.Name(), p.ID())
+            }
+        }(t0)
+        return fmt.Errorf("initialize timeout after %s for plugin %s: %w", timeout.String(), p.Name(), context.DeadlineExceeded)
+    }
 }
 
 // emitPluginEvent emits a plugin event to the unified event system
@@ -241,7 +307,7 @@ func (m *DefaultPluginManager[T]) emitPluginEvent(pluginID string, eventType eve
 	if m.runtime == nil {
 		return
 	}
-	
+
 	// Convert events.EventType to plugins.EventType
 	var pluginEventType plugins.EventType
 	switch eventType {
@@ -262,98 +328,193 @@ func (m *DefaultPluginManager[T]) emitPluginEvent(pluginID string, eventType eve
 	default:
 		pluginEventType = plugins.EventPluginInitializing
 	}
-	
+
 	// Create plugin event
+	// Derive an approximate status from event type for better observability
+	var status plugins.PluginStatus
+	switch eventType {
+	case events.EventPluginInitializing:
+		status = plugins.StatusInitializing
+	case events.EventPluginInitialized:
+		status = plugins.StatusInactive
+	case events.EventPluginStarting:
+		status = plugins.StatusInitializing
+	case events.EventPluginStarted:
+		status = plugins.StatusActive
+	case events.EventPluginStopping:
+		status = plugins.StatusStopping
+	case events.EventPluginStopped:
+		status = plugins.StatusTerminated
+	case events.EventErrorOccurred:
+		status = plugins.StatusFailed
+	default:
+		status = plugins.StatusInactive
+	}
 	pluginEvent := plugins.PluginEvent{
 		Type:      pluginEventType,
 		Priority:  plugins.PriorityNormal,
 		Source:    "plugin-manager",
 		Category:  "lifecycle",
 		PluginID:  pluginID,
-		Status:    plugins.StatusActive,
+		Status:    status,
 		Timestamp: time.Now().Unix(),
 		Metadata:  metadata,
 	}
-	
+
 	// Emit through runtime
 	m.runtime.EmitEvent(pluginEvent)
 }
 
+// setPluginStatusIfSupported attempts to set plugin status via optional interface
+// without introducing a hard dependency on a setter in the core interfaces.
+func setPluginStatusIfSupported(p plugins.Plugin, status plugins.PluginStatus) {
+	type statusSetter interface{ SetStatus(plugins.PluginStatus) }
+	if s, ok := p.(statusSetter); ok {
+		s.SetStatus(status)
+	}
+}
+
 // safeStartPlugin safely calls Start with timeout and panic protection.
 func (m *DefaultPluginManager[T]) safeStartPlugin(p plugins.Plugin, timeout time.Duration) error {
-	if p == nil {
-		return nil
-	}
-	done := make(chan error, 1)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				done <- fmt.Errorf("panic in Start of %s: %v", p.ID(), r)
-			}
-		}()
-		done <- p.Start(p)
-	}()
-	if timeout <= 0 {
-		timeout = 5 * time.Second
-	}
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(timeout):
-		return fmt.Errorf("start timeout after %s for plugin %s", timeout.String(), p.Name())
-	}
+    if p == nil {
+        return nil
+    }
+    if timeout <= 0 {
+        timeout = 5 * time.Second
+    }
+    t0 := time.Now()
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
+    defer cancel()
+    done := make(chan error, 1)
+    go func() {
+        defer func() {
+            if r := recover(); r != nil {
+                done <- fmt.Errorf("panic in Start of %s: %v", p.ID(), r)
+            }
+        }()
+        if lc, ok := p.(plugins.LifecycleWithContext); ok {
+            done <- lc.StartContext(ctx, p)
+            return
+        }
+        done <- p.Start(p)
+    }()
+    select {
+    case err := <-done:
+        return err
+    case <-ctx.Done():
+        // Mark plugin as failed to avoid lingering in a starting state
+        setPluginStatusIfSupported(p, plugins.StatusFailed)
+        // Watchdog: log if the underlying goroutine returns late or keeps running
+        go func(start time.Time) {
+            select {
+            case err := <-done:
+                log.Warnf("plugin %s (%s) start returned after deadline; delay_ms=%d, err=%v", p.Name(), p.ID(), time.Since(start).Milliseconds(), err)
+            case <-time.After(30 * time.Second):
+                log.Errorf("plugin %s (%s) start still running 30s after timeout; potential goroutine leak", p.Name(), p.ID())
+            }
+        }(t0)
+        return fmt.Errorf("start timeout after %s for plugin %s: %w", timeout.String(), p.Name(), context.DeadlineExceeded)
+    }
 }
 
 // safeStopPlugin safely calls Stop with timeout and panic protection.
 func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.Duration) error {
-	if p == nil {
-		return nil
-	}
-	
-	// Emit plugin stopping event
-	m.emitPluginEvent(p.ID(), events.EventPluginStopping, map[string]any{
-		"plugin_name": p.Name(),
-		"plugin_id":   p.ID(),
-	})
-	
-	done := make(chan error, 1)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				// convert panic to error
-				done <- fmt.Errorf("panic in Stop of %s: %v", p.Name(), r)
-			}
-		}()
-		done <- p.Stop(p)
-	}()
-	if timeout <= 0 {
-		timeout = 5 * time.Second
-	}
-	select {
-	case err := <-done:
-		if err != nil {
-			// Emit error event
-			m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
-				"error":       err.Error(),
-				"plugin_name": p.Name(),
-				"operation":   "stop",
-			})
-		} else {
-			// Emit plugin stopped event
-			m.emitPluginEvent(p.ID(), events.EventPluginStopped, map[string]any{
-				"plugin_name": p.Name(),
-				"plugin_id":   p.ID(),
-			})
-		}
-		return err
-	case <-time.After(timeout):
-		timeoutErr := fmt.Errorf("stop timeout after %s for plugin %s", timeout.String(), p.Name())
-		// Emit timeout error event
-		m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
-			"error":       timeoutErr.Error(),
-			"plugin_name": p.Name(),
-			"operation":   "stop",
-		})
-		return timeoutErr
-	}
+    if p == nil {
+        return nil
+    }
+
+    // Detect whether plugin supports context-aware lifecycle and truly honors ctx
+    supportsLC := false
+    if _, ok := p.(plugins.LifecycleWithContext); ok {
+        supportsLC = true
+    }
+    ctxAware := false
+    if supportsLC {
+        if ca, ok := p.(plugins.ContextAwareness); ok && ca.IsContextAware() {
+            ctxAware = true
+        }
+    }
+
+    // Warn if not context-aware for stop step
+    if !supportsLC {
+        log.Warnf("plugin %s (%s) does not implement LifecycleWithContext; step=stop. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
+    } else if !ctxAware {
+        log.Warnf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=stop. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
+    }
+
+    // Emit plugin stopping event
+    m.emitPluginEvent(p.ID(), events.EventPluginStopping, map[string]any{
+        "plugin_name": p.Name(),
+        "plugin_id":   p.ID(),
+        "step":        "stop",
+        "timeout_ms":  timeout.Milliseconds(),
+        "ctx_aware":   ctxAware,
+        "deadline_unix": time.Now().Add(timeout).Unix(),
+    })
+
+    if timeout <= 0 {
+        timeout = 5 * time.Second
+    }
+    t0 := time.Now()
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
+    defer cancel()
+    done := make(chan error, 1)
+    go func() {
+        defer func() {
+            if r := recover(); r != nil {
+                // convert panic to error
+                done <- fmt.Errorf("panic in Stop of %s: %v", p.Name(), r)
+            }
+        }()
+        if lc, ok := p.(plugins.LifecycleWithContext); ok {
+            done <- lc.StopContext(ctx, p)
+            return
+        }
+        done <- p.Stop(p)
+    }()
+    select {
+    case err := <-done:
+        if err != nil {
+            // Emit error event
+            m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
+                "error":       err.Error(),
+                "plugin_name": p.Name(),
+                "operation":   "stop",
+                "took_ms":     time.Since(t0).Milliseconds(),
+                "ctx_aware":   ctxAware,
+            })
+        } else {
+            // Emit plugin stopped event
+            m.emitPluginEvent(p.ID(), events.EventPluginStopped, map[string]any{
+                "plugin_name": p.Name(),
+                "plugin_id":   p.ID(),
+                "took_ms":     time.Since(t0).Milliseconds(),
+                "ctx_aware":   ctxAware,
+            })
+        }
+        return err
+    case <-ctx.Done():
+        timeoutErr := fmt.Errorf("stop timeout after %s for plugin %s: %w", timeout.String(), p.Name(), context.DeadlineExceeded)
+        // Mark plugin as failed to reflect abnormal termination state
+        setPluginStatusIfSupported(p, plugins.StatusFailed)
+        // Emit timeout error event
+        m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
+            "error":       timeoutErr.Error(),
+            "plugin_name": p.Name(),
+            "operation":   "stop",
+            "took_ms":     time.Since(t0).Milliseconds(),
+            "timeout":     true,
+            "ctx_aware":   ctxAware,
+        })
+        // Watchdog: log if the underlying goroutine returns late or keeps running
+        go func(start time.Time) {
+            select {
+            case err := <-done:
+                log.Warnf("plugin %s (%s) stop returned after deadline; delay_ms=%d, err=%v", p.Name(), p.ID(), time.Since(start).Milliseconds(), err)
+            case <-time.After(30 * time.Second):
+                log.Errorf("plugin %s (%s) stop still running 30s after timeout; potential goroutine leak", p.Name(), p.ID())
+            }
+        }(t0)
+        return timeoutErr
+    }
 }

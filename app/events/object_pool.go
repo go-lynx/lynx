@@ -36,11 +36,11 @@ func (p *EventBufferPool) Put(buf []LynxEvent) {
 // GetWithCapacity retrieves a buffer with specified capacity
 func (p *EventBufferPool) GetWithCapacity(capacity int) []LynxEvent {
 	buf := p.Get()
-	// 如果池中的 buffer 容量足够，直接使用
+	// If the buffer from the pool has sufficient capacity, use it directly
 	if cap(buf) >= capacity {
 		return buf
 	}
-	// 如果容量不够，先放回池中，然后创建新的
+	// If capacity is insufficient, return to pool first, then create new
 	p.Put(buf)
 	return make([]LynxEvent, 0, capacity)
 }

@@ -22,77 +22,77 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Polaris 消息定义了 Polaris 服务的配置信息。
-// Polaris 是一个云原生服务发现和治理中心，此消息用于配置与 Polaris 交互所需的参数。
+// Polaris message defines configuration information for Polaris services.
+// Polaris is a cloud-native service discovery and governance center. This message is used to configure parameters required for interacting with Polaris.
 type Polaris struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// namespace 表示 Polaris 中的命名空间。
-	// 命名空间用于隔离不同环境或业务的服务和配置，每个服务和配置都属于一个特定的命名空间。
+	// namespace represents the namespace in Polaris.
+	// Namespaces are used to isolate services and configurations of different environments or businesses. Each service and configuration belongs to a specific namespace.
 	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	// token 是用于访问 Polaris 服务的认证令牌。
-	// 该令牌用于验证客户端的身份，确保只有授权的客户端可以访问 Polaris 的服务和配置。
+	// token is the authentication token used to access Polaris services.
+	// This token is used to verify the identity of the client, ensuring that only authorized clients can access Polaris services and configurations.
 	Token string `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"`
-	// weight 表示服务实例的权重。
-	// 在负载均衡时，权重会影响流量分配的比例，权重越高，分配到的流量可能越多。
+	// weight represents the weight of the service instance.
+	// During load balancing, weight affects the proportion of traffic distribution. Higher weight means more traffic may be allocated.
 	Weight int32 `protobuf:"varint,4,opt,name=weight,proto3" json:"weight,omitempty"`
-	// ttl 是服务实例的生存时间（Time To Live），单位为秒。
-	// Polaris 会根据该值定期检查服务实例的健康状态，若超过该时间未收到心跳，实例可能会被标记为不健康。
+	// ttl is the Time To Live of the service instance, in seconds.
+	// Polaris periodically checks the health status of service instances based on this value. If no heartbeat is received beyond this time, the instance may be marked as unhealthy.
 	Ttl int32 `protobuf:"varint,5,opt,name=ttl,proto3" json:"ttl,omitempty"`
-	// timeout 是与 Polaris 服务交互时的超时时间。
-	// 当发起请求到 Polaris 服务后，如果在该时间内未收到响应，则认为请求超时。
+	// timeout is the timeout period for interacting with Polaris services.
+	// If no response is received within this time after sending a request to Polaris services, the request is considered timed out.
 	Timeout *durationpb.Duration `protobuf:"bytes,6,opt,name=timeout,proto3" json:"timeout,omitempty"`
-	// config_path 是 Polaris SDK 配置文件的路径。
-	// 如果为空，将使用默认配置。建议使用 polaris.yaml 文件进行详细配置。
+	// config_path is the path to the Polaris SDK configuration file.
+	// If empty, default configuration will be used. It is recommended to use a polaris.yaml file for detailed configuration.
 	ConfigPath string `protobuf:"bytes,7,opt,name=config_path,json=configPath,proto3" json:"config_path,omitempty"`
-	// enable_health_check 是否启用健康检查。
-	// 启用后会自动检查服务实例的健康状态。
+	// enable_health_check whether to enable health check.
+	// When enabled, it will automatically check the health status of service instances.
 	EnableHealthCheck bool `protobuf:"varint,8,opt,name=enable_health_check,json=enableHealthCheck,proto3" json:"enable_health_check,omitempty"`
-	// health_check_interval 健康检查间隔时间。
+	// health_check_interval health check interval time.
 	HealthCheckInterval *durationpb.Duration `protobuf:"bytes,9,opt,name=health_check_interval,json=healthCheckInterval,proto3" json:"health_check_interval,omitempty"`
-	// enable_metrics 是否启用监控指标。
-	// 启用后会收集和上报各种监控指标。
+	// enable_metrics whether to enable monitoring metrics.
+	// When enabled, it will collect and report various monitoring metrics.
 	EnableMetrics bool `protobuf:"varint,10,opt,name=enable_metrics,json=enableMetrics,proto3" json:"enable_metrics,omitempty"`
-	// enable_retry 是否启用重试机制。
-	// 启用后会在连接失败时自动重试。
+	// enable_retry whether to enable retry mechanism.
+	// When enabled, it will automatically retry when connection fails.
 	EnableRetry bool `protobuf:"varint,11,opt,name=enable_retry,json=enableRetry,proto3" json:"enable_retry,omitempty"`
-	// max_retry_times 最大重试次数。
+	// max_retry_times maximum number of retries.
 	MaxRetryTimes int32 `protobuf:"varint,12,opt,name=max_retry_times,json=maxRetryTimes,proto3" json:"max_retry_times,omitempty"`
-	// retry_interval 重试间隔时间。
+	// retry_interval retry interval time.
 	RetryInterval *durationpb.Duration `protobuf:"bytes,13,opt,name=retry_interval,json=retryInterval,proto3" json:"retry_interval,omitempty"`
-	// enable_circuit_breaker 是否启用熔断器。
-	// 启用后会在服务不可用时自动熔断。
+	// enable_circuit_breaker whether to enable circuit breaker.
+	// When enabled, it will automatically break when services are unavailable.
 	EnableCircuitBreaker bool `protobuf:"varint,14,opt,name=enable_circuit_breaker,json=enableCircuitBreaker,proto3" json:"enable_circuit_breaker,omitempty"`
-	// circuit_breaker_threshold 熔断器阈值。
-	// 当错误率超过此阈值时触发熔断。
+	// circuit_breaker_threshold circuit breaker threshold.
+	// When the error rate exceeds this threshold, the circuit breaker is triggered.
 	CircuitBreakerThreshold float32 `protobuf:"fixed32,15,opt,name=circuit_breaker_threshold,json=circuitBreakerThreshold,proto3" json:"circuit_breaker_threshold,omitempty"`
-	// enable_service_watch 是否启用服务监听。
-	// 启用后会监听服务实例变更。
+	// enable_service_watch whether to enable service watching.
+	// When enabled, it will monitor service instance changes.
 	EnableServiceWatch bool `protobuf:"varint,16,opt,name=enable_service_watch,json=enableServiceWatch,proto3" json:"enable_service_watch,omitempty"`
-	// enable_config_watch 是否启用配置监听。
-	// 启用后会监听配置变更。
+	// enable_config_watch whether to enable configuration watching.
+	// When enabled, it will monitor configuration changes.
 	EnableConfigWatch bool `protobuf:"varint,17,opt,name=enable_config_watch,json=enableConfigWatch,proto3" json:"enable_config_watch,omitempty"`
-	// load_balancer_type 负载均衡类型。
-	// 支持：weighted_random, ring_hash, maglev, l5cst
+	// load_balancer_type load balancer type.
+	// Supported: weighted_random, ring_hash, maglev, l5cst
 	LoadBalancerType string `protobuf:"bytes,18,opt,name=load_balancer_type,json=loadBalancerType,proto3" json:"load_balancer_type,omitempty"`
-	// enable_route_rule 是否启用路由规则。
-	// 启用后会应用动态路由规则。
+	// enable_route_rule whether to enable routing rules.
+	// When enabled, dynamic routing rules will be applied.
 	EnableRouteRule bool `protobuf:"varint,19,opt,name=enable_route_rule,json=enableRouteRule,proto3" json:"enable_route_rule,omitempty"`
-	// enable_rate_limit 是否启用限流。
-	// 启用后会应用限流策略。
+	// enable_rate_limit whether to enable rate limiting.
+	// When enabled, rate limiting policies will be applied.
 	EnableRateLimit bool `protobuf:"varint,20,opt,name=enable_rate_limit,json=enableRateLimit,proto3" json:"enable_rate_limit,omitempty"`
-	// rate_limit_type 限流类型。
-	// 支持：local, global
+	// rate_limit_type rate limiting type.
+	// Supported: local, global
 	RateLimitType string `protobuf:"bytes,21,opt,name=rate_limit_type,json=rateLimitType,proto3" json:"rate_limit_type,omitempty"`
-	// enable_graceful_shutdown 是否启用优雅关闭。
-	// 启用后会在关闭时优雅地注销服务。
+	// enable_graceful_shutdown whether to enable graceful shutdown.
+	// When enabled, it will gracefully deregister services during shutdown.
 	EnableGracefulShutdown bool `protobuf:"varint,22,opt,name=enable_graceful_shutdown,json=enableGracefulShutdown,proto3" json:"enable_graceful_shutdown,omitempty"`
-	// shutdown_timeout 优雅关闭超时时间。
+	// shutdown_timeout graceful shutdown timeout.
 	ShutdownTimeout *durationpb.Duration `protobuf:"bytes,23,opt,name=shutdown_timeout,json=shutdownTimeout,proto3" json:"shutdown_timeout,omitempty"`
-	// enable_logging 是否启用详细日志。
-	// 启用后会输出详细的调试日志。
+	// enable_logging whether to enable detailed logging.
+	// When enabled, it will output detailed debug logs.
 	EnableLogging bool `protobuf:"varint,24,opt,name=enable_logging,json=enableLogging,proto3" json:"enable_logging,omitempty"`
-	// log_level 日志级别。
-	// 支持：debug, info, warn, error
+	// log_level log level.
+	// Supported levels: debug, info, warn, error
 	LogLevel      string `protobuf:"bytes,25,opt,name=log_level,json=logLevel,proto3" json:"log_level,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

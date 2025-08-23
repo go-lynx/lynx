@@ -5,15 +5,47 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-lynx/lynx/plugins/tracer/conf"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	traceSdk "go.opentelemetry.io/otel/sdk/trace"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
+
+// validateAddress validates the address format for OTLP endpoints
+func validateAddress(addr string) error {
+	if addr == "" {
+		return nil // Empty address is valid (will use defaults)
+	}
+
+	// Check if it's a valid host:port format
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid address format '%s': must be host:port", addr)
+	}
+
+	if host == "" {
+		return fmt.Errorf("invalid address format '%s': host cannot be empty", addr)
+	}
+
+	if port == "" {
+		return fmt.Errorf("invalid address format '%s': port cannot be empty", addr)
+	}
+
+	// Validate port is numeric and in valid range
+	if portNum, err := net.LookupPort("tcp", port); err != nil || portNum < 1 || portNum > 65535 {
+		return fmt.Errorf("invalid port '%s' in address '%s': must be 1-65535", port, addr)
+	}
+
+	return nil
+}
 
 // buildExporter builds OTLP Trace exporter and batch processing (BatchSpanProcessor) options based on Tracer configuration.
 // Features:
@@ -30,10 +62,20 @@ import (
 func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExporter, batchOpts []traceSdk.BatchSpanProcessorOption, useBatch bool, err error) {
 	// Get Tracer configuration
 	cfg := c.GetConfig()
-	// Note: cfg should be guaranteed non-nil when initialized in outer layer; directly read its fields here
+
+	// Handle case when config is nil
+	if cfg == nil {
+		// Use default configuration when config is nil
+		cfg = &conf.Config{}
+	}
+
+	// Validate address format
+	if err := validateAddress(c.Addr); err != nil {
+		return nil, nil, false, fmt.Errorf("address validation failed: %w", err)
+	}
 
 	// Batch processing options
-	if cfg != nil && cfg.Batch.GetEnabled() {
+	if cfg.Batch != nil && cfg.Batch.GetEnabled() {
 		// Enable batch processing
 		useBatch = true
 		// Maximum queue length: determines the queue capacity for spans to be exported
@@ -86,7 +128,7 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 		// Initialize HTTP exporter
 		exp, err = otlptracehttp.New(ctx, opts...)
 		if err != nil {
-			return nil, nil, false, fmt.Errorf("create otlp http exporter: %w", err)
+			return nil, nil, false, fmt.Errorf("failed to create OTLP HTTP exporter: %w", err)
 		}
 		return exp, batchOpts, useBatch, nil
 
@@ -106,7 +148,7 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 		} else if tlsOpt, tlsErr := buildTLSCredentials(cfg); tlsErr == nil && tlsOpt != nil {
 			opts = append(opts, *tlsOpt)
 		} else if tlsErr != nil {
-			return nil, nil, false, tlsErr
+			return nil, nil, false, fmt.Errorf("failed to build TLS credentials: %w", tlsErr)
 		}
 
 		// Headers
@@ -146,6 +188,60 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 			opts = append(opts, otlptracegrpc.WithRetry(rc))
 		}
 
+		// Connection management configuration
+		if conn := cfg.GetConnection(); conn != nil {
+			// Set reconnection period
+			if rp := conn.GetReconnectionPeriod(); rp != nil {
+				opts = append(opts, otlptracegrpc.WithReconnectionPeriod(rp.AsDuration()))
+			}
+
+			// Set connection timeout and other connection options via dial options
+			var dialOpts []grpc.DialOption
+
+			// Connection timeout
+			if ct := conn.GetConnectTimeout(); ct != nil {
+				dialOpts = append(dialOpts, grpc.WithBlock(), grpc.WithTimeout(ct.AsDuration()))
+			}
+
+			// Connection pool settings
+			if conn.GetMaxConnIdleTime() != nil || conn.GetMaxConnAge() != nil || conn.GetMaxConnAgeGrace() != nil {
+				// Build service config for connection pool management
+				serviceConfig := buildConnectionPoolServiceConfig(conn)
+				if serviceConfig != "" {
+					dialOpts = append(dialOpts, grpc.WithDefaultServiceConfig(serviceConfig))
+				}
+			}
+
+			// Apply dial options if any
+			if len(dialOpts) > 0 {
+				opts = append(opts, otlptracegrpc.WithDialOption(dialOpts...))
+			}
+		} else {
+			// Set default reconnection period if not configured
+			opts = append(opts, otlptracegrpc.WithReconnectionPeriod(5*time.Second))
+		}
+
+		// Load balancing configuration
+		if lb := cfg.GetLoadBalancing(); lb != nil {
+			var dialOpts []grpc.DialOption
+
+			// Build service config for load balancing
+			serviceConfig := buildLoadBalancingServiceConfig(lb)
+			if serviceConfig != "" {
+				dialOpts = append(dialOpts, grpc.WithDefaultServiceConfig(serviceConfig))
+			}
+
+			// Apply load balancing dial options
+			if len(dialOpts) > 0 {
+				opts = append(opts, otlptracegrpc.WithDialOption(dialOpts...))
+			}
+		} else {
+			// Add default load balancing support
+			opts = append(opts, otlptracegrpc.WithDialOption(
+				grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+			))
+		}
+
 		// Compression (gzip)
 		// gRPC compression: can be enabled to reduce bandwidth when Collector supports gzip
 		if cfg.GetCompression() == conf.Compression_COMPRESSION_GZIP {
@@ -155,10 +251,35 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 		// Initialize gRPC exporter
 		exp, err = otlptracegrpc.New(ctx, opts...)
 		if err != nil {
-			return nil, nil, false, fmt.Errorf("create otlp grpc exporter: %w", err)
+			return nil, nil, false, fmt.Errorf("failed to create OTLP gRPC exporter: %w", err)
 		}
 		return exp, batchOpts, useBatch, nil
 	}
+}
+
+// validateFilePath validates file path security to prevent path traversal attacks
+func validateFilePath(filePath string) error {
+	if filePath == "" {
+		return fmt.Errorf("file path cannot be empty")
+	}
+
+	// Check for path traversal attempts
+	if strings.Contains(filePath, "..") || strings.Contains(filePath, "//") {
+		return fmt.Errorf("file path contains invalid characters: %s", filePath)
+	}
+
+	// Resolve the absolute path to check if it's within allowed directories
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve absolute path for '%s': %w", filePath, err)
+	}
+
+	// Check if the file exists and is readable
+	if _, err := os.Stat(absPath); err != nil {
+		return fmt.Errorf("file does not exist or is not accessible: %s", absPath)
+	}
+
+	return nil
 }
 
 // buildTLSCredentials builds gRPC TLS credentials (when insecure=false).
@@ -178,23 +299,47 @@ func buildTLSCredentials(cfg *conf.Config) (*otlptracegrpc.Option, error) {
 	// If ca_file is provided, load root certificate to RootCAs; used to verify server certificate
 	var rootCAs *x509.CertPool
 	if tlsCfg.GetCaFile() != "" {
-		pem, err := os.ReadFile(tlsCfg.GetCaFile())
+		// Validate and sanitize file path
+		caFilePath := tlsCfg.GetCaFile()
+		if err := validateFilePath(caFilePath); err != nil {
+			return nil, fmt.Errorf("invalid CA file path: %w", err)
+		}
+
+		pem, err := os.ReadFile(caFilePath)
 		if err != nil {
-			return nil, fmt.Errorf("read ca file: %w", err)
+			return nil, fmt.Errorf("failed to read CA file '%s': %w", caFilePath, err)
 		}
 		rootCAs = x509.NewCertPool()
-		rootCAs.AppendCertsFromPEM(pem)
+		if !rootCAs.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("failed to parse CA file '%s': no valid certificates found", caFilePath)
+		}
 	}
 
 	// Client cert
 	// If both cert_file and key_file are provided, enable mTLS client certificate
 	var certs []tls.Certificate
 	if tlsCfg.GetCertFile() != "" && tlsCfg.GetKeyFile() != "" {
-		cert, err := tls.LoadX509KeyPair(tlsCfg.GetCertFile(), tlsCfg.GetKeyFile())
+		// Validate and sanitize file paths
+		certFilePath := tlsCfg.GetCertFile()
+		keyFilePath := tlsCfg.GetKeyFile()
+
+		if err := validateFilePath(certFilePath); err != nil {
+			return nil, fmt.Errorf("invalid cert file path: %w", err)
+		}
+		if err := validateFilePath(keyFilePath); err != nil {
+			return nil, fmt.Errorf("invalid key file path: %w", err)
+		}
+
+		cert, err := tls.LoadX509KeyPair(certFilePath, keyFilePath)
 		if err != nil {
-			return nil, fmt.Errorf("load client key pair: %w", err)
+			return nil, fmt.Errorf("failed to load client key pair (cert: '%s', key: '%s'): %w",
+				certFilePath, keyFilePath, err)
 		}
 		certs = []tls.Certificate{cert}
+	} else if tlsCfg.GetCertFile() != "" || tlsCfg.GetKeyFile() != "" {
+		// Only one of cert_file or key_file is provided
+		return nil, fmt.Errorf("both cert_file and key_file must be provided for client authentication, got cert: '%s', key: '%s'",
+			tlsCfg.GetCertFile(), tlsCfg.GetKeyFile())
 	}
 
 	// Assemble tls.Config; when InsecureSkipVerify=true, skip verification of server certificate (should only be used in controlled environments)
@@ -207,4 +352,53 @@ func buildTLSCredentials(cfg *conf.Config) (*otlptracegrpc.Option, error) {
 	creds := credentials.NewTLS(tcfg)
 	opt := otlptracegrpc.WithTLSCredentials(creds)
 	return &opt, nil
+}
+
+// buildConnectionPoolServiceConfig builds a gRPC service config string for connection pool management.
+func buildConnectionPoolServiceConfig(conn *conf.Connection) string {
+	var serviceConfig strings.Builder
+	serviceConfig.WriteString(`{"loadBalancingConfig": [{"roundRobin": {}}]`)
+
+	// Add connection pool settings
+	if conn.GetMaxConnIdleTime() != nil {
+		serviceConfig.WriteString(`,"maxConnIdleTime":`)
+		serviceConfig.WriteString(fmt.Sprintf("%d", int(conn.GetMaxConnIdleTime().AsDuration().Seconds())))
+	}
+	if conn.GetMaxConnAge() != nil {
+		serviceConfig.WriteString(`,"maxConnAge":`)
+		serviceConfig.WriteString(fmt.Sprintf("%d", int(conn.GetMaxConnAge().AsDuration().Seconds())))
+	}
+	if conn.GetMaxConnAgeGrace() != nil {
+		serviceConfig.WriteString(`,"maxConnAgeGrace":`)
+		serviceConfig.WriteString(fmt.Sprintf("%d", int(conn.GetMaxConnAgeGrace().AsDuration().Seconds())))
+	}
+
+	serviceConfig.WriteString("}")
+	return serviceConfig.String()
+}
+
+// buildLoadBalancingServiceConfig builds a gRPC service config string for load balancing.
+func buildLoadBalancingServiceConfig(lb *conf.LoadBalancing) string {
+	var serviceConfig strings.Builder
+
+	// Build load balancing policy
+	switch lb.GetPolicy() {
+	case "round_robin":
+		serviceConfig.WriteString(`{"loadBalancingConfig": [{"roundRobin": {}}]`)
+	case "pick_first":
+		serviceConfig.WriteString(`{"loadBalancingConfig": [{"pickFirst": {}}]`)
+	case "least_conn":
+		serviceConfig.WriteString(`{"loadBalancingConfig": [{"leastConn": {}}]`)
+	default:
+		// Default to round_robin
+		serviceConfig.WriteString(`{"loadBalancingConfig": [{"roundRobin": {}}]`)
+	}
+
+	// Add health checking if enabled
+	if lb.GetHealthCheck() {
+		serviceConfig.WriteString(`,"healthCheckConfig": {"serviceName": "grpc.health.v1.Health"}`)
+	}
+
+	serviceConfig.WriteString("}")
+	return serviceConfig.String()
 }

@@ -14,7 +14,7 @@ import (
 func init() {
 	// Call the RegisterPlugin method of the global plugin factory for plugin registration
 	// Pass in the plugin name, configuration prefix, and a function that returns a plugins.Plugin interface instance
-	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
+	factory.GlobalTypedFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
 		// Create and return a new DBMssqlClient instance
 		return NewMssqlClient()
 	})

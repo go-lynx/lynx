@@ -2,6 +2,7 @@
 package plugins
 
 import (
+	"context"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -36,6 +37,27 @@ type TypedBasePlugin[T any] struct {
 
 	// Type-safe instance
 	instance T
+}
+
+// StartContext provides a default context-aware Start that delegates to Start.
+// Plugins can override to respect ctx cancellation.
+func (p *TypedBasePlugin[T]) StartContext(ctx context.Context, plugin Plugin) error {
+    // Default behavior: ignore ctx and call non-context method
+    return p.Start(plugin)
+}
+
+// StopContext provides a default context-aware Stop that delegates to Stop.
+// Plugins can override to respect ctx cancellation.
+func (p *TypedBasePlugin[T]) StopContext(ctx context.Context, plugin Plugin) error {
+    // Default behavior: ignore ctx and call non-context method
+    return p.Stop(plugin)
+}
+
+// InitializeContext provides a default context-aware Initialize that delegates
+// to Initialize. Plugins can override to respect ctx cancellation.
+func (p *TypedBasePlugin[T]) InitializeContext(ctx context.Context, plugin Plugin, rt Runtime) error {
+    // Default behavior: ignore ctx and call non-context method
+    return p.Initialize(plugin, rt)
 }
 
 // NewTypedBasePlugin creates a new instance of TypedBasePlugin with the provided metadata.

@@ -26,29 +26,39 @@ const (
 type Http struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Network specifies the network type (e.g., "tcp", "unix")
+	// Default: "tcp"
 	Network string `protobuf:"bytes,1,opt,name=network,proto3" json:"network,omitempty"`
 	// Addr specifies the address to listen on (e.g., ":8080", "localhost:8080")
+	// Default: ":8080"
 	Addr string `protobuf:"bytes,2,opt,name=addr,proto3" json:"addr,omitempty"`
 	// Tls indicates whether TLS/HTTPS is enabled
+	// Default: false
 	TlsEnable bool `protobuf:"varint,3,opt,name=tls_enable,json=tlsEnable,proto3" json:"tls_enable,omitempty"`
 	// TlsAuthType specifies the TLS authentication type:
-	// 0: No client auth
+	// 0: No client auth (default)
 	// 1: Request client cert
 	// 2: Require client cert
 	// 3: Verify client cert
 	// 4: Verify client cert if given
+	// Default: 0
 	TlsAuthType int32 `protobuf:"varint,4,opt,name=tls_auth_type,json=tlsAuthType,proto3" json:"tls_auth_type,omitempty"`
 	// Timeout specifies the maximum duration for handling HTTP requests
+	// Default: 30s
 	Timeout *durationpb.Duration `protobuf:"bytes,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
 	// Monitoring configuration
+	// Default: all monitoring features enabled
 	Monitoring *MonitoringConfig `protobuf:"bytes,6,opt,name=monitoring,proto3" json:"monitoring,omitempty"`
 	// Security configuration
+	// Default: basic security settings
 	Security *SecurityConfig `protobuf:"bytes,7,opt,name=security,proto3" json:"security,omitempty"`
 	// Performance configuration
+	// Default: optimized for most use cases
 	Performance *PerformanceConfig `protobuf:"bytes,8,opt,name=performance,proto3" json:"performance,omitempty"`
 	// Middleware configuration
+	// Default: all middlewares enabled
 	Middleware *MiddlewareConfig `protobuf:"bytes,9,opt,name=middleware,proto3" json:"middleware,omitempty"`
 	// Graceful shutdown configuration
+	// Default: 30s shutdown timeout
 	GracefulShutdown *GracefulShutdownConfig `protobuf:"bytes,10,opt,name=graceful_shutdown,json=gracefulShutdown,proto3" json:"graceful_shutdown,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -158,22 +168,31 @@ func (x *Http) GetGracefulShutdown() *GracefulShutdownConfig {
 type MonitoringConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable Prometheus metrics
+	// Default: true
 	EnableMetrics bool `protobuf:"varint,1,opt,name=enable_metrics,json=enableMetrics,proto3" json:"enable_metrics,omitempty"`
 	// Metrics endpoint path
+	// Default: "/metrics"
 	MetricsPath string `protobuf:"bytes,2,opt,name=metrics_path,json=metricsPath,proto3" json:"metrics_path,omitempty"`
 	// Health check endpoint path
+	// Default: "/health"
 	HealthPath string `protobuf:"bytes,3,opt,name=health_path,json=healthPath,proto3" json:"health_path,omitempty"`
 	// Whether to enable request logging
+	// Default: true
 	EnableRequestLogging bool `protobuf:"varint,4,opt,name=enable_request_logging,json=enableRequestLogging,proto3" json:"enable_request_logging,omitempty"`
 	// Whether to enable error logging
+	// Default: true
 	EnableErrorLogging bool `protobuf:"varint,5,opt,name=enable_error_logging,json=enableErrorLogging,proto3" json:"enable_error_logging,omitempty"`
 	// Whether to enable detailed route metrics
+	// Default: true
 	EnableRouteMetrics bool `protobuf:"varint,6,opt,name=enable_route_metrics,json=enableRouteMetrics,proto3" json:"enable_route_metrics,omitempty"`
 	// Whether to enable connection metrics
+	// Default: true
 	EnableConnectionMetrics bool `protobuf:"varint,7,opt,name=enable_connection_metrics,json=enableConnectionMetrics,proto3" json:"enable_connection_metrics,omitempty"`
 	// Whether to enable queue metrics
+	// Default: true
 	EnableQueueMetrics bool `protobuf:"varint,8,opt,name=enable_queue_metrics,json=enableQueueMetrics,proto3" json:"enable_queue_metrics,omitempty"`
 	// Whether to enable error type metrics
+	// Default: true
 	EnableErrorTypeMetrics bool `protobuf:"varint,9,opt,name=enable_error_type_metrics,json=enableErrorTypeMetrics,proto3" json:"enable_error_type_metrics,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
@@ -276,12 +295,16 @@ func (x *MonitoringConfig) GetEnableErrorTypeMetrics() bool {
 type SecurityConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// CORS configuration
+	// Default: CORS disabled
 	Cors *CorsConfig `protobuf:"bytes,1,opt,name=cors,proto3" json:"cors,omitempty"`
 	// Request size limit in bytes
+	// Default: 10MB (10485760 bytes)
 	MaxRequestSize int64 `protobuf:"varint,2,opt,name=max_request_size,json=maxRequestSize,proto3" json:"max_request_size,omitempty"`
 	// Rate limiting configuration
+	// Default: 100 req/s, burst 200
 	RateLimit *RateLimitConfig `protobuf:"bytes,3,opt,name=rate_limit,json=rateLimit,proto3" json:"rate_limit,omitempty"`
 	// Security headers configuration
+	// Default: security headers disabled
 	SecurityHeaders *SecurityHeadersConfig `protobuf:"bytes,4,opt,name=security_headers,json=securityHeaders,proto3" json:"security_headers,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -349,18 +372,25 @@ func (x *SecurityConfig) GetSecurityHeaders() *SecurityHeadersConfig {
 type CorsConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable CORS
+	// Default: false
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// Allowed origins
+	// Default: ["*"] (when enabled)
 	AllowedOrigins []string `protobuf:"bytes,2,rep,name=allowed_origins,json=allowedOrigins,proto3" json:"allowed_origins,omitempty"`
 	// Allowed methods
+	// Default: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 	AllowedMethods []string `protobuf:"bytes,3,rep,name=allowed_methods,json=allowedMethods,proto3" json:"allowed_methods,omitempty"`
 	// Allowed headers
+	// Default: ["*"]
 	AllowedHeaders []string `protobuf:"bytes,4,rep,name=allowed_headers,json=allowedHeaders,proto3" json:"allowed_headers,omitempty"`
 	// Exposed headers
+	// Default: []
 	ExposedHeaders []string `protobuf:"bytes,5,rep,name=exposed_headers,json=exposedHeaders,proto3" json:"exposed_headers,omitempty"`
 	// Whether to allow credentials
+	// Default: false
 	AllowCredentials bool `protobuf:"varint,6,opt,name=allow_credentials,json=allowCredentials,proto3" json:"allow_credentials,omitempty"`
-	// Max age for preflight requests
+	// Max age for preflight requests in seconds
+	// Default: 86400 (24 hours)
 	MaxAge        int32 `protobuf:"varint,7,opt,name=max_age,json=maxAge,proto3" json:"max_age,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -449,10 +479,13 @@ func (x *CorsConfig) GetMaxAge() int32 {
 type RateLimitConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable rate limiting
+	// Default: true
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// Rate limit per second
+	// Default: 100
 	RatePerSecond int32 `protobuf:"varint,2,opt,name=rate_per_second,json=ratePerSecond,proto3" json:"rate_per_second,omitempty"`
 	// Burst limit
+	// Default: 200
 	BurstLimit    int32 `protobuf:"varint,3,opt,name=burst_limit,json=burstLimit,proto3" json:"burst_limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -513,14 +546,19 @@ func (x *RateLimitConfig) GetBurstLimit() int32 {
 type SecurityHeadersConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable security headers
+	// Default: false
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// Content Security Policy
+	// Default: "default-src 'self'"
 	ContentSecurityPolicy string `protobuf:"bytes,2,opt,name=content_security_policy,json=contentSecurityPolicy,proto3" json:"content_security_policy,omitempty"`
 	// X-Frame-Options
+	// Default: "DENY"
 	XFrameOptions string `protobuf:"bytes,3,opt,name=x_frame_options,json=xFrameOptions,proto3" json:"x_frame_options,omitempty"`
 	// X-Content-Type-Options
+	// Default: "nosniff"
 	XContentTypeOptions string `protobuf:"bytes,4,opt,name=x_content_type_options,json=xContentTypeOptions,proto3" json:"x_content_type_options,omitempty"`
 	// X-XSS-Protection
+	// Default: "1; mode=block"
 	XXssProtection string `protobuf:"bytes,5,opt,name=x_xss_protection,json=xXssProtection,proto3" json:"x_xss_protection,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -595,22 +633,31 @@ func (x *SecurityHeadersConfig) GetXXssProtection() string {
 type PerformanceConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Maximum number of concurrent connections
+	// Default: 1000
 	MaxConnections int32 `protobuf:"varint,1,opt,name=max_connections,json=maxConnections,proto3" json:"max_connections,omitempty"`
 	// Maximum number of concurrent requests
+	// Default: 500
 	MaxConcurrentRequests int32 `protobuf:"varint,2,opt,name=max_concurrent_requests,json=maxConcurrentRequests,proto3" json:"max_concurrent_requests,omitempty"`
 	// Read buffer size in bytes
+	// Default: 4096 (4KB)
 	ReadBufferSize int32 `protobuf:"varint,3,opt,name=read_buffer_size,json=readBufferSize,proto3" json:"read_buffer_size,omitempty"`
 	// Write buffer size in bytes
+	// Default: 4096 (4KB)
 	WriteBufferSize int32 `protobuf:"varint,4,opt,name=write_buffer_size,json=writeBufferSize,proto3" json:"write_buffer_size,omitempty"`
 	// Connection pool configuration
+	// Default: optimized connection pool settings
 	ConnectionPool *ConnectionPoolConfig `protobuf:"bytes,5,opt,name=connection_pool,json=connectionPool,proto3" json:"connection_pool,omitempty"`
 	// Read timeout
+	// Default: 30s
 	ReadTimeout *durationpb.Duration `protobuf:"bytes,6,opt,name=read_timeout,json=readTimeout,proto3" json:"read_timeout,omitempty"`
 	// Write timeout
+	// Default: 30s
 	WriteTimeout *durationpb.Duration `protobuf:"bytes,7,opt,name=write_timeout,json=writeTimeout,proto3" json:"write_timeout,omitempty"`
 	// Idle timeout
+	// Default: 60s
 	IdleTimeout *durationpb.Duration `protobuf:"bytes,8,opt,name=idle_timeout,json=idleTimeout,proto3" json:"idle_timeout,omitempty"`
 	// Header read timeout
+	// Default: 20s
 	ReadHeaderTimeout *durationpb.Duration `protobuf:"bytes,9,opt,name=read_header_timeout,json=readHeaderTimeout,proto3" json:"read_header_timeout,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -713,12 +760,16 @@ func (x *PerformanceConfig) GetReadHeaderTimeout() *durationpb.Duration {
 type ConnectionPoolConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Maximum number of idle connections
+	// Default: 100
 	MaxIdleConns int32 `protobuf:"varint,1,opt,name=max_idle_conns,json=maxIdleConns,proto3" json:"max_idle_conns,omitempty"`
 	// Maximum number of idle connections per host
+	// Default: 10
 	MaxIdleConnsPerHost int32 `protobuf:"varint,2,opt,name=max_idle_conns_per_host,json=maxIdleConnsPerHost,proto3" json:"max_idle_conns_per_host,omitempty"`
 	// Maximum number of connections per host
+	// Default: 100
 	MaxConnsPerHost int32 `protobuf:"varint,3,opt,name=max_conns_per_host,json=maxConnsPerHost,proto3" json:"max_conns_per_host,omitempty"`
 	// Connection reuse duration
+	// Default: 30s
 	KeepAliveDuration *durationpb.Duration `protobuf:"bytes,4,opt,name=keep_alive_duration,json=keepAliveDuration,proto3" json:"keep_alive_duration,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -782,104 +833,29 @@ func (x *ConnectionPoolConfig) GetKeepAliveDuration() *durationpb.Duration {
 	return nil
 }
 
-// Legacy performance settings (deprecated)
-type LegacyPerformanceSettings struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Connection pool size
-	ConnectionPoolSize int32 `protobuf:"varint,1,opt,name=connection_pool_size,json=connectionPoolSize,proto3" json:"connection_pool_size,omitempty"`
-	// Read buffer size
-	ReadBufferSize int32 `protobuf:"varint,2,opt,name=read_buffer_size,json=readBufferSize,proto3" json:"read_buffer_size,omitempty"`
-	// Write buffer size
-	WriteBufferSize int32 `protobuf:"varint,3,opt,name=write_buffer_size,json=writeBufferSize,proto3" json:"write_buffer_size,omitempty"`
-	// Idle timeout
-	IdleTimeout *durationpb.Duration `protobuf:"bytes,4,opt,name=idle_timeout,json=idleTimeout,proto3" json:"idle_timeout,omitempty"`
-	// Keep alive timeout
-	KeepAliveTimeout *durationpb.Duration `protobuf:"bytes,5,opt,name=keep_alive_timeout,json=keepAliveTimeout,proto3" json:"keep_alive_timeout,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *LegacyPerformanceSettings) Reset() {
-	*x = LegacyPerformanceSettings{}
-	mi := &file_http_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LegacyPerformanceSettings) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LegacyPerformanceSettings) ProtoMessage() {}
-
-func (x *LegacyPerformanceSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_http_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LegacyPerformanceSettings.ProtoReflect.Descriptor instead.
-func (*LegacyPerformanceSettings) Descriptor() ([]byte, []int) {
-	return file_http_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *LegacyPerformanceSettings) GetConnectionPoolSize() int32 {
-	if x != nil {
-		return x.ConnectionPoolSize
-	}
-	return 0
-}
-
-func (x *LegacyPerformanceSettings) GetReadBufferSize() int32 {
-	if x != nil {
-		return x.ReadBufferSize
-	}
-	return 0
-}
-
-func (x *LegacyPerformanceSettings) GetWriteBufferSize() int32 {
-	if x != nil {
-		return x.WriteBufferSize
-	}
-	return 0
-}
-
-func (x *LegacyPerformanceSettings) GetIdleTimeout() *durationpb.Duration {
-	if x != nil {
-		return x.IdleTimeout
-	}
-	return nil
-}
-
-func (x *LegacyPerformanceSettings) GetKeepAliveTimeout() *durationpb.Duration {
-	if x != nil {
-		return x.KeepAliveTimeout
-	}
-	return nil
-}
-
 // Middleware configuration
 type MiddlewareConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether to enable tracing middleware
+	// Default: true
 	EnableTracing bool `protobuf:"varint,1,opt,name=enable_tracing,json=enableTracing,proto3" json:"enable_tracing,omitempty"`
 	// Whether to enable logging middleware
+	// Default: true
 	EnableLogging bool `protobuf:"varint,2,opt,name=enable_logging,json=enableLogging,proto3" json:"enable_logging,omitempty"`
 	// Whether to enable recovery middleware
+	// Default: true
 	EnableRecovery bool `protobuf:"varint,3,opt,name=enable_recovery,json=enableRecovery,proto3" json:"enable_recovery,omitempty"`
 	// Whether to enable validation middleware
+	// Default: true
 	EnableValidation bool `protobuf:"varint,4,opt,name=enable_validation,json=enableValidation,proto3" json:"enable_validation,omitempty"`
 	// Whether to enable rate limiting middleware
+	// Default: true
 	EnableRateLimit bool `protobuf:"varint,5,opt,name=enable_rate_limit,json=enableRateLimit,proto3" json:"enable_rate_limit,omitempty"`
 	// Whether to enable metrics middleware
+	// Default: true
 	EnableMetrics bool `protobuf:"varint,6,opt,name=enable_metrics,json=enableMetrics,proto3" json:"enable_metrics,omitempty"`
-	// Custom middleware configuration
+	// Custom middleware configuration (key-value pairs)
+	// Default: empty
 	CustomMiddleware map[string]string `protobuf:"bytes,7,rep,name=custom_middleware,json=customMiddleware,proto3" json:"custom_middleware,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -887,7 +863,7 @@ type MiddlewareConfig struct {
 
 func (x *MiddlewareConfig) Reset() {
 	*x = MiddlewareConfig{}
-	mi := &file_http_proto_msgTypes[9]
+	mi := &file_http_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -899,7 +875,7 @@ func (x *MiddlewareConfig) String() string {
 func (*MiddlewareConfig) ProtoMessage() {}
 
 func (x *MiddlewareConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_http_proto_msgTypes[9]
+	mi := &file_http_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -912,7 +888,7 @@ func (x *MiddlewareConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MiddlewareConfig.ProtoReflect.Descriptor instead.
 func (*MiddlewareConfig) Descriptor() ([]byte, []int) {
-	return file_http_proto_rawDescGZIP(), []int{9}
+	return file_http_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *MiddlewareConfig) GetEnableTracing() bool {
@@ -968,10 +944,13 @@ func (x *MiddlewareConfig) GetCustomMiddleware() map[string]string {
 type GracefulShutdownConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Shutdown timeout
+	// Default: 30s
 	ShutdownTimeout *durationpb.Duration `protobuf:"bytes,1,opt,name=shutdown_timeout,json=shutdownTimeout,proto3" json:"shutdown_timeout,omitempty"`
 	// Whether to wait for ongoing requests
+	// Default: true
 	WaitForOngoingRequests bool `protobuf:"varint,2,opt,name=wait_for_ongoing_requests,json=waitForOngoingRequests,proto3" json:"wait_for_ongoing_requests,omitempty"`
 	// Maximum wait time for ongoing requests
+	// Default: 60s
 	MaxWaitTime   *durationpb.Duration `protobuf:"bytes,3,opt,name=max_wait_time,json=maxWaitTime,proto3" json:"max_wait_time,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -979,7 +958,7 @@ type GracefulShutdownConfig struct {
 
 func (x *GracefulShutdownConfig) Reset() {
 	*x = GracefulShutdownConfig{}
-	mi := &file_http_proto_msgTypes[10]
+	mi := &file_http_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -991,7 +970,7 @@ func (x *GracefulShutdownConfig) String() string {
 func (*GracefulShutdownConfig) ProtoMessage() {}
 
 func (x *GracefulShutdownConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_http_proto_msgTypes[10]
+	mi := &file_http_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1004,7 +983,7 @@ func (x *GracefulShutdownConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GracefulShutdownConfig.ProtoReflect.Descriptor instead.
 func (*GracefulShutdownConfig) Descriptor() ([]byte, []int) {
-	return file_http_proto_rawDescGZIP(), []int{10}
+	return file_http_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GracefulShutdownConfig) GetShutdownTimeout() *durationpb.Duration {
@@ -1102,13 +1081,7 @@ const file_http_proto_rawDesc = "" +
 	"\x0emax_idle_conns\x18\x01 \x01(\x05R\fmaxIdleConns\x124\n" +
 	"\x17max_idle_conns_per_host\x18\x02 \x01(\x05R\x13maxIdleConnsPerHost\x12+\n" +
 	"\x12max_conns_per_host\x18\x03 \x01(\x05R\x0fmaxConnsPerHost\x12I\n" +
-	"\x13keep_alive_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\x11keepAliveDuration\"\xaa\x02\n" +
-	"\x19LegacyPerformanceSettings\x120\n" +
-	"\x14connection_pool_size\x18\x01 \x01(\x05R\x12connectionPoolSize\x12(\n" +
-	"\x10read_buffer_size\x18\x02 \x01(\x05R\x0ereadBufferSize\x12*\n" +
-	"\x11write_buffer_size\x18\x03 \x01(\x05R\x0fwriteBufferSize\x12<\n" +
-	"\fidle_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vidleTimeout\x12G\n" +
-	"\x12keep_alive_timeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x10keepAliveTimeout\"\xbe\x03\n" +
+	"\x13keep_alive_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\x11keepAliveDuration\"\xbe\x03\n" +
 	"\x10MiddlewareConfig\x12%\n" +
 	"\x0eenable_tracing\x18\x01 \x01(\bR\renableTracing\x12%\n" +
 	"\x0eenable_logging\x18\x02 \x01(\bR\renableLogging\x12'\n" +
@@ -1137,48 +1110,45 @@ func file_http_proto_rawDescGZIP() []byte {
 	return file_http_proto_rawDescData
 }
 
-var file_http_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_http_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_http_proto_goTypes = []any{
-	(*Http)(nil),                      // 0: lynx.protobuf.plugin.http.http
-	(*MonitoringConfig)(nil),          // 1: lynx.protobuf.plugin.http.MonitoringConfig
-	(*SecurityConfig)(nil),            // 2: lynx.protobuf.plugin.http.SecurityConfig
-	(*CorsConfig)(nil),                // 3: lynx.protobuf.plugin.http.CorsConfig
-	(*RateLimitConfig)(nil),           // 4: lynx.protobuf.plugin.http.RateLimitConfig
-	(*SecurityHeadersConfig)(nil),     // 5: lynx.protobuf.plugin.http.SecurityHeadersConfig
-	(*PerformanceConfig)(nil),         // 6: lynx.protobuf.plugin.http.PerformanceConfig
-	(*ConnectionPoolConfig)(nil),      // 7: lynx.protobuf.plugin.http.ConnectionPoolConfig
-	(*LegacyPerformanceSettings)(nil), // 8: lynx.protobuf.plugin.http.LegacyPerformanceSettings
-	(*MiddlewareConfig)(nil),          // 9: lynx.protobuf.plugin.http.MiddlewareConfig
-	(*GracefulShutdownConfig)(nil),    // 10: lynx.protobuf.plugin.http.GracefulShutdownConfig
-	nil,                               // 11: lynx.protobuf.plugin.http.MiddlewareConfig.CustomMiddlewareEntry
-	(*durationpb.Duration)(nil),       // 12: google.protobuf.Duration
+	(*Http)(nil),                   // 0: lynx.protobuf.plugin.http.http
+	(*MonitoringConfig)(nil),       // 1: lynx.protobuf.plugin.http.MonitoringConfig
+	(*SecurityConfig)(nil),         // 2: lynx.protobuf.plugin.http.SecurityConfig
+	(*CorsConfig)(nil),             // 3: lynx.protobuf.plugin.http.CorsConfig
+	(*RateLimitConfig)(nil),        // 4: lynx.protobuf.plugin.http.RateLimitConfig
+	(*SecurityHeadersConfig)(nil),  // 5: lynx.protobuf.plugin.http.SecurityHeadersConfig
+	(*PerformanceConfig)(nil),      // 6: lynx.protobuf.plugin.http.PerformanceConfig
+	(*ConnectionPoolConfig)(nil),   // 7: lynx.protobuf.plugin.http.ConnectionPoolConfig
+	(*MiddlewareConfig)(nil),       // 8: lynx.protobuf.plugin.http.MiddlewareConfig
+	(*GracefulShutdownConfig)(nil), // 9: lynx.protobuf.plugin.http.GracefulShutdownConfig
+	nil,                            // 10: lynx.protobuf.plugin.http.MiddlewareConfig.CustomMiddlewareEntry
+	(*durationpb.Duration)(nil),    // 11: google.protobuf.Duration
 }
 var file_http_proto_depIdxs = []int32{
-	12, // 0: lynx.protobuf.plugin.http.http.timeout:type_name -> google.protobuf.Duration
+	11, // 0: lynx.protobuf.plugin.http.http.timeout:type_name -> google.protobuf.Duration
 	1,  // 1: lynx.protobuf.plugin.http.http.monitoring:type_name -> lynx.protobuf.plugin.http.MonitoringConfig
 	2,  // 2: lynx.protobuf.plugin.http.http.security:type_name -> lynx.protobuf.plugin.http.SecurityConfig
 	6,  // 3: lynx.protobuf.plugin.http.http.performance:type_name -> lynx.protobuf.plugin.http.PerformanceConfig
-	9,  // 4: lynx.protobuf.plugin.http.http.middleware:type_name -> lynx.protobuf.plugin.http.MiddlewareConfig
-	10, // 5: lynx.protobuf.plugin.http.http.graceful_shutdown:type_name -> lynx.protobuf.plugin.http.GracefulShutdownConfig
+	8,  // 4: lynx.protobuf.plugin.http.http.middleware:type_name -> lynx.protobuf.plugin.http.MiddlewareConfig
+	9,  // 5: lynx.protobuf.plugin.http.http.graceful_shutdown:type_name -> lynx.protobuf.plugin.http.GracefulShutdownConfig
 	3,  // 6: lynx.protobuf.plugin.http.SecurityConfig.cors:type_name -> lynx.protobuf.plugin.http.CorsConfig
 	4,  // 7: lynx.protobuf.plugin.http.SecurityConfig.rate_limit:type_name -> lynx.protobuf.plugin.http.RateLimitConfig
 	5,  // 8: lynx.protobuf.plugin.http.SecurityConfig.security_headers:type_name -> lynx.protobuf.plugin.http.SecurityHeadersConfig
 	7,  // 9: lynx.protobuf.plugin.http.PerformanceConfig.connection_pool:type_name -> lynx.protobuf.plugin.http.ConnectionPoolConfig
-	12, // 10: lynx.protobuf.plugin.http.PerformanceConfig.read_timeout:type_name -> google.protobuf.Duration
-	12, // 11: lynx.protobuf.plugin.http.PerformanceConfig.write_timeout:type_name -> google.protobuf.Duration
-	12, // 12: lynx.protobuf.plugin.http.PerformanceConfig.idle_timeout:type_name -> google.protobuf.Duration
-	12, // 13: lynx.protobuf.plugin.http.PerformanceConfig.read_header_timeout:type_name -> google.protobuf.Duration
-	12, // 14: lynx.protobuf.plugin.http.ConnectionPoolConfig.keep_alive_duration:type_name -> google.protobuf.Duration
-	12, // 15: lynx.protobuf.plugin.http.LegacyPerformanceSettings.idle_timeout:type_name -> google.protobuf.Duration
-	12, // 16: lynx.protobuf.plugin.http.LegacyPerformanceSettings.keep_alive_timeout:type_name -> google.protobuf.Duration
-	11, // 17: lynx.protobuf.plugin.http.MiddlewareConfig.custom_middleware:type_name -> lynx.protobuf.plugin.http.MiddlewareConfig.CustomMiddlewareEntry
-	12, // 18: lynx.protobuf.plugin.http.GracefulShutdownConfig.shutdown_timeout:type_name -> google.protobuf.Duration
-	12, // 19: lynx.protobuf.plugin.http.GracefulShutdownConfig.max_wait_time:type_name -> google.protobuf.Duration
-	20, // [20:20] is the sub-list for method output_type
-	20, // [20:20] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	11, // 10: lynx.protobuf.plugin.http.PerformanceConfig.read_timeout:type_name -> google.protobuf.Duration
+	11, // 11: lynx.protobuf.plugin.http.PerformanceConfig.write_timeout:type_name -> google.protobuf.Duration
+	11, // 12: lynx.protobuf.plugin.http.PerformanceConfig.idle_timeout:type_name -> google.protobuf.Duration
+	11, // 13: lynx.protobuf.plugin.http.PerformanceConfig.read_header_timeout:type_name -> google.protobuf.Duration
+	11, // 14: lynx.protobuf.plugin.http.ConnectionPoolConfig.keep_alive_duration:type_name -> google.protobuf.Duration
+	10, // 15: lynx.protobuf.plugin.http.MiddlewareConfig.custom_middleware:type_name -> lynx.protobuf.plugin.http.MiddlewareConfig.CustomMiddlewareEntry
+	11, // 16: lynx.protobuf.plugin.http.GracefulShutdownConfig.shutdown_timeout:type_name -> google.protobuf.Duration
+	11, // 17: lynx.protobuf.plugin.http.GracefulShutdownConfig.max_wait_time:type_name -> google.protobuf.Duration
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_http_proto_init() }
@@ -1192,7 +1162,7 @@ func file_http_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_http_proto_rawDesc), len(file_http_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

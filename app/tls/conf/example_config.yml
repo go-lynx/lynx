@@ -1,0 +1,103 @@
+# TLS Configuration Examples for Lynx Framework
+# This file demonstrates different ways to configure TLS certificates
+
+# Example 1: Local File Source (Recommended for development and production)
+lynx:
+  tls:
+    source_type: "local_file"
+    local_file:
+      cert_file: "/etc/ssl/certs/server.crt"
+      key_file: "/etc/ssl/private/server.key"
+      root_ca_file: "/etc/ssl/certs/ca.crt"
+      watch_files: true
+      reload_interval: "5s"
+      cert_format: "pem"
+    common:
+      auth_type: 4  # Require and verify client certificate
+      verify_hostname: true
+      min_tls_version: "1.2"
+      session_cache_size: 64
+
+# Example 2: Memory Source (Useful for testing and embedded scenarios)
+# lynx:
+#   tls:
+#     source_type: "memory"
+#     memory:
+#       cert_data: |
+#         -----BEGIN CERTIFICATE-----
+#         MIIDXTCCAkWgAwIBAgIJAKoK/OvH8T5nMA0GCSqGSIb3DQEBCwUAMEUxCzAJ
+#         BgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRl
+#         cm5ldCBXaWRnaXRzIFB0eSBMdGQwHhcNMTYwMzE0MTU0NzU5WhcNMTcwMzE0
+#         MTU0NzU5WjBFMQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEh
+#         MB8GA1UECgwYSW50ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMIIBIjANBgkqhkiG
+#         9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
+#         -----END CERTIFICATE-----
+#       key_data: |
+#         -----BEGIN PRIVATE KEY-----
+#         MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC6C+...
+#         -----END PRIVATE KEY-----
+#       root_ca_data: |
+#         -----BEGIN CERTIFICATE-----
+#         MIIDXTCCAkWgAwIBAgIJAKoK/OvH8T5nMA0GCSqGSIb3DQEBCwUAMEUxCzAJ
+#         BgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRl
+#         cm5ldCBXaWRnaXRzIFB0eSBMdGQwHhcNMTYwMzE0MTU0NzU5WhcNMTcwMzE0
+#         MTU0NzU5WjBFMQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEh
+#         MB8GA1UECgwYSW50ZXJuZXQgV2lkZ2l0cyBQdHkgTHRQdHkgTHRkMIIBIjAN
+#         BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
+#         -----END CERTIFICATE-----
+#     common:
+#       auth_type: 0  # No client authentication
+#       verify_hostname: false
+#       min_tls_version: "1.2"
+
+# Example 3: Control Plane Source (Legacy mode, for backward compatibility)
+# lynx:
+#   tls:
+#     source_type: "control_plane"
+#     file_name: "tls-config"
+#     group: "security"
+
+# Example 4: Minimal Local File Configuration
+# lynx:
+#   tls:
+#     source_type: "local_file"
+#     local_file:
+#       cert_file: "./certs/server.crt"
+#       key_file: "./certs/server.key"
+#       watch_files: false
+
+# Example 5: Advanced Local File Configuration with Custom Settings
+# lynx:
+#   tls:
+#     source_type: "local_file"
+#     local_file:
+#       cert_file: "/etc/ssl/certs/domain.crt"
+#       key_file: "/etc/ssl/private/domain.key"
+#       root_ca_file: "/etc/ssl/certs/chain.crt"
+#       watch_files: true
+#       reload_interval: "10s"
+#       cert_format: "pem"
+#     common:
+#       auth_type: 2  # Require any client certificate
+#       verify_hostname: true
+#       min_tls_version: "1.3"
+#       cipher_suites: "TLS_AES_256_GCM_SHA384,TLS_CHACHA20_POLY1305_SHA256"
+#       session_cache_size: 128
+#       session_ticket_key: "your-session-ticket-key-here"
+
+# Authentication Type Reference:
+# 0: No client authentication (default)
+# 1: Request client certificate, but not mandatory
+# 2: Require any client certificate
+# 3: Verify client certificate if given
+# 4: Require and verify client certificate
+
+# TLS Version Reference:
+# "1.0": TLS 1.0 (not recommended for security)
+# "1.1": TLS 1.1 (not recommended for security)
+# "1.2": TLS 1.2 (recommended minimum)
+# "1.3": TLS 1.3 (recommended, most secure)
+
+# Certificate Format Reference:
+# "pem": PEM format (base64 encoded, most common)
+# "der": DER format (binary, less common)

@@ -12,16 +12,17 @@ import (
 )
 
 // init is Go's initialization function, automatically executed when the package is loaded.
-// This function's purpose is to register the MySQL client plugin to the global plugin factory.
+// This function's purpose is to register the MySQL package mysql
+
 func init() {
-	// Get global plugin factory instance and call its RegisterPlugin method for plugin registration.
-	// First parameter pluginName is the plugin name, used to uniquely identify the plugin.
-	// Second parameter confPrefix is the configuration prefix, used to read plugin-related configuration from config.
-	// Third parameter is an anonymous function that returns an instance of plugins.Plugin interface type,
-	// here calling NewMysqlClient function to create a new MySQL client plugin instance.
-	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
-		return NewMysqlClient()
-	})
+    // Register the MySQL client plugin to the global plugin factory.
+    // First parameter pluginName is the unique name of the plugin, used to identify the plugin in the system.
+    // Second parameter confPrefix is the configuration prefix, used to read plugin-related configuration from config.
+    // Third parameter is an anonymous function that returns an instance of plugins.Plugin interface type,
+    // here calling NewMysqlClient function to create a new MySQL client plugin instance.
+    factory.GlobalTypedFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
+        return NewMysqlClient()
+    })
 }
 
 // GetDriver function is used to get the database driver instance of MySQL client.

@@ -236,7 +236,7 @@ func (x Sampler_Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Sampler_Type.Descriptor instead.
 func (Sampler_Type) EnumDescriptor() ([]byte, []int) {
-	return file_tracer_proto_rawDescGZIP(), []int{3, 0}
+	return file_tracer_proto_rawDescGZIP(), []int{5, 0}
 }
 
 // TLS configuration.
@@ -385,6 +385,150 @@ func (x *Retry) GetMaxInterval() *durationpb.Duration {
 	return nil
 }
 
+// Connection management configuration for gRPC exporter.
+// - max_conn_idle_time: Maximum time a connection can be idle before being closed.
+// - max_conn_age: Maximum age of a connection before it is closed.
+// - max_conn_age_grace: Additional grace period for connection closure.
+// - time: Time to wait for connection establishment.
+// - reconnection_period: Minimum time between reconnection attempts.
+type Connection struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Maximum time a connection can be idle before being closed
+	MaxConnIdleTime *durationpb.Duration `protobuf:"bytes,1,opt,name=max_conn_idle_time,json=maxConnIdleTime,proto3" json:"max_conn_idle_time,omitempty"`
+	// Maximum age of a connection before it is closed
+	MaxConnAge *durationpb.Duration `protobuf:"bytes,2,opt,name=max_conn_age,json=maxConnAge,proto3" json:"max_conn_age,omitempty"`
+	// Additional grace period for connection closure
+	MaxConnAgeGrace *durationpb.Duration `protobuf:"bytes,3,opt,name=max_conn_age_grace,json=maxConnAgeGrace,proto3" json:"max_conn_age_grace,omitempty"`
+	// Time to wait for connection establishment
+	ConnectTimeout *durationpb.Duration `protobuf:"bytes,4,opt,name=connect_timeout,json=connectTimeout,proto3" json:"connect_timeout,omitempty"`
+	// Minimum time between reconnection attempts
+	ReconnectionPeriod *durationpb.Duration `protobuf:"bytes,5,opt,name=reconnection_period,json=reconnectionPeriod,proto3" json:"reconnection_period,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *Connection) Reset() {
+	*x = Connection{}
+	mi := &file_tracer_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Connection) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Connection) ProtoMessage() {}
+
+func (x *Connection) ProtoReflect() protoreflect.Message {
+	mi := &file_tracer_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Connection.ProtoReflect.Descriptor instead.
+func (*Connection) Descriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Connection) GetMaxConnIdleTime() *durationpb.Duration {
+	if x != nil {
+		return x.MaxConnIdleTime
+	}
+	return nil
+}
+
+func (x *Connection) GetMaxConnAge() *durationpb.Duration {
+	if x != nil {
+		return x.MaxConnAge
+	}
+	return nil
+}
+
+func (x *Connection) GetMaxConnAgeGrace() *durationpb.Duration {
+	if x != nil {
+		return x.MaxConnAgeGrace
+	}
+	return nil
+}
+
+func (x *Connection) GetConnectTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.ConnectTimeout
+	}
+	return nil
+}
+
+func (x *Connection) GetReconnectionPeriod() *durationpb.Duration {
+	if x != nil {
+		return x.ReconnectionPeriod
+	}
+	return nil
+}
+
+// Load balancing configuration for gRPC exporter.
+// - policy: Load balancing policy (pick_first, round_robin, etc.).
+// - health_check: Whether to enable health checking for load balancing.
+type LoadBalancing struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Load balancing policy
+	Policy string `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
+	// Whether to enable health checking
+	HealthCheck   bool `protobuf:"varint,2,opt,name=health_check,json=healthCheck,proto3" json:"health_check,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LoadBalancing) Reset() {
+	*x = LoadBalancing{}
+	mi := &file_tracer_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LoadBalancing) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LoadBalancing) ProtoMessage() {}
+
+func (x *LoadBalancing) ProtoReflect() protoreflect.Message {
+	mi := &file_tracer_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LoadBalancing.ProtoReflect.Descriptor instead.
+func (*LoadBalancing) Descriptor() ([]byte, []int) {
+	return file_tracer_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *LoadBalancing) GetPolicy() string {
+	if x != nil {
+		return x.Policy
+	}
+	return ""
+}
+
+func (x *LoadBalancing) GetHealthCheck() bool {
+	if x != nil {
+		return x.HealthCheck
+	}
+	return false
+}
+
 // Batch processing configuration (BatchSpanProcessor). Enabling can significantly reduce export overhead and improve throughput.
 // - enabled: Whether to enable batch processing.
 // - max_queue_size: Maximum number of spans in queue (>0); recommended 1k-10k.
@@ -404,7 +548,7 @@ type Batch struct {
 
 func (x *Batch) Reset() {
 	*x = Batch{}
-	mi := &file_tracer_proto_msgTypes[2]
+	mi := &file_tracer_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -416,7 +560,7 @@ func (x *Batch) String() string {
 func (*Batch) ProtoMessage() {}
 
 func (x *Batch) ProtoReflect() protoreflect.Message {
-	mi := &file_tracer_proto_msgTypes[2]
+	mi := &file_tracer_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -429,7 +573,7 @@ func (x *Batch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Batch.ProtoReflect.Descriptor instead.
 func (*Batch) Descriptor() ([]byte, []int) {
-	return file_tracer_proto_rawDescGZIP(), []int{2}
+	return file_tracer_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Batch) GetEnabled() bool {
@@ -485,7 +629,7 @@ type Sampler struct {
 
 func (x *Sampler) Reset() {
 	*x = Sampler{}
-	mi := &file_tracer_proto_msgTypes[3]
+	mi := &file_tracer_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -497,7 +641,7 @@ func (x *Sampler) String() string {
 func (*Sampler) ProtoMessage() {}
 
 func (x *Sampler) ProtoReflect() protoreflect.Message {
-	mi := &file_tracer_proto_msgTypes[3]
+	mi := &file_tracer_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -510,7 +654,7 @@ func (x *Sampler) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Sampler.ProtoReflect.Descriptor instead.
 func (*Sampler) Descriptor() ([]byte, []int) {
-	return file_tracer_proto_rawDescGZIP(), []int{3}
+	return file_tracer_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Sampler) GetType() Sampler_Type {
@@ -540,7 +684,7 @@ type Resource struct {
 
 func (x *Resource) Reset() {
 	*x = Resource{}
-	mi := &file_tracer_proto_msgTypes[4]
+	mi := &file_tracer_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -552,7 +696,7 @@ func (x *Resource) String() string {
 func (*Resource) ProtoMessage() {}
 
 func (x *Resource) ProtoReflect() protoreflect.Message {
-	mi := &file_tracer_proto_msgTypes[4]
+	mi := &file_tracer_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -565,7 +709,7 @@ func (x *Resource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Resource.ProtoReflect.Descriptor instead.
 func (*Resource) Descriptor() ([]byte, []int) {
-	return file_tracer_proto_rawDescGZIP(), []int{4}
+	return file_tracer_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Resource) GetServiceName() string {
@@ -600,7 +744,7 @@ type Limits struct {
 
 func (x *Limits) Reset() {
 	*x = Limits{}
-	mi := &file_tracer_proto_msgTypes[5]
+	mi := &file_tracer_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -612,7 +756,7 @@ func (x *Limits) String() string {
 func (*Limits) ProtoMessage() {}
 
 func (x *Limits) ProtoReflect() protoreflect.Message {
-	mi := &file_tracer_proto_msgTypes[5]
+	mi := &file_tracer_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -625,7 +769,7 @@ func (x *Limits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Limits.ProtoReflect.Descriptor instead.
 func (*Limits) Descriptor() ([]byte, []int) {
-	return file_tracer_proto_rawDescGZIP(), []int{5}
+	return file_tracer_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Limits) GetAttributeCountLimit() int32 {
@@ -688,25 +832,29 @@ type Config struct {
 	Timeout *durationpb.Duration `protobuf:"bytes,6,opt,name=timeout,proto3" json:"timeout,omitempty"`
 	// Retry configuration (only used by gRPC exporter).
 	Retry *Retry `protobuf:"bytes,7,opt,name=retry,proto3" json:"retry,omitempty"`
+	// Connection management configuration (only used by gRPC exporter).
+	Connection *Connection `protobuf:"bytes,8,opt,name=connection,proto3" json:"connection,omitempty"`
+	// Load balancing configuration (only used by gRPC exporter).
+	LoadBalancing *LoadBalancing `protobuf:"bytes,9,opt,name=load_balancing,json=loadBalancing,proto3" json:"load_balancing,omitempty"`
 	// Batch processing configuration (strongly recommended to enable for improved throughput).
-	Batch *Batch `protobuf:"bytes,8,opt,name=batch,proto3" json:"batch,omitempty"`
+	Batch *Batch `protobuf:"bytes,10,opt,name=batch,proto3" json:"batch,omitempty"`
 	// Sampler configuration (recommended to use PARENT_BASED_TRACEID_RATIO + reasonable ratio).
-	Sampler *Sampler `protobuf:"bytes,9,opt,name=sampler,proto3" json:"sampler,omitempty"`
+	Sampler *Sampler `protobuf:"bytes,11,opt,name=sampler,proto3" json:"sampler,omitempty"`
 	// Context propagator list (recommended to include at least W3C_TRACE_CONTEXT + W3C_BAGGAGE).
-	Propagators []Propagator `protobuf:"varint,10,rep,packed,name=propagators,proto3,enum=lynx.protobuf.plugin.tracer.Propagator" json:"propagators,omitempty"`
+	Propagators []Propagator `protobuf:"varint,12,rep,packed,name=propagators,proto3,enum=lynx.protobuf.plugin.tracer.Propagator" json:"propagators,omitempty"`
 	// Resource information (service.name and additional attributes).
-	Resource *Resource `protobuf:"bytes,11,opt,name=resource,proto3" json:"resource,omitempty"`
+	Resource *Resource `protobuf:"bytes,13,opt,name=resource,proto3" json:"resource,omitempty"`
 	// Span limits (see Limits).
-	Limits *Limits `protobuf:"bytes,12,opt,name=limits,proto3" json:"limits,omitempty"`
+	Limits *Limits `protobuf:"bytes,14,opt,name=limits,proto3" json:"limits,omitempty"`
 	// Only effective in OTLP HTTP mode; default "/v1/traces".
-	HttpPath      string `protobuf:"bytes,13,opt,name=http_path,json=httpPath,proto3" json:"http_path,omitempty"`
+	HttpPath      string `protobuf:"bytes,15,opt,name=http_path,json=httpPath,proto3" json:"http_path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Config) Reset() {
 	*x = Config{}
-	mi := &file_tracer_proto_msgTypes[6]
+	mi := &file_tracer_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -718,7 +866,7 @@ func (x *Config) String() string {
 func (*Config) ProtoMessage() {}
 
 func (x *Config) ProtoReflect() protoreflect.Message {
-	mi := &file_tracer_proto_msgTypes[6]
+	mi := &file_tracer_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -731,7 +879,7 @@ func (x *Config) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Config.ProtoReflect.Descriptor instead.
 func (*Config) Descriptor() ([]byte, []int) {
-	return file_tracer_proto_rawDescGZIP(), []int{6}
+	return file_tracer_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Config) GetProtocol() Protocol {
@@ -779,6 +927,20 @@ func (x *Config) GetTimeout() *durationpb.Duration {
 func (x *Config) GetRetry() *Retry {
 	if x != nil {
 		return x.Retry
+	}
+	return nil
+}
+
+func (x *Config) GetConnection() *Connection {
+	if x != nil {
+		return x.Connection
+	}
+	return nil
+}
+
+func (x *Config) GetLoadBalancing() *LoadBalancing {
+	if x != nil {
+		return x.LoadBalancing
 	}
 	return nil
 }
@@ -845,7 +1007,7 @@ type Tracer struct {
 
 func (x *Tracer) Reset() {
 	*x = Tracer{}
-	mi := &file_tracer_proto_msgTypes[7]
+	mi := &file_tracer_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -857,7 +1019,7 @@ func (x *Tracer) String() string {
 func (*Tracer) ProtoMessage() {}
 
 func (x *Tracer) ProtoReflect() protoreflect.Message {
-	mi := &file_tracer_proto_msgTypes[7]
+	mi := &file_tracer_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -870,7 +1032,7 @@ func (x *Tracer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tracer.ProtoReflect.Descriptor instead.
 func (*Tracer) Descriptor() ([]byte, []int) {
-	return file_tracer_proto_rawDescGZIP(), []int{7}
+	return file_tracer_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Tracer) GetEnable() bool {
@@ -915,7 +1077,18 @@ const file_tracer_proto_rawDesc = "" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12!\n" +
 	"\fmax_attempts\x18\x02 \x01(\x05R\vmaxAttempts\x12D\n" +
 	"\x10initial_interval\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x0finitialInterval\x12<\n" +
-	"\fmax_interval\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxInterval\"\xf3\x01\n" +
+	"\fmax_interval\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxInterval\"\xe9\x02\n" +
+	"\n" +
+	"Connection\x12F\n" +
+	"\x12max_conn_idle_time\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\x0fmaxConnIdleTime\x12;\n" +
+	"\fmax_conn_age\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\n" +
+	"maxConnAge\x12F\n" +
+	"\x12max_conn_age_grace\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x0fmaxConnAgeGrace\x12B\n" +
+	"\x0fconnect_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\x0econnectTimeout\x12J\n" +
+	"\x13reconnection_period\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x12reconnectionPeriod\"J\n" +
+	"\rLoadBalancing\x12\x16\n" +
+	"\x06policy\x18\x01 \x01(\tR\x06policy\x12!\n" +
+	"\fhealth_check\x18\x02 \x01(\bR\vhealthCheck\"\xf3\x01\n" +
 	"\x05Batch\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12$\n" +
 	"\x0emax_queue_size\x18\x02 \x01(\x05R\fmaxQueueSize\x12B\n" +
@@ -946,7 +1119,7 @@ const file_tracer_proto_rawDesc = "" +
 	"\x11event_count_limit\x18\x03 \x01(\x05R\x0feventCountLimit\x12=\n" +
 	"\x1bevent_attribute_count_limit\x18\x04 \x01(\x05R\x18eventAttributeCountLimit\x12(\n" +
 	"\x10link_count_limit\x18\x05 \x01(\x05R\x0elinkCountLimit\x12;\n" +
-	"\x1alink_attribute_count_limit\x18\x06 \x01(\x05R\x17linkAttributeCountLimit\"\xc0\x06\n" +
+	"\x1alink_attribute_count_limit\x18\x06 \x01(\x05R\x17linkAttributeCountLimit\"\xdc\a\n" +
 	"\x06Config\x12A\n" +
 	"\bprotocol\x18\x01 \x01(\x0e2%.lynx.protobuf.plugin.tracer.ProtocolR\bprotocol\x12\x1a\n" +
 	"\binsecure\x18\x02 \x01(\bR\binsecure\x122\n" +
@@ -954,14 +1127,18 @@ const file_tracer_proto_rawDesc = "" +
 	"\aheaders\x18\x04 \x03(\v20.lynx.protobuf.plugin.tracer.Config.HeadersEntryR\aheaders\x12J\n" +
 	"\vcompression\x18\x05 \x01(\x0e2(.lynx.protobuf.plugin.tracer.CompressionR\vcompression\x123\n" +
 	"\atimeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x128\n" +
-	"\x05retry\x18\a \x01(\v2\".lynx.protobuf.plugin.tracer.RetryR\x05retry\x128\n" +
-	"\x05batch\x18\b \x01(\v2\".lynx.protobuf.plugin.tracer.BatchR\x05batch\x12>\n" +
-	"\asampler\x18\t \x01(\v2$.lynx.protobuf.plugin.tracer.SamplerR\asampler\x12I\n" +
-	"\vpropagators\x18\n" +
-	" \x03(\x0e2'.lynx.protobuf.plugin.tracer.PropagatorR\vpropagators\x12A\n" +
-	"\bresource\x18\v \x01(\v2%.lynx.protobuf.plugin.tracer.ResourceR\bresource\x12;\n" +
-	"\x06limits\x18\f \x01(\v2#.lynx.protobuf.plugin.tracer.LimitsR\x06limits\x12\x1b\n" +
-	"\thttp_path\x18\r \x01(\tR\bhttpPath\x1a:\n" +
+	"\x05retry\x18\a \x01(\v2\".lynx.protobuf.plugin.tracer.RetryR\x05retry\x12G\n" +
+	"\n" +
+	"connection\x18\b \x01(\v2'.lynx.protobuf.plugin.tracer.ConnectionR\n" +
+	"connection\x12Q\n" +
+	"\x0eload_balancing\x18\t \x01(\v2*.lynx.protobuf.plugin.tracer.LoadBalancingR\rloadBalancing\x128\n" +
+	"\x05batch\x18\n" +
+	" \x01(\v2\".lynx.protobuf.plugin.tracer.BatchR\x05batch\x12>\n" +
+	"\asampler\x18\v \x01(\v2$.lynx.protobuf.plugin.tracer.SamplerR\asampler\x12I\n" +
+	"\vpropagators\x18\f \x03(\x0e2'.lynx.protobuf.plugin.tracer.PropagatorR\vpropagators\x12A\n" +
+	"\bresource\x18\r \x01(\v2%.lynx.protobuf.plugin.tracer.ResourceR\bresource\x12;\n" +
+	"\x06limits\x18\x0e \x01(\v2#.lynx.protobuf.plugin.tracer.LimitsR\x06limits\x12\x1b\n" +
+	"\thttp_path\x18\x0f \x01(\tR\bhttpPath\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x87\x01\n" +
@@ -1000,7 +1177,7 @@ func file_tracer_proto_rawDescGZIP() []byte {
 }
 
 var file_tracer_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_tracer_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_tracer_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_tracer_proto_goTypes = []any{
 	(Protocol)(0),               // 0: lynx.protobuf.plugin.tracer.Protocol
 	(Compression)(0),            // 1: lynx.protobuf.plugin.tracer.Compression
@@ -1008,40 +1185,49 @@ var file_tracer_proto_goTypes = []any{
 	(Sampler_Type)(0),           // 3: lynx.protobuf.plugin.tracer.Sampler.Type
 	(*TLS)(nil),                 // 4: lynx.protobuf.plugin.tracer.TLS
 	(*Retry)(nil),               // 5: lynx.protobuf.plugin.tracer.Retry
-	(*Batch)(nil),               // 6: lynx.protobuf.plugin.tracer.Batch
-	(*Sampler)(nil),             // 7: lynx.protobuf.plugin.tracer.Sampler
-	(*Resource)(nil),            // 8: lynx.protobuf.plugin.tracer.Resource
-	(*Limits)(nil),              // 9: lynx.protobuf.plugin.tracer.Limits
-	(*Config)(nil),              // 10: lynx.protobuf.plugin.tracer.Config
-	(*Tracer)(nil),              // 11: lynx.protobuf.plugin.tracer.Tracer
-	nil,                         // 12: lynx.protobuf.plugin.tracer.Resource.AttributesEntry
-	nil,                         // 13: lynx.protobuf.plugin.tracer.Config.HeadersEntry
-	(*durationpb.Duration)(nil), // 14: google.protobuf.Duration
+	(*Connection)(nil),          // 6: lynx.protobuf.plugin.tracer.Connection
+	(*LoadBalancing)(nil),       // 7: lynx.protobuf.plugin.tracer.LoadBalancing
+	(*Batch)(nil),               // 8: lynx.protobuf.plugin.tracer.Batch
+	(*Sampler)(nil),             // 9: lynx.protobuf.plugin.tracer.Sampler
+	(*Resource)(nil),            // 10: lynx.protobuf.plugin.tracer.Resource
+	(*Limits)(nil),              // 11: lynx.protobuf.plugin.tracer.Limits
+	(*Config)(nil),              // 12: lynx.protobuf.plugin.tracer.Config
+	(*Tracer)(nil),              // 13: lynx.protobuf.plugin.tracer.Tracer
+	nil,                         // 14: lynx.protobuf.plugin.tracer.Resource.AttributesEntry
+	nil,                         // 15: lynx.protobuf.plugin.tracer.Config.HeadersEntry
+	(*durationpb.Duration)(nil), // 16: google.protobuf.Duration
 }
 var file_tracer_proto_depIdxs = []int32{
-	14, // 0: lynx.protobuf.plugin.tracer.Retry.initial_interval:type_name -> google.protobuf.Duration
-	14, // 1: lynx.protobuf.plugin.tracer.Retry.max_interval:type_name -> google.protobuf.Duration
-	14, // 2: lynx.protobuf.plugin.tracer.Batch.scheduled_delay:type_name -> google.protobuf.Duration
-	14, // 3: lynx.protobuf.plugin.tracer.Batch.export_timeout:type_name -> google.protobuf.Duration
-	3,  // 4: lynx.protobuf.plugin.tracer.Sampler.type:type_name -> lynx.protobuf.plugin.tracer.Sampler.Type
-	12, // 5: lynx.protobuf.plugin.tracer.Resource.attributes:type_name -> lynx.protobuf.plugin.tracer.Resource.AttributesEntry
-	0,  // 6: lynx.protobuf.plugin.tracer.Config.protocol:type_name -> lynx.protobuf.plugin.tracer.Protocol
-	4,  // 7: lynx.protobuf.plugin.tracer.Config.tls:type_name -> lynx.protobuf.plugin.tracer.TLS
-	13, // 8: lynx.protobuf.plugin.tracer.Config.headers:type_name -> lynx.protobuf.plugin.tracer.Config.HeadersEntry
-	1,  // 9: lynx.protobuf.plugin.tracer.Config.compression:type_name -> lynx.protobuf.plugin.tracer.Compression
-	14, // 10: lynx.protobuf.plugin.tracer.Config.timeout:type_name -> google.protobuf.Duration
-	5,  // 11: lynx.protobuf.plugin.tracer.Config.retry:type_name -> lynx.protobuf.plugin.tracer.Retry
-	6,  // 12: lynx.protobuf.plugin.tracer.Config.batch:type_name -> lynx.protobuf.plugin.tracer.Batch
-	7,  // 13: lynx.protobuf.plugin.tracer.Config.sampler:type_name -> lynx.protobuf.plugin.tracer.Sampler
-	2,  // 14: lynx.protobuf.plugin.tracer.Config.propagators:type_name -> lynx.protobuf.plugin.tracer.Propagator
-	8,  // 15: lynx.protobuf.plugin.tracer.Config.resource:type_name -> lynx.protobuf.plugin.tracer.Resource
-	9,  // 16: lynx.protobuf.plugin.tracer.Config.limits:type_name -> lynx.protobuf.plugin.tracer.Limits
-	10, // 17: lynx.protobuf.plugin.tracer.Tracer.config:type_name -> lynx.protobuf.plugin.tracer.Config
-	18, // [18:18] is the sub-list for method output_type
-	18, // [18:18] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	16, // 0: lynx.protobuf.plugin.tracer.Retry.initial_interval:type_name -> google.protobuf.Duration
+	16, // 1: lynx.protobuf.plugin.tracer.Retry.max_interval:type_name -> google.protobuf.Duration
+	16, // 2: lynx.protobuf.plugin.tracer.Connection.max_conn_idle_time:type_name -> google.protobuf.Duration
+	16, // 3: lynx.protobuf.plugin.tracer.Connection.max_conn_age:type_name -> google.protobuf.Duration
+	16, // 4: lynx.protobuf.plugin.tracer.Connection.max_conn_age_grace:type_name -> google.protobuf.Duration
+	16, // 5: lynx.protobuf.plugin.tracer.Connection.connect_timeout:type_name -> google.protobuf.Duration
+	16, // 6: lynx.protobuf.plugin.tracer.Connection.reconnection_period:type_name -> google.protobuf.Duration
+	16, // 7: lynx.protobuf.plugin.tracer.Batch.scheduled_delay:type_name -> google.protobuf.Duration
+	16, // 8: lynx.protobuf.plugin.tracer.Batch.export_timeout:type_name -> google.protobuf.Duration
+	3,  // 9: lynx.protobuf.plugin.tracer.Sampler.type:type_name -> lynx.protobuf.plugin.tracer.Sampler.Type
+	14, // 10: lynx.protobuf.plugin.tracer.Resource.attributes:type_name -> lynx.protobuf.plugin.tracer.Resource.AttributesEntry
+	0,  // 11: lynx.protobuf.plugin.tracer.Config.protocol:type_name -> lynx.protobuf.plugin.tracer.Protocol
+	4,  // 12: lynx.protobuf.plugin.tracer.Config.tls:type_name -> lynx.protobuf.plugin.tracer.TLS
+	15, // 13: lynx.protobuf.plugin.tracer.Config.headers:type_name -> lynx.protobuf.plugin.tracer.Config.HeadersEntry
+	1,  // 14: lynx.protobuf.plugin.tracer.Config.compression:type_name -> lynx.protobuf.plugin.tracer.Compression
+	16, // 15: lynx.protobuf.plugin.tracer.Config.timeout:type_name -> google.protobuf.Duration
+	5,  // 16: lynx.protobuf.plugin.tracer.Config.retry:type_name -> lynx.protobuf.plugin.tracer.Retry
+	6,  // 17: lynx.protobuf.plugin.tracer.Config.connection:type_name -> lynx.protobuf.plugin.tracer.Connection
+	7,  // 18: lynx.protobuf.plugin.tracer.Config.load_balancing:type_name -> lynx.protobuf.plugin.tracer.LoadBalancing
+	8,  // 19: lynx.protobuf.plugin.tracer.Config.batch:type_name -> lynx.protobuf.plugin.tracer.Batch
+	9,  // 20: lynx.protobuf.plugin.tracer.Config.sampler:type_name -> lynx.protobuf.plugin.tracer.Sampler
+	2,  // 21: lynx.protobuf.plugin.tracer.Config.propagators:type_name -> lynx.protobuf.plugin.tracer.Propagator
+	10, // 22: lynx.protobuf.plugin.tracer.Config.resource:type_name -> lynx.protobuf.plugin.tracer.Resource
+	11, // 23: lynx.protobuf.plugin.tracer.Config.limits:type_name -> lynx.protobuf.plugin.tracer.Limits
+	12, // 24: lynx.protobuf.plugin.tracer.Tracer.config:type_name -> lynx.protobuf.plugin.tracer.Config
+	25, // [25:25] is the sub-list for method output_type
+	25, // [25:25] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_tracer_proto_init() }
@@ -1055,7 +1241,7 @@ func file_tracer_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_tracer_proto_rawDesc), len(file_tracer_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -13,7 +13,7 @@ func init() {
 	// The second parameter confPrefix is the configuration prefix, used to read the plugin's related configuration from the configuration file.
 	// The third parameter is an anonymous function that returns an instance implementing the plugins.Plugin interface.
 	// Create a new Seata client plugin instance by calling the NewSeataClient function and return it.
-	factory.GlobalPluginFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
+	factory.GlobalTypedFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
 		return NewTxSeataClient()
 	})
 }
