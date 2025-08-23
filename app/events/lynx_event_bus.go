@@ -95,11 +95,11 @@ type LynxEventBus struct {
 	isDegraded           atomic.Bool
 	degradationStartTime time.Time
 
+	// Throttling for degradation mode
+	throttler *SimpleThrottler
+
 	// Worker pool for parallel dispatching
 	workerPool *ants.Pool
-
-	// Throttling
-	throttler *SimpleThrottler
 
 	// Memory optimization
 	bufferPool   *EventBufferPool
@@ -458,7 +458,12 @@ func (b *LynxEventBus) triggerDegradation() {
 		case DegradationModePause:
 			b.Pause()
 		case DegradationModeThrottle:
-			// TODO: Implement throttling
+			// Initialize throttler if not already created
+			if b.throttler == nil {
+				// Default throttling: 100 events per second with burst of 50
+				b.throttler = NewSimpleThrottler(100, 50)
+			}
+			// Throttling is now active - events will be rate-limited in the processing loop
 		}
 	}
 }
@@ -502,6 +507,59 @@ func (b *LynxEventBus) IsDegraded() bool {
 // GetQueueSize returns the current queue size (approximate)
 func (b *LynxEventBus) GetQueueSize() int {
 	return b.totalQueueSize()
+}
+
+// GetEventHistory returns events from history that match the given filter
+func (b *LynxEventBus) GetEventHistory(filter *EventFilter) []LynxEvent {
+	if b.history == nil {
+		return []LynxEvent{}
+	}
+
+	if filter == nil {
+		return b.history.GetEvents()
+	}
+
+	return b.history.GetEventsByFilter(filter)
+}
+
+// GetPluginEventHistory returns events from history for a specific plugin
+func (b *LynxEventBus) GetPluginEventHistory(pluginID string, filter *EventFilter) []LynxEvent {
+	if b.history == nil {
+		return []LynxEvent{}
+	}
+
+	// Create a plugin-specific filter
+	pluginFilter := &EventFilter{
+		PluginIDs: []string{pluginID},
+	}
+
+	// Merge with existing filter if provided
+	if filter != nil {
+		if len(filter.EventTypes) > 0 {
+			pluginFilter.EventTypes = filter.EventTypes
+		}
+		if len(filter.Priorities) > 0 {
+			pluginFilter.Priorities = filter.Priorities
+		}
+		if len(filter.Categories) > 0 {
+			pluginFilter.Categories = filter.Categories
+		}
+		if filter.FromTime > 0 {
+			pluginFilter.FromTime = filter.FromTime
+		}
+		if filter.ToTime > 0 {
+			pluginFilter.ToTime = filter.ToTime
+		}
+		if len(filter.Metadata) > 0 {
+			pluginFilter.Metadata = filter.Metadata
+		}
+		pluginFilter.HasError = filter.HasError
+		if len(filter.Statuses) > 0 {
+			pluginFilter.Statuses = filter.Statuses
+		}
+	}
+
+	return b.history.GetEventsByFilter(pluginFilter)
 }
 
 // run drains the queue and publishes to the dispatcher
@@ -937,6 +995,24 @@ func (b *LynxEventBus) publish(ev LynxEvent) {
 
 // helper: publish a batch of events
 func (b *LynxEventBus) publishBatch(events []LynxEvent) {
+	// Check if throttling is active during degradation
+	if b.isDegraded.Load() && b.throttler != nil {
+		// Apply throttling to the batch
+		throttledEvents := make([]LynxEvent, 0, len(events))
+		for _, ev := range events {
+			if b.throttler.Allow() {
+				throttledEvents = append(throttledEvents, ev)
+			} else {
+				// Event is throttled, log it and continue
+				if b.logger != nil {
+					log.NewHelper(b.logger).Debugf("event throttled during degradation: type=%d, plugin=%s", ev.EventType, ev.PluginID)
+				}
+			}
+		}
+		// Use throttled events instead of original events
+		events = throttledEvents
+	}
+
 	// Limit per-batch submissions to reduce burstiness
 	limit := len(events)
 	if b.config.WorkerCount > 0 {

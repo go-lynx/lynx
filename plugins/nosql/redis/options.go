@@ -55,6 +55,6 @@ func (r *PlugRedis) buildUniversalOptions() *redis.UniversalOptions {
 		ClientName:            r.conf.ClientName,
 		TLSConfig:             tlsConfig,
 		ContextTimeoutEnabled: true,
-		// TODO: MaxConnAge
+		ConnMaxLifetime:       r.conf.MaxConnAge.AsDuration(), // Map MaxConnAge to ConnMaxLifetime
 	}
 }

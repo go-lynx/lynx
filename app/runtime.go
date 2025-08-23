@@ -156,30 +156,207 @@ func (r *TypedRuntimePlugin) AddListener(listener plugins.EventListener, filter 
 		return
 	}
 
-	// TODO: Implement proper listener conversion to unified event bus
-	// For now, this is a placeholder that maintains API compatibility
+	// Convert plugin event listener to unified event bus listener
+	unifiedListener := func(event events.LynxEvent) {
+		// Convert LynxEvent back to PluginEvent for backward compatibility
+		pluginEvent := events.ConvertLynxEvent(event)
+		listener.HandleEvent(pluginEvent)
+	}
+
+	// Convert plugin event filter to unified event bus filter
+	var unifiedFilter *events.EventFilter
+	if filter != nil {
+		unifiedFilter = &events.EventFilter{
+			EventTypes: convertEventTypes(filter.Types),
+			PluginIDs:  filter.PluginIDs,
+			Categories: filter.Categories,
+			Priorities: convertPriorities(filter.Priorities),
+			Metadata:   make(map[string]any), // Plugin filter doesn't have metadata
+		}
+	}
+
+	// Register with unified event bus using the listener manager
+	if r.eventManager != nil {
+		listenerID := fmt.Sprintf("plugin_%p", listener)
+		listenerManager := events.GetGlobalListenerManager()
+		if listenerManager != nil {
+			_ = listenerManager.AddListener(listenerID, unifiedFilter, unifiedListener, events.BusTypePlugin)
+		}
+	}
+}
+
+// convertEventTypes converts plugin event types to unified event types
+func convertEventTypes(pluginTypes []plugins.EventType) []events.EventType {
+	if len(pluginTypes) == 0 {
+		return nil
+	}
+
+	unifiedTypes := make([]events.EventType, len(pluginTypes))
+	for i, eventType := range pluginTypes {
+		unifiedTypes[i] = events.ConvertEventType(eventType)
+	}
+	return unifiedTypes
+}
+
+// convertPriorities converts plugin priorities to unified event bus priorities
+func convertPriorities(pluginPriorities []int) []events.Priority {
+	if len(pluginPriorities) == 0 {
+		return nil
+	}
+
+	unifiedPriorities := make([]events.Priority, len(pluginPriorities))
+	for i, priority := range pluginPriorities {
+		switch priority {
+		case plugins.PriorityLow:
+			unifiedPriorities[i] = events.PriorityLow
+		case plugins.PriorityNormal:
+			unifiedPriorities[i] = events.PriorityNormal
+		case plugins.PriorityHigh:
+			unifiedPriorities[i] = events.PriorityHigh
+		case plugins.PriorityCritical:
+			unifiedPriorities[i] = events.PriorityCritical
+		default:
+			unifiedPriorities[i] = events.PriorityNormal
+		}
+	}
+	return unifiedPriorities
 }
 
 // RemoveListener unregisters an event listener.
 // This method is kept for backward compatibility but delegates to the unified event bus.
 func (r *TypedRuntimePlugin) RemoveListener(listener plugins.EventListener) {
-	// TODO: Implement proper listener removal from unified event bus
-	// For now, this is a placeholder that maintains API compatibility
+	// Convert plugin event listener to unified event bus listener removal
+	if listener == nil {
+		return
+	}
+
+	// Remove from unified event bus using the listener manager
+	listenerManager := events.GetGlobalListenerManager()
+	if listenerManager != nil {
+		listenerID := fmt.Sprintf("plugin_%p", listener)
+		_ = listenerManager.RemoveListener(listenerID)
+	}
 }
 
 // GetEventHistory retrieves historical events based on filter criteria.
 // This method is kept for backward compatibility but delegates to the unified event bus.
 func (r *TypedRuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugins.PluginEvent {
-	// TODO: Implement proper event history retrieval from unified event bus
-	// For now, return empty slice to maintain API compatibility
+	// Check if filter is empty
+	if r.isEmptyFilter(filter) {
+		// Return empty slice for empty filter
+		return []plugins.PluginEvent{}
+	}
+
+	// Get history from unified event bus
+	if r.eventManager != nil {
+		// Convert plugin filter to unified event bus filter
+		unifiedFilter := &events.EventFilter{
+			EventTypes: convertEventTypes(filter.Types),
+			PluginIDs:  filter.PluginIDs,
+			Categories: filter.Categories,
+			Priorities: convertPriorities(filter.Priorities),
+			FromTime:   filter.FromTime,
+			ToTime:     filter.ToTime,
+			Metadata:   make(map[string]any), // Plugin filter doesn't have metadata
+		}
+
+		// Get events from unified event bus
+		lynxEvents := r.eventManager.GetEventHistory(unifiedFilter)
+
+		// Convert back to plugin events
+		pluginEvents := make([]plugins.PluginEvent, len(lynxEvents))
+		for i, lynxEvent := range lynxEvents {
+			pluginEvents[i] = events.ConvertLynxEvent(lynxEvent)
+		}
+
+		return pluginEvents
+	}
+
 	return []plugins.PluginEvent{}
+}
+
+// isEmptyFilter checks if the event filter is empty
+func (r *TypedRuntimePlugin) isEmptyFilter(filter plugins.EventFilter) bool {
+	return len(filter.Types) == 0 &&
+		len(filter.Priorities) == 0 &&
+		len(filter.PluginIDs) == 0 &&
+		len(filter.Categories) == 0 &&
+		filter.FromTime == 0 &&
+		filter.ToTime == 0
 }
 
 // eventMatchesFilter checks if an event matches a specific filter.
 // This method is kept for backward compatibility.
 func (r *TypedRuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plugins.EventFilter) bool {
-	// TODO: Implement proper filter matching logic
-	// For now, return true to maintain API compatibility
+	// Check if filter is empty - empty filter matches all events
+	if r.isEmptyFilter(filter) {
+		return true
+	}
+
+	// Check event type
+	if len(filter.Types) > 0 {
+		typeMatch := false
+		for _, filterType := range filter.Types {
+			if event.Type == filterType {
+				typeMatch = true
+				break
+			}
+		}
+		if !typeMatch {
+			return false
+		}
+	}
+
+	// Check priority
+	if len(filter.Priorities) > 0 {
+		priorityMatch := false
+		for _, filterPriority := range filter.Priorities {
+			if event.Priority == filterPriority {
+				priorityMatch = true
+				break
+			}
+		}
+		if !priorityMatch {
+			return false
+		}
+	}
+
+	// Check plugin ID
+	if len(filter.PluginIDs) > 0 {
+		pluginMatch := false
+		for _, filterPluginID := range filter.PluginIDs {
+			if event.PluginID == filterPluginID {
+				pluginMatch = true
+				break
+			}
+		}
+		if !pluginMatch {
+			return false
+		}
+	}
+
+	// Check category
+	if len(filter.Categories) > 0 {
+		categoryMatch := false
+		for _, filterCategory := range filter.Categories {
+			if event.Category == filterCategory {
+				categoryMatch = true
+				break
+			}
+		}
+		if !categoryMatch {
+			return false
+		}
+	}
+
+	// Check time range
+	if filter.FromTime > 0 && event.Timestamp < filter.FromTime {
+		return false
+	}
+	if filter.ToTime > 0 && event.Timestamp > filter.ToTime {
+		return false
+	}
+
 	return true
 }
 
