@@ -96,14 +96,14 @@ type Plugin interface {
 // This interface is backward-compatible and optional; if not implemented,
 // the manager will fall back to calling the non-context methods.
 type LifecycleWithContext interface {
-    // InitializeContext prepares the plugin with context support.
-    InitializeContext(ctx context.Context, plugin Plugin, rt Runtime) error
+	// InitializeContext prepares the plugin with context support.
+	InitializeContext(ctx context.Context, plugin Plugin, rt Runtime) error
 
-    // StartContext starts the plugin with context support.
-    StartContext(ctx context.Context, plugin Plugin) error
+	// StartContext starts the plugin with context support.
+	StartContext(ctx context.Context, plugin Plugin) error
 
-    // StopContext stops the plugin with context support.
-    StopContext(ctx context.Context, plugin Plugin) error
+	// StopContext stops the plugin with context support.
+	StopContext(ctx context.Context, plugin Plugin) error
 }
 
 // ContextAwareness defines an optional marker for real context awareness.
@@ -111,15 +111,31 @@ type LifecycleWithContext interface {
 // still ignore ctx. Implement this interface on the concrete plugin type and
 // return true only when lifecycle methods actually observe ctx cancellation.
 type ContextAwareness interface {
-    // IsContextAware returns true if the plugin genuinely honors context
-    // cancellation/timeout within Initialize/Start/Stop.
-    IsContextAware() bool
+	// IsContextAware returns true if the plugin genuinely honors context
+	// cancellation/timeout within Initialize/Start/Stop.
+	IsContextAware() bool
 }
 
 // AddPluginListener adds a specific plugin event listener - simplified for unified event bus
 func (r *simpleRuntime) AddPluginListener(pluginName string, listener EventListener, filter *EventFilter) {
-	// TODO: Implement unified event bus listener registration
-	// For now, this is a placeholder that maintains API compatibility
+	// Register plugin-specific listener with unified event bus if available
+	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+		if listenerManager, ok := adapter.(interface {
+			AddPluginListener(string, string, *EventFilter, func(interface{})) error
+		}); ok {
+			listenerID := fmt.Sprintf("plugin_%s_%p", pluginName, listener)
+			// Convert to unified event bus listener
+			unifiedHandler := func(event interface{}) {
+				if pluginEvent, ok := event.(PluginEvent); ok {
+					listener.HandleEvent(pluginEvent)
+				}
+			}
+			_ = listenerManager.AddPluginListener(pluginName, listenerID, filter, unifiedHandler)
+		} else {
+			// Fallback to regular listener registration
+			r.AddListener(listener, filter)
+		}
+	}
 }
 
 // TypedPlugin generic plugin interface, T is the specific plugin type
@@ -429,6 +445,12 @@ type simpleRuntime struct {
 
 	// Event bus manager for unified event handling
 	eventManager interface{}
+
+	// Worker pool size for event dispatching
+	workerPoolSize int
+
+	// Event processing timeout
+	eventTimeout time.Duration
 }
 
 func NewSimpleRuntime() *simpleRuntime {
@@ -437,6 +459,8 @@ func NewSimpleRuntime() *simpleRuntime {
 		sharedResources:  make(map[string]any),
 		resourceInfo:     make(map[string]*ResourceInfo),
 		eventManager:     nil, // Will be set later to avoid import cycle
+		workerPoolSize:   0,
+		eventTimeout:     0, // Initialize to 0
 	}
 }
 
@@ -454,49 +478,92 @@ func (r *simpleRuntime) EmitEvent(event PluginEvent) {
 	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
 		if err := adapter.PublishEvent(event); err != nil {
 			// Log error but don't fail the operation
-			// TODO: Add proper logging when logger is available
+			// Use simple logging as fallback
+			fmt.Printf("ERROR: failed to publish event to unified event bus: %v (event_type: %s, plugin_id: %s)\n", err, event.Type, event.PluginID)
 		}
 	}
 }
 
 // Shutdown close runtime - simplified for unified event bus
 func (r *simpleRuntime) Shutdown() {
-	// TODO: Implement unified event bus shutdown
-	// For now, this is a placeholder that maintains API compatibility
+	// Shutdown unified event bus if available
+	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+		// Try to gracefully shutdown the event bus
+		if shutdownable, ok := adapter.(interface{ Shutdown() error }); ok {
+			if err := shutdownable.Shutdown(); err != nil {
+				fmt.Printf("WARNING: failed to shutdown unified event bus: %v\n", err)
+			}
+		}
+	}
 }
 
 // SetEventDispatchMode set event dispatch mode - simplified for unified event bus
 func (r *simpleRuntime) SetEventDispatchMode(mode string) error {
-	// TODO: Implement unified event bus dispatch mode setting
-	// For now, this is a placeholder that maintains API compatibility
-	return nil
+	// Set dispatch mode on unified event bus if available
+	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+		if configurable, ok := adapter.(interface{ SetDispatchMode(string) error }); ok {
+			return configurable.SetDispatchMode(mode)
+		}
+	}
+
+	// Return error for unsupported mode
+	switch mode {
+	case "sync", "async", "batch":
+		return nil // Mode is valid but not supported by current adapter
+	default:
+		return fmt.Errorf("unsupported dispatch mode: %s", mode)
+	}
 }
 
 // SetEventWorkerPoolSize set event worker pool size - simplified for unified event bus
 func (r *simpleRuntime) SetEventWorkerPoolSize(size int) {
-	// TODO: Implement unified event bus worker pool size setting
-	// For now, this is a placeholder that maintains API compatibility
+	// Set worker pool size on unified event bus if available
+	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+		if configurable, ok := adapter.(interface{ SetWorkerPoolSize(int) }); ok {
+			configurable.SetWorkerPoolSize(size)
+		}
+	}
+
+	// Store the setting for future reference
+	r.workerPoolSize = size
 }
 
 // SetEventTimeout set event processing timeout - simplified for unified event bus
 func (r *simpleRuntime) SetEventTimeout(timeout time.Duration) {
-	// TODO: Implement unified event bus timeout setting
-	// For now, this is a placeholder that maintains API compatibility
+	// Set event timeout on unified event bus if available
+	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+		if configurable, ok := adapter.(interface{ SetEventTimeout(time.Duration) }); ok {
+			configurable.SetEventTimeout(timeout)
+		}
+	}
+
+	// Store the setting for future reference
+	r.eventTimeout = timeout
 }
 
 // GetEventStats get event system statistics - simplified for unified event bus
 func (r *simpleRuntime) GetEventStats() map[string]any {
-	// TODO: Implement unified event bus statistics
-	// For now, return empty stats to maintain API compatibility
+	// Get stats from unified event bus if available
+	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+		if statsProvider, ok := adapter.(interface{ GetStats() map[string]any }); ok {
+			stats := statsProvider.GetStats()
+			// Add runtime-specific stats
+			stats["worker_pool_size"] = r.workerPoolSize
+			stats["event_timeout_ms"] = int(r.eventTimeout.Milliseconds())
+			return stats
+		}
+	}
+
+	// Return default stats if no adapter available
 	return map[string]any{
 		"events_emitted":       0,
 		"events_delivered":     0,
 		"events_dropped":       0,
 		"listener_panics":      0,
 		"listener_timeouts":    0,
-		"worker_pool_size":     0,
+		"worker_pool_size":     r.workerPoolSize,
 		"dispatch_mode":        "unified",
-		"event_timeout_ms":     0,
+		"event_timeout_ms":     int(r.eventTimeout.Milliseconds()),
 		"history_size":         0,
 		"max_history":          0,
 		"listeners_groups_cnt": 0,
@@ -505,41 +572,145 @@ func (r *simpleRuntime) GetEventStats() map[string]any {
 
 // AddListener add event listener - simplified for unified event bus
 func (r *simpleRuntime) AddListener(listener EventListener, filter *EventFilter) {
-	// TODO: Implement unified event bus listener registration
-	// For now, this is a placeholder that maintains API compatibility
+	// Register listener with unified event bus if available
+	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+		if listenerManager, ok := adapter.(interface {
+			AddListener(string, *EventFilter, func(interface{}), string) error
+		}); ok {
+			listenerID := getListenerID(listener)
+			// Convert to unified event bus listener
+			unifiedHandler := func(event interface{}) {
+				if pluginEvent, ok := event.(PluginEvent); ok {
+					listener.HandleEvent(pluginEvent)
+				}
+			}
+			_ = listenerManager.AddListener(listenerID, filter, unifiedHandler, "plugin")
+		}
+	}
 }
 
 // RemoveListener remove event listener - simplified for unified event bus
 func (r *simpleRuntime) RemoveListener(listener EventListener) {
-	// TODO: Implement unified event bus listener removal
-	// For now, this is a placeholder that maintains API compatibility
+	// Remove listener from unified event bus if available
+	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+		if listenerManager, ok := adapter.(interface{ RemoveListener(string) error }); ok {
+			listenerID := getListenerID(listener)
+			_ = listenerManager.RemoveListener(listenerID)
+		}
+	}
 }
 
 // GetEventHistory get event history - simplified for unified event bus
 func (r *simpleRuntime) GetEventHistory(filter EventFilter) []PluginEvent {
-	// TODO: Implement unified event bus history retrieval
-	// For now, return empty slice to maintain API compatibility
+	// Get event history from unified event bus if available
+	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+		if historyProvider, ok := adapter.(interface {
+			GetEventHistory(EventFilter) []PluginEvent
+		}); ok {
+			return historyProvider.GetEventHistory(filter)
+		}
+	}
+
+	// Return empty slice if no adapter available
 	return []PluginEvent{}
 }
 
 // GetPluginEventHistory get plugin event history - simplified for unified event bus
 func (r *simpleRuntime) GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent {
-	// TODO: Implement unified event bus plugin history retrieval
-	// For now, return empty slice to maintain API compatibility
+	// Get plugin-specific event history from unified event bus if available
+	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+		if historyProvider, ok := adapter.(interface {
+			GetPluginEventHistory(string, EventFilter) []PluginEvent
+		}); ok {
+			return historyProvider.GetPluginEventHistory(pluginName, filter)
+		}
+	}
+
+	// Return empty slice if no adapter available
 	return []PluginEvent{}
 }
 
 // isEmptyFilter check if filter is empty - simplified for unified event bus
 func (r *simpleRuntime) isEmptyFilter(filter EventFilter) bool {
-	// TODO: Implement unified event bus filter checking
-	// For now, return true to maintain API compatibility
-	return true
+	return len(filter.Types) == 0 &&
+		len(filter.Priorities) == 0 &&
+		len(filter.PluginIDs) == 0 &&
+		len(filter.Categories) == 0 &&
+		filter.FromTime == 0 &&
+		filter.ToTime == 0
 }
 
 // matchesFilter check if event matches filter - simplified for unified event bus
 func (r *simpleRuntime) matchesFilter(event PluginEvent, filter EventFilter) bool {
-	// TODO: Implement unified event bus filter matching
-	// For now, return true to maintain API compatibility
+	// Check if filter is empty - empty filter matches all events
+	if r.isEmptyFilter(filter) {
+		return true
+	}
+
+	// Check event type
+	if len(filter.Types) > 0 {
+		typeMatch := false
+		for _, filterType := range filter.Types {
+			if event.Type == filterType {
+				typeMatch = true
+				break
+			}
+		}
+		if !typeMatch {
+			return false
+		}
+	}
+
+	// Check priority
+	if len(filter.Priorities) > 0 {
+		priorityMatch := false
+		for _, filterPriority := range filter.Priorities {
+			if event.Priority == filterPriority {
+				priorityMatch = true
+				break
+			}
+		}
+		if !priorityMatch {
+			return false
+		}
+	}
+
+	// Check plugin ID
+	if len(filter.PluginIDs) > 0 {
+		pluginMatch := false
+		for _, filterPluginID := range filter.PluginIDs {
+			if event.PluginID == filterPluginID {
+				pluginMatch = true
+				break
+			}
+		}
+		if !pluginMatch {
+			return false
+		}
+	}
+
+	// Check category
+	if len(filter.Categories) > 0 {
+		categoryMatch := false
+		for _, filterCategory := range filter.Categories {
+			if event.Category == filterCategory {
+				categoryMatch = true
+				break
+			}
+		}
+		if !categoryMatch {
+			return false
+		}
+	}
+
+	// Check time range
+	if filter.FromTime > 0 && event.Timestamp < filter.FromTime {
+		return false
+	}
+	if filter.ToTime > 0 && event.Timestamp > filter.ToTime {
+		return false
+	}
+
 	return true
 }
 
@@ -694,6 +865,8 @@ func (r *simpleRuntime) WithPluginContext(pluginName string) Runtime {
 		config:               r.config,
 		currentPluginContext: pluginName,
 		eventManager:         r.eventManager,
+		workerPoolSize:       r.workerPoolSize,
+		eventTimeout:         r.eventTimeout, // Copy event timeout
 	}
 
 	return contextRuntime

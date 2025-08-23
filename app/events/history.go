@@ -138,6 +138,138 @@ func (h *EventHistory) GetEventsByTimeRange(from, to int64) []LynxEvent {
 	return result
 }
 
+// GetEventsByFilter returns events that match the given filter criteria
+func (h *EventHistory) GetEventsByFilter(filter *EventFilter) []LynxEvent {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	var result []LynxEvent
+	for _, event := range h.events {
+		if h.eventMatchesFilter(event, filter) {
+			result = append(result, event)
+		}
+	}
+	return result
+}
+
+// eventMatchesFilter checks if an event matches the given filter
+func (h *EventHistory) eventMatchesFilter(event LynxEvent, filter *EventFilter) bool {
+	if filter == nil {
+		return true
+	}
+
+	// Check event types
+	if len(filter.EventTypes) > 0 {
+		typeMatch := false
+		for _, filterType := range filter.EventTypes {
+			if event.EventType == filterType {
+				typeMatch = true
+				break
+			}
+		}
+		if !typeMatch {
+			return false
+		}
+	}
+
+	// Check priorities
+	if len(filter.Priorities) > 0 {
+		priorityMatch := false
+		for _, filterPriority := range filter.Priorities {
+			if event.Priority == filterPriority {
+				priorityMatch = true
+				break
+			}
+		}
+		if !priorityMatch {
+			return false
+		}
+	}
+
+	// Check sources
+	if len(filter.Sources) > 0 {
+		sourceMatch := false
+		for _, filterSource := range filter.Sources {
+			if event.Source == filterSource {
+				sourceMatch = true
+				break
+			}
+		}
+		if !sourceMatch {
+			return false
+		}
+	}
+
+	// Check categories
+	if len(filter.Categories) > 0 {
+		categoryMatch := false
+		for _, filterCategory := range filter.Categories {
+			if event.Category == filterCategory {
+				categoryMatch = true
+				break
+			}
+		}
+		if !categoryMatch {
+			return false
+		}
+	}
+
+	// Check plugin IDs
+	if len(filter.PluginIDs) > 0 {
+		pluginMatch := false
+		for _, filterPluginID := range filter.PluginIDs {
+			if event.PluginID == filterPluginID {
+				pluginMatch = true
+				break
+			}
+		}
+		if !pluginMatch {
+			return false
+		}
+	}
+
+	// Check time range
+	if filter.FromTime > 0 && event.Timestamp < filter.FromTime {
+		return false
+	}
+	if filter.ToTime > 0 && event.Timestamp > filter.ToTime {
+		return false
+	}
+
+	// Check metadata
+	if len(filter.Metadata) > 0 {
+		for key, value := range filter.Metadata {
+			if event.Metadata == nil {
+				return false
+			}
+			if eventValue, exists := event.Metadata[key]; !exists || eventValue != value {
+				return false
+			}
+		}
+	}
+
+	// Check error condition
+	if filter.HasError && event.Error == nil {
+		return false
+	}
+
+	// Check statuses
+	if len(filter.Statuses) > 0 {
+		statusMatch := false
+		for _, filterStatus := range filter.Statuses {
+			if event.Status == filterStatus {
+				statusMatch = true
+				break
+			}
+		}
+		if !statusMatch {
+			return false
+		}
+	}
+
+	return true
+}
+
 // Clear clears all events from history
 func (h *EventHistory) Clear() {
 	h.mu.Lock()

@@ -85,6 +85,8 @@ func allowLog(level log.Level) bool {
 			}
 			infoCount++
 		}
+	default:
+		return true
 	}
 	return true
 }

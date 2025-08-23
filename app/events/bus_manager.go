@@ -363,3 +363,33 @@ func (manager *EventBusManager) GetAllBusesMetrics() map[BusType]map[string]inte
 	}
 	return out
 }
+
+// GetEventHistory returns events from all buses that match the given filter
+func (manager *EventBusManager) GetEventHistory(filter *EventFilter) []LynxEvent {
+	var allEvents []LynxEvent
+
+	manager.mu.RLock()
+	defer manager.mu.RUnlock()
+
+	for _, bus := range manager.buses {
+		events := bus.GetEventHistory(filter)
+		allEvents = append(allEvents, events...)
+	}
+
+	return allEvents
+}
+
+// GetPluginEventHistory returns events from all buses for a specific plugin
+func (manager *EventBusManager) GetPluginEventHistory(pluginID string, filter *EventFilter) []LynxEvent {
+	var allEvents []LynxEvent
+
+	manager.mu.RLock()
+	defer manager.mu.RUnlock()
+
+	for _, bus := range manager.buses {
+		events := bus.GetPluginEventHistory(pluginID, filter)
+		allEvents = append(allEvents, events...)
+	}
+
+	return allEvents
+}
