@@ -17,6 +17,12 @@ const (
 	CertFormatPEM = "pem"
 	CertFormatDER = "der"
 
+	// TLS version constants
+	TLSVersion10 = "1.0"
+	TLSVersion11 = "1.1"
+	TLSVersion12 = "1.2"
+	TLSVersion13 = "1.3"
+
 	// Default values (these are actual defaults, not field values)
 	DefaultSourceType       = SourceTypeControlPlane
 	DefaultCertFormat       = CertFormatPEM
@@ -49,7 +55,7 @@ var SupportedCertFormats = []string{
 
 // Supported TLS versions
 var SupportedTLSVersions = []string{
-	"1.0", "1.1", "1.2", "1.3",
+	TLSVersion10, TLSVersion11, TLSVersion12, TLSVersion13,
 }
 
 // Supported authentication types
