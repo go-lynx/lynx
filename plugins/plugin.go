@@ -118,23 +118,22 @@ type ContextAwareness interface {
 
 // AddPluginListener adds a specific plugin event listener - simplified for unified event bus
 func (r *simpleRuntime) AddPluginListener(pluginName string, listener EventListener, filter *EventFilter) {
-	// Register plugin-specific listener with unified event bus if available
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
-		if listenerManager, ok := adapter.(interface {
-			AddPluginListener(string, string, *EventFilter, func(interface{})) error
-		}); ok {
-			listenerID := fmt.Sprintf("plugin_%s_%p", pluginName, listener)
-			// Convert to unified event bus listener
-			unifiedHandler := func(event interface{}) {
-				if pluginEvent, ok := event.(PluginEvent); ok {
-					listener.HandleEvent(pluginEvent)
-				}
+	// Register plugin-specific listener with unified event bus
+	adapter := EnsureGlobalEventBusAdapter()
+	if listenerManager, ok := adapter.(interface {
+		AddPluginListener(string, string, *EventFilter, func(interface{})) error
+	}); ok {
+		listenerID := fmt.Sprintf("plugin_%s_%p", pluginName, listener)
+		// Convert to unified event bus listener
+		unifiedHandler := func(event interface{}) {
+			if pluginEvent, ok := event.(PluginEvent); ok {
+				listener.HandleEvent(pluginEvent)
 			}
-			_ = listenerManager.AddPluginListener(pluginName, listenerID, filter, unifiedHandler)
-		} else {
-			// Fallback to regular listener registration
-			r.AddListener(listener, filter)
 		}
+		_ = listenerManager.AddPluginListener(pluginName, listenerID, filter, unifiedHandler)
+	} else {
+		// Fallback to regular listener registration
+		r.AddListener(listener, filter)
 	}
 }
 
@@ -475,19 +474,19 @@ func (r *simpleRuntime) EmitEvent(event PluginEvent) {
 	}
 
 	// Get global event bus adapter and publish event
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
-		if err := adapter.PublishEvent(event); err != nil {
-			// Log error but don't fail the operation
-			// Use simple logging as fallback
-			fmt.Printf("ERROR: failed to publish event to unified event bus: %v (event_type: %s, plugin_id: %s)\n", err, event.Type, event.PluginID)
-		}
+	adapter := EnsureGlobalEventBusAdapter()
+	if err := adapter.PublishEvent(event); err != nil {
+		// Log error but don't fail the operation
+		// Use simple logging as fallback
+		fmt.Printf("ERROR: failed to publish event to unified event bus: %v (event_type: %s, plugin_id: %s)\n", err, event.Type, event.PluginID)
 	}
 }
 
 // Shutdown close runtime - simplified for unified event bus
 func (r *simpleRuntime) Shutdown() {
 	// Shutdown unified event bus if available
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
+	adapter := GetGlobalEventBusAdapter()
+	if adapter != nil {
 		// Try to gracefully shutdown the event bus
 		if shutdownable, ok := adapter.(interface{ Shutdown() error }); ok {
 			if err := shutdownable.Shutdown(); err != nil {
@@ -500,10 +499,9 @@ func (r *simpleRuntime) Shutdown() {
 // SetEventDispatchMode set event dispatch mode - simplified for unified event bus
 func (r *simpleRuntime) SetEventDispatchMode(mode string) error {
 	// Set dispatch mode on unified event bus if available
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
-		if configurable, ok := adapter.(interface{ SetDispatchMode(string) error }); ok {
-			return configurable.SetDispatchMode(mode)
-		}
+	adapter := EnsureGlobalEventBusAdapter()
+	if configurable, ok := adapter.(interface{ SetDispatchMode(string) error }); ok {
+		return configurable.SetDispatchMode(mode)
 	}
 
 	// Return error for unsupported mode
@@ -518,10 +516,9 @@ func (r *simpleRuntime) SetEventDispatchMode(mode string) error {
 // SetEventWorkerPoolSize set event worker pool size - simplified for unified event bus
 func (r *simpleRuntime) SetEventWorkerPoolSize(size int) {
 	// Set worker pool size on unified event bus if available
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
-		if configurable, ok := adapter.(interface{ SetWorkerPoolSize(int) }); ok {
-			configurable.SetWorkerPoolSize(size)
-		}
+	adapter := EnsureGlobalEventBusAdapter()
+	if configurable, ok := adapter.(interface{ SetWorkerPoolSize(int) }); ok {
+		configurable.SetWorkerPoolSize(size)
 	}
 
 	// Store the setting for future reference
@@ -531,10 +528,9 @@ func (r *simpleRuntime) SetEventWorkerPoolSize(size int) {
 // SetEventTimeout set event processing timeout - simplified for unified event bus
 func (r *simpleRuntime) SetEventTimeout(timeout time.Duration) {
 	// Set event timeout on unified event bus if available
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
-		if configurable, ok := adapter.(interface{ SetEventTimeout(time.Duration) }); ok {
-			configurable.SetEventTimeout(timeout)
-		}
+	adapter := EnsureGlobalEventBusAdapter()
+	if configurable, ok := adapter.(interface{ SetEventTimeout(time.Duration) }); ok {
+		configurable.SetEventTimeout(timeout)
 	}
 
 	// Store the setting for future reference
@@ -544,14 +540,13 @@ func (r *simpleRuntime) SetEventTimeout(timeout time.Duration) {
 // GetEventStats get event system statistics - simplified for unified event bus
 func (r *simpleRuntime) GetEventStats() map[string]any {
 	// Get stats from unified event bus if available
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
-		if statsProvider, ok := adapter.(interface{ GetStats() map[string]any }); ok {
-			stats := statsProvider.GetStats()
-			// Add runtime-specific stats
-			stats["worker_pool_size"] = r.workerPoolSize
-			stats["event_timeout_ms"] = int(r.eventTimeout.Milliseconds())
-			return stats
-		}
+	adapter := EnsureGlobalEventBusAdapter()
+	if statsProvider, ok := adapter.(interface{ GetStats() map[string]any }); ok {
+		stats := statsProvider.GetStats()
+		// Add runtime-specific stats
+		stats["worker_pool_size"] = r.workerPoolSize
+		stats["event_timeout_ms"] = int(r.eventTimeout.Milliseconds())
+		return stats
 	}
 
 	// Return default stats if no adapter available
@@ -573,42 +568,39 @@ func (r *simpleRuntime) GetEventStats() map[string]any {
 // AddListener add event listener - simplified for unified event bus
 func (r *simpleRuntime) AddListener(listener EventListener, filter *EventFilter) {
 	// Register listener with unified event bus if available
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
-		if listenerManager, ok := adapter.(interface {
-			AddListener(string, *EventFilter, func(interface{}), string) error
-		}); ok {
-			listenerID := getListenerID(listener)
-			// Convert to unified event bus listener
-			unifiedHandler := func(event interface{}) {
-				if pluginEvent, ok := event.(PluginEvent); ok {
-					listener.HandleEvent(pluginEvent)
-				}
+	adapter := EnsureGlobalEventBusAdapter()
+	if listenerManager, ok := adapter.(interface {
+		AddListener(string, *EventFilter, func(interface{}), string) error
+	}); ok {
+		listenerID := getListenerID(listener)
+		// Convert to unified event bus listener
+		unifiedHandler := func(event interface{}) {
+			if pluginEvent, ok := event.(PluginEvent); ok {
+				listener.HandleEvent(pluginEvent)
 			}
-			_ = listenerManager.AddListener(listenerID, filter, unifiedHandler, "plugin")
 		}
+		_ = listenerManager.AddListener(listenerID, filter, unifiedHandler, "plugin")
 	}
 }
 
 // RemoveListener remove event listener - simplified for unified event bus
 func (r *simpleRuntime) RemoveListener(listener EventListener) {
 	// Remove listener from unified event bus if available
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
-		if listenerManager, ok := adapter.(interface{ RemoveListener(string) error }); ok {
-			listenerID := getListenerID(listener)
-			_ = listenerManager.RemoveListener(listenerID)
-		}
+	adapter := EnsureGlobalEventBusAdapter()
+	if listenerManager, ok := adapter.(interface{ RemoveListener(string) error }); ok {
+		listenerID := getListenerID(listener)
+		_ = listenerManager.RemoveListener(listenerID)
 	}
 }
 
 // GetEventHistory get event history - simplified for unified event bus
 func (r *simpleRuntime) GetEventHistory(filter EventFilter) []PluginEvent {
 	// Get event history from unified event bus if available
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
-		if historyProvider, ok := adapter.(interface {
-			GetEventHistory(EventFilter) []PluginEvent
-		}); ok {
-			return historyProvider.GetEventHistory(filter)
-		}
+	adapter := EnsureGlobalEventBusAdapter()
+	if historyProvider, ok := adapter.(interface {
+		GetEventHistory(EventFilter) []PluginEvent
+	}); ok {
+		return historyProvider.GetEventHistory(filter)
 	}
 
 	// Return empty slice if no adapter available
@@ -618,12 +610,11 @@ func (r *simpleRuntime) GetEventHistory(filter EventFilter) []PluginEvent {
 // GetPluginEventHistory get plugin event history - simplified for unified event bus
 func (r *simpleRuntime) GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent {
 	// Get plugin-specific event history from unified event bus if available
-	if adapter := GetGlobalEventBusAdapter(); adapter != nil {
-		if historyProvider, ok := adapter.(interface {
-			GetPluginEventHistory(string, EventFilter) []PluginEvent
-		}); ok {
-			return historyProvider.GetPluginEventHistory(pluginName, filter)
-		}
+	adapter := EnsureGlobalEventBusAdapter()
+	if historyProvider, ok := adapter.(interface {
+		GetPluginEventHistory(string, EventFilter) []PluginEvent
+	}); ok {
+		return historyProvider.GetPluginEventHistory(pluginName, filter)
 	}
 
 	// Return empty slice if no adapter available
@@ -902,15 +893,27 @@ func (r *simpleRuntime) ListResources() []*ResourceInfo {
 	return resources
 }
 
-// CleanupResources clean up resources for a specific plugin
+// CleanupResources clean up resources for a specific plugin with comprehensive error handling
 func (r *simpleRuntime) CleanupResources(pluginID string) error {
+	if pluginID == "" {
+		return fmt.Errorf("plugin ID cannot be empty")
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	var errors []error
+	var cleanedPrivate, cleanedShared int
+
 	// Clean up private resources
 	if pluginResources, exists := r.privateResources[pluginID]; exists {
-		for resourceName := range pluginResources {
+		for resourceName, resource := range pluginResources {
+			// Attempt graceful cleanup if resource implements cleanup interface
+			if err := r.cleanupResourceGracefully(resourceName, resource); err != nil {
+				errors = append(errors, fmt.Errorf("failed to cleanup private resource %s: %w", resourceName, err))
+			}
 			delete(r.resourceInfo, resourceName)
+			cleanedPrivate++
 		}
 		delete(r.privateResources, pluginID)
 	}
@@ -924,8 +927,58 @@ func (r *simpleRuntime) CleanupResources(pluginID string) error {
 	}
 
 	for _, name := range sharedResourcesToRemove {
+		if resource, exists := r.sharedResources[name]; exists {
+			if err := r.cleanupResourceGracefully(name, resource); err != nil {
+				errors = append(errors, fmt.Errorf("failed to cleanup shared resource %s: %w", name, err))
+			}
+			cleanedShared++
+		}
 		delete(r.sharedResources, name)
 		delete(r.resourceInfo, name)
+	}
+
+	// Log cleanup summary
+	if cleanedPrivate > 0 || cleanedShared > 0 {
+		fmt.Printf("Cleaned up resources for plugin %s: private=%d, shared=%d, errors=%d\n", 
+			pluginID, cleanedPrivate, cleanedShared, len(errors))
+	}
+
+	// Return combined error if any cleanup failed
+	if len(errors) > 0 {
+		return fmt.Errorf("resource cleanup had %d errors: %v", len(errors), errors[0])
+	}
+
+	return nil
+}
+
+// cleanupResourceGracefully attempts to gracefully cleanup a resource
+func (r *simpleRuntime) cleanupResourceGracefully(name string, resource any) error {
+	if resource == nil {
+		return nil
+	}
+
+	// Check if resource implements common cleanup interfaces
+	switch v := resource.(type) {
+	case interface{ Close() error }:
+		return v.Close()
+	case interface{ Cleanup() error }:
+		return v.Cleanup()
+	case interface{ Shutdown() error }:
+		return v.Shutdown()
+	case interface{ Stop() error }:
+		return v.Stop()
+	case interface{ Destroy() error }:
+		return v.Destroy()
+	}
+
+	// For channels, attempt to close them safely
+	if val := reflect.ValueOf(resource); val.Kind() == reflect.Chan {
+		defer func() {
+			if r := recover(); r != nil {
+				// Channel was already closed or nil, ignore
+			}
+		}()
+		val.Close()
 	}
 
 	return nil
@@ -960,21 +1013,32 @@ func (r *simpleRuntime) GetResourceStats() map[string]any {
 	return stats
 }
 
-// estimateResourceSize estimate resource size
+// estimateResourceSize estimate resource size with depth protection
 func (r *simpleRuntime) estimateResourceSize(resource any) int64 {
 	if resource == nil {
 		return 0
 	}
 
-	// Use reflection to estimate size
+	// Use reflection to estimate size with depth limit
 	val := reflect.ValueOf(resource)
-	return r.estimateValueSize(val)
+	visited := make(map[uintptr]bool)
+	return r.estimateValueSizeWithDepth(val, 0, 20, visited)  // Max depth 20
 }
 
-// estimateValueSize recursively estimate value size
-func (r *simpleRuntime) estimateValueSize(val reflect.Value) int64 {
-	if !val.IsValid() {
+// estimateValueSizeWithDepth recursively estimate value size with protection
+func (r *simpleRuntime) estimateValueSizeWithDepth(val reflect.Value, depth, maxDepth int, visited map[uintptr]bool) int64 {
+	if !val.IsValid() || depth > maxDepth {
 		return 0
+	}
+
+	// Prevent infinite recursion for circular references
+	if val.Kind() == reflect.Ptr && !val.IsNil() {
+		ptr := val.Pointer()
+		if visited[ptr] {
+			return 8 // Just the pointer size
+		}
+		visited[ptr] = true
+		defer func() { delete(visited, ptr) }()
 	}
 
 	switch val.Kind() {
@@ -990,28 +1054,61 @@ func (r *simpleRuntime) estimateValueSize(val reflect.Value) int64 {
 		return 1
 	case reflect.Slice, reflect.Array:
 		size := int64(0)
-		for i := 0; i < val.Len(); i++ {
-			size += r.estimateValueSize(val.Index(i))
+		length := val.Len()
+		// Limit the number of elements we examine to prevent excessive computation
+		maxElements := 1000
+		if length > maxElements {
+			// Sample first few elements and estimate
+			sampleSize := int64(0)
+			for i := 0; i < maxElements && i < length; i++ {
+				sampleSize += r.estimateValueSizeWithDepth(val.Index(i), depth+1, maxDepth, visited)
+			}
+			return (sampleSize * int64(length)) / int64(maxElements)
+		}
+		for i := 0; i < length; i++ {
+			size += r.estimateValueSizeWithDepth(val.Index(i), depth+1, maxDepth, visited)
 		}
 		return size
 	case reflect.Map:
 		size := int64(0)
-		for _, key := range val.MapKeys() {
-			size += r.estimateValueSize(key)
-			size += r.estimateValueSize(val.MapIndex(key))
+		keys := val.MapKeys()
+		// Limit the number of map entries we examine
+		maxKeys := 1000
+		if len(keys) > maxKeys {
+			// Sample first few keys and estimate
+			sampleSize := int64(0)
+			for i := 0; i < maxKeys; i++ {
+				key := keys[i]
+				sampleSize += r.estimateValueSizeWithDepth(key, depth+1, maxDepth, visited)
+				sampleSize += r.estimateValueSizeWithDepth(val.MapIndex(key), depth+1, maxDepth, visited)
+			}
+			return (sampleSize * int64(len(keys))) / int64(maxKeys)
+		}
+		for _, key := range keys {
+			size += r.estimateValueSizeWithDepth(key, depth+1, maxDepth, visited)
+			size += r.estimateValueSizeWithDepth(val.MapIndex(key), depth+1, maxDepth, visited)
 		}
 		return size
 	case reflect.Struct:
 		size := int64(0)
-		for i := 0; i < val.NumField(); i++ {
-			size += r.estimateValueSize(val.Field(i))
+		numField := val.NumField()
+		for i := 0; i < numField; i++ {
+			field := val.Field(i)
+			if field.CanInterface() { // Skip unexported fields
+				size += r.estimateValueSizeWithDepth(field, depth+1, maxDepth, visited)
+			}
 		}
 		return size
 	case reflect.Ptr:
 		if val.IsNil() {
 			return 8 // Size of pointer itself
 		}
-		return 8 + r.estimateValueSize(val.Elem())
+		return 8 + r.estimateValueSizeWithDepth(val.Elem(), depth+1, maxDepth, visited)
+	case reflect.Interface:
+		if val.IsNil() {
+			return 8
+		}
+		return 8 + r.estimateValueSizeWithDepth(val.Elem(), depth+1, maxDepth, visited)
 	default:
 		return 8 // Default size
 	}
