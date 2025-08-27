@@ -3,7 +3,6 @@ module github.com/go-lynx/lynx
 go 1.24.3
 
 require (
-	entgo.io/ent v0.14.5
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/go-openapi/spec v0.21.0
