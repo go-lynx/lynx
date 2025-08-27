@@ -30,6 +30,18 @@ type PrometheusMetrics struct {
 	configMaxLifetime       prometheus.Gauge
 	configEncryptionEnabled prometheus.Gauge
 	configConnectionPooling prometheus.Gauge
+
+	// Query/transaction metrics
+	queryDuration prometheus.Histogram
+	txDuration    prometheus.Histogram
+	errorCounter  prometheus.Counter
+	slowQueryCnt  prometheus.Counter
+
+	// Connection retry/attempt/success/failure metrics
+	connectAttempts prometheus.Counter
+	connectRetries  prometheus.Counter
+	connectSuccess  prometheus.Counter
+	connectFailures prometheus.Counter
 }
 
 // PrometheusConfig represents configuration for Prometheus metrics
@@ -168,6 +180,68 @@ func NewPrometheusMetrics(config *PrometheusConfig) *PrometheusMetrics {
 			Subsystem:   config.Subsystem,
 			Name:        "config_connection_pooling",
 			Help:        "Whether connection pooling is enabled (1) or disabled (0)",
+			ConstLabels: labels,
+		}),
+
+		// Query/transaction metrics
+		queryDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Namespace:   config.Namespace,
+			Subsystem:   config.Subsystem,
+			Name:        "query_duration_seconds",
+			Help:        "Duration of SQL queries in seconds",
+			ConstLabels: labels,
+			Buckets:     prometheus.DefBuckets,
+		}),
+		txDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Namespace:   config.Namespace,
+			Subsystem:   config.Subsystem,
+			Name:        "tx_duration_seconds",
+			Help:        "Duration of SQL transactions in seconds",
+			ConstLabels: labels,
+			Buckets:     prometheus.DefBuckets,
+		}),
+		errorCounter: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace:   config.Namespace,
+			Subsystem:   config.Subsystem,
+			Name:        "error_count_total",
+			Help:        "Total number of errors encountered",
+			ConstLabels: labels,
+		}),
+		slowQueryCnt: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace:   config.Namespace,
+			Subsystem:   config.Subsystem,
+			Name:        "slow_query_count_total",
+			Help:        "Total number of slow queries",
+			ConstLabels: labels,
+		}),
+
+		// Connection retry/attempt/success/failure metrics
+		connectAttempts: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace:   config.Namespace,
+			Subsystem:   config.Subsystem,
+			Name:        "connect_attempts_total",
+			Help:        "Total number of connection attempts",
+			ConstLabels: labels,
+		}),
+		connectRetries: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace:   config.Namespace,
+			Subsystem:   config.Subsystem,
+			Name:        "connect_retries_total",
+			Help:        "Total number of connection retries",
+			ConstLabels: labels,
+		}),
+		connectSuccess: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace:   config.Namespace,
+			Subsystem:   config.Subsystem,
+			Name:        "connect_success_total",
+			Help:        "Total number of successful connections",
+			ConstLabels: labels,
+		}),
+		connectFailures: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace:   config.Namespace,
+			Subsystem:   config.Subsystem,
+			Name:        "connect_failures_total",
+			Help:        "Total number of failed connections",
 			ConstLabels: labels,
 		}),
 	}

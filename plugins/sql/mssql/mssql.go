@@ -24,7 +24,7 @@ const (
 
 // DBMssqlClient represents Microsoft SQL Server client plugin instance
 type DBMssqlClient struct {
-	*base.SQLPlugin
+	*base.BaseSQLPlugin
 	config            *conf.Mssql
 	closeChan         chan struct{}
 	closed            bool
@@ -63,7 +63,7 @@ func NewMssqlClient() *DBMssqlClient {
 		closed:    false,
 	}
 
-	c.SQLPlugin = base.NewSQLPlugin(
+	c.BaseSQLPlugin = base.NewBaseSQLPlugin(
 		plugins.GeneratePluginID("", pluginName, pluginVersion),
 		pluginName,
 		pluginDescription,
@@ -97,7 +97,7 @@ func (m *DBMssqlClient) InitializeResources(rt plugins.Runtime) error {
 	}
 
 	// Initialize base SQL plugin
-	if err := m.SQLPlugin.InitializeResources(rt); err != nil {
+	if err := m.BaseSQLPlugin.InitializeResources(rt); err != nil {
 		return err
 	}
 
@@ -112,7 +112,7 @@ func (m *DBMssqlClient) StartupTasks() error {
 	m.initPrometheusMetrics()
 
 	// Start base SQL plugin
-	if err := m.SQLPlugin.StartupTasks(); err != nil {
+	if err := m.BaseSQLPlugin.StartupTasks(); err != nil {
 		return err
 	}
 

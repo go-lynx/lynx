@@ -1,23 +1,16 @@
-module github.com/go-lynx/lynx/plugins/sql/mysql
+module github.com/go-lynx/lynx/plugins/sql/base
 
 go 1.24.3
 
-replace (
-	github.com/go-lynx/lynx/plugins/sql/base => ../base
-	github.com/go-lynx/lynx/plugins/sql/interfaces => ../interfaces
-)
+replace github.com/go-lynx/lynx/plugins/sql/interfaces => ../interfaces
 
 require (
 	github.com/go-lynx/lynx v1.2.1
-	github.com/go-lynx/lynx/plugins/sql/base v0.0.0-00010101000000-000000000000
 	github.com/go-lynx/lynx/plugins/sql/interfaces v0.0.0-00010101000000-000000000000
-	github.com/go-sql-driver/mysql v1.9.2
-	google.golang.org/protobuf v1.35.2
 )
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
-	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
 	github.com/go-kratos/kratos/v2 v2.8.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
@@ -36,5 +29,6 @@ require (
 	golang.org/x/sys v0.32.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241209162323-e6fa225c2576 // indirect
 	google.golang.org/grpc v1.68.1 // indirect
+	google.golang.org/protobuf v1.35.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
