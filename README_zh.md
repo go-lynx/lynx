@@ -196,7 +196,9 @@ LYNX_LANG=en lynx new demo
 LYNX_LANG=zh lynx new demo
 ```
 
-## 🧭 CLI：lynx new（常用参数）
+## 🧭 CLI 命令
+
+### 📋 lynx new - 创建新项目
 
 常用参数：
 - `--repo-url, -r`：模板仓库地址（可用环境变量 `LYNX_LAYOUT_REPO` 指定）
@@ -219,6 +221,167 @@ lynx new demo -m github.com/acme/demo --post-tidy
 # 并发创建 4 个项目
 lynx new svc-a svc-b svc-c svc-d -c 4
 ```
+
+### 🔍 lynx doctor - 诊断环境与项目健康状态
+
+`lynx doctor` 命令对您的开发环境和 Lynx 项目执行全面的健康检查。
+
+#### 检查内容
+
+**环境检查：**
+- ✅ Go 安装和版本（最低要求 Go 1.20+）
+- ✅ Go 环境变量（GOPATH、GO111MODULE、GOPROXY）
+- ✅ Git 仓库状态和未提交的更改
+
+**工具检查：**
+- ✅ Protocol Buffers 编译器（protoc）安装
+- ✅ Wire 依赖注入工具可用性
+- ✅ Lynx 项目所需的开发工具
+
+**项目结构：**
+- ✅ 验证预期的目录结构（app/、boot/、plugins/ 等）
+- ✅ 检查 go.mod 文件的存在和有效性
+- ✅ 验证 Makefile 和预期的目标
+
+**配置：**
+- ✅ 扫描和验证 YAML/YML 配置文件
+- ✅ 检查配置语法和结构
+
+#### 输出格式
+
+- **Text**（默认）：人类可读，带颜色和图标
+- **JSON**：机器可读，适用于 CI/CD 集成
+- **Markdown**：文档友好格式
+
+#### 命令选项
+
+```bash
+# 运行所有诊断检查
+lynx doctor
+
+# 以 JSON 格式输出（用于 CI/CD）
+lynx doctor --format json
+
+# 以 Markdown 格式输出
+lynx doctor --format markdown > health-report.md
+
+# 仅检查特定类别
+lynx doctor --category env      # 仅环境
+lynx doctor --category tools    # 仅工具
+lynx doctor --category project  # 仅项目结构
+lynx doctor --category config   # 仅配置
+
+# 自动修复可能的问题
+lynx doctor --fix
+
+# 显示详细诊断信息
+lynx doctor --verbose
+```
+
+#### 自动修复功能
+
+`--fix` 标志可以自动解决：
+- 缺失的开发工具（通过 `make init` 或 `go install` 安装）
+- go.mod 问题（运行 `go mod tidy`）
+- 其他可修复的配置问题
+
+#### 健康状态指示器
+
+- 💚 **健康**：所有检查通过
+- 💛 **降级**：检测到一些警告但功能正常
+- 🔴 **严重**：发现需要关注的错误
+
+#### 输出示例
+
+```
+🔍 Lynx Doctor - 诊断报告
+==================================================
+
+📊 系统信息：
+  • 操作系统/架构：darwin/arm64
+  • Go 版本：go1.24.4
+  • Lynx 版本：v2.0.0
+
+🔎 诊断检查：
+--------------------------------------------------
+✅ Go 版本：已安装 Go 1.24
+✅ 项目结构：找到所有预期目录
+⚠️ Wire 依赖注入：未安装
+   💡 可用修复（使用 --fix 应用）
+
+📈 摘要：
+  总检查数：9
+  ✅ 通过：7
+  ⚠️ 警告：2
+
+💛 整体健康状态：降级
+```
+
+### 🚀 lynx run - 快速开发服务器
+
+`lynx run` 命令提供了一种便捷的方式来构建和运行您的 Lynx 项目，并支持热重载以实现快速开发。
+
+#### 功能特性
+
+- **自动构建和运行**：一个命令即可编译并执行项目
+- **热重载**：文件更改时自动重新构建和重启（使用 `--watch` 标志）
+- **进程管理**：优雅的关闭和重启处理
+- **智能检测**：自动在项目结构中查找主包
+- **环境控制**：传递自定义环境变量和参数
+
+#### 命令选项
+
+```bash
+lynx run [path] [flags]
+```
+
+**标志：**
+- `--watch, -w`：启用热重载（监视文件更改）
+- `--build-args`：go build 的附加参数
+- `--run-args`：传递给运行应用程序的参数
+- `--verbose, -v`：启用详细输出
+- `--env, -e`：环境变量（KEY=VALUE）
+- `--port, -p`：覆盖应用程序端口
+- `--skip-build`：跳过构建并运行现有二进制文件
+
+#### 使用示例
+
+```bash
+# 在当前目录运行项目
+lynx run
+
+# 启用热重载（文件更改时自动重启）
+lynx run --watch
+
+# 运行特定项目目录
+lynx run ./my-service
+
+# 传递自定义构建标志
+lynx run --build-args="-ldflags=-s -w"
+
+# 传递运行时配置
+lynx run --run-args="--config=./configs"
+
+# 设置环境变量
+lynx run -e PORT=8080 -e ENV=development
+
+# 运行现有二进制文件而不重新构建
+lynx run --skip-build
+```
+
+#### 热重载详情
+
+使用 `--watch` 模式时，以下文件会触发重新构建：
+- Go 源文件（`.go`）
+- Go 模块文件（`go.mod`、`go.sum`）
+- 配置文件（`.yaml`、`.yml`、`.json`、`.toml`）
+- 环境文件（`.env`）
+- Protocol Buffer 文件（`.proto`）
+
+忽略的路径：
+- `.git`、`.idea`、`vendor`、`node_modules`
+- 构建目录（`bin`、`dist`、`tmp`）
+- 测试文件（`*_test.go`）
 
 ## 🎯 应用场景
 
