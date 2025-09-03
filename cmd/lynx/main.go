@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/go-lynx/lynx/cmd/lynx/internal/doctor"
 	"github.com/go-lynx/lynx/cmd/lynx/internal/project"
 	"github.com/spf13/cobra"
 )
@@ -50,8 +51,9 @@ var rootCmd = &cobra.Command{
 
 // init function is the package initialization function, automatically executed when the package is loaded.
 func init() {
-	// Add subcommands to root command, here adding CmdNew command from project package
+	// Add subcommands to root command
 	rootCmd.AddCommand(project.CmdNew)
+	rootCmd.AddCommand(doctor.CmdDoctor)
 	// Global log level flags
 	rootCmd.PersistentFlags().Bool("verbose", false, "enable verbose logs")
 	rootCmd.PersistentFlags().Bool("quiet", false, "suppress non-error logs")

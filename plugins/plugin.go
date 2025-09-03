@@ -904,6 +904,7 @@ func (r *simpleRuntime) CleanupResources(pluginID string) error {
 
 	var errors []error
 	var cleanedPrivate, cleanedShared int
+	var cleanupStats = make(map[string]interface{})
 
 	// Clean up private resources
 	if pluginResources, exists := r.privateResources[pluginID]; exists {
@@ -911,6 +912,9 @@ func (r *simpleRuntime) CleanupResources(pluginID string) error {
 			// Attempt graceful cleanup if resource implements cleanup interface
 			if err := r.cleanupResourceGracefully(resourceName, resource); err != nil {
 				errors = append(errors, fmt.Errorf("failed to cleanup private resource %s: %w", resourceName, err))
+				cleanupStats[fmt.Sprintf("private_%s_error", resourceName)] = err.Error()
+			} else {
+				cleanupStats[fmt.Sprintf("private_%s_success", resourceName)] = true
 			}
 			delete(r.resourceInfo, resourceName)
 			cleanedPrivate++
@@ -930,6 +934,9 @@ func (r *simpleRuntime) CleanupResources(pluginID string) error {
 		if resource, exists := r.sharedResources[name]; exists {
 			if err := r.cleanupResourceGracefully(name, resource); err != nil {
 				errors = append(errors, fmt.Errorf("failed to cleanup shared resource %s: %w", name, err))
+				cleanupStats[fmt.Sprintf("shared_%s_error", name)] = err.Error()
+			} else {
+				cleanupStats[fmt.Sprintf("shared_%s_success", name)] = true
 			}
 			cleanedShared++
 		}
@@ -937,10 +944,17 @@ func (r *simpleRuntime) CleanupResources(pluginID string) error {
 		delete(r.resourceInfo, name)
 	}
 
-	// Log cleanup summary
+	// 记录清理统计信息
+	cleanupStats["total_private"] = cleanedPrivate
+	cleanupStats["total_shared"] = cleanedShared
+	cleanupStats["total_errors"] = len(errors)
+	cleanupStats["plugin_id"] = pluginID
+	cleanupStats["cleanup_time"] = time.Now().Unix()
+
+	// Log cleanup summary with detailed statistics
 	if cleanedPrivate > 0 || cleanedShared > 0 {
-		fmt.Printf("Cleaned up resources for plugin %s: private=%d, shared=%d, errors=%d\n", 
-			pluginID, cleanedPrivate, cleanedShared, len(errors))
+		log.Infof("Cleaned up resources for plugin %s: private=%d, shared=%d, errors=%d, stats=%+v",
+			pluginID, cleanedPrivate, cleanedShared, len(errors), cleanupStats)
 	}
 
 	// Return combined error if any cleanup failed
@@ -957,30 +971,69 @@ func (r *simpleRuntime) cleanupResourceGracefully(name string, resource any) err
 		return nil
 	}
 
+	// 记录清理开始
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime)
+		if duration > 5*time.Second {
+			log.Warnf("Resource cleanup for %s took %v (slow cleanup)", name, duration)
+		}
+	}()
+
 	// Check if resource implements common cleanup interfaces
 	switch v := resource.(type) {
 	case interface{ Close() error }:
-		return v.Close()
+		if err := v.Close(); err != nil {
+			log.Errorf("Failed to close resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully closed resource %s", name)
+		return nil
 	case interface{ Cleanup() error }:
-		return v.Cleanup()
+		if err := v.Cleanup(); err != nil {
+			log.Errorf("Failed to cleanup resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully cleaned up resource %s", name)
+		return nil
 	case interface{ Shutdown() error }:
-		return v.Shutdown()
+		if err := v.Shutdown(); err != nil {
+			log.Errorf("Failed to shutdown resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully shutdown resource %s", name)
+		return nil
 	case interface{ Stop() error }:
-		return v.Stop()
+		if err := v.Stop(); err != nil {
+			log.Errorf("Failed to stop resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully stopped resource %s", name)
+		return nil
 	case interface{ Destroy() error }:
-		return v.Destroy()
+		if err := v.Destroy(); err != nil {
+			log.Errorf("Failed to destroy resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully destroyed resource %s", name)
+		return nil
 	}
 
 	// For channels, attempt to close them safely
 	if val := reflect.ValueOf(resource); val.Kind() == reflect.Chan {
+		// 使用反射安全关闭channel
 		defer func() {
 			if r := recover(); r != nil {
-				// Channel was already closed or nil, ignore
+				log.Warnf("Panic while closing channel resource %s: %v", name, r)
 			}
 		}()
 		val.Close()
+		log.Debugf("Successfully closed channel resource %s", name)
+		return nil
 	}
 
+	// 对于其他类型的资源，记录警告但不报错
+	log.Warnf("Resource %s (type: %T) does not implement any cleanup interface", name, resource)
 	return nil
 }
 
@@ -1022,7 +1075,7 @@ func (r *simpleRuntime) estimateResourceSize(resource any) int64 {
 	// Use reflection to estimate size with depth limit
 	val := reflect.ValueOf(resource)
 	visited := make(map[uintptr]bool)
-	return r.estimateValueSizeWithDepth(val, 0, 20, visited)  // Max depth 20
+	return r.estimateValueSizeWithDepth(val, 0, 20, visited) // Max depth 20
 }
 
 // estimateValueSizeWithDepth recursively estimate value size with protection

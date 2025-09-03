@@ -88,6 +88,15 @@ func (v *Validator) Validate() *ValidationResult {
 	// Validate dependencies
 	v.validateDependencies(result)
 
+	// 新增：验证安全相关配置
+	v.validateSecurityConfigs(result)
+
+	// 新增：验证网络相关配置
+	v.validateNetworkConfigs(result)
+
+	// 新增：验证性能相关配置
+	v.validatePerformanceConfigs(result)
+
 	return result
 }
 
@@ -164,6 +173,85 @@ func (v *Validator) validateDependencies(result *ValidationResult) {
 	// Validate coordination between namespace and service
 	if v.config.Namespace == "default" && v.config.Token != "" {
 		result.AddError("token", "Token should not be required for default namespace", v.config.Token)
+	}
+}
+
+// validateSecurityConfigs validates security-related configurations
+func (v *Validator) validateSecurityConfigs(result *ValidationResult) {
+	// Validate token security
+	if v.config.Token != "" {
+		// 检查token长度
+		if len(v.config.Token) < 8 {
+			result.AddError("token", "token must be at least 8 characters long for security", v.config.Token)
+		}
+
+		// 检查token复杂度（至少包含字母和数字）
+		hasLetter := false
+		hasDigit := false
+		for _, char := range v.config.Token {
+			if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') {
+				hasLetter = true
+			}
+			if char >= '0' && char <= '9' {
+				hasDigit = true
+			}
+		}
+		if !hasLetter || !hasDigit {
+			result.AddError("token", "token must contain both letters and numbers for security", "***")
+		}
+	}
+
+	// 验证命名空间安全性
+	if v.config.Namespace != "" {
+		// 检查是否包含敏感字符
+		sensitiveChars := []string{"admin", "root", "system", "internal"}
+		namespaceLower := strings.ToLower(v.config.Namespace)
+		for _, sensitive := range sensitiveChars {
+			if strings.Contains(namespaceLower, sensitive) {
+				result.AddError("namespace", fmt.Sprintf("namespace should not contain sensitive word: %s", sensitive), v.config.Namespace)
+			}
+		}
+	}
+}
+
+// validateNetworkConfigs validates network-related configurations
+func (v *Validator) validateNetworkConfigs(result *ValidationResult) {
+	// 验证连接超时配置
+	if v.config.Timeout != nil {
+		timeout := v.config.Timeout.AsDuration()
+		if timeout < 100*time.Millisecond {
+			result.AddError("timeout", "timeout should be at least 100ms for network operations", timeout)
+		}
+		if timeout > 30*time.Second {
+			result.AddError("timeout", "timeout should not exceed 30s for network operations", timeout)
+		}
+	}
+
+	// 验证重试配置
+	if v.config.MaxRetryTimes < 0 {
+		result.AddError("max_retry_times", "max_retry_times cannot be negative", v.config.MaxRetryTimes)
+	}
+	if v.config.MaxRetryTimes > 10 {
+		result.AddError("max_retry_times", "max_retry_times should not exceed 10 to prevent excessive retries", v.config.MaxRetryTimes)
+	}
+}
+
+// validatePerformanceConfigs validates performance-related configurations
+func (v *Validator) validatePerformanceConfigs(result *ValidationResult) {
+	// 验证权重配置
+	if v.config.Weight < 1 {
+		result.AddError("weight", "weight should be at least 1 for load balancing", v.config.Weight)
+	}
+	if v.config.Weight > 1000 {
+		result.AddError("weight", "weight should not exceed 1000 to prevent load balancing issues", v.config.Weight)
+	}
+
+	// 验证TTL配置
+	if v.config.Ttl < 1 {
+		result.AddError("ttl", "TTL should be at least 1 second", v.config.Ttl)
+	}
+	if v.config.Ttl > 86400 {
+		result.AddError("ttl", "TTL should not exceed 24 hours (86400 seconds)", v.config.Ttl)
 	}
 }
 
