@@ -197,7 +197,9 @@ LYNX_LANG=en lynx new demo
 LYNX_LANG=zh lynx new demo
 ```
 
-## 🧭 CLI: lynx new (tips)
+## 🧭 CLI Commands
+
+### 📋 lynx new - Create New Projects
 
 Common flags for `lynx new`:
 - `--repo-url, -r`: layout repository URL (env: `LYNX_LAYOUT_REPO`)
@@ -220,6 +222,167 @@ lynx new demo -m github.com/acme/demo --post-tidy
 # create multiple projects with concurrency 4
 lynx new svc-a svc-b svc-c svc-d -c 4
 ```
+
+### 🔍 lynx doctor - Diagnose Environment & Project Health
+
+The `lynx doctor` command performs comprehensive health checks on your development environment and Lynx project.
+
+#### What It Checks
+
+**Environment Checks:**
+- ✅ Go installation and version (minimum Go 1.20+)
+- ✅ Go environment variables (GOPATH, GO111MODULE, GOPROXY)
+- ✅ Git repository status and uncommitted changes
+
+**Tool Checks:**
+- ✅ Protocol Buffers compiler (protoc) installation
+- ✅ Wire dependency injection tool availability
+- ✅ Required development tools for Lynx projects
+
+**Project Structure:**
+- ✅ Validates expected directory structure (app/, boot/, plugins/, etc.)
+- ✅ Checks go.mod file existence and validity
+- ✅ Verifies Makefile and expected targets
+
+**Configuration:**
+- ✅ Scans and validates YAML/YML configuration files
+- ✅ Checks configuration syntax and structure
+
+#### Output Formats
+
+- **Text** (default): Human-readable with colors and icons
+- **JSON**: Machine-readable for CI/CD integration
+- **Markdown**: Documentation-friendly format
+
+#### Command Options
+
+```bash
+# Run all diagnostic checks
+lynx doctor
+
+# Output in JSON format (for CI/CD)
+lynx doctor --format json
+
+# Output in Markdown format
+lynx doctor --format markdown > health-report.md
+
+# Check specific category only
+lynx doctor --category env      # Environment only
+lynx doctor --category tools    # Tools only
+lynx doctor --category project  # Project structure only
+lynx doctor --category config   # Configuration only
+
+# Auto-fix issues when possible
+lynx doctor --fix
+
+# Show detailed diagnostic information
+lynx doctor --verbose
+```
+
+#### Auto-Fix Capabilities
+
+The `--fix` flag can automatically resolve:
+- Missing development tools (installs via `make init` or `go install`)
+- go.mod issues (runs `go mod tidy`)
+- Other fixable configuration problems
+
+#### Health Status Indicators
+
+- 💚 **Healthy**: All checks passed
+- 💛 **Degraded**: Some warnings detected but functional
+- 🔴 **Critical**: Errors found that need attention
+
+#### Example Output
+
+```
+🔍 Lynx Doctor - Diagnostic Report
+==================================================
+
+📊 System Information:
+  • OS/Arch: darwin/arm64
+  • Go Version: go1.24.4
+  • Lynx Version: v2.0.0
+
+🔎 Diagnostic Checks:
+--------------------------------------------------
+✅ Go Version: Go 1.24 installed
+✅ Project Structure: All expected directories found
+⚠️ Wire Dependency Injection: Not installed
+   💡 Fix available (use --fix to apply)
+
+📈 Summary:
+  Total Checks: 9
+  ✅ Passed: 7
+  ⚠️ Warnings: 2
+
+💛 Overall Health: Degraded
+```
+
+### 🚀 lynx run - Quick Development Server
+
+The `lynx run` command provides a convenient way to build and run your Lynx project with optional hot reload for rapid development.
+
+#### Features
+
+- **Automatic Build & Run**: Compiles and executes your project in one command
+- **Hot Reload**: Automatically rebuilds and restarts on file changes (with `--watch` flag)
+- **Process Management**: Graceful shutdown and restart handling
+- **Smart Detection**: Automatically finds main package in project structure
+- **Environment Control**: Pass custom environment variables and arguments
+
+#### Command Options
+
+```bash
+lynx run [path] [flags]
+```
+
+**Flags:**
+- `--watch, -w`: Enable hot reload (watch for file changes)
+- `--build-args`: Additional arguments for go build
+- `--run-args`: Arguments to pass to the running application
+- `--verbose, -v`: Enable verbose output
+- `--env, -e`: Environment variables (KEY=VALUE)
+- `--port, -p`: Override the application port
+- `--skip-build`: Skip build and run existing binary
+
+#### Example Usage
+
+```bash
+# Run project in current directory
+lynx run
+
+# Run with hot reload (auto-restart on file changes)
+lynx run --watch
+
+# Run specific project directory
+lynx run ./my-service
+
+# Pass custom build flags
+lynx run --build-args="-ldflags=-s -w"
+
+# Pass runtime configuration
+lynx run --run-args="--config=./configs"
+
+# Set environment variables
+lynx run -e PORT=8080 -e ENV=development
+
+# Run existing binary without rebuild
+lynx run --skip-build
+```
+
+#### Hot Reload Details
+
+When using `--watch` mode, the following files trigger rebuilds:
+- Go source files (`.go`)
+- Go module files (`go.mod`, `go.sum`)
+- Configuration files (`.yaml`, `.yml`, `.json`, `.toml`)
+- Environment files (`.env`)
+- Protocol buffer files (`.proto`)
+
+Ignored paths:
+- `.git`, `.idea`, `vendor`, `node_modules`
+- Build directories (`bin`, `dist`, `tmp`)
+- Test files (`*_test.go`)
 
 ## 🎯 Use Cases
 
