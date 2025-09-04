@@ -944,7 +944,7 @@ func (r *simpleRuntime) CleanupResources(pluginID string) error {
 		delete(r.resourceInfo, name)
 	}
 
-	// 记录清理统计信息
+	// Record cleanup statistics
 	cleanupStats["total_private"] = cleanedPrivate
 	cleanupStats["total_shared"] = cleanedShared
 	cleanupStats["total_errors"] = len(errors)
@@ -971,7 +971,7 @@ func (r *simpleRuntime) cleanupResourceGracefully(name string, resource any) err
 		return nil
 	}
 
-	// 记录清理开始
+	// Record cleanup start
 	startTime := time.Now()
 	defer func() {
 		duration := time.Since(startTime)
@@ -1021,7 +1021,7 @@ func (r *simpleRuntime) cleanupResourceGracefully(name string, resource any) err
 
 	// For channels, attempt to close them safely
 	if val := reflect.ValueOf(resource); val.Kind() == reflect.Chan {
-		// 使用反射安全关闭channel
+		// Use reflection to safely close channel
 		defer func() {
 			if r := recover(); r != nil {
 				log.Warnf("Panic while closing channel resource %s: %v", name, r)
@@ -1032,7 +1032,7 @@ func (r *simpleRuntime) cleanupResourceGracefully(name string, resource any) err
 		return nil
 	}
 
-	// 对于其他类型的资源，记录警告但不报错
+	// For other types of resources, log warning but don't error
 	log.Warnf("Resource %s (type: %T) does not implement any cleanup interface", name, resource)
 	return nil
 }
