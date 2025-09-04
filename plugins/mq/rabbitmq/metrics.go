@@ -1,6 +1,8 @@
 package rabbitmq
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -157,4 +159,95 @@ func (m *Metrics) Reset() {
 
 	m.lastReconnectTime = time.Time{}
 	m.lastHealthCheck = time.Now()
+}
+
+// GetPrometheusMetrics returns metrics in Prometheus format
+func (m *Metrics) GetPrometheusMetrics() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var metrics []string
+
+	// Producer metrics
+	metrics = append(metrics,
+		"# HELP lynx_rabbitmq_producer_messages_sent_total Total number of messages sent",
+		"# TYPE lynx_rabbitmq_producer_messages_sent_total counter",
+		fmt.Sprintf("lynx_rabbitmq_producer_messages_sent_total %d", atomic.LoadInt64(&m.producerMessagesSent)),
+		"",
+		"# HELP lynx_rabbitmq_producer_messages_failed_total Total number of failed messages",
+		"# TYPE lynx_rabbitmq_producer_messages_failed_total counter",
+		fmt.Sprintf("lynx_rabbitmq_producer_messages_failed_total %d", atomic.LoadInt64(&m.producerMessagesFailed)),
+		"",
+		"# HELP lynx_rabbitmq_producer_latency_seconds Producer latency in seconds",
+		"# TYPE lynx_rabbitmq_producer_latency_seconds gauge",
+		fmt.Sprintf("lynx_rabbitmq_producer_latency_seconds %f", 
+			time.Duration(atomic.LoadInt64(&m.producerLatency)).Seconds()),
+		"",
+	)
+
+	// Consumer metrics
+	metrics = append(metrics,
+		"# HELP lynx_rabbitmq_consumer_messages_received_total Total number of messages received",
+		"# TYPE lynx_rabbitmq_consumer_messages_received_total counter",
+		fmt.Sprintf("lynx_rabbitmq_consumer_messages_received_total %d", 
+			atomic.LoadInt64(&m.consumerMessagesReceived)),
+		"",
+		"# HELP lynx_rabbitmq_consumer_messages_failed_total Total number of failed message consumptions",
+		"# TYPE lynx_rabbitmq_consumer_messages_failed_total counter",
+		fmt.Sprintf("lynx_rabbitmq_consumer_messages_failed_total %d", 
+			atomic.LoadInt64(&m.consumerMessagesFailed)),
+		"",
+		"# HELP lynx_rabbitmq_consumer_latency_seconds Consumer latency in seconds",
+		"# TYPE lynx_rabbitmq_consumer_latency_seconds gauge",
+		fmt.Sprintf("lynx_rabbitmq_consumer_latency_seconds %f",
+			time.Duration(atomic.LoadInt64(&m.consumerLatency)).Seconds()),
+		"",
+	)
+
+	// Connection metrics
+	metrics = append(metrics,
+		"# HELP lynx_rabbitmq_connection_errors_total Total number of connection errors",
+		"# TYPE lynx_rabbitmq_connection_errors_total counter",
+		fmt.Sprintf("lynx_rabbitmq_connection_errors_total %d", atomic.LoadInt64(&m.connectionErrors)),
+		"",
+		"# HELP lynx_rabbitmq_reconnection_count_total Total number of reconnections",
+		"# TYPE lynx_rabbitmq_reconnection_count_total counter",
+		fmt.Sprintf("lynx_rabbitmq_reconnection_count_total %d", atomic.LoadInt64(&m.reconnectionCount)),
+		"",
+	)
+
+	// Health metrics
+	healthyValue := 0
+	if atomic.LoadInt32(&m.isHealthy) == 1 {
+		healthyValue = 1
+	}
+	
+	metrics = append(metrics,
+		"# HELP lynx_rabbitmq_health_check_count_total Total number of health checks",
+		"# TYPE lynx_rabbitmq_health_check_count_total counter",
+		fmt.Sprintf("lynx_rabbitmq_health_check_count_total %d", atomic.LoadInt64(&m.healthCheckCount)),
+		"",
+		"# HELP lynx_rabbitmq_health_check_errors_total Total number of health check errors",
+		"# TYPE lynx_rabbitmq_health_check_errors_total counter",
+		fmt.Sprintf("lynx_rabbitmq_health_check_errors_total %d", atomic.LoadInt64(&m.healthCheckErrors)),
+		"",
+		"# HELP lynx_rabbitmq_health_status Current health status (1=healthy, 0=unhealthy)",
+		"# TYPE lynx_rabbitmq_health_status gauge",
+		fmt.Sprintf("lynx_rabbitmq_health_status %d", healthyValue),
+		"",
+		"# HELP lynx_rabbitmq_last_health_check_timestamp Unix timestamp of last health check",
+		"# TYPE lynx_rabbitmq_last_health_check_timestamp gauge",
+		fmt.Sprintf("lynx_rabbitmq_last_health_check_timestamp %d", m.lastHealthCheck.Unix()),
+	)
+
+	if !m.lastReconnectTime.IsZero() {
+		metrics = append(metrics,
+			"",
+			"# HELP lynx_rabbitmq_last_reconnect_timestamp Unix timestamp of last reconnection",
+			"# TYPE lynx_rabbitmq_last_reconnect_timestamp gauge",
+			fmt.Sprintf("lynx_rabbitmq_last_reconnect_timestamp %d", m.lastReconnectTime.Unix()),
+		)
+	}
+
+	return strings.Join(metrics, "\n")
 }

@@ -224,7 +224,7 @@ func (m *DefaultPluginManager[T]) getInitTimeout() time.Duration {
 	var confStr string
 	if err := m.config.Value("lynx.plugins.init_timeout").Scan(&confStr); err == nil {
 		if parsed, err2 := time.ParseDuration(confStr); err2 == nil {
-			// 增加超时范围验证
+			// Add timeout range validation
 			if parsed < 1*time.Second {
 				log.Warnf("init_timeout too short (%v), using minimum 1s", parsed)
 				return 1 * time.Second
@@ -248,7 +248,7 @@ func (m *DefaultPluginManager[T]) getStartTimeout() time.Duration {
 	var confStr string
 	if err := m.config.Value("lynx.plugins.start_timeout").Scan(&confStr); err == nil {
 		if parsed, err2 := time.ParseDuration(confStr); err2 == nil {
-			// 增加超时范围验证
+			// Add timeout range validation
 			if parsed < 1*time.Second {
 				log.Warnf("start_timeout too short (%v), using minimum 1s", parsed)
 				return 1 * time.Second
@@ -272,7 +272,7 @@ func (m *DefaultPluginManager[T]) getStopTimeout() time.Duration {
 	var confStr string
 	if err := m.config.Value("lynx.plugins.stop_timeout").Scan(&confStr); err == nil {
 		if parsed, err2 := time.ParseDuration(confStr); err2 == nil {
-			// 增加超时范围验证
+			// Add timeout range validation
 			if parsed < 1*time.Second {
 				log.Warnf("stop_timeout too short (%v), using minimum 1s", parsed)
 				return 1 * time.Second

@@ -79,21 +79,21 @@ type ProductionMetrics struct {
 	resourceLimit  *prometheus.GaugeVec
 	resourceErrors *prometheus.CounterVec
 
-	// 新增：性能瓶颈检测指标
+	// Added: Performance bottleneck detection metrics
 	performanceBottlenecks *prometheus.GaugeVec
 	slowOperations         *prometheus.CounterVec
 	timeoutOperations      *prometheus.CounterVec
 	memoryLeaks            *prometheus.GaugeVec
 	goroutineLeaks         *prometheus.GaugeVec
 
-	// 新增：业务指标
+	// Added: Business metrics
 	businessTransactions *prometheus.CounterVec
 	businessErrors       *prometheus.CounterVec
 	businessLatency      *prometheus.HistogramVec
 	userSessions         *prometheus.GaugeVec
 	activeConnections    *prometheus.GaugeVec
 
-	// 新增：系统健康度指标
+	// Added: System health metrics
 	systemHealthScore    prometheus.Gauge
 	componentHealthScore *prometheus.GaugeVec
 	overallHealthStatus  prometheus.Gauge
@@ -360,7 +360,7 @@ func (pm *ProductionMetrics) initializeMetrics() {
 		Help: "Total number of resource errors",
 	}, []string{"resource_type", "error_type"})
 
-	// 新增：性能瓶颈检测指标
+	// Added: Performance bottleneck detection metrics
 	pm.performanceBottlenecks = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "lynx_performance_bottlenecks",
 		Help: "Performance bottlenecks detected (1=detected, 0=normal)",
@@ -386,7 +386,7 @@ func (pm *ProductionMetrics) initializeMetrics() {
 		Help: "Goroutine leaks detected (1=detected, 0=normal)",
 	}, []string{"component", "leak_type"})
 
-	// 新增：业务指标
+	// Added: Business metrics
 	pm.businessTransactions = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "lynx_business_transactions_total",
 		Help: "Total number of business transactions",
@@ -413,7 +413,7 @@ func (pm *ProductionMetrics) initializeMetrics() {
 		Help: "Number of active connections",
 	}, []string{"connection_type", "protocol"})
 
-	// 新增：系统健康度指标
+	// Added: System health metrics
 	pm.systemHealthScore = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "lynx_system_health_score",
 		Help: "Overall system health score (0-100)",

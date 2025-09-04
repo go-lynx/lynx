@@ -1,7 +1,10 @@
 package kafka
 
 import (
+	"fmt"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -155,4 +158,77 @@ func (m *Metrics) Reset() {
 	m.OffsetCommitErrors = 0
 	m.ConnectionErrors = 0
 	m.Reconnections = 0
+}
+
+// GetPrometheusMetrics returns metrics in Prometheus format
+func (m *Metrics) GetPrometheusMetrics() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var metrics []string
+
+	// Producer metrics
+	metrics = append(metrics,
+		"# HELP lynx_kafka_producer_messages_total Total number of messages produced to Kafka",
+		"# TYPE lynx_kafka_producer_messages_total counter",
+		fmt.Sprintf("lynx_kafka_producer_messages_total %d", atomic.LoadInt64(&m.ProducedMessages)),
+		"",
+		"# HELP lynx_kafka_producer_bytes_total Total number of bytes produced to Kafka",
+		"# TYPE lynx_kafka_producer_bytes_total counter",
+		fmt.Sprintf("lynx_kafka_producer_bytes_total %d", atomic.LoadInt64(&m.ProducedBytes)),
+		"",
+		"# HELP lynx_kafka_producer_errors_total Total number of producer errors",
+		"# TYPE lynx_kafka_producer_errors_total counter",
+		fmt.Sprintf("lynx_kafka_producer_errors_total %d", atomic.LoadInt64(&m.ProducerErrors)),
+		"",
+		"# HELP lynx_kafka_producer_latency_seconds Producer latency in seconds",
+		"# TYPE lynx_kafka_producer_latency_seconds gauge",
+		fmt.Sprintf("lynx_kafka_producer_latency_seconds %f", m.ProducerLatency.Seconds()),
+		"",
+	)
+
+	// Consumer metrics
+	metrics = append(metrics,
+		"# HELP lynx_kafka_consumer_messages_total Total number of messages consumed from Kafka",
+		"# TYPE lynx_kafka_consumer_messages_total counter",
+		fmt.Sprintf("lynx_kafka_consumer_messages_total %d", atomic.LoadInt64(&m.ConsumedMessages)),
+		"",
+		"# HELP lynx_kafka_consumer_bytes_total Total number of bytes consumed from Kafka",
+		"# TYPE lynx_kafka_consumer_bytes_total counter",
+		fmt.Sprintf("lynx_kafka_consumer_bytes_total %d", atomic.LoadInt64(&m.ConsumedBytes)),
+		"",
+		"# HELP lynx_kafka_consumer_errors_total Total number of consumer errors",
+		"# TYPE lynx_kafka_consumer_errors_total counter",
+		fmt.Sprintf("lynx_kafka_consumer_errors_total %d", atomic.LoadInt64(&m.ConsumerErrors)),
+		"",
+		"# HELP lynx_kafka_consumer_latency_seconds Consumer latency in seconds",
+		"# TYPE lynx_kafka_consumer_latency_seconds gauge",
+		fmt.Sprintf("lynx_kafka_consumer_latency_seconds %f", m.ConsumerLatency.Seconds()),
+		"",
+	)
+
+	// Offset metrics
+	metrics = append(metrics,
+		"# HELP lynx_kafka_offset_commits_total Total number of offset commits",
+		"# TYPE lynx_kafka_offset_commits_total counter",
+		fmt.Sprintf("lynx_kafka_offset_commits_total %d", atomic.LoadInt64(&m.OffsetCommits)),
+		"",
+		"# HELP lynx_kafka_offset_commit_errors_total Total number of offset commit errors",
+		"# TYPE lynx_kafka_offset_commit_errors_total counter",
+		fmt.Sprintf("lynx_kafka_offset_commit_errors_total %d", atomic.LoadInt64(&m.OffsetCommitErrors)),
+		"",
+	)
+
+	// Connection metrics
+	metrics = append(metrics,
+		"# HELP lynx_kafka_connection_errors_total Total number of connection errors",
+		"# TYPE lynx_kafka_connection_errors_total counter",
+		fmt.Sprintf("lynx_kafka_connection_errors_total %d", atomic.LoadInt64(&m.ConnectionErrors)),
+		"",
+		"# HELP lynx_kafka_reconnections_total Total number of reconnections",
+		"# TYPE lynx_kafka_reconnections_total counter",
+		fmt.Sprintf("lynx_kafka_reconnections_total %d", atomic.LoadInt64(&m.Reconnections)),
+	)
+
+	return strings.Join(metrics, "\n")
 }

@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -115,4 +116,119 @@ func (r *PlugRedis) startInfoCollector(mode string) {
 			}
 		}
 	}()
+}
+
+// HealthStatus returns detailed health status information
+type HealthStatus struct {
+	Healthy      bool          `json:"healthy"`
+	Mode         string        `json:"mode"`
+	Latency      time.Duration `json:"latency"`
+	Version      string        `json:"version"`
+	ConnectedNow int           `json:"connected_now"`
+	IsMaster     bool          `json:"is_master"`
+	ClusterOK    bool          `json:"cluster_ok,omitempty"`
+	Error        string        `json:"error,omitempty"`
+}
+
+// GetHealthStatus get detailed health status
+func (r *PlugRedis) GetHealthStatus(ctx context.Context) *HealthStatus {
+	if r.rdb == nil {
+		return &HealthStatus{
+			Healthy: false,
+			Error:   "redis client not initialized",
+		}
+	}
+
+	status := &HealthStatus{
+		Mode: r.detectMode(),
+	}
+
+	// Ping test
+	start := time.Now()
+	if _, err := r.rdb.Ping(ctx).Result(); err != nil {
+		status.Healthy = false
+		status.Error = err.Error()
+		return status
+	}
+	status.Latency = time.Since(start)
+	status.Healthy = true
+
+	// Get version information
+	status.Version = r.readRedisVersion()
+
+	// Get connection information
+	// Note: GetPoolStats method may need to be implemented or use alternative approach
+	// if poolStats := r.GetPoolStats(); poolStats != nil {
+	//     status.ConnectedNow = int(poolStats.TotalConns)
+	// }
+
+	// Get master-slave status
+	info, _ := r.rdb.Info(ctx, "replication").Result()
+	status.IsMaster = strings.Contains(info, "role:master")
+
+	// Cluster status
+	if clusterClient, ok := r.rdb.(*redis.ClusterClient); ok {
+		clusterInfo, _ := clusterClient.Info(ctx, "cluster").Result()
+		status.ClusterOK = strings.Contains(clusterInfo, "cluster_state:ok")
+	}
+
+	return status
+}
+
+// PerformanceMetrics performance metrics
+type PerformanceMetrics struct {
+	CommandsProcessed int64         `json:"commands_processed"`
+	UsedMemory        int64         `json:"used_memory"`
+	ConnectedClients  int           `json:"connected_clients"`
+	HitRate           float64       `json:"hit_rate"`
+	EvictedKeys       int64         `json:"evicted_keys"`
+	ExpiredKeys       int64         `json:"expired_keys"`
+	AvgLatency        time.Duration `json:"avg_latency"`
+}
+
+// GetPerformanceMetrics get performance metrics
+func (r *PlugRedis) GetPerformanceMetrics(ctx context.Context) (*PerformanceMetrics, error) {
+	if r.rdb == nil {
+		return nil, fmt.Errorf("redis client not initialized")
+	}
+
+	metrics := &PerformanceMetrics{}
+
+	// Get statistics information
+	info, err := r.rdb.Info(ctx, "stats").Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stats: %w", err)
+	}
+
+	// Parse statistics information
+	parseIntFromInfo := func(info, key string) int64 {
+		if idx := strings.Index(info, key+":"); idx >= 0 {
+			rest := info[idx+len(key)+1:]
+			var val int64
+			fmt.Sscanf(rest, "%d", &val)
+			return val
+		}
+		return 0
+	}
+
+	metrics.CommandsProcessed = parseIntFromInfo(info, "total_commands_processed")
+	metrics.ExpiredKeys = parseIntFromInfo(info, "expired_keys")
+	metrics.EvictedKeys = parseIntFromInfo(info, "evicted_keys")
+
+	// Get memory information
+	memInfo, _ := r.rdb.Info(ctx, "memory").Result()
+	metrics.UsedMemory = parseIntFromInfo(memInfo, "used_memory")
+
+	// Get client connection count
+	clientInfo, _ := r.rdb.Info(ctx, "clients").Result()
+	metrics.ConnectedClients = int(parseIntFromInfo(clientInfo, "connected_clients"))
+
+	// Calculate hit rate
+	keyspaceHits := parseIntFromInfo(info, "keyspace_hits")
+	keyspaceMisses := parseIntFromInfo(info, "keyspace_misses")
+	if total := keyspaceHits + keyspaceMisses; total > 0 {
+		metrics.HitRate = float64(keyspaceHits) / float64(total) * 100
+	}
+
+	return metrics, nil
 }
