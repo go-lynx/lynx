@@ -6,8 +6,8 @@ toolchain go1.24.4
 
 require (
 	github.com/go-lynx/lynx v1.2.3
-	github.com/go-lynx/lynx/plugins/sql/base v0.0.0
-	github.com/go-lynx/lynx/plugins/sql/interfaces v0.0.0
+	github.com/go-lynx/lynx/plugins/sql/base v1.2.3
+	github.com/go-lynx/lynx/plugins/sql/interfaces v1.2.3
 	github.com/prometheus/client_golang v1.23.0
 	google.golang.org/protobuf v1.36.6
 )

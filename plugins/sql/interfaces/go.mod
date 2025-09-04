@@ -2,7 +2,7 @@ module github.com/go-lynx/lynx/plugins/sql/interfaces
 
 go 1.24.3
 
-require github.com/go-lynx/lynx v1.2.1
+require github.com/go-lynx/lynx v1.2.3
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
@@ -11,5 +11,3 @@ require (
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/go-lynx/lynx => ../../../
