@@ -1,0 +1,61 @@
+kafka:
+  brokers:
+    - 127.0.0.1:9092
+    - 127.0.0.1:9093
+
+  # TLS full example (if not needed, can set enabled: false)
+  tls:
+    enabled: true
+    ca_file: /etc/ssl/certs/ca.pem
+    cert_file: /etc/ssl/certs/client.pem
+    key_file: /etc/ssl/private/client.key
+    insecure_skip_verify: false
+    server_name: kafka.internal
+
+  # Optional: SASL configuration
+  sasl:
+    enabled: false
+    mechanism: "PLAIN"           # PLAIN | SCRAM-SHA-256 | SCRAM-SHA-512
+    username: "user"
+    password: "pass"
+
+  dial_timeout: 5s
+
+  # Multiple producer instances
+  producers:
+    - name: default
+      enabled: true
+      required_acks: 1            # -1=all ISR, 1=leader, 0=no ack
+      batch_size: 1000
+      batch_timeout: 50ms         # As linger, improves throughput
+      compression: snappy         # none|gzip|snappy|lz4|zstd
+      topics: ["topic_a", "topic_b"]
+
+    - name: critical
+      enabled: true
+      required_acks: -1           # all ISR
+      batch_size: 1               # Disable async batching (size=1 or timeout<=0)
+      batch_timeout: 0s
+      compression: none
+      topics: ["topic_critical"]
+
+  # Multiple consumer instances
+  consumers:
+    - name: group_a
+      enabled: true
+      group_id: "app-group-a"
+      auto_commit: false          # Manual ACK
+      auto_commit_interval: 3s
+      start_offset: latest        # latest|earliest
+      max_concurrency: 8
+      rebalance_timeout: 45s
+      topics: ["topic_a"]
+
+    - name: group_b
+      enabled: true
+      group_id: "app-group-b"
+      auto_commit: true           # Automatic ACK
+      auto_commit_interval: 2s
+      start_offset: earliest
+      max_concurrency: 16
+      topics: ["topic_b", "topic_critical"]

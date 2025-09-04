@@ -3,68 +3,70 @@ package subscribe
 import (
 	"crypto/tls"
 	"crypto/x509"
+
 	"github.com/go-kratos/kratos/v2/config"
-	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/tls/conf"
 )
 
-// tlsLoad 方法用于加载 TLS 配置。如果未启用 TLS，则返回 nil。
-// 该方法会尝试获取根证书并将其添加到证书池中，最终返回一个配置好的 tls.Config 实例。
+// tlsLoad method is used to load TLS configuration. Returns nil if TLS is not enabled.
+// This method attempts to obtain the root certificate and add it to the certificate pool, ultimately returning a configured tls.Config instance.
 func (g *GrpcSubscribe) tlsLoad() *tls.Config {
-	// 检查是否启用 TLS，如果未启用则直接返回 nil
+	// Check if TLS is enabled, return nil if not enabled
 	if !g.tls {
 		return nil
 	}
 
-	// 创建一个新的证书池，用于存储根证书
+	// Create a new certificate pool for storing root certificates
 	certPool := x509.NewCertPool()
 	var rootCA []byte
 
-	// 检查是否指定了根 CA 证书的名称
+	// Check if root CA certificate name is specified
 	if g.caName != "" {
-		// Obtain the root certificate of the remote file
-		// 检查应用的控制平面是否可用，如果不可用则返回 nil
-		if app.Lynx().GetControlPlane() == nil {
-			return nil
+		// Requires configProvider to be injected by upper layer
+		if g.configProvider == nil {
+			panic("tls: configProvider is nil while caName is set")
 		}
 		// if group is empty, use the name as the group name.
-		// 如果未指定根 CA 证书文件所属的组，则使用根 CA 证书的名称作为组名
+		// If root CA certificate file group is not specified, use the root CA certificate name as the group name
 		if g.caGroup == "" {
 			g.caGroup = g.caName
 		}
-		// 从控制平面获取配置信息
-		s, err := app.Lynx().GetControlPlane().GetConfig(g.caName, g.caGroup)
+		// Get configuration information through injected provider
+		s, err := g.configProvider(g.caName, g.caGroup)
 		if err != nil {
-			// 若获取配置信息失败，则触发 panic
+			// If getting configuration information fails, trigger panic
 			panic(err)
 		}
-		// 创建一个新的配置实例，并将从控制平面获取的配置源设置进去
+		// Create a new configuration instance and set the configuration source obtained from control plane
 		c := config.New(
 			config.WithSource(s),
 		)
-		// 加载配置信息
+		// Load configuration information
 		if err := c.Load(); err != nil {
-			// 若加载配置信息失败，则触发 panic
+			// If loading configuration information fails, trigger panic
 			panic(err)
 		}
-		// 定义一个 Cert 结构体变量，用于存储从配置中扫描出的证书信息
+		// Define a Cert struct variable for storing certificate information scanned from configuration
 		var t conf.Cert
-		// 将配置信息扫描到 Cert 结构体变量中
+		// Scan configuration information into Cert struct variable
 		if err := c.Scan(&t); err != nil {
-			// 若扫描配置信息失败，则触发 panic
+			// If scanning configuration information fails, trigger panic
 			panic(err)
 		}
-		// 将从配置中获取的根 CA 证书信息转换为字节切片
+		// Convert root CA certificate information obtained from configuration to byte slice
 		rootCA = []byte(t.GetRootCA())
 	} else {
 		// Use the root certificate of the current application directly
-		// 若未指定根 CA 证书的名称，则直接使用当前应用的根证书
-		rootCA = app.Lynx().Certificate().GetRootCACertificate()
+		// If root CA certificate name is not specified, get it through injected defaultRootCA
+		if g.defaultRootCA == nil {
+			panic("tls: defaultRootCA provider is nil while caName is empty")
+		}
+		rootCA = g.defaultRootCA()
 	}
-	// 将根证书添加到证书池中，如果添加失败则触发 panic
+	// Add root certificate to certificate pool, trigger panic if addition fails
 	if !certPool.AppendCertsFromPEM(rootCA) {
 		panic("Failed to load root certificate")
 	}
-	// 返回配置好的 TLS 配置实例，设置服务器名称和根证书池
+	// Return configured TLS configuration instance, set server name and root certificate pool
 	return &tls.Config{ServerName: g.caName, RootCAs: certPool}
 }

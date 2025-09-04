@@ -1,0 +1,27 @@
+# Polaris SDK Configuration File Example
+# This file shows how to configure Polaris SDK to connect to Polaris service
+# Reference official documentation: https://polarismesh.cn/docs
+
+global:
+  # Service Connector Configuration
+  serverConnector:
+    protocol: grpc
+    addresses:
+      - 127.0.0.1:8091  # Polaris service address
+  
+  # Statistics Reporter Configuration
+  statReporter:
+    enable: true
+    chain:
+      - prometheus
+    plugin:
+      prometheus:
+        type: push
+        address: 127.0.0.1:9091
+        interval: 10s
+
+# Configuration Center Configuration
+config:
+  configConnector:
+    addresses:
+      - 127.0.0.1:8093  # Polaris configuration center address

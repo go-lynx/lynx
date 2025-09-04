@@ -1,32 +1,73 @@
 package main
 
 import (
-	"github.com/go-lynx/lynx/cmd/lynx/internal/project"
-	"github.com/spf13/cobra"
 	"log"
+	"os"
+
+	"github.com/go-lynx/lynx/cmd/lynx/internal/doctor"
+	"github.com/go-lynx/lynx/cmd/lynx/internal/plugin"
+	"github.com/go-lynx/lynx/cmd/lynx/internal/project"
+	"github.com/go-lynx/lynx/cmd/lynx/internal/run"
+	"github.com/spf13/cobra"
 )
 
-// rootCmd 是 Lynx 命令行工具的根命令，定义了工具的基本信息和版本。
+// rootCmd is the root command of Lynx CLI tool, defining basic information and version of the tool.
 var rootCmd = &cobra.Command{
-	// Use 定义了命令的使用方式
+	// Use defines the usage of the command
 	Use: "lynx",
-	// Short 是命令的简短描述
+	// Short is the short description of the command
 	Short: "Lynx: The Plug-and-Play Go Microservices Framework",
-	// Long 是命令的详细描述
+	// Long is the detailed description of the command
 	Long: `Lynx: The Plug-and-Play Go Microservices Framework`,
-	// Version 定义了命令行工具的版本，release 变量需在别处定义
+	// Version defines the version of the CLI tool, release variable needs to be defined elsewhere
 	Version: release,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Persist log level to environment variables for internal subcommands and executors to read
+		verbose, _ := cmd.Flags().GetBool("verbose")
+		quiet, _ := cmd.Flags().GetBool("quiet")
+		logLevel, _ := cmd.Flags().GetString("log-level")
+		lang, _ := cmd.Flags().GetString("lang")
+
+		// Language environment
+		if lang != "" {
+			_ = os.Setenv("LYNX_LANG", lang)
+		}
+
+		// Log level priority: --log-level > --quiet/--verbose > default
+		if logLevel != "" {
+			_ = os.Setenv("LYNX_LOG_LEVEL", logLevel)
+		} else if quiet {
+			_ = os.Setenv("LYNX_LOG_LEVEL", "error")
+			_ = os.Setenv("LYNX_QUIET", "1")
+		} else if verbose {
+			_ = os.Setenv("LYNX_LOG_LEVEL", "debug")
+			_ = os.Setenv("LYNX_VERBOSE", "1")
+		} else {
+			// Default info
+			if os.Getenv("LYNX_LOG_LEVEL") == "" {
+				_ = os.Setenv("LYNX_LOG_LEVEL", "info")
+			}
+		}
+	},
 }
 
-// init 函数是包的初始化函数，在包被加载时自动执行。
+// init function is the package initialization function, automatically executed when the package is loaded.
 func init() {
-	// 为根命令添加子命令，这里添加了 project 包中的 CmdNew 命令
+	// Add subcommands to root command
 	rootCmd.AddCommand(project.CmdNew)
+	rootCmd.AddCommand(doctor.CmdDoctor)
+	rootCmd.AddCommand(plugin.CmdPlugin)
+	rootCmd.AddCommand(run.CmdRun)
+	// Global log level flags
+	rootCmd.PersistentFlags().Bool("verbose", false, "enable verbose logs")
+	rootCmd.PersistentFlags().Bool("quiet", false, "suppress non-error logs")
+	rootCmd.PersistentFlags().String("log-level", "info", "log level: error|warn|info|debug (overrides --quiet/--verbose)")
+	rootCmd.PersistentFlags().String("lang", "zh", "language for messages: zh|en")
 }
 
-// main 函数是程序的入口点，负责执行根命令。
+// main function is the entry point of the program, responsible for executing the root command.
 func main() {
-	// 执行根命令，如果执行过程中出现错误则记录错误日志并终止程序
+	// Execute root command, if error occurs during execution, log error and terminate program
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}

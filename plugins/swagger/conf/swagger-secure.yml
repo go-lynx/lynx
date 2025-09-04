@@ -1,0 +1,142 @@
+# Secure Swagger Plugin Configuration Example
+# This configuration includes security best practices and environment restrictions
+
+lynx:
+  swagger:
+    # Enable plugin (will be automatically disabled in production)
+    enabled: true
+    
+    # Security Configuration - CRITICAL FOR PRODUCTION
+    security:
+      # Current environment (auto-detected from ENV, GO_ENV, or APP_ENV)
+      environment: "development"
+      
+      # Allowed environments where Swagger can run
+      allowed_environments:
+        - "development"
+        - "testing"
+        # "staging" and "production" are NOT allowed by default
+      
+      # Automatically disable in production (recommended)
+      disable_in_production: true
+      
+      # Trusted origins for CORS (restrict to localhost and your domains)
+      trusted_origins:
+        - "http://localhost:8080"
+        - "http://localhost:8081"
+        - "http://127.0.0.1:8080"
+        - "http://127.0.0.1:8081"
+        # Add your development domain if needed
+        # - "https://dev-api.yourcompany.com"
+      
+      # Require authentication (optional, for additional security)
+      require_auth: false
+    
+    # Documentation generation configuration
+    gen:
+      enabled: true
+      
+      # Scan directories - RESTRICTED TO SAFE PATHS
+      scan_dirs:
+        - "./app/controllers"      # Application controllers
+        - "./app/handlers"         # Request handlers
+        - "./plugins"              # Plugin code
+        # DO NOT add system directories like /etc, /var, /usr
+        # DO NOT add paths outside current working directory
+      
+      # Exclude directories for security
+      exclude_dirs:
+        - "./vendor"               # Third-party code
+        - "./test"                 # Test files
+        - "./docs"                 # Generated docs
+        - "./.git"                 # Version control
+        - "./node_modules"         # Node dependencies
+        - "./tmp"                  # Temporary files
+        - "./logs"                 # Log files
+      
+      # Output path (within current working directory)
+      output_path: "./docs/swagger.json"
+      
+      # File monitoring (auto-update documentation)
+      watch_enabled: true
+      watch_interval: 5s
+      
+      # Generate on startup
+      gen_on_startup: true
+    
+    # Swagger UI configuration
+    ui:
+      enabled: true
+      
+      # UI service port (use non-privileged ports)
+      port: 8081  # Must be >= 1024
+      
+      # UI access path
+      path: "/swagger"
+      
+      # UI page title
+      title: "Lynx API Documentation"
+      
+      # UI features
+      deep_linking: true
+      display_request_duration: true
+      doc_expansion: "list"
+      default_models_expand_depth: 1
+    
+    # API basic information
+    info:
+      title: "Lynx Microservice API"
+      version: "1.0.0"
+      description: "Secure API documentation built on Lynx framework"
+      terms_of_service: "http://swagger.io/terms/"
+      
+      contact:
+        name: "API Support Team"
+        email: "api-support@lynx.io"
+        url: "https://lynx.io/support"
+      
+      license:
+        name: "Apache 2.0"
+        url: "http://www.apache.org/licenses/LICENSE-2.0.html"
+
+# =============================================================================
+# PRODUCTION ENVIRONMENT CONFIGURATION
+# =============================================================================
+# IMPORTANT: In production, set enabled: false or use environment variables
+# to automatically disable this plugin
+#
+# Example production config:
+# lynx:
+#   swagger:
+#     enabled: false  # Explicitly disabled
+#     security:
+#       environment: "production"
+#       disable_in_production: true
+#
+# Or use environment variables:
+# export ENV=production
+# export GO_ENV=production
+# export APP_ENV=production
+#
+# The plugin will automatically detect production environment and disable itself
+# =============================================================================
+
+# =============================================================================
+# DEVELOPMENT ENVIRONMENT CONFIGURATION
+# =============================================================================
+# For development, you can use this minimal config:
+#
+# lynx:
+#   swagger:
+#     enabled: true
+#     security:
+#       environment: "development"
+#     ui:
+#       enabled: true
+#       port: 8081
+#       path: "/swagger"
+#     gen:
+#       enabled: true
+#       scan_dirs: ["./app"]
+#       output_path: "./docs/swagger.json"
+# =============================================================================

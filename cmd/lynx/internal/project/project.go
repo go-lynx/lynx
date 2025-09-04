@@ -7,159 +7,232 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/go-lynx/lynx/cmd/lynx/internal/base"
 	"github.com/spf13/cobra"
 )
 
-// CmdNew 代表 `new` 命令，用于创建 Lynx 服务模板项目。
+// CmdNew represents the `new` command for creating a Lynx service template project.
 var CmdNew = &cobra.Command{
 	Use:   "new",
 	Short: "Create a lynx service template",
 	Long:  "Create a lynx service project using the repository template.",
-	Run:   run, // 执行命令时调用的函数
+	RunE:  run, // function called when executing the command
 }
 
-// repoURL 存储布局仓库的 URL。
-// branch 存储仓库的分支名称。
-// timeout 存储项目创建操作的超时时间。
 var (
+	// repoURL stores the layout repository URL.
 	repoURL string
-	branch  string
+	// branch stores the repository's branch name.
+	branch string
+	// ref stores the repository reference (takes precedence over branch).
+	ref string
+	// timeout stores the timeout for project creation.
 	timeout string
+	// module stores the Go module path for the generated project.
+	module string
+	// force indicates whether to overwrite an existing directory without prompt.
+	force bool
+	// postTidy indicates whether to run 'go mod tidy' after creation.
+	postTidy bool
+	// concurrency stores the concurrency limit.
+	concurrency int
 )
 
-// init 是包的初始化函数，用于设置默认值和命令行标志。
+// init initializes defaults and command-line flags.
 func init() {
-	// 从环境变量 LYNX_LAYOUT_REPO 获取仓库 URL，若为空则使用默认值
+	// Get the repository URL from the LYNX_LAYOUT_REPO environment variable; use the default if empty.
 	if repoURL = os.Getenv("LYNX_LAYOUT_REPO"); repoURL == "" {
 		repoURL = "https://github.com/go-lynx/lynx-layout.git"
 	}
-	timeout = "60s" // 默认超时时间为 60 秒
-	// 为命令添加 --repo-url 标志，用于指定布局仓库 URL
+	timeout = "60s" // default timeout is 60 seconds
+	// Add the --repo-url flag to specify the layout repository URL.
 	CmdNew.Flags().StringVarP(&repoURL, "repo-url", "r", repoURL, "layout repo")
-	// 为命令添加 --branch 标志，用于指定仓库分支
+	// Add the --branch flag to specify the repository branch.
 	CmdNew.Flags().StringVarP(&branch, "branch", "b", branch, "repo branch")
-	// 为命令添加 --timeout 标志，用于指定超时时间
+	// Add the --ref flag to specify commit/tag/branch (takes precedence over --branch).
+	CmdNew.Flags().StringVar(&ref, "ref", ref, "repo ref (commit/tag/branch), takes precedence over --branch")
+	// Add the --timeout flag to specify the timeout.
 	CmdNew.Flags().StringVarP(&timeout, "timeout", "t", timeout, "time out")
+	// Add the --module flag to specify the Go module path for the new project (e.g., github.com/acme/foo).
+	CmdNew.Flags().StringVarP(&module, "module", "m", module, "go module path for the new project")
+	// Add the --force flag to overwrite an existing directory without prompt.
+	CmdNew.Flags().BoolVarP(&force, "force", "f", false, "overwrite existing directory without prompt")
+	// Add the --post-tidy flag to automatically run 'go mod tidy' after creation (disabled by default).
+	CmdNew.Flags().BoolVar(&postTidy, "post-tidy", false, "run 'go mod tidy' in the new project after creation")
+	// Compute the default concurrency limit (min(4, NumCPU*2)).
+	defaultConc := runtime.NumCPU() * 2
+	if defaultConc > 4 {
+		defaultConc = 4
+	}
+	if defaultConc < 1 {
+		defaultConc = 1
+	}
+	concurrency = defaultConc
+	CmdNew.Flags().IntVarP(&concurrency, "concurrency", "c", concurrency, "max concurrent project creations")
 }
 
-// run 是 `new` 命令的执行函数，负责创建 Lynx 服务项目。
-func run(_ *cobra.Command, args []string) {
-	// 获取当前工作目录
+// run executes the `new` command and creates Lynx service projects.
+func run(_ *cobra.Command, args []string) error {
+	// Get the current working directory.
 	wd, err := os.Getwd()
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	// 将超时时间字符串解析为 time.Duration 类型
+	// Parse the timeout string into a time.Duration.
 	t, err := time.ParseDuration(timeout)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	// 创建带有超时的上下文
+	// Create a context with the specified timeout.
 	ctx, cancel := context.WithTimeout(context.Background(), t)
-	defer cancel() // 确保在函数结束时取消上下文
+	defer cancel() // ensure the context is canceled when the function returns
 
 	var names []string
 	if len(args) == 0 {
-		// 若未通过命令行参数提供项目名称，则提示用户输入
+		// Prompt for project names if not provided via command-line arguments.
 		prompt := &survey.Input{
-			Message: "What are the project names ?",
-			Help:    "Enter project names separated by space.",
+			Message: base.T("project_names"),
+			Help:    base.T("project_names_help"),
 		}
 		var input string
-		err = survey.AskOne(prompt, &input)
-		if err != nil || input == "" {
-			fmt.Printf("\n❌ No project names found,Please provide the correct project name\n")
-			return
+		errAsk := survey.AskOne(prompt, &input)
+		if errAsk != nil || input == "" {
+			base.Errorf("%s", base.T("no_project_names"))
+			return fmt.Errorf("no project names provided")
 		}
-		// 将用户输入的项目名称按空格分割
+		// Split the input project names by spaces.
 		names = strings.Split(input, " ")
 	} else {
 		names = args
 	}
 
-	// 检查并去除重复的项目名称
+	// Check and remove duplicate project names.
 	names = checkDuplicates(names)
 	if len(names) < 1 {
-		fmt.Printf("\n❌ No project names found,Please provide the correct project name\n")
-		return
+		base.Errorf("%s", base.T("no_project_names"))
+		return fmt.Errorf("no valid project names after de-duplication")
 	}
 
-	// 并发创建多个项目
+	// Create multiple projects concurrently.
 	done := make(chan error, len(names))
 	var wg sync.WaitGroup
+	// Use the runtime concurrency limit from --concurrency, or fallback to CPU*2.
+	maxConc := concurrency
+	if maxConc <= 0 {
+		maxConc = runtime.NumCPU() * 2
+	}
+	if maxConc < 1 {
+		maxConc = 1
+	}
+	if len(names) < maxConc {
+		maxConc = len(names)
+	}
+	sem := make(chan struct{}, maxConc)
+	// Determine the effective reference: --ref first, then --branch.
+	effectiveRef := ref
+	if strings.TrimSpace(effectiveRef) == "" {
+		effectiveRef = branch
+	}
 	for _, name := range names {
-		wg.Add(1)
-		// 处理项目名称和工作目录参数
+		// Process the project name and working directory parameters.
 		projectName, workingDir := processProjectParams(name, wd)
 		p := &Project{Name: projectName}
-		go func() {
-			// 调用 Project 的 New 方法创建项目，并将结果发送到 done 通道
-			done <- p.New(ctx, workingDir, repoURL, branch)
-			wg.Done()
-		}()
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(p *Project, workingDir string) {
+			// Call Project.New to create the project and send the result to the 'done' channel.
+			defer func() { <-sem; wg.Done() }()
+			done <- p.New(ctx, workingDir, repoURL, effectiveRef, force, module, postTidy)
+		}(p, workingDir)
 	}
 
-	wg.Wait()   // 等待所有 goroutine 完成
-	close(done) // 关闭 done 通道
+	wg.Wait()   // Wait for all goroutines to complete
+	close(done) // Close the 'done' channel
 
-	// 从 done 通道读取错误信息并打印
+	// Read errors from the 'done' channel and print them
+	fail := 0
 	for err := range done {
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "\033[31mERROR: Failed to create project(%s)\033[m\n", err.Error())
+			fail++
+			base.Errorf("%s", fmt.Sprintf(base.T("failed_create"), err.Error()))
+			// Print actionable suggestions.
+			printSuggestions(err.Error())
 		}
 	}
-	// 检查上下文是否因超时而取消
+	// Check whether the context was canceled due to timeout.
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		_, _ = fmt.Fprint(os.Stderr, "\033[31mERROR: project creation timed out\033[m\n")
-		return
+		base.Errorf("%s", base.T("timeout"))
+		return context.DeadlineExceeded
+	}
+	if fail > 0 {
+		return fmt.Errorf("%d project(s) failed", fail)
+	}
+	return nil
+}
+
+// Print actionable suggestions based on error keywords.
+func printSuggestions(msg string) {
+	low := strings.ToLower(msg)
+	say := func(key string, args ...any) { fmt.Fprintln(os.Stderr, fmt.Sprintf(base.T(key), args...)) }
+	switch {
+	case strings.Contains(low, "could not resolve host") || strings.Contains(low, "couldn't resolve host") || strings.Contains(low, "name or service not known"):
+		say("suggestion_dns")
+	case strings.Contains(low, "timed out") || strings.Contains(low, "timeout") || strings.Contains(low, "i/o timeout"):
+		say("suggestion_timeout")
+	case strings.Contains(low, "authentication") || strings.Contains(low, "permission denied") || strings.Contains(low, "auth"):
+		say("suggestion_auth")
+	case strings.Contains(low, "safe.directory"):
+		say("suggestion_safe")
+	case strings.Contains(low, "not found") && strings.Contains(low, "origin/"):
+		say("suggestion_remote")
 	}
 }
 
-// processProjectParams 处理项目名称参数，返回处理后的项目名称和工作目录。
+// processProjectParams handles the project name parameter and returns the processed project name and working directory.
 func processProjectParams(projectName string, workingDir string) (projectNameResult, workingDirResult string) {
 	_projectDir := projectName
-	_workingDir := workingDir
-	// 处理以 ~ 开头的项目名称，将其替换为用户主目录
-	if strings.HasPrefix(projectName, "~") {
+	// Expand the home directory only when the project name starts with "~/".
+	if strings.HasPrefix(projectName, "~/") {
 		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			// 若无法获取用户主目录，则返回原始值
-			return _projectDir, _workingDir
+		if err == nil {
+			_projectDir = filepath.Join(homeDir, projectName[2:])
 		}
-		_projectDir = filepath.Join(homeDir, projectName[2:])
 	}
 
-	// 检查项目名称是否为相对路径，若是则转换为绝对路径
-	if !filepath.IsAbs(projectName) {
-		absPath, err := filepath.Abs(projectName)
-		if err != nil {
-			return _projectDir, _workingDir
+	// If the project name is a relative path, convert it to an absolute path.
+	if !filepath.IsAbs(_projectDir) {
+		joined := filepath.Join(workingDir, _projectDir)
+		if absPath, err := filepath.Abs(joined); err == nil {
+			_projectDir = absPath
+		} else {
+			// Fallback: use the joined path.
+			_projectDir = joined
 		}
-		_projectDir = absPath
 	}
 
-	// 返回处理后的项目名称（路径最后一部分）和工作目录（路径目录部分）
+	// Return the processed project name (last path segment) and working directory (directory part).
 	return filepath.Base(_projectDir), filepath.Dir(_projectDir)
 }
 
-// checkDuplicates 检查并去除项目名称列表中的重复项，同时验证名称的合法性。
+// checkDuplicates removes duplicate project names and validates their format.
 func checkDuplicates(names []string) []string {
 	encountered := map[string]bool{}
 	var result []string
 
-	// 定义项目名称的合法字符模式
+	// Define the valid character pattern for project names.
 	pattern := `^[A-Za-z0-9_-]+$`
 	regex := regexp.MustCompile(pattern)
 
 	for _, name := range names {
-		// 若名称符合模式且未出现过，则添加到结果列表
+		// If the name matches the pattern and hasn't been seen, add it to the results.
 		if regex.MatchString(name) && !encountered[name] {
 			encountered[name] = true
 			result = append(result, name)

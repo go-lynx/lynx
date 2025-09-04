@@ -1,0 +1,19 @@
+lynx:
+  # Elasticsearch 插件配置
+  elasticsearch:
+    addresses:
+      - "http://localhost:9200"
+      - "http://localhost:9201"
+    username: "elastic"
+    password: "changeme"
+    api_key: ""  # 可选：API Key 认证
+    service_token: ""  # 可选：服务令牌认证
+    certificate_fingerprint: ""  # 可选：证书指纹
+    compress_request_body: true
+    connect_timeout: "30s"
+    max_retries: 3
+    enable_metrics: true
+    enable_health_check: true
+    health_check_interval: "30s"
+    index_prefix: "myapp"
+    log_level: "info"

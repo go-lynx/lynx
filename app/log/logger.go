@@ -3,10 +3,8 @@ package log
 
 import (
 	"context"
-	"embed"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,7 +13,6 @@ import (
 	"time"
 
 	kconf "github.com/go-kratos/kratos/v2/config"
-	"github.com/go-lynx/lynx/app/conf"
 	lconf "github.com/go-lynx/lynx/app/log/conf"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -25,17 +22,19 @@ import (
 )
 
 var (
-	// Embedded banner file for application startup
-	// 使用 //go:embed 指令将 banner.txt 文件嵌入到程序中
-	//
-	//go:embed banner.txt
-	bannerFS embed.FS
+	// unified level filtering (kratos + zerolog)
+	kratosMinLevel = log.LevelInfo
+
+	// caller depth configurable
+	callerSkipDefault = 5
+	callerSkipCurrent = 5
+
+	// timezone for logging
+	tzLoc  *time.Location
+	tzName string
 )
 
 // InitLogger initializes the application's logging system.
-// 初始化应用的日志系统，设置主日志记录器并配置各种日志字段，
-// 如时间戳、调用者信息、服务详情和追踪 ID 等。
-// 返回一个错误对象，如果初始化过程中出现错误则返回相应错误，否则返回 nil。
 // InitLogger initializes the application's logging system with the provided configuration.
 // It returns an error if initialization fails.
 //
@@ -63,20 +62,20 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// Use Info level as this is an important system event
 	log.Info("initializing Lynx logging component")
 
-	// 解析日志配置
+	// Parse log configuration
 	var logConfig lconf.Log
 	if err := cfg.Value("lynx.log").Scan(&logConfig); err != nil {
-		// 如果没有配置，使用默认配置
+		// If no configuration, use default configuration
 		logConfig = lconf.Log{
 			Level:         "info",
 			ConsoleOutput: true,
 		}
 	}
 
-	// 设置日志输出
+	// Set up log output
 	var writers []io.Writer
 
-	// 配置控制台输出
+	// Configure console output
 	if logConfig.GetConsoleOutput() {
 		consoleWriter := zerolog.ConsoleWriter{
 			Out:        os.Stdout,
@@ -95,95 +94,216 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		writers = append(writers, consoleWriter)
 	}
 
-	// 配置文件输出
+	// Configure file output
 	if logConfig.GetFilePath() != "" {
-		// 确保日志目录存在
+		// Ensure log directory exists
 		logDir := filepath.Dir(logConfig.GetFilePath())
 		if err := os.MkdirAll(logDir, 0755); err != nil {
 			return fmt.Errorf("failed to create log directory: %v", err)
 		}
 
-		// 配置日志轮转
+		// Configure log rotation
 		fileWriter := &lumberjack.Logger{
 			Filename:   logConfig.GetFilePath(),
-			MaxSize:    int(logConfig.GetMaxSizeMb()),  // 单个文件最大大小，单位 MB
-			MaxBackups: int(logConfig.GetMaxBackups()), // 最多保留的旧文件数
-			MaxAge:     int(logConfig.GetMaxAgeDays()), // 旧文件最多保留天数
-			Compress:   logConfig.GetCompress(),        // 是否压缩旧文件
+			MaxSize:    int(logConfig.GetMaxSizeMb()),  // Maximum size of single file, in MB
+			MaxBackups: int(logConfig.GetMaxBackups()), // Maximum number of old files to keep
+			MaxAge:     int(logConfig.GetMaxAgeDays()), // Maximum age of old files in days
+			Compress:   logConfig.GetCompress(),        // Whether to compress old files
 		}
 		writers = append(writers, fileWriter)
 	}
 
-	// 如果没有配置任何输出，默认输出到控制台
+	// If no output is configured, default to console output
 	if len(writers) == 0 {
 		writers = append(writers, os.Stdout)
 	}
 
-	// 创建多输出写入器
+	// Create multi-output writer
 	output := zerolog.MultiLevelWriter(writers...)
 
-	// Set global time format for consistency
+	// Set global time format and timezone
 	zerolog.TimeFieldFormat = time.RFC3339Nano
+	// Prefer explicit timezone string: lynx.log.timezone (e.g., "Asia/Shanghai", "UTC")
+	if tz, err := cfg.Value("lynx.log.timezone").String(); err == nil && tz != "" {
+		if loc, e := time.LoadLocation(tz); e == nil {
+			tzLoc = loc
+			tzName = tz
+			zerolog.TimestampFunc = func() time.Time { return time.Now().In(tzLoc) }
+		} else {
+			// invalid timezone -> default to Local
+			tzLoc = time.Local
+			tzName = "Local"
+			zerolog.TimestampFunc = func() time.Time { return time.Now().In(tzLoc) }
+		}
+	} else {
+		// no timezone configured -> default to Local
+		tzLoc = time.Local
+		tzName = "Local"
+		zerolog.TimestampFunc = func() time.Time { return time.Now().In(tzLoc) }
+	}
 
-	// 设置全局日志级别
+	// Set global log level (unified zerolog + kratos)
 	logLevel := strings.ToLower(logConfig.GetLevel())
 	switch logLevel {
 	case "debug":
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		kratosMinLevel = log.LevelDebug
 	case "info":
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		kratosMinLevel = log.LevelInfo
 	case "warn":
 		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+		kratosMinLevel = log.LevelWarn
 	case "error":
 		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+		kratosMinLevel = log.LevelError
 	default:
-		// 默认使用 Info 级别
+		// Default to Info level
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		kratosMinLevel = log.LevelInfo
 	}
 
-	// 用 zeroLogger 初始化底层日志器
+	// callerSkip is configurable
+	callerSkipCurrent = callerSkipDefault
+	if v := logConfig.GetCallerSkip(); v > 0 {
+		callerSkipCurrent = int(v)
+	}
+
+	// Initialize underlying logger with zeroLogger
 	zeroLogger := zerolog.New(output).With().Timestamp().Logger()
 
-	// Initialize the main logger with standard output and default fields
-	// 初始化主日志记录器，将日志输出到标准输出，并设置默认日志字段
+	// Initialize the main logger with level filter and default fields
+	base := zeroLogLogger{zeroLogger}
+	filtered := log.NewFilter(base, log.FilterLevel(kratosMinLevel))
 	logger := log.With(
-		zeroLogLogger{zeroLogger},
-		"caller", Caller(5), // 记录日志调用者信息
-		"service.id", host, // 记录服务 ID，由 GetHost 函数提供
-		"service.name", name, // 记录服务名称，由 GetName 函数提供
-		"service.version", version, // 记录服务版本，由 GetVersion 函数提供
-		"trace.id", tracing.TraceID(), // 记录追踪 ID
-		"span.id", tracing.SpanID(), // 记录跨度 ID
+		filtered,
+		"caller", Caller(callerSkipCurrent),
+		"service.id", host,
+		"service.name", name,
+		"service.version", version,
+		"trace.id", tracing.TraceID(),
+		"span.id", tracing.SpanID(),
 	)
 
-	// 检查日志记录器是否创建失败，如果为 nil 则返回错误
+	// Check if logger creation failed, return error if nil
 	if logger == nil {
 		return fmt.Errorf("failed to create logger")
 	}
 
 	// Create a lHelper for more convenient logging
-	// 创建一个日志辅助对象，方便进行日志记录操作
 	lHelper := log.NewHelper(logger)
-	// 检查日志辅助对象是否创建失败，如果为 nil 则返回错误
+	// Check if logger helper creation failed, return error if nil
 	if lHelper == nil {
 		return fmt.Errorf("failed to create logger lHelper")
 	}
 
 	// Store logger instances
-	// 将日志记录器和日志辅助对象存储到 LynxApp 实例中
 	Logger = logger
 	LHelper = *lHelper
+	// Update atomic helper to avoid data race during hot updates
+	helperStore.Store(lHelper)
 
 	// Initialize and display the application banner
-	// 初始化并显示应用启动横幅
 	if err := initBanner(cfg); err != nil {
-		// 若横幅初始化失败，记录警告信息，但不影响程序继续执行
+		// If banner initialization fails, log warning but don't affect program execution
 		lHelper.Warnf("failed to initialize banner: %v", err)
 		// Continue execution as banner display is not critical
 	}
 
+	// First try Watch mechanism based on configuration source (e.g., local files, Polaris, etc. may support)
+	apply := func(nc *lconf.Log) {
+		// Apply updates: prefer timezone string, otherwise default to Local
+		if tz, err := cfg.Value("lynx.log.timezone").String(); err == nil && tz != "" {
+			if loc, e := time.LoadLocation(tz); e == nil {
+				tzLoc = loc
+				tzName = tz
+			} else {
+				tzLoc = time.Local
+				tzName = "Local"
+			}
+		} else {
+			tzLoc = time.Local
+			tzName = "Local"
+		}
+
+		switch strings.ToLower(nc.GetLevel()) {
+		case "debug":
+			zerolog.SetGlobalLevel(zerolog.DebugLevel)
+			kratosMinLevel = log.LevelDebug
+		case "info":
+			zerolog.SetGlobalLevel(zerolog.InfoLevel)
+			kratosMinLevel = log.LevelInfo
+		case "warn":
+			zerolog.SetGlobalLevel(zerolog.WarnLevel)
+			kratosMinLevel = log.LevelWarn
+		case "error":
+			zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+			kratosMinLevel = log.LevelError
+		}
+
+		callerSkipCurrent = callerSkipDefault
+		if v := nc.GetCallerSkip(); v > 0 {
+			callerSkipCurrent = int(v)
+		}
+
+		// Rebuild logger
+		newLogger := log.With(
+			log.NewFilter(base, log.FilterLevel(kratosMinLevel)),
+			"caller", Caller(callerSkipCurrent),
+			"service.id", host,
+			"service.name", name,
+			"service.version", version,
+			"trace.id", tracing.TraceID(),
+			"span.id", tracing.SpanID(),
+		)
+		if newLogger != nil {
+			Logger = newLogger
+			newHelper := log.NewHelper(newLogger)
+			LHelper = *newHelper
+		}
+	}
+
+	// Use Watch, fallback to polling if not supported
+	if err := cfg.Watch("lynx.log", func(key string, v kconf.Value) {
+		var nc lconf.Log
+		if err := v.Scan(&nc); err != nil {
+			return
+		}
+		apply(&nc)
+	}); err != nil {
+		// Lightweight polling hot update (fallback when backend doesn't support Watch)
+		// Read lynx.log every 2s, apply if configuration changes
+		go func() {
+			// Generate signature function
+			signature := func(c *lconf.Log) string {
+				if c == nil {
+					return ""
+				}
+				var sb strings.Builder
+				// include timezone name if present
+				fmt.Fprintf(&sb, "lvl=%s;tz=%s;caller=%d;", strings.ToLower(c.GetLevel()), tzName, c.GetCallerSkip())
+				return sb.String()
+			}
+
+			prevSig := signature(&logConfig)
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				var nc lconf.Log
+				if err := cfg.Value("lynx.log").Scan(&nc); err != nil {
+					continue
+				}
+				sig := signature(&nc)
+				if sig == prevSig {
+					continue
+				}
+				prevSig = sig
+				apply(&nc)
+			}
+		}()
+	}
+
 	// Log successful initialization
-	// 记录日志组件初始化成功的信息
 	lHelper.Info("lynx application logging component initialized successfully")
 
 	return nil
@@ -239,132 +359,4 @@ func trimFilePath(file string, depth int) string {
 	// Return the path from the last found slash
 	start := slashPos[len(slashPos)-1] + 1
 	return file[start:]
-}
-
-// initBanner initializes and displays the application banner.
-// It first attempts to read from a local banner file, then falls back to an embedded banner.
-// The banner display can be disabled through application configuration.
-//
-// Parameters:
-//   - cfg: The configuration instance containing banner display preferences
-//
-// Returns:
-//   - error: An error if banner initialization fails, nil otherwise
-func initBanner(cfg kconf.Config) error {
-	const (
-		localBannerPath    = "configs/banner.txt"
-		embeddedBannerPath = "banner.txt"
-	)
-
-	// Try to read banner data, with fallback options
-	bannerData, err := loadBannerData(localBannerPath)
-	if err != nil {
-		// Log the local file read failure and try embedded banner
-		log.Debugf("could not read local banner: %v, falling back to embedded banner", err)
-		bannerData, err = fs.ReadFile(bannerFS, embeddedBannerPath)
-		if err != nil {
-			return fmt.Errorf("failed to read embedded banner: %v", err)
-		}
-	}
-
-	// Parse application configuration
-	var bootConfig conf.Bootstrap
-	if err := cfg.Scan(&bootConfig); err != nil {
-		return fmt.Errorf("failed to parse configuration: %v", err)
-	}
-
-	// Validate configuration structure
-	app := bootConfig.GetLynx().GetApplication()
-	if app == nil {
-		return fmt.Errorf("invalid configuration: application settings not found")
-	}
-
-	// Display banner unless explicitly disabled
-	if !app.GetCloseBanner() {
-		if err := displayBanner(bannerData); err != nil {
-			return fmt.Errorf("failed to display banner: %v", err)
-		}
-	}
-
-	return nil
-}
-
-// loadBannerData attempts to read banner data from the specified file.
-// It returns the banner content as bytes or an error if the read fails.
-func loadBannerData(path string) ([]byte, error) {
-	// Check if file exists
-	if _, err := os.Stat(path); err != nil {
-		return nil, err
-	}
-
-	// Read file contents
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read banner file: %v", err)
-	}
-
-	return data, nil
-}
-
-// displayBanner writes the banner data to standard output.
-// It returns an error if the write operation fails.
-func displayBanner(data []byte) error {
-	_, err := fmt.Fprintln(os.Stdout, string(data))
-	return err
-}
-
-type zeroLogLogger struct {
-	logger zerolog.Logger
-}
-
-// Log implements the log.Logger interface.
-// It converts Kratos log levels to zerolog levels and handles structured logging.
-func (l zeroLogLogger) Log(level log.Level, keyvals ...interface{}) error {
-	// Validate input parameters
-	if len(keyvals)%2 != 0 {
-		return fmt.Errorf("number of keyvals must be even")
-	}
-
-	// Map Kratos log levels to zerolog levels
-	var event *zerolog.Event
-	switch level {
-	case log.LevelDebug:
-		event = l.logger.Debug()
-	case log.LevelInfo:
-		event = l.logger.Info()
-	case log.LevelWarn:
-		event = l.logger.Warn()
-	case log.LevelError:
-		event = l.logger.Error()
-	case log.LevelFatal:
-		event = l.logger.Fatal()
-	default:
-		// Log unknown levels as warnings and include the original level
-		event = l.logger.Warn().Interface("original_level", level)
-	}
-
-	// Add structured key-value fields
-	var msg string
-	for i := 0; i < len(keyvals); i += 2 {
-		key, ok := keyvals[i].(string)
-		if !ok {
-			key = fmt.Sprintf("BAD_KEY_%d", i)
-			event = event.Interface("original_key", keyvals[i])
-		}
-
-		// Special handling for "msg" field
-		if key == "msg" {
-			if str, ok := keyvals[i+1].(string); ok {
-				msg = str
-				continue
-			}
-		}
-
-		// Add the field to the event
-		event = event.Interface(key, keyvals[i+1])
-	}
-
-	// Output the log entry
-	event.Msg(msg)
-	return nil
 }

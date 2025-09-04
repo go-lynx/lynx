@@ -1,0 +1,295 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.mq;
+
+option go_package = "github.com/go-lynx/lynx/plugins/mq/pulsar/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Pulsar configuration
+message Pulsar {
+  // Service URL for Pulsar cluster
+  string service_url = 1;
+  
+  // Authentication configuration
+  Auth auth = 2;
+  
+  // TLS configuration
+  TLS tls = 3;
+  
+  // Connection configuration
+  Connection connection = 4;
+  
+  // Producer configurations
+  repeated Producer producers = 5;
+  
+  // Consumer configurations
+  repeated Consumer consumers = 6;
+  
+  // Retry configuration
+  Retry retry = 7;
+  
+  // Monitoring configuration
+  Monitoring monitoring = 8;
+}
+
+// Authentication configuration
+message Auth {
+  // Authentication type (token, oauth2, tls, etc.)
+  string type = 1;
+  
+  // Token for token-based authentication
+  string token = 2;
+  
+  // OAuth2 configuration
+  OAuth2 oauth2 = 3;
+  
+  // TLS authentication
+  TLSAuth tls_auth = 4;
+}
+
+// OAuth2 authentication configuration
+message OAuth2 {
+  // OAuth2 issuer URL
+  string issuer_url = 1;
+  
+  // OAuth2 client ID
+  string client_id = 2;
+  
+  // OAuth2 client secret
+  string client_secret = 3;
+  
+  // OAuth2 audience
+  string audience = 4;
+  
+  // OAuth2 scope
+  string scope = 5;
+}
+
+// TLS authentication configuration
+message TLSAuth {
+  // Certificate file path
+  string cert_file = 1;
+  
+  // Private key file path
+  string key_file = 2;
+  
+  // CA certificate file path
+  string ca_file = 3;
+}
+
+// TLS configuration
+message TLS {
+  // Enable TLS
+  bool enable = 1;
+  
+  // Allow insecure connection
+  bool allow_insecure_connection = 2;
+  
+  // Trust certificate file path
+  string trust_certs_file = 3;
+  
+  // Verify hostname
+  bool verify_hostname = 4;
+}
+
+// Connection configuration
+message Connection {
+  // Connection timeout
+  google.protobuf.Duration connection_timeout = 1;
+  
+  // Operation timeout
+  google.protobuf.Duration operation_timeout = 2;
+  
+  // Keep alive interval
+  google.protobuf.Duration keep_alive_interval = 3;
+  
+  // Max number of connections per host
+  int32 max_connections_per_host = 4;
+  
+  // Connection max lifetime
+  google.protobuf.Duration connection_max_lifetime = 5;
+  
+  // Enable connection pooling
+  bool enable_connection_pooling = 6;
+}
+
+// Producer configuration
+message Producer {
+  // Producer name
+  string name = 1;
+  
+  // Enable producer
+  bool enabled = 2;
+  
+  // Topic name
+  string topic = 3;
+  
+  // Producer options
+  ProducerOptions options = 4;
+}
+
+// Producer options
+message ProducerOptions {
+  // Producer name
+  string producer_name = 1;
+  
+  // Send timeout
+  google.protobuf.Duration send_timeout = 2;
+  
+  // Max pending messages
+  int32 max_pending_messages = 3;
+  
+  // Max pending messages across partitions
+  int32 max_pending_messages_across_partitions = 4;
+  
+  // Block if queue full
+  bool block_if_queue_full = 5;
+  
+  // Batching enabled
+  bool batching_enabled = 6;
+  
+  // Batching max publish delay
+  google.protobuf.Duration batching_max_publish_delay = 7;
+  
+  // Batching max messages
+  int32 batching_max_messages = 8;
+  
+  // Batching max size
+  int32 batching_max_size = 9;
+  
+  // Compression type (none, lz4, zlib, zstd, snappy)
+  string compression_type = 10;
+  
+  // Hashing scheme (java_string_hash, murmur3_32hash, consistent_hashing)
+  string hashing_scheme = 11;
+  
+  // Message routing mode (round_robin, single_partition, custom_partition)
+  string message_routing_mode = 12;
+  
+  // Enable chunking
+  bool enable_chunking = 13;
+  
+  // Chunk max size
+  int32 chunk_max_size = 14;
+}
+
+// Consumer configuration
+message Consumer {
+  // Consumer name
+  string name = 1;
+  
+  // Enable consumer
+  bool enabled = 2;
+  
+  // Topic names
+  repeated string topics = 3;
+  
+  // Subscription name
+  string subscription_name = 4;
+  
+  // Consumer options
+  ConsumerOptions options = 5;
+}
+
+// Consumer options
+message ConsumerOptions {
+  // Consumer name
+  string consumer_name = 1;
+  
+  // Subscription type (exclusive, shared, failover, key_shared)
+  string subscription_type = 2;
+  
+  // Subscription initial position (latest, earliest)
+  string subscription_initial_position = 3;
+  
+  // Subscription mode (durable, non_durable)
+  string subscription_mode = 4;
+  
+  // Receiver queue size
+  int32 receiver_queue_size = 5;
+  
+  // Max total receiver queue size across partitions
+  int32 max_total_receiver_queue_size_across_partitions = 6;
+  
+  // Consumer name prefix
+  string consumer_name_prefix = 7;
+  
+  // Read compacted
+  bool read_compacted = 8;
+  
+  // Enable retry on message failure
+  bool enable_retry_on_message_failure = 9;
+  
+  // Dead letter policy
+  DeadLetterPolicy dead_letter_policy = 10;
+  
+  // Retry enable
+  bool retry_enable = 11;
+  
+  // Ack timeout
+  google.protobuf.Duration ack_timeout = 12;
+  
+  // Negative ack delay
+  google.protobuf.Duration negative_ack_delay = 13;
+  
+  // Priority level
+  int32 priority_level = 14;
+  
+  // Crypto failure action (fail, discard, consume)
+  string crypto_failure_action = 15;
+  
+  // Properties
+  map<string, string> properties = 16;
+}
+
+// Dead letter policy
+message DeadLetterPolicy {
+  // Max redeliver count
+  int32 max_redeliver_count = 1;
+  
+  // Dead letter topic
+  string dead_letter_topic = 2;
+  
+  // Initial subscription name
+  string initial_subscription_name = 3;
+}
+
+// Retry configuration
+message Retry {
+  // Enable retry
+  bool enable = 1;
+  
+  // Max retry attempts
+  int32 max_attempts = 2;
+  
+  // Initial retry delay
+  google.protobuf.Duration initial_delay = 3;
+  
+  // Max retry delay
+  google.protobuf.Duration max_delay = 4;
+  
+  // Retry delay multiplier
+  float retry_delay_multiplier = 5;
+  
+  // Jitter factor
+  float jitter_factor = 6;
+}
+
+// Monitoring configuration
+message Monitoring {
+  // Enable metrics
+  bool enable_metrics = 1;
+  
+  // Metrics namespace
+  string metrics_namespace = 2;
+  
+  // Enable health check
+  bool enable_health_check = 3;
+  
+  // Health check interval
+  google.protobuf.Duration health_check_interval = 4;
+  
+  // Enable tracing
+  bool enable_tracing = 5;
+}

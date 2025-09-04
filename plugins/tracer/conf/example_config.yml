@@ -1,0 +1,281 @@
+# Tracer Plugin Configuration Example
+# This file demonstrates all available configuration options for the tracer plugin
+
+# Basic Configuration
+enabled: true
+address: "localhost:4317"  # OTLP gRPC endpoint
+protocol: "OTLP_GRPC"      # OTLP_GRPC or OTLP_HTTP
+
+# Advanced Connection Management (gRPC Only)
+connection:
+  # Connection timeout for establishing new connections
+  connect_timeout: "10s"
+  
+  # Automatic reconnection settings
+  reconnection_period: "5s"
+  
+  # Connection pool management
+  max_conn_idle_time: "5m"      # Maximum time a connection can be idle
+  max_conn_age: "10m"           # Maximum age of a connection
+  max_conn_age_grace: "10s"     # Grace period for connection closure
+
+# Load Balancing Configuration (gRPC Only)
+load_balancing:
+  policy: "round_robin"         # pick_first, round_robin, least_conn
+  health_check: true             # Enable health checking for load balancing
+
+# Batch Processing Configuration
+batch:
+  enabled: true
+  max_queue_size: 1000          # Maximum number of spans in the queue
+  max_batch_size: 100           # Maximum number of spans per batch
+  batch_timeout: "1s"           # Time to wait before sending a batch
+  export_timeout: "30s"         # Time to wait for export to complete
+
+# Retry Configuration
+retry:
+  enabled: true
+  max_attempts: 3               # Maximum number of retry attempts
+  initial_interval: "100ms"     # Initial retry interval
+  max_interval: "1s"            # Maximum retry interval
+  multiplier: 2.0               # Exponential backoff multiplier
+
+# Sampling Configuration
+sampler:
+  type: "TRACEID_RATIO"         # ALWAYS_ON, ALWAYS_OFF, TRACEID_RATIO, PARENT_BASED_TRACEID_RATIO
+  ratio: 0.1                    # Sampling ratio (0.0 to 1.0) for TRACEID_RATIO
+
+# Context Propagation
+propagators:
+  - "W3C_TRACECONTEXT"          # W3C TraceContext (default)
+  - "W3C_BAGGAGE"               # W3C Baggage
+  - "B3"                        # B3 single/multi header
+  - "JAEGER"                    # Jaeger headers
+
+# Resource Configuration
+resource:
+  service_name: "my-service"    # Service name for traces
+  service_version: "1.0.0"      # Service version
+  service_namespace: "my-namespace"  # Service namespace
+  attributes:
+    environment: "production"
+    region: "us-west-2"
+    team: "platform"
+
+# Span Limits
+limits:
+  max_attributes_per_span: 128
+  max_events_per_span: 128
+  max_links_per_span: 128
+  max_attribute_value_length: 256
+
+# HTTP Path (for OTLP_HTTP protocol)
+http_path: "/v1/traces"
+
+# TLS Configuration
+tls:
+  enabled: false
+  ca_file: "/path/to/ca.crt"
+  cert_file: "/path/to/client.crt"
+  key_file: "/path/to/client.key"
+  insecure_skip_verify: false
+
+# Compression
+compression: "COMPRESSION_GZIP"  # COMPRESSION_NONE or COMPRESSION_GZIP
+
+# =============================================================================
+# Production Environment Example
+# =============================================================================
+production_example:
+  enabled: true
+  address: "otel-collector:4317"
+  protocol: "OTLP_GRPC"
+  
+  # High-performance connection management
+  connection:
+    connect_timeout: "5s"
+    reconnection_period: "2s"
+    max_conn_idle_time: "2m"
+    max_conn_age: "5m"
+    max_conn_age_grace: "5s"
+  
+  # Load balancing for high availability
+  load_balancing:
+    policy: "round_robin"
+    health_check: true
+  
+  # Optimized batch processing
+  batch:
+    enabled: true
+    max_queue_size: 5000
+    max_batch_size: 500
+    batch_timeout: "500ms"
+    export_timeout: "10s"
+  
+  # Aggressive retry strategy
+  retry:
+    enabled: true
+    max_attempts: 5
+    initial_interval: "50ms"
+    max_interval: "2s"
+    multiplier: 1.5
+  
+  # Production sampling
+  sampler:
+    type: "PARENT_BASED_TRACEID_RATIO"
+    ratio: 0.01  # 1% sampling for high-traffic production
+  
+  # Production resource attributes
+  resource:
+    service_name: "production-service"
+    service_version: "2.1.0"
+    service_namespace: "production"
+    attributes:
+      environment: "production"
+      region: "us-east-1"
+      datacenter: "dc-01"
+      team: "sre"
+  
+  # Strict limits for production
+  limits:
+    max_attributes_per_span: 64
+    max_events_per_span: 64
+    max_links_per_span: 32
+    max_attribute_value_length: 128
+  
+  # Production TLS
+  tls:
+    enabled: true
+    ca_file: "/etc/ssl/certs/ca-bundle.crt"
+    cert_file: "/etc/ssl/certs/client.crt"
+    key_file: "/etc/ssl/private/client.key"
+    insecure_skip_verify: false
+  
+  compression: "COMPRESSION_GZIP"
+
+# =============================================================================
+# Development Environment Example
+# =============================================================================
+development_example:
+  enabled: true
+  address: "localhost:4317"
+  protocol: "OTLP_GRPC"
+  
+  # Simple connection management for development
+  connection:
+    connect_timeout: "30s"
+    reconnection_period: "10s"
+  
+  # Basic load balancing
+  load_balancing:
+    policy: "pick_first"
+    health_check: false
+  
+  # Simple batch processing
+  batch:
+    enabled: true
+    max_queue_size: 100
+    max_batch_size: 10
+    batch_timeout: "5s"
+    export_timeout: "60s"
+  
+  # Simple retry
+  retry:
+    enabled: true
+    max_attempts: 2
+    initial_interval: "1s"
+    max_interval: "5s"
+    multiplier: 2.0
+  
+  # Development sampling (capture more traces)
+  sampler:
+    type: "ALWAYS_ON"  # Capture all traces in development
+  
+  # Development resource attributes
+  resource:
+    service_name: "dev-service"
+    service_version: "dev"
+    service_namespace: "development"
+    attributes:
+      environment: "development"
+      developer: "john.doe"
+  
+  # Relaxed limits for development
+  limits:
+    max_attributes_per_span: 256
+    max_events_per_span: 256
+    max_links_per_span: 256
+    max_attribute_value_length: 1024
+  
+  # No TLS for local development
+  tls:
+    enabled: false
+  
+  compression: "COMPRESSION_NONE"
+
+# =============================================================================
+# High-Performance Example
+# =============================================================================
+high_performance_example:
+  enabled: true
+  address: "otel-collector-cluster:4317"
+  protocol: "OTLP_GRPC"
+  
+  # Ultra-fast connection management
+  connection:
+    connect_timeout: "1s"
+    reconnection_period: "100ms"
+    max_conn_idle_time: "30s"
+    max_conn_age: "2m"
+    max_conn_age_grace: "1s"
+  
+  # Advanced load balancing
+  load_balancing:
+    policy: "least_conn"
+    health_check: true
+  
+  # High-throughput batch processing
+  batch:
+    enabled: true
+    max_queue_size: 10000
+    max_batch_size: 1000
+    batch_timeout: "100ms"
+    export_timeout: "5s"
+  
+  # Fast retry strategy
+  retry:
+    enabled: true
+    max_attempts: 3
+    initial_interval: "10ms"
+    max_interval: "500ms"
+    multiplier: 1.2
+  
+  # Minimal sampling for performance
+  sampler:
+    type: "TRACEID_RATIO"
+    ratio: 0.001  # 0.1% sampling for ultra-high performance
+  
+  # Minimal resource attributes
+  resource:
+    service_name: "high-perf-service"
+    service_version: "3.0.0"
+    attributes:
+      environment: "production"
+      performance_tier: "ultra"
+  
+  # Minimal limits for performance
+  limits:
+    max_attributes_per_span: 32
+    max_events_per_span: 16
+    max_links_per_span: 16
+    max_attribute_value_length: 64
+  
+  # High-performance TLS
+  tls:
+    enabled: true
+    ca_file: "/etc/ssl/certs/ca-bundle.crt"
+    cert_file: "/etc/ssl/certs/client.crt"
+    key_file: "/etc/ssl/private/client.key"
+    insecure_skip_verify: false
+  
+  compression: "COMPRESSION_GZIP"

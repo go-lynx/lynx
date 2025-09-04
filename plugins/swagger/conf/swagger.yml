@@ -1,0 +1,200 @@
+# Swagger Plugin Configuration Example
+lynx:
+  swagger:
+    # Whether to enable Swagger plugin
+    enabled: true
+    
+    # Documentation generation configuration
+    gen:
+      # Whether to enable documentation generation
+      enabled: true
+      
+      # Scan directory list (supports multiple directories)
+      scan_dirs:
+        - "./app/controllers"
+        - "./app/handlers"
+        - "./plugins"
+      
+      # Exclude directories (directories not to scan)
+      exclude_dirs:
+        - "./vendor"
+        - "./test"
+        - "./docs"
+        - "./.git"
+      
+      # Recursively scan subdirectories
+      recursive: true
+      
+      # Output file path
+      output_path: "./plugins/swagger/docs/swagger.json"
+      
+      # Whether to enable file monitoring (auto-update documentation)
+      watch_enabled: true
+      
+      # File monitoring interval
+      watch_interval: 5s
+      
+      # Whether to generate documentation on startup
+      gen_on_startup: true
+    
+    # Swagger UI configuration
+    ui:
+      # Whether to enable UI service
+      enabled: true
+      
+      # UI service port
+      port: 8080
+      
+      # UI access path
+      path: "/swagger"
+      
+      # UI page title
+      title: "Lynx API Documentation"
+      
+      # API documentation URL (relative or absolute path)
+      spec_url: "/swagger.json"
+      
+      # Whether to enable auto-refresh
+      auto_refresh: false
+      
+      # Auto-refresh interval (milliseconds)
+      refresh_interval: 5000
+    
+    # API basic information
+    info:
+      # API title
+      title: "Lynx Microservice API"
+      
+      # API description
+      description: "Microservice API documentation built on Lynx framework"
+      
+      # API version
+      version: "1.0.0"
+      
+      # Terms of service URL
+      terms_of_service: "http://swagger.io/terms/"
+      
+      # Contact information
+      contact:
+        name: "API Support Team"
+        email: "api-support@lynx.io"
+        url: "https://lynx.io/support"
+      
+      # License information
+      license:
+        name: "Apache 2.0"
+        url: "http://www.apache.org/licenses/LICENSE-2.0.html"
+    
+    # Server configuration
+    servers:
+      - url: "http://localhost:8080"
+        description: "Development environment"
+      - url: "https://api.lynx.io"
+        description: "Production environment"
+    
+    # Base path
+    base_path: "/api/v1"
+    
+    # Supported protocols
+    schemes:
+      - "http"
+      - "https"
+    
+    # Global request content types
+    consumes:
+      - "application/json"
+      - "application/xml"
+      - "multipart/form-data"
+    
+    # Global response content types
+    produces:
+      - "application/json"
+      - "application/xml"
+    
+    # Tag definitions
+    tags:
+      - name: "User Management"
+        description: "User-related operations"
+        external_docs:
+          description: "More information"
+          url: "https://lynx.io/docs/user"
+      
+      - name: "Product Management"
+        description: "Product-related operations"
+        external_docs:
+          description: "More information"
+          url: "https://lynx.io/docs/product"
+      
+      - name: "Order Management"
+        description: "Order-related operations"
+      
+      - name: "System"
+        description: "System-related interfaces"
+    
+    # External documentation
+    external_docs:
+      description: "Lynx Framework Documentation"
+      url: "https://lynx.io/docs"
+    
+    # Security definitions
+    security_definitions:
+      # API Key authentication
+      api_key:
+        type: "apiKey"
+        name: "X-API-Key"
+        in: "header"
+        description: "API key authentication"
+      
+      # Bearer Token authentication
+      bearer_auth:
+        type: "apiKey"
+        name: "Authorization"
+        in: "header"
+        description: "Bearer Token authentication (format: Bearer {token})"
+      
+      # OAuth2 authentication
+      oauth2:
+        type: "oauth2"
+        flow: "accessCode"
+        authorization_url: "https://auth.lynx.io/oauth/authorize"
+        token_url: "https://auth.lynx.io/oauth/token"
+        scopes:
+          read: "Read permissions"
+          write: "Write permissions"
+          admin: "Admin permissions"
+      
+      # Basic authentication
+      basic_auth:
+        type: "basic"
+        description: "HTTP Basic authentication"
+    
+    # Global security configuration (applied to all interfaces)
+    security:
+      - api_key: []
+      - bearer_auth: []
+    
+    # Advanced configuration
+    advanced:
+      # Whether to validate Swagger specification
+      validate_spec: true
+      
+      # Whether to beautify JSON output
+      pretty_json: true
+      
+      # Whether to include unused definitions
+      include_unused_definitions: false
+      
+      # Whether to generate example values
+      generate_examples: true
+      
+      # Maximum scan file size (bytes)
+      max_file_size: 10485760  # 10MB
+      
+      # Concurrent scan count
+      scan_concurrency: 4
+      
+      # Cache configuration
+      cache:
+        enabled: true
+        ttl: 300s  # Cache expiration time
+        max_size: 100  # Maximum cache entries

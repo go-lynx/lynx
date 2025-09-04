@@ -2,148 +2,332 @@ package tracer
 
 import (
 	"context"
-	"github.com/go-lynx/lynx/app"
+	"fmt"
+	"time"
+
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/tracer/conf"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/sdk/resource"
-	traceSdk "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
-// Plugin metadata
-// 插件元数据，定义插件的基本信息
+// Plugin metadata, defines basic information of Tracer plugin
 const (
-	// pluginName 是 HTTP 服务器插件的唯一标识符，用于在插件系统中识别该插件。
+	// pluginName is the unique identifier of Tracer plugin in Lynx plugin system.
 	pluginName = "tracer.server"
 
-	// pluginVersion 表示 HTTP 服务器插件的当前版本。
+	// pluginVersion represents the current version of Tracer plugin.
 	pluginVersion = "v2.0.0"
 
-	// pluginDescription 简要描述了 HTTP 服务器插件的功能。
-	pluginDescription = "tracer server plugin for lynx framework"
+	// pluginDescription briefly describes the purpose of Tracer plugin.
+	pluginDescription = "OpenTelemetry tracer plugin for Lynx framework"
 
-	// confPrefix 是加载 HTTP 服务器配置时使用的配置前缀。
+	// confPrefix is the configuration prefix used when loading Tracer configuration.
 	confPrefix = "lynx.tracer"
 )
 
-// PlugTracer 实现了 Lynx 框架的 Tracer 插件功能。
-// 它嵌入了 plugins.BasePlugin 以继承通用的插件功能，并维护 Tracer 链路追踪的配置和实例。
+// PlugTracer implements the Tracer plugin functionality for Lynx framework.
+// It embeds plugins.BasePlugin to inherit common plugin functionality and maintains Tracer tracing configuration and instances.
 type PlugTracer struct {
-	// 嵌入基础插件，继承插件的通用属性和方法
+	// Embed base plugin, inheriting common plugin properties and methods
 	*plugins.BasePlugin
-	// HTTP 服务器的配置信息
+	// Tracer configuration information (supports modular configuration and backward-compatible old fields)
 	conf *conf.Tracer
 }
 
-// NewPlugTracer 创建一个新的 Tracer 服务器插件实例。
-// 该函数初始化插件的基础信息，并返回一个指向 Tracer 结构体的指针。
+// NewPlugTracer creates a new Tracer plugin instance.
+// This function initializes the plugin's basic information (ID, name, description, version, configuration prefix, weight) and returns the instance.
 func NewPlugTracer() *PlugTracer {
 	return &PlugTracer{
 		BasePlugin: plugins.NewBasePlugin(
-			// 生成插件的唯一 ID
+			// Generate unique plugin ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
-			// 插件名称
+			// Plugin name
 			pluginName,
-			// 插件描述
+			// Plugin description
 			pluginDescription,
-			// 插件版本
+			// Plugin version
 			pluginVersion,
-			// 配置前缀
+			// Configuration prefix
 			confPrefix,
-			// 权重
+			// Weight
 			9999,
 		),
 		conf: &conf.Tracer{},
 	}
 }
 
+// InitializeResources loads and validates Tracer configuration from runtime, while filling default values.
+// - First scan "lynx.tracer" from runtime configuration tree to t.conf
+// - Validate necessary parameters (sampling ratio range, enabled but unconfigured address, etc.)
+// - Set reasonable default values (addr, ratio)
 func (t *PlugTracer) InitializeResources(rt plugins.Runtime) error {
-	// 初始化一个空的配置结构
+	// Initialize an empty configuration structure
 	t.conf = &conf.Tracer{}
 
-	// 从运行时配置中扫描并加载 Tracer 配置
+	// Scan and load Tracer configuration from runtime configuration
 	err := rt.GetConfig().Value(confPrefix).Scan(t.conf)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load tracer configuration: %w", err)
 	}
 
-	// 设置默认配置
-	defaultConf := &conf.Tracer{
-		// 默认不启用链路跟踪
-		Enable: false,
-		// 默认导出地址为 localhost:4317
-		Addr: "localhost:4317",
-		// 默认采样率为 1.0，即全量采样
-		Ratio: 1.0,
+	// Validate configuration
+	if err := t.validateConfiguration(); err != nil {
+		return fmt.Errorf("tracer configuration validation failed: %w", err)
 	}
 
-	// 对未设置的字段使用默认值
-	if t.conf.Addr == "" {
-		t.conf.Addr = defaultConf.Addr
+	// Set default values
+	t.setDefaultValues()
+
+	return nil
+}
+
+// validateConfiguration validates configuration legality:
+// - ratio must be in [0,1]
+// - when enable=true, valid addr must be provided
+// - additional validation for config fields when present
+func (t *PlugTracer) validateConfiguration() error {
+	// Validate sampling ratio (even when disabled, ratio should be valid for future use)
+	if t.conf.Ratio < 0 || t.conf.Ratio > 1 {
+		return fmt.Errorf("sampling ratio must be between 0 and 1, got %f", t.conf.Ratio)
 	}
-	if t.conf.Ratio == 0 {
-		t.conf.Ratio = defaultConf.Ratio
+
+	// Validate address configuration when tracing is enabled
+	if t.conf.Enable && t.conf.Addr == "" {
+		return fmt.Errorf("tracer address is required when tracing is enabled")
+	}
+
+	// Additional validation for config fields when present
+	if t.conf.Config != nil {
+		if err := t.validateConfigFields(); err != nil {
+			return fmt.Errorf("config validation failed: %w", err)
+		}
 	}
 
 	return nil
 }
 
+// validateConfigFields validates the nested config fields
+func (t *PlugTracer) validateConfigFields() error {
+	cfg := t.conf.Config
+
+	// Validate batch configuration
+	if cfg.Batch != nil && cfg.Batch.GetEnabled() {
+		if cfg.Batch.GetMaxQueueSize() < 0 {
+			return fmt.Errorf("batch max_queue_size must be non-negative")
+		}
+		if cfg.Batch.GetMaxBatchSize() < 0 {
+			return fmt.Errorf("batch max_batch_size must be non-negative")
+		}
+		// Validate batch size vs queue size relationship
+		if cfg.Batch.GetMaxBatchSize() > 0 && cfg.Batch.GetMaxQueueSize() > 0 {
+			if cfg.Batch.GetMaxBatchSize() > cfg.Batch.GetMaxQueueSize() {
+				return fmt.Errorf("batch max_batch_size cannot exceed max_queue_size")
+			}
+		}
+		// Validate that at least one of the batch limits is set
+		if cfg.Batch.GetMaxQueueSize() == 0 && cfg.Batch.GetMaxBatchSize() == 0 {
+			return fmt.Errorf("batch processing enabled but no limits configured (max_queue_size or max_batch_size must be set)")
+		}
+	}
+
+	// Validate retry configuration
+	if cfg.Retry != nil && cfg.Retry.GetEnabled() {
+		if cfg.Retry.GetMaxAttempts() < 1 {
+			return fmt.Errorf("retry max_attempts must be at least 1")
+		}
+		if cfg.Retry.GetInitialInterval() != nil && cfg.Retry.GetInitialInterval().AsDuration() < 0 {
+			return fmt.Errorf("retry initial_interval must be non-negative")
+		}
+		if cfg.Retry.GetMaxInterval() != nil && cfg.Retry.GetMaxInterval().AsDuration() < 0 {
+			return fmt.Errorf("retry max_interval must be non-negative")
+		}
+		// Validate interval relationship
+		if cfg.Retry.GetInitialInterval() != nil && cfg.Retry.GetMaxInterval() != nil {
+			if cfg.Retry.GetInitialInterval().AsDuration() > cfg.Retry.GetMaxInterval().AsDuration() {
+				return fmt.Errorf("retry initial_interval cannot exceed max_interval")
+			}
+		}
+	}
+
+	// Validate sampler configuration
+	if cfg.Sampler != nil {
+		if cfg.Sampler.GetRatio() < 0 || cfg.Sampler.GetRatio() > 1 {
+			return fmt.Errorf("sampler ratio must be between 0 and 1, got %f", cfg.Sampler.GetRatio())
+		}
+	}
+
+	// Validate connection management configuration
+	if cfg.Connection != nil {
+		if err := t.validateConnectionConfig(cfg.Connection); err != nil {
+			return fmt.Errorf("connection configuration validation failed: %w", err)
+		}
+	}
+
+	// Validate load balancing configuration
+	if cfg.LoadBalancing != nil {
+		if err := t.validateLoadBalancingConfig(cfg.LoadBalancing); err != nil {
+			return fmt.Errorf("load balancing configuration validation failed: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// validateConnectionConfig validates connection management configuration
+func (t *PlugTracer) validateConnectionConfig(conn *conf.Connection) error {
+	// Validate connection timeout
+	if conn.GetConnectTimeout() != nil && conn.GetConnectTimeout().AsDuration() < 0 {
+		return fmt.Errorf("connection connect_timeout must be non-negative")
+	}
+
+	// Validate reconnection period
+	if conn.GetReconnectionPeriod() != nil && conn.GetReconnectionPeriod().AsDuration() < 0 {
+		return fmt.Errorf("connection reconnection_period must be non-negative")
+	}
+
+	// Validate connection age settings
+	if conn.GetMaxConnAge() != nil && conn.GetMaxConnAge().AsDuration() < 0 {
+		return fmt.Errorf("connection max_conn_age must be non-negative")
+	}
+
+	if conn.GetMaxConnIdleTime() != nil && conn.GetMaxConnIdleTime().AsDuration() < 0 {
+		return fmt.Errorf("connection max_conn_idle_time must be non-negative")
+	}
+
+	if conn.GetMaxConnAgeGrace() != nil && conn.GetMaxConnAgeGrace().AsDuration() < 0 {
+		return fmt.Errorf("connection max_conn_age_grace must be non-negative")
+	}
+
+	// Validate relationship between connection age and idle time
+	if conn.GetMaxConnAge() != nil && conn.GetMaxConnIdleTime() != nil {
+		if conn.GetMaxConnAge().AsDuration() < conn.GetMaxConnIdleTime().AsDuration() {
+			return fmt.Errorf("connection max_conn_age cannot be less than max_conn_idle_time")
+		}
+	}
+
+	return nil
+}
+
+// validateLoadBalancingConfig validates load balancing configuration
+func (t *PlugTracer) validateLoadBalancingConfig(lb *conf.LoadBalancing) error {
+	// Validate load balancing policy
+	validPolicies := map[string]bool{
+		"pick_first":  true,
+		"round_robin": true,
+		"least_conn":  true,
+	}
+
+	if lb.GetPolicy() != "" && !validPolicies[lb.GetPolicy()] {
+		return fmt.Errorf("load balancing policy must be one of: pick_first, round_robin, least_conn, got: %s", lb.GetPolicy())
+	}
+
+	return nil
+}
+
+// setDefaultValues sets default values for unconfigured items:
+// - addr defaults to localhost:4317 (OTLP/gRPC default port)
+// - ratio defaults to 1.0 (full sampling)
+func (t *PlugTracer) setDefaultValues() {
+	if t.conf.Addr == "" {
+		t.conf.Addr = "localhost:4317"
+	}
+	if t.conf.Ratio == 0 {
+		t.conf.Ratio = 1.0
+	}
+}
+
+// StartupTasks completes OpenTelemetry TracerProvider initialization:
+// - Build sampler, resource, Span limits
+// - Create OTLP exporter (gRPC/HTTP) based on configuration, and choose batch or sync processor
+// - Set global TracerProvider and TextMapPropagator
+// - Print initialization logs
 func (t *PlugTracer) StartupTasks() error {
 	if !t.conf.Enable {
 		return nil
 	}
 
-	// 使用 Lynx 应用的 Helper 记录日志，指示正在初始化链路监控组件
-	log.Infof("Initializing link monitoring component")
+	// Use Lynx application Helper to log, indicating that tracing component is being initialized
+	log.Infof("Initializing tracing component")
 
-	var tracerProviderOptions []traceSdk.TracerProviderOption
+	var tracerProviderOptions []trace.TracerProviderOption
 
-	tracerProviderOptions = append(tracerProviderOptions, // 设置采样器，根据配置中的比率进行采样
-		traceSdk.WithSampler(traceSdk.ParentBased(traceSdk.TraceIDRatioBased(float64(t.conf.GetRatio())))),
-		// 设置资源信息，包括服务实例 ID、服务名称、服务版本和服务命名空间
-		traceSdk.WithResource(
-			resource.NewSchemaless(
-				// 服务实例 ID，使用主机名
-				semconv.ServiceInstanceIDKey.String(app.GetHost()),
-				// 服务名称
-				semconv.ServiceNameKey.String(app.GetName()),
-				// 服务版本
-				semconv.ServiceVersionKey.String(app.GetVersion()),
-				// 服务命名空间，使用 Lynx 控制平面的命名空间
-				semconv.ServiceNamespaceKey.String(app.Lynx().GetControlPlane().GetNamespace()),
-			)))
+	// Sampler
+	sampler := buildSampler(t.conf)
+	tracerProviderOptions = append(tracerProviderOptions, trace.WithSampler(sampler))
 
-	// 如果配置中指定了地址，则设置导出器
-	// 否则，不设置导出器
-	if t.conf.GetAddr() != "None" {
-		// 创建一个新的 ot-lp 跟踪导出器，用于将跟踪数据发送到指定的端点
-		exp, err := otlptracegrpc.New(
-			context.Background(),
-			// 设置导出器的端点地址
-			otlptracegrpc.WithEndpoint(t.conf.GetAddr()),
-			// 禁用 TLS 加密，使用不安全的连接
-			otlptracegrpc.WithInsecure(),
-			// 使用 gzip 压缩算法来压缩跟踪数据
-			otlptracegrpc.WithCompressor("gzip"),
-		)
-		// 如果创建导出器时发生错误，返回 nil 和错误信息
-		if err != nil {
-			return err
-		}
-		// 设置导出器，用于将跟踪数据发送到收集器
-		tracerProviderOptions = append(tracerProviderOptions, traceSdk.WithBatcher(exp))
+	// Resource
+	res := buildResource(t.conf)
+	tracerProviderOptions = append(tracerProviderOptions, trace.WithResource(res))
+
+	// Span limits
+	if limits := buildSpanLimits(t.conf); limits != nil {
+		tracerProviderOptions = append(tracerProviderOptions, trace.WithSpanLimits(*limits))
 	}
 
-	// 创建一个新的跟踪提供者，用于生成和处理跟踪数据
-	tp := traceSdk.NewTracerProvider(tracerProviderOptions...)
+	// If address is specified in configuration, set exporter
+	// Otherwise, don't set exporter
+	if t.conf.GetAddr() != "None" {
+		exp, batchOpts, useBatch, err := buildExporter(context.Background(), t.conf)
+		if err != nil {
+			return fmt.Errorf("failed to create OTLP exporter: %w", err)
+		}
+		if useBatch {
+			tracerProviderOptions = append(tracerProviderOptions, trace.WithBatcher(exp, batchOpts...))
+		} else {
+			tracerProviderOptions = append(tracerProviderOptions, trace.WithSyncer(exp))
+		}
+	}
 
-	// 设置全局跟踪提供者，用于后续的跟踪数据生成和处理
+	// Create a new trace provider for generating and processing trace data
+	tp := trace.NewTracerProvider(tracerProviderOptions...)
+
+	// Set global trace provider for subsequent trace data generation and processing
 	otel.SetTracerProvider(tp)
 
-	// 使用 Lynx 应用的 Helper 记录日志，指示链路监控组件初始化成功
-	log.Infof("link monitoring component successfully initialized")
+	// Propagators
+	var propagator propagation.TextMapPropagator = buildPropagator(t.conf)
+	otel.SetTextMapPropagator(propagator)
+
+	// Verify that TracerProvider was successfully created
+	if tp == nil {
+		return fmt.Errorf("failed to create tracer provider")
+	}
+
+	// Use Lynx application Helper to log, indicating that tracing component initialization was successful
+	log.Infof("Tracing component successfully initialized")
+	return nil
+}
+
+// ShutdownTasks gracefully shuts down TracerProvider:
+// - Call SDK's Shutdown within 30s timeout
+// - Catch and log errors
+func (t *PlugTracer) ShutdownTasks() error {
+	// Get global TracerProvider
+	tp := otel.GetTracerProvider()
+	if tp != nil {
+		// Check if it's SDK TracerProvider
+		if sdkTp, ok := tp.(*trace.TracerProvider); ok {
+			// Create context with timeout
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// Try to flush buffered spans before shutdown to reduce data loss
+			if err := sdkTp.ForceFlush(ctx); err != nil {
+				log.Errorf("Failed to force flush tracer provider: %v", err)
+			}
+
+			// Gracefully shutdown TracerProvider
+			if err := sdkTp.Shutdown(ctx); err != nil {
+				log.Errorf("Failed to shutdown tracer provider: %v", err)
+				return fmt.Errorf("failed to shutdown tracer provider: %w", err)
+			}
+
+			log.Infof("Tracer provider shutdown successfully")
+		}
+	}
+
 	return nil
 }

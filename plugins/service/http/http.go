@@ -1,220 +1,513 @@
-// Package http 实现了 Lynx 框架的 HTTP 服务器插件功能。
+// Package http implements the HTTP server plugin for the Lynx framework.
 package http
 
 import (
 	"context"
+	"fmt"
 	nhttp "net/http"
+	"reflect"
+	"strconv"
+	"strings"
+	"time"
 
-	"github.com/go-kratos/kratos/contrib/middleware/validate/v2"
-	"github.com/go-kratos/kratos/v2/middleware"
-	"github.com/go-kratos/kratos/v2/middleware/logging"
-	"github.com/go-kratos/kratos/v2/middleware/recovery"
-	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/transport/http"
-	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/app/observability/metrics"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/service/http/conf"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Plugin metadata
-// 插件元数据，定义插件的基本信息
+// Basic plugin information definition.
 const (
-	// pluginName 是 HTTP 服务器插件的唯一标识符，用于在插件系统中识别该插件。
+	// pluginName is the unique identifier for the HTTP server plugin.
 	pluginName = "http.server"
 
-	// pluginVersion 表示 HTTP 服务器插件的当前版本。
+	// pluginVersion indicates the current version of the HTTP server plugin.
 	pluginVersion = "v2.0.0"
 
-	// pluginDescription 简要描述了 HTTP 服务器插件的功能。
+	// pluginDescription briefly describes the functionality of the HTTP server plugin.
 	pluginDescription = "http server plugin for lynx framework"
 
-	// confPrefix 是加载 HTTP 服务器配置时使用的配置前缀。
+	// confPrefix is the configuration prefix used when loading HTTP server settings.
 	confPrefix = "lynx.http"
 )
 
-// ServiceHttp 实现了 Lynx 框架的 HTTP 服务器插件功能。
-// 它嵌入了 plugins.BasePlugin 以继承通用的插件功能，并维护 HTTP 服务器的配置和实例。
+// ServiceHttp implements the HTTP server plugin for the Lynx framework.
+// It embeds plugins.BasePlugin to inherit common plugin functionality and maintains HTTP server configuration and instance.
 type ServiceHttp struct {
-	// 嵌入基础插件，继承插件的通用属性和方法
+	// Embed the base plugin to inherit common attributes and methods.
 	*plugins.BasePlugin
-	// HTTP 服务器的配置信息
+	// HTTP server configuration
 	conf *conf.Http
-	// HTTP 服务器实例
+	// HTTP server instance
 	server *http.Server
+
+	// Prometheus metrics
+	requestCounter   *prometheus.CounterVec
+	requestDuration  *prometheus.HistogramVec
+	responseSize     *prometheus.HistogramVec
+	requestSize      *prometheus.HistogramVec
+	errorCounter     *prometheus.CounterVec
+	inflightRequests *prometheus.GaugeVec
+	// Health check metrics
+	healthCheckTotal *prometheus.CounterVec
+	// Additional metrics
+	activeConnections    *prometheus.GaugeVec
+	connectionPoolUsage  *prometheus.GaugeVec
+	requestQueueLength   *prometheus.GaugeVec
+	routeRequestCounter  *prometheus.CounterVec
+	routeRequestDuration *prometheus.HistogramVec
+
+	// Rate limiter
+	rateLimiter *rate.Limiter
+
+	// Connection timeout configuration
+	idleTimeout       time.Duration
+	keepAliveTimeout  time.Duration
+	readHeaderTimeout time.Duration
+	// Request size limit
+	maxRequestSize int64
+
+	// Shutdown signal channel
+	shutdownChan chan struct{}
+	// Whether shutting down
+	isShuttingDown bool
+	// Shutdown timeout
+	shutdownTimeout time.Duration
 }
 
-// NewServiceHttp 创建一个新的 HTTP 服务器插件实例。
-// 该函数初始化插件的基础信息，并返回一个指向 ServiceHttp 结构体的指针。
+// netHTTPToKratosHandlerAdapter adapts a net/http.Handler to a kratos http.HandlerFunc
+// and also implements net/http.Handler for compatibility
+type netHTTPToKratosHandlerAdapter struct {
+	handler nhttp.Handler
+}
+
+// ServeHTTP implements the net/http.Handler interface
+func (a *netHTTPToKratosHandlerAdapter) ServeHTTP(w nhttp.ResponseWriter, r *nhttp.Request) {
+	a.handler.ServeHTTP(w, r)
+}
+
+// Handle implements the kratos http.HandlerFunc interface
+func (a *netHTTPToKratosHandlerAdapter) Handle(w http.ResponseWriter, r *http.Request) {
+	a.handler.ServeHTTP(w, r)
+}
+
+// NewServiceHttp creates a new HTTP server plugin instance.
+// It initializes the plugin's basic information and returns a pointer to ServiceHttp.
 func NewServiceHttp() *ServiceHttp {
 	return &ServiceHttp{
 		BasePlugin: plugins.NewBasePlugin(
-			// 生成插件的唯一 ID
+			// Generate the plugin's unique ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
-			// 插件名称
+			// Plugin name
 			pluginName,
-			// 插件描述
+			// Plugin description
 			pluginDescription,
-			// 插件版本
+			// Plugin version
 			pluginVersion,
-			// 配置前缀
+			// Configuration prefix
 			confPrefix,
-			// 权重
+			// Weight
 			10,
 		),
+		shutdownChan: make(chan struct{}),
 	}
 }
 
-// InitializeResources 实现了 HTTP 插件的自定义初始化逻辑。
-// 该函数会加载并验证 HTTP 服务器的配置，如果配置未提供，则使用默认配置。
+// InitializeResources implements custom initialization logic for the HTTP plugin.
+// It loads and validates the HTTP server configuration, using defaults if not provided.
 func (h *ServiceHttp) InitializeResources(rt plugins.Runtime) error {
-	// 初始化一个空的配置结构
+	// Initialize an empty configuration struct
 	h.conf = &conf.Http{}
 
-	// 从运行时配置中扫描并加载 HTTP 配置
+	// Scan and load HTTP configuration from runtime config
 	err := rt.GetConfig().Value(confPrefix).Scan(h.conf)
 	if err != nil {
-		return err
+		log.Warnf("Failed to load HTTP configuration, using defaults: %v", err)
 	}
 
-	// 设置默认配置
-	defaultConf := &conf.Http{
-		// 默认网络协议为 TCP
-		Network: "tcp",
-		// 默认监听地址为 :8080
-		Addr: ":8080",
-		// 默认不启用 TLS
-		TlsEnable: false,
-		// 默认超时时间为 10 秒
-		Timeout: &durationpb.Duration{Seconds: 10},
+	// Set default configuration
+	h.setDefaultConfig()
+
+	// Validate configuration
+	if err := h.validateConfig(); err != nil {
+		return fmt.Errorf("HTTP configuration validation failed: %w", err)
 	}
 
-	// 对未设置的字段使用默认值
-	if h.conf.Network == "" {
-		h.conf.Network = defaultConf.Network
-	}
-	if h.conf.Addr == "" {
-		h.conf.Addr = defaultConf.Addr
-	}
-	if h.conf.Timeout == nil {
-		h.conf.Timeout = defaultConf.Timeout
-	}
-
+	log.Infof("HTTP configuration loaded: network=%s, addr=%s, tls=%v",
+		h.conf.Network, h.conf.Addr, h.conf.GetTlsEnable())
 	return nil
 }
 
-// StartupTasks 实现了 HTTP 插件的自定义启动逻辑。
-// 该函数会配置并启动 HTTP 服务器，添加必要的中间件和配置选项。
-func (h *ServiceHttp) StartupTasks() error {
-	// 记录 HTTP 服务启动日志
-	log.Infof("starting http service")
-
-	var middlewares []middleware.Middleware
-
-	// 添加基础中间件
-	middlewares = append(middlewares,
-		// 配置链路追踪中间件，设置追踪器名称为应用名称
-		tracing.Server(tracing.WithTracerName(app.GetName())),
-		// 配置日志中间件，使用 Lynx 框架的日志记录器
-		logging.Server(log.Logger),
-		// 配置响应包装中间件
-		TracerLogPack(),
-		// 配置参数验证中间件
-		validate.ProtoValidate(),
-		// 配置恢复中间件，处理请求处理过程中的 panic
-		recovery.Recovery(
-			recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
-				log.ErrorCtx(ctx, err)
-				return nil
-			}),
-		),
-	)
-
-	// 配置限流中间件，使用 Lynx 框架控制平面的 HTTP 限流策略
-	// 如果有限流中间件，则追加进去
-	if rl := app.Lynx().GetControlPlane().HTTPRateLimit(); rl != nil {
-		middlewares = append(middlewares, rl)
+// setDefaultConfig sets the default configuration values.
+func (h *ServiceHttp) setDefaultConfig() {
+	// Basic defaults
+	if h.conf.Network == "" {
+		h.conf.Network = "tcp"
 	}
+	if h.conf.Addr == "" {
+		h.conf.Addr = ":8080"
+	}
+	if h.conf.Timeout == nil {
+		h.conf.Timeout = &durationpb.Duration{Seconds: 10}
+	}
+
+	// Monitoring defaults
+	h.initMonitoringDefaults()
+
+	// Security defaults
+	h.initSecurityDefaults()
+
+	// Performance defaults
+	h.initPerformanceDefaults()
+
+	// Graceful shutdown defaults
+	h.initGracefulShutdownDefaults()
+}
+
+// validateConfig validates configuration parameters.
+func (h *ServiceHttp) validateConfig() error {
+	// Validate address format
+	if h.conf.Addr != "" {
+		if !strings.Contains(h.conf.Addr, ":") {
+			return fmt.Errorf("invalid address format: %s", h.conf.Addr)
+		}
+		parts := strings.Split(h.conf.Addr, ":")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid address format: %s", h.conf.Addr)
+		}
+		if port, err := strconv.Atoi(parts[1]); err != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("invalid port number: %s", parts[1])
+		}
+	}
+
+	// Validate network protocol
+	if h.conf.Network != "" {
+		validNetworks := []string{"tcp", "tcp4", "tcp6", "unix", "unixpacket"}
+		valid := false
+		for _, network := range validNetworks {
+			if h.conf.Network == network {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fmt.Errorf("invalid network protocol: %s, valid options: %v", h.conf.Network, validNetworks)
+		}
+	}
+
+	// Validate timeouts
+	if h.conf.Timeout != nil {
+		if h.conf.Timeout.AsDuration() <= 0 {
+			return fmt.Errorf("timeout must be positive")
+		}
+		if h.conf.Timeout.AsDuration() > 300*time.Second {
+			return fmt.Errorf("timeout cannot exceed 5 minutes")
+		}
+	}
+
+	// Validate request size limit
+	if h.maxRequestSize < 0 {
+		return fmt.Errorf("max request size cannot be negative")
+	}
+	if h.maxRequestSize > 100*1024*1024 { // 100MB
+		return fmt.Errorf("max request size cannot exceed 100MB")
+	}
+
+	// Validate performance configuration
+	if h.idleTimeout < 0 {
+		return fmt.Errorf("idle timeout cannot be negative")
+	}
+	if h.idleTimeout > 600*time.Second { // 10 minutes
+		return fmt.Errorf("idle timeout cannot exceed 10 minutes")
+	}
+
+	if h.keepAliveTimeout < 0 {
+		return fmt.Errorf("keep alive timeout cannot be negative")
+	}
+	if h.keepAliveTimeout > 300*time.Second { // 5 minutes
+		return fmt.Errorf("keep alive timeout cannot exceed 5 minutes")
+	}
+
+	if h.readHeaderTimeout < 0 {
+		return fmt.Errorf("read header timeout cannot be negative")
+	}
+	if h.readHeaderTimeout > 60*time.Second { // 1 minute
+		return fmt.Errorf("read header timeout cannot exceed 1 minute")
+	}
+
+	// Validate graceful shutdown timeout
+	if h.shutdownTimeout < 0 {
+		return fmt.Errorf("shutdown timeout cannot be negative")
+	}
+	if h.shutdownTimeout > 300*time.Second { // 5 minutes
+		return fmt.Errorf("shutdown timeout cannot exceed 5 minutes")
+	}
+
+	// Validate rate limit configuration
+	if h.rateLimiter != nil {
+		if h.rateLimiter.Limit() <= 0 {
+			return fmt.Errorf("rate limit must be positive")
+		}
+		if h.rateLimiter.Burst() <= 0 {
+			return fmt.Errorf("rate limit burst must be positive")
+		}
+		if h.rateLimiter.Limit() > 10000 { // 10k req/s
+			return fmt.Errorf("rate limit cannot exceed 10,000 requests per second")
+		}
+	}
+
+	// Configuration validated successfully
+	return nil
+}
+
+// initSecurityDefaults initializes security-related defaults.
+func (h *ServiceHttp) initSecurityDefaults() {
+	// Request size limit: 10MB
+	h.maxRequestSize = 10 * 1024 * 1024
+
+	// Rate limiting: 100 req/s, burst 200
+	h.rateLimiter = rate.NewLimiter(100, 200)
+}
+
+// initRateLimiter initializes the rate limiter.
+func (h *ServiceHttp) initRateLimiter() {
+	if h.rateLimiter != nil {
+		log.Infof("Rate limiter initialized: %v req/s, burst: %d",
+			h.rateLimiter.Limit(), h.rateLimiter.Burst())
+	}
+}
+
+// initPerformanceDefaults initializes performance-related defaults.
+func (h *ServiceHttp) initPerformanceDefaults() {
+	h.idleTimeout = 60 * time.Second
+	h.keepAliveTimeout = 30 * time.Second
+	h.readHeaderTimeout = 20 * time.Second
+}
+
+// initGracefulShutdownDefaults initializes graceful shutdown defaults.
+func (h *ServiceHttp) initGracefulShutdownDefaults() {
+	h.shutdownTimeout = 30 * time.Second
+}
+
+// StartupTasks implements the custom startup logic for the HTTP plugin.
+// It configures and starts the HTTP server with necessary middleware and options.
+func (h *ServiceHttp) StartupTasks() error {
+	// Log HTTP service startup
+	log.Infof("Starting HTTP service on %s", h.conf.Addr)
+
+	// Initialize metrics
+	h.initMetrics()
+
+	// Initialize rate limiter
+	h.initRateLimiter()
+
+	// Build middlewares
+	middlewares := h.buildMiddlewares()
 	hMiddlewares := http.Middleware(middlewares...)
 
-	// 定义 HTTP 服务器的选项列表
+	// Define HTTP server options
 	opts := []http.ServerOption{
 		hMiddlewares,
-		// 404 方法不存在格式化
-		http.NotFoundHandler(nhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(nhttp.StatusNotFound)
-			_, _ = w.Write([]byte(`{"code": 404, "message": "404 not found"}`))
-			log.Warnf("404 not found path %s", r.URL.Path)
-		})),
-		// 405 方法不允许处理
-		http.MethodNotAllowedHandler(nhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(nhttp.StatusMethodNotAllowed)
-			_, _ = w.Write([]byte(`{"code": 405, "message": "method not allowed"}`))
-			log.Warnf("405 method not allowed: %s %s", r.Method, r.URL.Path)
-		})),
-		// 配置响应编码器
-		http.ResponseEncoder(ResponseEncoder),
-		http.ErrorEncoder(EncodeErrorFunc),
+		// 404 Not Found handler
+		http.NotFoundHandler(h.notFoundHandler()),
+		// 405 Method Not Allowed handler
+		http.MethodNotAllowedHandler(h.methodNotAllowedHandler()),
+		// Response encoder
+		http.ErrorEncoder(h.enhancedErrorEncoder),
 	}
 
-	// 根据配置信息添加额外的服务器选项
+	// Append additional server options based on configuration
 	if h.conf.Network != "" {
-		// 设置网络协议
+		// Set network protocol
 		opts = append(opts, http.Network(h.conf.Network))
 	}
 	if h.conf.Addr != "" {
-		// 设置监听地址
+		// Set listen address
 		opts = append(opts, http.Address(h.conf.Addr))
 	}
 	if h.conf.Timeout != nil {
-		// 设置超时时间
+		// Set timeout
 		opts = append(opts, http.Timeout(h.conf.Timeout.AsDuration()))
 	}
 	if h.conf.GetTlsEnable() {
-		// 如果启用 TLS，添加 TLS 配置选项
-		opts = append(opts, h.tlsLoad())
+		// If TLS is enabled, append TLS options
+		tlsOption, err := h.tlsLoad()
+		if err != nil {
+			return fmt.Errorf("failed to load TLS configuration: %w", err)
+		}
+		opts = append(opts, tlsOption)
 	}
 
-	// 创建 HTTP 服务器实例
+	// Create the HTTP server instance
 	h.server = http.NewServer(opts...)
-	// 记录 HTTP 服务启动成功日志
-	log.Infof("http service successfully started")
+
+	// Apply performance configuration to the underlying net/http.Server
+	h.applyPerformanceConfig()
+
+	// Register monitoring endpoints
+	h.server.HandlePrefix("/metrics", metrics.Handler())
+	// Adapt net/http.Handler to kratos http.HandlerFunc
+	h.server.HandlePrefix("/health", &netHTTPToKratosHandlerAdapter{handler: h.healthCheckHandler()})
+
+	// Log successful startup
+	log.Infof("HTTP service successfully started with monitoring endpoints and performance optimizations")
 	return nil
 }
 
-// CleanupTasks 实现了 HTTP 插件的自定义清理逻辑。
-// 该函数会优雅地停止 HTTP 服务器，并处理可能出现的错误。
+// applyPerformanceConfig applies performance settings to the underlying HTTP server.
+func (h *ServiceHttp) applyPerformanceConfig() {
+	// Use reflection to access the underlying net/http.Server
+	serverValue := reflect.ValueOf(h.server).Elem()
+	httpServerField := serverValue.FieldByName("srv")
+
+	if httpServerField.IsValid() && !httpServerField.IsNil() {
+		// Safe type assertion to avoid panic if the underlying implementation changes
+		raw := httpServerField.Interface()
+		httpServer, ok := raw.(*nhttp.Server)
+		if !ok {
+			log.Warnf("Underlying HTTP server type unexpected: %T", raw)
+			return
+		}
+
+		// Apply performance settings from configuration
+		if h.conf.Performance != nil {
+			// Apply timeout configurations
+			// ReadTimeout controls how long the server will wait for the entire request
+			if h.conf.Performance.ReadTimeout != nil {
+				readTimeout := h.conf.Performance.ReadTimeout.AsDuration()
+				if readTimeout > 0 {
+					httpServer.ReadTimeout = readTimeout
+					log.Infof("Applied ReadTimeout: %v", readTimeout)
+				}
+			}
+
+			// WriteTimeout controls how long the server will wait for a response
+			if h.conf.Performance.WriteTimeout != nil {
+				writeTimeout := h.conf.Performance.WriteTimeout.AsDuration()
+				if writeTimeout > 0 {
+					httpServer.WriteTimeout = writeTimeout
+					log.Infof("Applied WriteTimeout: %v", writeTimeout)
+				}
+			}
+
+			// IdleTimeout controls how long to keep idle connections open
+			if h.conf.Performance.IdleTimeout != nil {
+				idleTimeout := h.conf.Performance.IdleTimeout.AsDuration()
+				if idleTimeout > 0 {
+					httpServer.IdleTimeout = idleTimeout
+					log.Infof("Applied IdleTimeout: %v", idleTimeout)
+				}
+			}
+
+			// ReadHeaderTimeout controls how long to wait for request headers
+			if h.conf.Performance.ReadHeaderTimeout != nil {
+				readHeaderTimeout := h.conf.Performance.ReadHeaderTimeout.AsDuration()
+				if readHeaderTimeout > 0 {
+					httpServer.ReadHeaderTimeout = readHeaderTimeout
+					log.Infof("Applied ReadHeaderTimeout: %v", readHeaderTimeout)
+				}
+			}
+
+			// Buffer sizes and connection limits are configured at the transport level
+			// through the HTTP server's underlying listener configuration
+			log.Infof("Performance optimizations applied")
+			// Connection pool configuration is not supported in current server implementation
+			// Note: These settings would typically apply to an HTTP client, not server
+			// For server-side connection pooling, we'd need additional implementation
+		} else {
+			// Apply default performance settings
+			if h.idleTimeout > 0 {
+				httpServer.IdleTimeout = h.idleTimeout
+				log.Infof("Applied default IdleTimeout: %v", h.idleTimeout)
+			}
+
+			if h.keepAliveTimeout > 0 {
+				httpServer.ReadHeaderTimeout = h.keepAliveTimeout
+				log.Infof("Applied default KeepAliveTimeout (via ReadHeaderTimeout): %v", h.keepAliveTimeout)
+			}
+
+			if h.readHeaderTimeout > 0 {
+				httpServer.ReadHeaderTimeout = h.readHeaderTimeout
+				log.Infof("Applied default ReadHeaderTimeout: %v", h.readHeaderTimeout)
+			}
+		}
+
+		// Note: MaxHeaderBytes only limits the header size, not the request body.
+		// To limit the request body, wrap the handler chain accordingly (do not misuse this field).
+		log.Infof("Performance configurations applied successfully")
+	}
+}
+
+// CleanupTasks implements custom cleanup logic for the HTTP plugin.
+// It gracefully stops the HTTP server and handles potential errors.
 func (h *ServiceHttp) CleanupTasks() error {
-	// 如果服务器实例为空，直接返回 nil
+	// If the server instance is nil, return immediately
 	if h.server == nil {
 		return nil
 	}
-	// 优雅地停止 HTTP 服务器
-	if err := h.server.Stop(context.Background()); err != nil {
-		// 若停止失败，返回包含错误信息的插件错误
-		return plugins.NewPluginError(h.ID(), "Stop", "Failed to stop HTTP server", err)
+
+	log.Infof("Starting graceful shutdown of HTTP service")
+
+	h.isShuttingDown = true
+	close(h.shutdownChan)
+
+	// Configure shutdown timeout
+	ctx := context.Background()
+	if h.shutdownTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, h.shutdownTimeout)
+		defer cancel()
 	}
+
+	// Gracefully stop the server
+	if err := h.server.Stop(ctx); err != nil {
+		log.Errorf("Failed to stop HTTP server gracefully: %v", err)
+		return plugins.NewPluginError(h.ID(), "Stop", "Failed to stop HTTP server gracefully", err)
+	}
+
+	log.Infof("HTTP service gracefully stopped")
 	return nil
 }
 
-// Configure 更新 HTTP 服务器的配置。
-// 该函数接收一个任意类型的参数，尝试将其转换为 *conf.Http 类型，如果转换成功则更新配置。
+// Configure updates the HTTP server configuration.
+// It accepts any type, attempts to cast it to *conf.Http, and updates the configuration on success.
 func (h *ServiceHttp) Configure(c any) error {
-	// 尝试将传入的配置转换为 *conf.Http 类型
+	// Try to convert the provided configuration to *conf.Http
 	if httpConf, ok := c.(*conf.Http); ok {
-		// 转换成功，更新配置
+		// Save the old configuration for rollback
+		oldConf := h.conf
 		h.conf = httpConf
+
+		// Set defaults
+		h.setDefaultConfig()
+
+		// Validate the new configuration
+		if err := h.validateConfig(); err != nil {
+			// Invalid configuration; roll back to the old one
+			h.conf = oldConf
+			log.Errorf("Invalid new configuration, rolling back: %v", err)
+			return fmt.Errorf("configuration validation failed: %w", err)
+		}
+
+		log.Infof("HTTP configuration updated successfully")
 		return nil
 	}
-	// 转换失败，返回配置无效错误
+
+	// Conversion failed; return invalid configuration error
 	return plugins.ErrInvalidConfiguration
 }
 
-// CheckHealth 对 HTTP 服务器进行健康检查。
-// 该函数目前直接返回 nil，表示服务器健康，可根据实际需求添加检查逻辑。
-func (h *ServiceHttp) CheckHealth() error {
-	return nil
+// RegisterMetricsGatherer allows injecting an external Prometheus registry into the unified /metrics aggregation.
+// Useful when plugins or third-party libraries maintain a separate *prometheus.Registry.
+func (h *ServiceHttp) RegisterMetricsGatherer(g prometheus.Gatherer) {
+	if g == nil {
+		return
+	}
+	// Aggregate via observability.metrics
+	metrics.RegisterGatherer(g)
 }

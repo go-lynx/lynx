@@ -1,0 +1,44 @@
+# Enhanced Polaris Plugin Configuration Example
+# Fully utilize all features of Polaris SDK
+lynx:
+  polaris:
+    # Basic Configuration
+    namespace: "default"                    # Namespace
+    token: "your-polaris-token"            # Authentication token (optional)
+    weight: 100                            # Service weight (0-1000)
+    ttl: 30                                # Service TTL (seconds)
+    timeout: "10s"                         # Operation timeout
+    
+    # Advanced Feature Configuration
+    config_path: "./conf/polaris.yaml"     # SDK config file path (optional)
+    enable_health_check: true              # Enable health check
+    health_check_interval: "30s"           # Health check interval
+    enable_metrics: true                   # Enable monitoring metrics
+    enable_retry: true                     # Enable retry mechanism
+    max_retry_times: 3                     # Maximum retry times
+    retry_interval: "1s"                   # Retry interval
+    enable_circuit_breaker: true           # Enable circuit breaker
+    circuit_breaker_threshold: 0.5         # Circuit breaker threshold
+    enable_service_watch: true             # Enable service watch
+    enable_config_watch: true              # Enable config watch
+    load_balancer_type: "weighted_random" # Load balancer type
+    enable_route_rule: true                # Enable route rules
+    enable_rate_limit: true                # Enable rate limiting
+    rate_limit_type: "local"               # Rate limit type
+    enable_graceful_shutdown: true         # Enable graceful shutdown
+    shutdown_timeout: "30s"                # Graceful shutdown timeout
+    enable_logging: true                   # Enable detailed logging
+    log_level: "info"                      # Log level
+
+  # Service Registration Information (optional)
+  service_info:
+    service_name: "my-service"
+    namespace: "default"
+    host: "127.0.0.1"
+    port: 8080
+    weight: 100
+    ttl: 30
+    metadata:
+      version: "1.0.0"
+      environment: "production"
+      region: "us-west-1" 

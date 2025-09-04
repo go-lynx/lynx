@@ -1,0 +1,244 @@
+# Apache Pulsar Configuration Example
+# This file demonstrates the configuration options available for the Pulsar plugin
+
+lynx:
+  pulsar:
+    # Service URL for Pulsar cluster
+    service_url: "pulsar://localhost:6650"
+    
+    # Authentication configuration
+    auth:
+      # Authentication type: token, oauth2, tls, or leave empty for no auth
+      type: ""  # or "token", "oauth2", "tls"
+      
+      # Token for token-based authentication
+      token: ""
+      
+      # OAuth2 configuration (when type is "oauth2")
+      oauth2:
+        issuer_url: "https://your-oauth2-issuer.com"
+        client_id: "your-client-id"
+        client_secret: "your-client-secret"
+        audience: "your-audience"
+        scope: "your-scope"
+      
+      # TLS authentication (when type is "tls")
+      tls_auth:
+        cert_file: "/path/to/client.crt"
+        key_file: "/path/to/client.key"
+        ca_file: "/path/to/ca.crt"
+    
+    # TLS configuration
+    tls:
+      enable: false
+      allow_insecure_connection: false
+      trust_certs_file: "/path/to/trusted-certs.pem"
+      verify_hostname: true
+    
+    # Connection configuration
+    connection:
+      connection_timeout: 30s
+      operation_timeout: 30s
+      keep_alive_interval: 30s
+      max_connections_per_host: 1
+      connection_max_lifetime: 0s  # 0 means no limit
+      enable_connection_pooling: true
+    
+    # Producer configurations
+    producers:
+      - name: "default-producer"
+        enabled: true
+        topic: "default-topic"
+        options:
+          producer_name: "lynx-default-producer"
+          send_timeout: 30s
+          max_pending_messages: 1000
+          max_pending_messages_across_partitions: 50000
+          block_if_queue_full: false
+          batching_enabled: true
+          batching_max_publish_delay: 10ms
+          batching_max_messages: 1000
+          batching_max_size: 131072  # 128KB
+          compression_type: "none"  # none, lz4, zlib, zstd, snappy
+          hashing_scheme: "java_string_hash"  # java_string_hash, murmur3_32hash, consistent_hashing
+          message_routing_mode: "round_robin"  # round_robin, single_partition, custom_partition
+          enable_chunking: false
+          chunk_max_size: 1048576  # 1MB
+      
+      - name: "high-throughput-producer"
+        enabled: false
+        topic: "high-throughput-topic"
+        options:
+          producer_name: "lynx-high-throughput-producer"
+          send_timeout: 60s
+          max_pending_messages: 10000
+          batching_enabled: true
+          batching_max_publish_delay: 100ms
+          batching_max_messages: 5000
+          compression_type: "lz4"
+          message_routing_mode: "single_partition"
+      
+      - name: "low-latency-producer"
+        enabled: false
+        topic: "low-latency-topic"
+        options:
+          producer_name: "lynx-low-latency-producer"
+          send_timeout: 5s
+          max_pending_messages: 100
+          batching_enabled: false
+          message_routing_mode: "round_robin"
+    
+    # Consumer configurations
+    consumers:
+      - name: "default-consumer"
+        enabled: true
+        topics:
+          - "default-topic"
+        subscription_name: "default-subscription"
+        options:
+          consumer_name: "lynx-default-consumer"
+          subscription_type: "exclusive"  # exclusive, shared, failover, key_shared
+          subscription_initial_position: "latest"  # latest, earliest
+          subscription_mode: "durable"  # durable, non_durable
+          receiver_queue_size: 1000
+          max_total_receiver_queue_size_across_partitions: 50000
+          consumer_name_prefix: "lynx-consumer"
+          read_compacted: false
+          enable_retry_on_message_failure: true
+          retry_enable: true
+          ack_timeout: 0s  # 0 means no timeout
+          negative_ack_delay: 1m
+          priority_level: 0
+          crypto_failure_action: "fail"  # fail, discard, consume
+          properties:
+            application: "lynx-framework"
+            version: "2.0.0"
+          dead_letter_policy:
+            max_redeliver_count: 3
+            dead_letter_topic: "dlq-topic"
+            initial_subscription_name: "dlq-subscription"
+      
+      - name: "batch-consumer"
+        enabled: false
+        topics:
+          - "batch-topic"
+        subscription_name: "batch-subscription"
+        options:
+          consumer_name: "lynx-batch-consumer"
+          subscription_type: "shared"
+          subscription_initial_position: "earliest"
+          receiver_queue_size: 5000
+          read_compacted: true
+          ack_timeout: 30s
+      
+      - name: "streaming-consumer"
+        enabled: false
+        topics:
+          - "streaming-topic"
+        subscription_name: "streaming-subscription"
+        options:
+          consumer_name: "lynx-streaming-consumer"
+          subscription_type: "failover"
+          subscription_initial_position: "latest"
+          receiver_queue_size: 100
+          ack_timeout: 0s
+    
+    # Retry configuration
+    retry:
+      enable: true
+      max_attempts: 3
+      initial_delay: 100ms
+      max_delay: 30s
+      retry_delay_multiplier: 2.0
+      jitter_factor: 0.1
+    
+    # Monitoring configuration
+    monitoring:
+      enable_metrics: true
+      metrics_namespace: "lynx_pulsar"
+      enable_health_check: true
+      health_check_interval: 30s
+      enable_tracing: false
+
+# Alternative configuration examples:
+
+# 1. Production Environment with Authentication
+# auth:
+#   type: "token"
+#   token: "your-production-token"
+# 
+# tls:
+#   enable: true
+#   allow_insecure_connection: false
+#   trust_certs_file: "/etc/pulsar/certs/trusted-certs.pem"
+#   verify_hostname: true
+# 
+# connection:
+#   connection_timeout: 60s
+#   operation_timeout: 60s
+#   max_connections_per_host: 5
+
+# 2. Development Environment
+# service_url: "pulsar://localhost:6650"
+# auth:
+#   type: ""  # No authentication for local development
+# 
+# tls:
+#   enable: false
+# 
+# connection:
+#   connection_timeout: 10s
+#   operation_timeout: 10s
+#   max_connections_per_host: 1
+
+# 3. High Availability Setup
+# service_url: "pulsar://pulsar-cluster-1:6650,pulsar-cluster-2:6650,pulsar-cluster-3:6650"
+# 
+# connection:
+#   connection_timeout: 60s
+#   operation_timeout: 60s
+#   max_connections_per_host: 3
+#   enable_connection_pooling: true
+
+# 4. OAuth2 Authentication
+# auth:
+#   type: "oauth2"
+#   oauth2:
+#     issuer_url: "https://your-identity-provider.com"
+#     client_id: "your-client-id"
+#     client_secret: "your-client-secret"
+#     audience: "pulsar://your-pulsar-cluster"
+#     scope: "openid profile email"
+
+# 5. Schema Registry Integration
+# producers:
+#   - name: "schema-producer"
+#     enabled: true
+#     topic: "schema-topic"
+#     options:
+#       producer_name: "lynx-schema-producer"
+#       send_timeout: 30s
+#       # Schema will be automatically detected from the topic
+
+# 6. Multi-tenant Setup
+# producers:
+#   - name: "tenant-a-producer"
+#     enabled: true
+#     topic: "tenant-a/namespace-a/topic-a"
+# 
+#   - name: "tenant-b-producer"
+#     enabled: true
+#     topic: "tenant-b/namespace-b/topic-b"
+# 
+# consumers:
+#   - name: "tenant-a-consumer"
+#     enabled: true
+#     topics:
+#       - "tenant-a/namespace-a/topic-a"
+#     subscription_name: "tenant-a-subscription"
+# 
+#   - name: "tenant-b-consumer"
+#     enabled: true
+#     topics:
+#       - "tenant-b/namespace-b/topic-b"
+#     subscription_name: "tenant-b-subscription"

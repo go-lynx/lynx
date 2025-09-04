@@ -1,71 +1,72 @@
-# Redis 分布式锁 (重构版)
+# Redis Distributed Lock (Refactored Version)
 
-基于 Redis 的分布式锁实现，按领域分离的模块化设计。
+Redis-based distributed lock implementation with domain-separated modular design.
 
-## 文件结构
+## File Structure
 
 ```
 redislock_v2/
-├── errors.go      # 错误定义
-├── types.go       # 类型定义和接口
-├── scripts.go     # Lua 脚本
-├── utils.go       # 工具函数
-├── manager.go     # 锁管理器
-├── lock.go        # 锁实例方法
-├── api.go         # 公共 API
-└── README.md      # 文档
+├── errors.go      # Error definitions
+├── types.go       # Type definitions and interfaces
+├── scripts.go     # Lua scripts
+├── utils.go       # Utility functions
+├── manager.go     # Lock manager
+├── lock.go        # Lock instance methods
+├── api.go         # Public API
+└── README.md      # Documentation
 ```
 
-## 模块说明
 
-### 1. errors.go - 错误定义
-- 集中定义所有锁相关的错误类型
-- 便于错误处理和国际化
+## Module Descriptions
 
-### 2. types.go - 类型定义
-- `LockOptions`: 锁配置选项
-- `RetryStrategy`: 重试策略
-- `LockCallback`: 监控回调接口
-- `RedisLock`: 锁实例结构
-- `lockManager`: 锁管理器结构
-- 默认配置常量
+### 1. errors.go - Error Definitions
+- Centralized definition of all lock-related error types
+- Facilitates error handling and internationalization
 
-### 3. scripts.go - Lua 脚本
-- `lockScript`: 获取锁的脚本
-- `unlockScript`: 释放锁的脚本
-- `renewScript`: 续期锁的脚本
-- 支持可重入锁扩展
+### 2. types.go - Type Definitions
+- [LockOptions](file:///Users/claire/GolandProjects/lynx/lynx/plugins/nosql/redis/redislock/types.go#L13-L22): Lock configuration options
+- [RetryStrategy](file:///Users/claire/GolandProjects/lynx/lynx/plugins/nosql/redis/redislock/types.go#L78-L81): Retry strategy
+- [LockCallback](file:///Users/claire/GolandProjects/lynx/lynx/plugins/nosql/redis/redislock/types.go#L94-L100): Monitoring callback interface
+- [RedisLock](file:///Users/claire/GolandProjects/lynx/lynx/plugins/nosql/redis/redislock/types.go#L112-L129): Lock instance structure
+- [lockManager](file:///Users/claire/GolandProjects/lynx/lynx/plugins/nosql/redis/redislock/types.go#L146-L168): Lock manager structure
+- Default configuration constants
 
-### 4. utils.go - 工具函数
-- 锁值生成逻辑
-- 进程标识初始化
-- 主机名和IP获取
+### 3. scripts.go - Lua Scripts
+- [lockScript](file:///Users/claire/GolandProjects/lynx/lynx/plugins/nosql/redis/redislock/scripts.go#L105-L105): Script for acquiring locks
+- [unlockScript](file:///Users/claire/GolandProjects/lynx/lynx/plugins/nosql/redis/redislock/scripts.go#L106-L106): Script for releasing locks
+- [renewScript](file:///Users/claire/GolandProjects/lynx/lynx/plugins/nosql/redis/redislock/scripts.go#L107-L107): Script for renewing locks
+- Support for reentrant lock extensions
 
-### 5. manager.go - 锁管理器
-- 全局锁管理器实例
-- 续期服务管理
-- 工作池模式
-- 统计信息收集
-- 优雅关闭
+### 4. utils.go - Utility Functions
+- Lock value generation logic
+- Process identifier initialization
+- Hostname and IP retrieval
 
-### 6. lock.go - 锁实例方法
-- 锁状态查询方法
-- 手动续期和释放
-- 锁状态检查
+### 5. manager.go - Lock Manager
+- Global lock manager instance
+- Renewal service management
+- Worker pool pattern
+- Statistics collection
+- Graceful shutdown
 
-### 7. api.go - 公共 API
-- 主要的锁操作接口
-- 向后兼容的 API
-- 错误处理和回调
+### 6. lock.go - Lock Instance Methods
+- Lock status query methods
+- Manual renewal and release
+- Lock status checking
 
-## 设计优势
+### 7. api.go - Public API
+- Main lock operation interfaces
+- Backward compatible API
+- Error handling and callbacks
 
-### 1. **模块化设计**
-- 每个文件职责单一，便于维护
-- 代码复用性更好
-- 测试更容易
+## Design Advantages
 
-### 2. **清晰的依赖关系**
+### 1. **Modular Design**
+- Each file has a single responsibility, making maintenance easier
+- Better code reusability
+- Easier testing
+
+### 2. **Clear Dependencies**
 ```
 api.go → manager.go → lock.go
     ↓         ↓         ↓
@@ -74,30 +75,31 @@ types.go → scripts.go → utils.go
 errors.go
 ```
 
-### 3. **易于扩展**
-- 新增功能只需修改对应模块
-- 不影响其他模块
-- 便于添加新特性
 
-### 4. **更好的可读性**
-- 代码组织更清晰
-- 文件大小适中
-- 便于团队协作
+### 3. **Easy to Extend**
+- New features only require modification of corresponding modules
+- Does not affect other modules
+- Facilitates adding new features
 
-## 使用方式
+### 4. **Better Readability**
+- Clearer code organization
+- Moderate file sizes
+- Facilitates team collaboration
 
-使用方式与原版本完全相同，只是内部结构更加模块化：
+## Usage
+
+Usage is identical to the original version, just with a more modular internal structure:
 
 ```go
 import "github.com/go-lynx/lynx/plugins/nosql/redis/redislock"
 
-// 基本使用
+// Basic usage
 err := redislock.Lock(context.Background(), "my-lock", 30*time.Second, func() error {
-    // 业务逻辑
+    // Business logic
     return nil
 })
 
-// 带配置的使用
+// Usage with configuration
 options := redislock.LockOptions{
     Expiration:       60 * time.Second,
     RetryStrategy:    redislock.DefaultRetryStrategy,
@@ -106,34 +108,35 @@ options := redislock.LockOptions{
 }
 
 err := redislock.LockWithOptions(context.Background(), "my-lock", options, func() error {
-    // 业务逻辑
+    // Business logic
     return nil
 })
 ```
 
-## 迁移指南
 
-从原版本迁移到重构版本：
+## Migration Guide
 
-1. **导入路径保持不变**
-2. **API 接口完全兼容**
-3. **配置选项保持一致**
-4. **错误处理方式相同**
+Migrating from the original version to the refactored version:
 
-## 性能优化
+1. **Import path remains unchanged**
+2. **API interfaces are fully compatible**
+3. **Configuration options remain consistent**
+4. **Error handling approach is the same**
 
-重构后的版本保持了所有性能优化：
+## Performance Optimizations
 
-- ✅ 工作池模式限制并发
-- ✅ 智能续期检查
-- ✅ 指数退避重试
-- ✅ 高频检查响应
-- ✅ 原子操作统计
+The refactored version maintains all performance optimizations:
 
-## 维护建议
+- ✅ Worker pool pattern to limit concurrency
+- ✅ Intelligent renewal checking
+- ✅ Exponential backoff retry
+- ✅ High-frequency check response
+- ✅ Atomic operation statistics
 
-1. **错误处理**: 在 `errors.go` 中统一管理错误
-2. **类型扩展**: 在 `types.go` 中添加新的类型定义
-3. **脚本优化**: 在 `scripts.go` 中优化 Lua 脚本
-4. **功能增强**: 在对应模块中添加新功能
-5. **测试覆盖**: 为每个模块编写单元测试 
+## Maintenance Recommendations
+
+1. **Error Handling**: Manage errors centrally in [errors.go](file:///Users/claire/GolandProjects/lynx/lynx/plugins/errors.go)
+2. **Type Extensions**: Add new type definitions in [types.go](file:///Users/claire/GolandProjects/lynx/lynx/plugins/nosql/redis/redislock/types.go)
+3. **Script Optimization**: Optimize Lua scripts in [scripts.go](file:///Users/claire/GolandProjects/lynx/lynx/plugins/nosql/redis/redislock/scripts.go)
+4. **Feature Enhancement**: Add new features in corresponding modules
+5. **Test Coverage**: Write unit tests for each module

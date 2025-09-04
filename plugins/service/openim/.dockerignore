@@ -1,0 +1,63 @@
+# OpenIM Plugin .dockerignore
+# Exclude files and directories that are not needed in the Docker image
+
+# Build artifacts
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+testdata/
+coverage.txt
+coverage.html
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Development files
+.git/
+.gitignore
+.gitattributes
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Go specific
+vendor/
+*.test
+*.prof
+
+# Configuration examples (keep only what's needed)
+conf/example_config.yml

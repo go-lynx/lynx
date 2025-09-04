@@ -1,0 +1,26 @@
+# Swagger Plugin Simple Configuration Example (Quick Start)
+lynx:
+  swagger:
+    # Enable plugin
+    enabled: true
+    
+    # Documentation generation
+    gen:
+      enabled: true
+      scan_dirs:
+        - "./"
+      output_path: "./docs/swagger.json"
+      watch_enabled: true
+    
+    # UI service
+    ui:
+      enabled: true
+      port: 8080
+      path: "/swagger"
+      title: "API Documentation"
+    
+    # API information
+    info:
+      title: "My API"
+      version: "1.0.0"
+      description: "API interface documentation"

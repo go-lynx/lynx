@@ -1,0 +1,568 @@
+{
+  "schemaVersion": 38,
+  "title": "Lynx PostgreSQL Dashboard",
+  "editable": true,
+  "timezone": "browser",
+  "version": 2,
+  "tags": ["lynx", "pgsql"],
+  "style": "dark",
+  "graphTooltip": 0,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROM",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {"text": "Prometheus", "value": "Prometheus"},
+        "hide": 2
+      },
+      {
+        "name": "rate_interval",
+        "type": "custom",
+        "query": "1m,5m,15m",
+        "current": {"text": "5m", "value": "5m"}
+      },
+      {
+        "name": "job",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+        "query": "label_values(up, job)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+        "query": "label_values(up{job=~\"$job\"}, instance)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Active Connections",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "lynx_pgsql_in_use_connections{job=~\"$job\",instance=~\"$instance\"}",
+          "legendFormat": "In Use"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "displayMode": "gradient-gauge",
+            "orientation": "auto",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Connection Pool Utilization",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "lynx_pgsql_in_use_connections{job=~\"$job\",instance=~\"$instance\"} / lynx_pgsql_max_open_connections{job=~\"$job\",instance=~\"$instance\"} * 100",
+          "legendFormat": "Utilization"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "displayMode": "gradient-gauge",
+            "orientation": "auto",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 70},
+              {"color": "red", "value": 90}
+            ]
+          },
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Health Check Success Rate",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "rate(lynx_pgsql_health_check_success_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]) / clamp_min(rate(lynx_pgsql_health_check_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]), 1e-9) * 100",
+          "legendFormat": "Success Rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "displayMode": "gradient-gauge",
+            "orientation": "auto",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 95},
+              {"color": "green", "value": 99}
+            ]
+          },
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Query P95 Latency",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(lynx_pgsql_query_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])))",
+          "legendFormat": "P95 Latency"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "displayMode": "gradient-gauge",
+            "orientation": "auto",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.1},
+              {"color": "red", "value": 1}
+            ]
+          },
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connection Pool Status",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "lynx_pgsql_open_connections{job=~\"$job\",instance=~\"$instance\"}",
+          "legendFormat": "Open Connections"
+        },
+        {
+          "expr": "lynx_pgsql_in_use_connections{job=~\"$job\",instance=~\"$instance\"}",
+          "legendFormat": "In Use Connections"
+        },
+        {
+          "expr": "lynx_pgsql_idle_connections{job=~\"$job\",instance=~\"$instance\"}",
+          "legendFormat": "Idle Connections"
+        },
+        {
+          "expr": "lynx_pgsql_max_open_connections{job=~\"$job\",instance=~\"$instance\"}",
+          "legendFormat": "Max Open Connections"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "single", "sort": "none"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Query Performance",
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, op) (rate(lynx_pgsql_query_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])))",
+          "legendFormat": "{{op}} P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, op) (rate(lynx_pgsql_query_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])))",
+          "legendFormat": "{{op}} P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, op) (rate(lynx_pgsql_query_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])))",
+          "legendFormat": "{{op}} P99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "s"
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "single", "sort": "none"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Health Check Metrics",
+      "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "rate(lynx_pgsql_health_check_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
+          "legendFormat": "Total Checks"
+        },
+        {
+          "expr": "rate(lynx_pgsql_health_check_success_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
+          "legendFormat": "Successful Checks"
+        },
+        {
+          "expr": "rate(lynx_pgsql_health_check_failure_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
+          "legendFormat": "Failed Checks"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "single", "sort": "none"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connection Events",
+      "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "rate(lynx_pgsql_connect_attempts_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
+          "legendFormat": "Connection Attempts"
+        },
+        {
+          "expr": "rate(lynx_pgsql_connect_success_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
+          "legendFormat": "Successful Connections"
+        },
+        {
+          "expr": "rate(lynx_pgsql_connect_failures_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
+          "legendFormat": "Failed Connections"
+        },
+        {
+          "expr": "rate(lynx_pgsql_max_idle_closed_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
+          "legendFormat": "Idle Connections Closed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "single", "sort": "none"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Wait Events",
+      "gridPos": {"x": 0, "y": 20, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "rate(lynx_pgsql_wait_count_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
+          "legendFormat": "Wait Count"
+        },
+        {
+          "expr": "rate(lynx_pgsql_wait_duration_seconds_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval])",
+          "legendFormat": "Wait Duration"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "single", "sort": "none"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error Rates",
+      "gridPos": {"x": 12, "y": 20, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "topk(5, rate(lynx_pgsql_errors_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]))",
+          "legendFormat": "{{sqlstate}}"
+        },
+        {
+          "expr": "sum by (op, threshold) (rate(lynx_pgsql_slow_queries_total{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]))",
+          "legendFormat": "Slow {{op}} > {{threshold}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "single", "sort": "none"}
+      }
+    },
+    {
+      "type": "heatmap",
+      "title": "Connection Pool Heatmap",
+      "gridPos": {"x": 0, "y": 28, "w": 24, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "$DS_PROM"},
+      "targets": [
+        {
+          "expr": "sum by (le) (rate(lynx_pgsql_connection_pool_utilization_bucket{job=~\"$job\",instance=~\"$instance\"}[$rate_interval]))",
+          "legendFormat": "{{le}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "hideFrom": {"legend": false, "tooltip": false, "vis": false}
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 80}
+            ]
+          }
+        }
+      },
+      "options": {
+        "calculate": true,
+        "calculation": {
+          "xBuckets": {
+            "mode": "size",
+            "value": "1"
+          }
+        },
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "Spectral",
+          "steps": 64
+        },
+        "exemplars": {"color": "rgba(255,0,255,0.7)"},
+        "filterValues": {"le": 1e-9},
+        "legend": {"show": true},
+        "rowsFrame": {"layout": "auto"},
+        "tooltip": {"show": true, "yHistogram": false},
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "short"
+        }
+      }
+    }
+  ]
+}

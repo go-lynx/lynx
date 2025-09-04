@@ -5,38 +5,117 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/polarismesh/polaris-go/api"
+	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
-// HTTPRateLimit 方法用于创建一个 HTTP 限流中间件。
-// 该中间件会从 Polaris 获取 HTTP 限流策略，并应用到 HTTP 请求处理流程中。
-// 返回值为一个实现了 middleware.Middleware 接口的中间件实例。
+// MiddlewareAdapter 
+// Responsibility: provide HTTP/gRPC rate limit middleware and router middleware.
+
+// HTTPRateLimit creates HTTP rate limit middleware.
+// It fetches HTTP rate limit policies from Polaris and applies them to the HTTP request flow.
 func (p *PlugPolaris) HTTPRateLimit() middleware.Middleware {
-	// 使用 Lynx 应用的日志辅助器记录正在同步 HTTP 限流策略的信息
+	if err := p.checkInitialized(); err != nil {
+		log.Warnf("Polaris plugin not initialized, returning nil HTTP rate limit middleware: %v", err)
+		return nil
+	}
+
 	log.Infof("Synchronizing [HTTP] rate limit policy")
-	// 调用 GetPolaris().Limiter 方法获取一个限流实例，同时设置服务名称和命名空间
-	// 服务名称通过 app.GetName() 获取，命名空间从插件配置中获取
-	// 最后调用 polaris.RateLimit 方法将限流实例转换为中间件
+
 	return polaris.Ratelimit(GetPolaris().Limiter(
-		// 设置限流服务名称为当前应用的名称
 		polaris.WithLimiterService(app.GetName()),
-		// 设置限流服务的命名空间为插件配置中的命名空间
 		polaris.WithLimiterNamespace(GetPlugin().conf.Namespace),
 	))
 }
 
-// GRPCRateLimit 方法用于创建一个 gRPC 限流中间件。
-// 该中间件会从 Polaris 获取 gRPC 限流策略，并应用到 gRPC 请求处理流程中。
-// 返回值为一个实现了 middleware.Middleware 接口的中间件实例。
+// GRPCRateLimit creates gRPC rate limit middleware.
+// It fetches gRPC rate limit policies from Polaris and applies them to the gRPC request flow.
 func (p *PlugPolaris) GRPCRateLimit() middleware.Middleware {
-	// 使用 Lynx 应用的日志辅助器记录正在同步 gRPC 限流策略的信息
+	if err := p.checkInitialized(); err != nil {
+		log.Warnf("Polaris plugin not initialized, returning nil gRPC rate limit middleware: %v", err)
+		return nil
+	}
+
 	log.Infof("Synchronizing [GRPC] rate limit policy")
-	// 调用 GetPolaris().Limiter 方法获取一个限流实例，同时设置服务名称和命名空间
-	// 服务名称通过 app.GetName() 获取，命名空间从插件配置中获取
-	// 最后调用 polaris.RateLimit 方法将限流实例转换为中间件
+
 	return polaris.Ratelimit(GetPolaris().Limiter(
-		// 设置限流服务名称为当前应用的名称
 		polaris.WithLimiterService(app.GetName()),
-		// 设置限流服务的命名空间为插件配置中的命名空间
 		polaris.WithLimiterNamespace(GetPlugin().conf.Namespace),
 	))
+}
+
+// CheckRateLimit checks rate limiting for a service with optional labels.
+func (p *PlugPolaris) CheckRateLimit(serviceName string, labels map[string]string) (bool, error) {
+	if err := p.checkInitialized(); err != nil {
+		return false, err
+	}
+
+	// Record metrics for the rate limit check operation
+	if p.metrics != nil {
+		p.metrics.RecordSDKOperation("check_rate_limit", "start")
+		defer func() {
+			if p.metrics != nil {
+				p.metrics.RecordSDKOperation("check_rate_limit", "success")
+			}
+		}()
+	}
+
+	log.Infof("Checking rate limit for service: %s", serviceName)
+
+	// Create Limit API client
+	limitAPI := api.NewLimitAPIByContext(p.sdk)
+	if limitAPI == nil {
+		return false, NewInitError("failed to create limit API")
+	}
+
+	// Build quota request
+	quotaReq := api.NewQuotaRequest()
+	quotaReq.SetService(serviceName)
+	quotaReq.SetNamespace(p.conf.Namespace)
+
+	// Set labels
+	for key, value := range labels {
+		quotaReq.AddArgument(model.BuildQueryArgument(key, value))
+	}
+
+	// Execute with circuit breaker and retry mechanism
+	var future api.QuotaFuture
+	var lastErr error
+
+	err := p.circuitBreaker.Do(func() error {
+		return p.retryManager.DoWithRetry(func() error {
+			// Call SDK API to check rate limit
+			fut, err := limitAPI.GetQuota(quotaReq)
+			if err != nil {
+				lastErr = err
+				return err
+			}
+			future = fut
+			return nil
+		})
+	})
+
+	if err != nil {
+		log.Errorf("Failed to check rate limit for service %s after retries: %v", serviceName, err)
+		if p.metrics != nil {
+			p.metrics.RecordSDKOperation("check_rate_limit", "error")
+		}
+		return false, WrapServiceError(lastErr, ErrCodeRateLimitFailed, "failed to check rate limit")
+	}
+
+	// Obtain rate limit result
+	result := future.Get()
+	if result == nil {
+		log.Errorf("Rate limit result is nil for service %s", serviceName)
+		return false, NewServiceError(ErrCodeRateLimitFailed, "rate limit result is nil")
+	}
+
+	// Check whether the request is allowed
+	if result.Code == model.QuotaResultOk {
+		log.Infof("Rate limit check passed for service %s", serviceName)
+		return true, nil
+	} else {
+		log.Warnf("Rate limit exceeded for service %s", serviceName)
+		return false, nil
+	}
 }

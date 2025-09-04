@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 38,
+  "title": "Lynx Polaris Dashboard",
+  "editable": true,
+  "timezone": "browser",
+  "version": 1,
+  "tags": [
+    "lynx",
+    "polaris"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROM",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "Prometheus"
+        }
+      },
+      {
+        "name": "rate_interval",
+        "type": "custom",
+        "query": "1m,5m,15m",
+        "current": {
+          "text": "5m",
+          "value": "5m"
+        }
+      },
+      {
+        "name": "job",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
+        "query": "label_values(up, job)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
+        "query": "label_values(up{job=~\"$job\"}, instance)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "operation",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
+        "query": "label_values(polaris_sdk_operations_total, operation)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
+        "query": "label_values(polaris_service_discovery_total, service)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$DS_PROM"
+        },
+        "query": "label_values(polaris_service_discovery_total, namespace)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "SDK ops & errors",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
+      "targets": [
+        {
+          "expr": "sum by (operation) (rate(polaris_sdk_operations_total{job=~\"$job\",instance=~\"$instance\",operation=~\"$operation\"}[$rate_interval]))",
+          "legendFormat": "ops {{operation}}"
+        },
+        {
+          "expr": "sum by (operation) (rate(polaris_sdk_errors_total{job=~\"$job\",instance=~\"$instance\",operation=~\"$operation\"}[$rate_interval]))",
+          "legendFormat": "err {{operation}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "SDK op duration (p95)",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (operation, le) (rate(polaris_sdk_operations_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\",operation=~\"$operation\"}[$rate_interval])))",
+          "legendFormat": "p95 {{operation}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Service discovery ops",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
+      "targets": [
+        {
+          "expr": "sum by (service,namespace) (rate(polaris_service_discovery_total{job=~\"$job\",instance=~\"$instance\",service=~\"$service\",namespace=~\"$namespace\"}[$rate_interval]))",
+          "legendFormat": "{{service}}/{{namespace}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rate limit",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$DS_PROM"
+      },
+      "targets": [
+        {
+          "expr": "sum by (service,namespace) (rate(polaris_rate_limit_requests_total{job=~\"$job\",instance=~\"$instance\",service=~\"$service\",namespace=~\"$namespace\"}[$rate_interval]))",
+          "legendFormat": "req {{service}}/{{namespace}}"
+        },
+        {
+          "expr": "sum by (service,namespace) (rate(polaris_rate_limit_rejected_total{job=~\"$job\",instance=~\"$instance\",service=~\"$service\",namespace=~\"$namespace\"}[$rate_interval]))",
+          "legendFormat": "rej {{service}}/{{namespace}}"
+        }
+      ]
+    }
+  ]
+}

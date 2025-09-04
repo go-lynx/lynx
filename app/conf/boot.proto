@@ -4,24 +4,68 @@ package lynx.protobuf.app.conf;
 
 option go_package = "github.com/go-lynx/lynx/conf";
 
-// Bootstrap 消息表示应用程序的启动配置信息。
+// Bootstrap message represents the application's bootstrap configuration information.
 message Bootstrap {
-  // lynx 字段包含 Lynx 框架相关的配置信息。
+  // lynx field contains Lynx framework related configuration information.
   Lynx lynx = 1;
 }
 
-// Lynx 消息封装了 Lynx 框架的应用程序配置。
-message Lynx {
-  // application 字段包含应用程序自身的配置信息。
-  Application application = 1;
+// Subscriptions defines the list of services that the application needs to subscribe to
+message Subscriptions {
+  // grpc defines the list of gRPC services to subscribe to
+  repeated GrpcSubscription grpc = 1;
 }
 
-// Application 消息包含应用程序的基本配置信息。
+// GrpcSubscription describes a gRPC service to be subscribed
+message GrpcSubscription {
+  // service is the service name to subscribe to (registration name in service discovery)
+  string service = 1;
+  // required indicates whether this is a strong dependency that needs availability checking before/upon startup
+  bool required = 2;
+  // tls indicates whether TLS is enabled
+  bool tls = 3;
+  // ca_name is the root CA certificate file name
+  string ca_name = 4;
+  // ca_group is the file group where the root CA certificate file is located
+  string ca_group = 5;
+}
+
+// Lynx message encapsulates the Lynx framework application configuration.
+message Lynx {
+  // application field contains the application's own configuration information.
+  Application application = 1;
+  // subscriptions field defines the upstream services that Lynx needs to subscribe to at startup
+  Subscriptions subscriptions = 2;
+  // runtime field contains runtime related configurations (event system, etc.)
+  Runtime runtime = 3;
+}
+
+// Application message contains basic configuration information of the application.
 message Application {
-  // name 字段表示应用程序的名称。
+  // name field represents the application name.
   string name = 1;
-  // version 字段表示应用程序的版本号。
+  // version field represents the application version number.
   string version = 2;
-  // close_banner 字段用于控制是否关闭应用程序启动时显示的横幅信息。
+  // close_banner field controls whether to close the banner information displayed when the application starts.
   bool close_banner = 3;
+}
+
+// Runtime configuration
+message Runtime {
+  // event event system configuration
+  Event event = 1;
+}
+
+// Event event system configuration
+message Event {
+  // queue_size event queue size
+  int32 queue_size = 1;
+  // worker_count number of event dispatch worker goroutines
+  int32 worker_count = 2;
+  // listener_queue_size individual queue size for each listener
+  int32 listener_queue_size = 3;
+  // history_size number of historical events to retain (<=0 means no history retention)
+  int32 history_size = 4;
+  // drain_timeout_ms drain timeout for Phase 2 shutdown (milliseconds). >0 means waiting for listener queue to drain as much as possible before exit notification
+  int32 drain_timeout_ms = 5;
 }

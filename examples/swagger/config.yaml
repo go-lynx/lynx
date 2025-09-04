@@ -1,0 +1,41 @@
+lynx:
+  swagger:
+    enabled: true
+    info:
+      title: "Swagger Example API"
+      description: "This is an example API using Lynx Swagger plugin"
+      version: "1.0.0"
+      terms_of_service: "https://example.com/terms"
+      contact:
+        name: "API Support"
+        url: "https://example.com/support"
+        email: "support@example.com"
+      license:
+        name: "Apache 2.0"
+        url: "https://www.apache.org/licenses/LICENSE-2.0.html"
+    
+    gen:
+      enabled: true
+      auto_generate: true
+      scan_dirs:
+        - "./examples/swagger"
+        - "./internal/controller"
+      output_path: "./docs/swagger.json"
+      exclude_dirs:
+        - "./vendor"
+        - "./third_party"
+    
+    ui:
+      enabled: true
+      port: 8080
+      path: "/swagger"
+      title: "API Documentation"
+      deep_linking: true
+      doc_expansion: "list"
+      default_models_expand_depth: 1
+      
+    servers:
+      - url: "http://localhost:8080"
+        description: "Development Environment"
+      - url: "https://api.example.com"
+        description: "Production Environment"

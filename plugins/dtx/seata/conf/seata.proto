@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.seata;
+
+option go_package = "github.com/go-lynx/lynx/plugins/seata/conf;conf";
+
+// The Seata message defines the configuration information for the Seata plugin.
+message Seata {
+  // enabled indicates whether the Seata plugin is enabled.
+  // Set to true to enable the plugin, set to false to disable the plugin.
+  bool enabled = 1;
+  // config_file_path represents the path to the Seata configuration file.
+  // This path points to the file containing the configuration information required by the Seata client.
+  string config_file_path = 2;
+}
