@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/go-lynx/lynx/plugins/nosql/mongodb/conf"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Option defines the plugin option function type
@@ -15,7 +16,7 @@ func WithURI(uri string) Option {
 		if p.conf == nil {
 			p.conf = &conf.MongoDB{}
 		}
-		p.conf.URI = uri
+		p.conf.Uri = uri
 	}
 }
 
@@ -58,9 +59,9 @@ func WithTimeouts(connectTimeout, serverSelectionTimeout, socketTimeout time.Dur
 		if p.conf == nil {
 			p.conf = &conf.MongoDB{}
 		}
-		p.conf.ConnectTimeout = connectTimeout.String()
-		p.conf.ServerSelectionTimeout = serverSelectionTimeout.String()
-		p.conf.SocketTimeout = socketTimeout.String()
+		p.conf.ConnectTimeout = durationpb.New(connectTimeout)
+		p.conf.ServerSelectionTimeout = durationpb.New(serverSelectionTimeout)
+		p.conf.SocketTimeout = durationpb.New(socketTimeout)
 	}
 }
 
@@ -70,7 +71,7 @@ func WithHeartbeatInterval(interval time.Duration) Option {
 		if p.conf == nil {
 			p.conf = &conf.MongoDB{}
 		}
-		p.conf.HeartbeatInterval = interval.String()
+		p.conf.HeartbeatInterval = durationpb.New(interval)
 	}
 }
 
@@ -91,7 +92,7 @@ func WithHealthCheck(enable bool, interval time.Duration) Option {
 			p.conf = &conf.MongoDB{}
 		}
 		p.conf.EnableHealthCheck = enable
-		p.conf.HealthCheckInterval = interval.String()
+		p.conf.HealthCheckInterval = durationpb.New(interval)
 	}
 }
 
@@ -101,10 +102,10 @@ func WithTLS(enable bool, certFile, keyFile, caFile string) Option {
 		if p.conf == nil {
 			p.conf = &conf.MongoDB{}
 		}
-		p.conf.EnableTLS = enable
-		p.conf.TLSCertFile = certFile
-		p.conf.TLSKeyFile = keyFile
-		p.conf.TLSCAFile = caFile
+		p.conf.EnableTls = enable
+		p.conf.TlsCertFile = certFile
+		p.conf.TlsKeyFile = keyFile
+		p.conf.TlsCaFile = caFile
 	}
 }
 
@@ -115,7 +116,7 @@ func WithCompression(enable bool, level int) Option {
 			p.conf = &conf.MongoDB{}
 		}
 		p.conf.EnableCompression = enable
-		p.conf.CompressionLevel = level
+		p.conf.CompressionLevel = int32(level)
 	}
 }
 
@@ -147,7 +148,7 @@ func WithWriteConcern(enable bool, w int, timeout time.Duration) Option {
 			p.conf = &conf.MongoDB{}
 		}
 		p.conf.EnableWriteConcern = enable
-		p.conf.WriteConcernW = w
-		p.conf.WriteConcernTimeout = timeout.String()
+		p.conf.WriteConcernW = int32(w)
+		p.conf.WriteConcernTimeout = durationpb.New(timeout)
 	}
 }

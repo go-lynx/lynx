@@ -9,6 +9,7 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/service/openim/conf"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 const (
@@ -222,8 +223,8 @@ func (o *ServiceOpenIM) setDefaultConfig() {
 	if o.conf.Server.Addr == "" {
 		o.conf.Server.Addr = "localhost:10002"
 	}
-	if o.conf.Server.APIVersion == "" {
-		o.conf.Server.APIVersion = "v3"
+	if o.conf.Server.ApiVersion == "" {
+		o.conf.Server.ApiVersion = "v3"
 	}
 	if o.conf.Server.LogLevel == "" {
 		o.conf.Server.LogLevel = "info"
@@ -232,18 +233,18 @@ func (o *ServiceOpenIM) setDefaultConfig() {
 	if o.conf.Client == nil {
 		o.conf.Client = &conf.Client{}
 	}
-	if o.conf.Client.Timeout == 0 {
-		o.conf.Client.Timeout = 30 * time.Second
+	if o.conf.Client.Timeout == nil {
+		o.conf.Client.Timeout = durationpb.New(30 * time.Second)
 	}
-	if o.conf.Client.HeartbeatInterval == 0 {
-		o.conf.Client.HeartbeatInterval = 30 * time.Second
+	if o.conf.Client.HeartbeatInterval == nil {
+		o.conf.Client.HeartbeatInterval = durationpb.New(30 * time.Second)
 	}
 
 	if o.conf.Security == nil {
 		o.conf.Security = &conf.Security{}
 	}
-	if o.conf.Security.JWTExpire == 0 {
-		o.conf.Security.JWTExpire = 24 * time.Hour
+	if o.conf.Security.JwtExpire == nil {
+		o.conf.Security.JwtExpire = durationpb.New(24 * time.Hour)
 	}
 
 	if o.conf.Storage == nil {
@@ -255,8 +256,8 @@ func (o *ServiceOpenIM) setDefaultConfig() {
 	if o.conf.Storage.PoolSize == 0 {
 		o.conf.Storage.PoolSize = 10
 	}
-	if o.conf.Storage.Timeout == 0 {
-		o.conf.Storage.Timeout = 5 * time.Second
+	if o.conf.Storage.Timeout == nil {
+		o.conf.Storage.Timeout = durationpb.New(5 * time.Second)
 	}
 }
 

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dtm-labs/client/dtmcli"
 	"github.com/dtm-labs/client/dtmgrpc"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-resty/resty/v2"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -75,7 +77,7 @@ func (h *TransactionHelper) ExecuteSAGA(ctx context.Context, gid string, branche
 	}
 
 	saga.TimeoutToFail = opts.TimeoutToFail
-	saga.BranchTimeout = opts.BranchTimeout
+	saga.RequestTimeout = opts.BranchTimeout
 	saga.RetryInterval = opts.RetryInterval
 	saga.Concurrent = opts.Concurrent
 
@@ -112,31 +114,30 @@ func (h *TransactionHelper) ExecuteTCC(ctx context.Context, gid string, branches
 		opts = DefaultTransactionOptions()
 	}
 
-	tcc := h.client.NewTcc(gid)
-	if tcc == nil {
-		return fmt.Errorf("failed to create TCC transaction")
-	}
+	// Use the new TCC global transaction API
+	err := dtmcli.TccGlobalTransaction(h.client.GetServerURL(), gid, func(tcc *dtmcli.Tcc) (*resty.Response, error) {
+		// Set transaction options
+		tcc.TimeoutToFail = opts.TimeoutToFail
+		tcc.RequestTimeout = opts.BranchTimeout
+		tcc.RetryInterval = opts.RetryInterval
 
-	tcc.TimeoutToFail = opts.TimeoutToFail
-	tcc.BranchTimeout = opts.BranchTimeout
-	tcc.RetryInterval = opts.RetryInterval
-
-	// Add custom request headers
-	if len(opts.CustomHeaders) > 0 {
-		tcc.BranchHeaders = opts.CustomHeaders
-	}
-
-	// Call all Try branches
-	for _, branch := range branches {
-		err := tcc.CallBranch(branch.Data, branch.Try, branch.Confirm, branch.Cancel)
-		if err != nil {
-			log.Errorf("TCC branch failed: gid=%s, try=%s, error=%v", gid, branch.Try, err)
-			return err
+		// Add custom request headers
+		if len(opts.CustomHeaders) > 0 {
+			tcc.BranchHeaders = opts.CustomHeaders
 		}
-	}
 
-	// Submit transaction
-	err := tcc.Submit()
+		// Call all Try branches
+		for _, branch := range branches {
+			_, err := tcc.CallBranch(branch.Data, branch.Try, branch.Confirm, branch.Cancel)
+			if err != nil {
+				log.Errorf("TCC branch failed: gid=%s, try=%s, error=%v", gid, branch.Try, err)
+				return nil, err
+			}
+		}
+
+		return nil, nil
+	})
+
 	if err != nil {
 		log.Errorf("TCC transaction failed: gid=%s, error=%v", gid, err)
 		return err
@@ -164,7 +165,7 @@ func (h *TransactionHelper) ExecuteMsg(ctx context.Context, gid string, queryPre
 	}
 
 	msg.TimeoutToFail = opts.TimeoutToFail
-	msg.BranchTimeout = opts.BranchTimeout
+	msg.RequestTimeout = opts.BranchTimeout
 	msg.RetryInterval = opts.RetryInterval
 
 	// Add custom request headers
@@ -258,32 +259,9 @@ func CreateGrpcContext(ctx context.Context, gid string, transType string, branch
 }
 
 // ExtractGrpcTransInfo extract transaction information from gRPC Context
-func ExtractGrpcTransInfo(ctx context.Context) (*dtmgrpc.BranchInfo, error) {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no metadata in context")
-	}
-
-	info := &dtmgrpc.BranchInfo{}
-
-	if vals := md.Get("dtm-gid"); len(vals) > 0 {
-		info.Gid = vals[0]
-	}
-	if vals := md.Get("dtm-trans-type"); len(vals) > 0 {
-		info.TransType = vals[0]
-	}
-	if vals := md.Get("dtm-branch-id"); len(vals) > 0 {
-		info.BranchID = vals[0]
-	}
-	if vals := md.Get("dtm-op"); len(vals) > 0 {
-		info.Op = vals[0]
-	}
-
-	if info.Gid == "" {
-		return nil, fmt.Errorf("missing gid in metadata")
-	}
-
-	return info, nil
+func ExtractGrpcTransInfo(ctx context.Context) (*dtmcli.BranchBarrier, error) {
+	// Use the built-in function from dtmgrpc package
+	return dtmgrpc.BarrierFromGrpc(ctx)
 }
 
 // MustGenGid generate global transaction ID, panic on failure
@@ -305,8 +283,8 @@ func (h *TransactionHelper) CheckTransactionStatus(gid string) (string, error) {
 
 // RegisterGrpcService register gRPC service to DTM
 func (h *TransactionHelper) RegisterGrpcService(serviceName string, endpoint string) error {
-	if h.client.grpcClient == nil {
-		return fmt.Errorf("gRPC client is not initialized")
+	if h.client.GetGRPCServer() == "" {
+		return fmt.Errorf("gRPC server is not configured")
 	}
 
 	// Here can implement service registration logic

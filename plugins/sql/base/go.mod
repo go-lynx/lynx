@@ -6,7 +6,7 @@ replace github.com/go-lynx/lynx/plugins/sql/interfaces => ../interfaces
 
 require (
 	github.com/go-lynx/lynx v1.2.1
-	github.com/go-lynx/lynx/plugins/sql/interfaces v0.0.0-00010101000000-000000000000
+	github.com/go-lynx/lynx/plugins/sql/interfaces v0.0.0
 )
 
 require (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/go-lynx/lynx/plugins"
 )
@@ -14,19 +15,19 @@ type MessageHandler func(ctx context.Context, msg *primitive.MessageExt) error
 // Producer RocketMQ producer interface
 type Producer interface {
 	// SendMessage sends a single message to the specified topic
-	SendMessage(ctx context.Context, topic string, body []byte, opts ...primitive.MessageOption) error
+	SendMessage(ctx context.Context, topic string, body []byte) error
 
 	// SendMessageSync sends a message synchronously
-	SendMessageSync(ctx context.Context, topic string, body []byte, opts ...primitive.MessageOption) (*primitive.SendResult, error)
+	SendMessageSync(ctx context.Context, topic string, body []byte) (*primitive.SendResult, error)
 
 	// SendMessageAsync sends a message asynchronously
-	SendMessageAsync(ctx context.Context, topic string, body []byte, opts ...primitive.MessageOption) error
+	SendMessageAsync(ctx context.Context, topic string, body []byte) error
 
 	// SendMessageWith sends a message by producer instance name
-	SendMessageWith(ctx context.Context, producerName, topic string, body []byte, opts ...primitive.MessageOption) error
+	SendMessageWith(ctx context.Context, producerName, topic string, body []byte) error
 
 	// GetProducer gets the underlying producer client
-	GetProducer(name string) (primitive.Producer, error)
+	GetProducer(name string) (rocketmq.Producer, error)
 
 	// IsProducerReady checks if the producer is ready
 	IsProducerReady(name string) bool
@@ -41,7 +42,7 @@ type Consumer interface {
 	SubscribeWith(ctx context.Context, consumerName string, topics []string, handler MessageHandler) error
 
 	// GetConsumer gets the underlying consumer client
-	GetConsumer(name string) (primitive.PushConsumer, error)
+	GetConsumer(name string) (rocketmq.PushConsumer, error)
 
 	// IsConsumerReady checks if the consumer is ready
 	IsConsumerReady(name string) bool

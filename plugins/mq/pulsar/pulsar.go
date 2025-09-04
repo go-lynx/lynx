@@ -9,6 +9,7 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/mq/pulsar/conf"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Plugin metadata constants
@@ -40,19 +41,19 @@ type PulsarClient struct {
 // NewPulsarClient creates a new Pulsar client plugin instance
 func NewPulsarClient() *PulsarClient {
 	pulsarConf := &conf.Pulsar{
-		ServiceURL: "pulsar://localhost:6650",
+		ServiceUrl: "pulsar://localhost:6650",
 		Connection: &conf.Connection{
-			ConnectionTimeout:       30 * time.Second,
-			OperationTimeout:        30 * time.Second,
-			KeepAliveInterval:       30 * time.Second,
+			ConnectionTimeout:       durationpb.New(30 * time.Second),
+			OperationTimeout:        durationpb.New(30 * time.Second),
+			KeepAliveInterval:       durationpb.New(30 * time.Second),
 			MaxConnectionsPerHost:   1,
 			EnableConnectionPooling: true,
 		},
 		Retry: &conf.Retry{
 			Enable:               true,
 			MaxAttempts:          3,
-			InitialDelay:         100 * time.Millisecond,
-			MaxDelay:             30 * time.Second,
+			InitialDelay:         durationpb.New(100 * time.Millisecond),
+			MaxDelay:             durationpb.New(30 * time.Second),
 			RetryDelayMultiplier: 2.0,
 			JitterFactor:         0.1,
 		},
@@ -60,7 +61,7 @@ func NewPulsarClient() *PulsarClient {
 			EnableMetrics:       true,
 			MetricsNamespace:    "lynx_pulsar",
 			EnableHealthCheck:   true,
-			HealthCheckInterval: 30 * time.Second,
+			HealthCheckInterval: durationpb.New(30 * time.Second),
 		},
 		Producers: []*conf.Producer{
 			{
@@ -68,10 +69,10 @@ func NewPulsarClient() *PulsarClient {
 				Enabled: true,
 				Topic:   "default-topic",
 				Options: &conf.ProducerOptions{
-					SendTimeout:             30 * time.Second,
+					SendTimeout:             durationpb.New(30 * time.Second),
 					MaxPendingMessages:      1000,
 					BatchingEnabled:         true,
-					BatchingMaxPublishDelay: 10 * time.Millisecond,
+					BatchingMaxPublishDelay: durationpb.New(10 * time.Millisecond),
 					BatchingMaxMessages:     1000,
 					CompressionType:         "none",
 					HashingScheme:           "java_string_hash",
@@ -92,7 +93,7 @@ func NewPulsarClient() *PulsarClient {
 					ReceiverQueueSize:           1000,
 					EnableRetryOnMessageFailure: true,
 					RetryEnable:                 true,
-					NegativeAckDelay:            1 * time.Minute,
+					NegativeAckDelay:            durationpb.New(1 * time.Minute),
 					CryptoFailureAction:         "fail",
 				},
 			},
@@ -132,20 +133,21 @@ func (p *PulsarClient) Configure(c any) error {
 
 // InitializeResources initializes the plugin with configuration
 func (p *PulsarClient) InitializeResources(rt plugins.Runtime) error {
-	// Validate configuration
-	if err := p.config.Validate(); err != nil {
-		return fmt.Errorf("invalid Pulsar configuration: %w", err)
-	}
-
 	// Initialize base plugin
 	if err := p.BasePlugin.InitializeResources(rt); err != nil {
 		return err
 	}
 
 	// Initialize managers
-	p.healthChecker = NewHealthChecker(p.config.Monitoring.HealthCheckInterval)
-	p.connectionManager = NewConnectionManager(p.config.Connection)
-	p.retryManager = NewRetryManager(p.config.Retry)
+	if p.config.Monitoring != nil {
+		p.healthChecker = NewHealthChecker(p.config.Monitoring.HealthCheckInterval.AsDuration())
+	}
+	if p.config.Connection != nil {
+		p.connectionManager = NewConnectionManager(p.config.Connection)
+	}
+	if p.config.Retry != nil {
+		p.retryManager = NewRetryManager(p.config.Retry)
+	}
 
 	return nil
 }
@@ -205,9 +207,8 @@ func (p *PulsarClient) CleanupTasks() error {
 	// Close consumers
 	p.consumerMutex.Lock()
 	for name, consumer := range p.consumers {
-		if err := consumer.Close(); err != nil {
-			log.Errorf("failed to close consumer %s: %v", name, err)
-		}
+		consumer.Close()
+		log.Infof("consumer %s closed", name)
 	}
 	p.consumers = make(map[string]pulsar.Consumer)
 	p.consumerMutex.Unlock()
@@ -215,9 +216,8 @@ func (p *PulsarClient) CleanupTasks() error {
 	// Close producers
 	p.producerMutex.Lock()
 	for name, producer := range p.producers {
-		if err := producer.Close(); err != nil {
-			log.Errorf("failed to close producer %s: %v", name, err)
-		}
+		producer.Close()
+		log.Infof("producer %s closed", name)
 	}
 	p.producers = make(map[string]pulsar.Producer)
 	p.producerMutex.Unlock()
@@ -234,12 +234,12 @@ func (p *PulsarClient) CleanupTasks() error {
 // CheckHealth performs health check on Pulsar client
 func (p *PulsarClient) CheckHealth() error {
 	if p.client == nil {
-		return fmt.Errorf("Pulsar client not initialized")
+		return fmt.Errorf("pulsar client not initialized")
 	}
 
 	// Check connection status
 	if !p.connectionManager.IsConnected() {
-		return fmt.Errorf("Pulsar client not connected")
+		return fmt.Errorf("pulsar client not connected")
 	}
 
 	// Check producer status
@@ -266,24 +266,24 @@ func (p *PulsarClient) CheckHealth() error {
 // buildClientOptions builds Pulsar client options from configuration
 func (p *PulsarClient) buildClientOptions() pulsar.ClientOptions {
 	options := pulsar.ClientOptions{
-		URL: p.config.ServiceURL,
+		URL: p.config.ServiceUrl,
 	}
 
 	// Connection options
 	if p.config.Connection != nil {
-		options.ConnectionTimeout = p.config.Connection.ConnectionTimeout
-		options.OperationTimeout = p.config.Connection.OperationTimeout
-		options.KeepAliveInterval = p.config.Connection.KeepAliveInterval
-		options.MaxConnectionsPerHost = int(p.config.Connection.MaxConnectionsPerHost)
+		options.ConnectionTimeout = p.config.Connection.ConnectionTimeout.AsDuration()
+		options.OperationTimeout = p.config.Connection.OperationTimeout.AsDuration()
+		options.KeepAliveInterval = p.config.Connection.KeepAliveInterval.AsDuration()
+		options.MaxConnectionsPerBroker = int(p.config.Connection.MaxConnectionsPerHost)
 	}
 
 	// TLS options
-	if p.config.TLS != nil && p.config.TLS.Enable {
-		options.TLSAllowInsecureConnection = p.config.TLS.AllowInsecureConnection
-		if p.config.TLS.TrustCertsFile != "" {
-			options.TLSTrustCertsFilePath = p.config.TLS.TrustCertsFile
+	if p.config.Tls != nil && p.config.Tls.Enable {
+		options.TLSAllowInsecureConnection = p.config.Tls.AllowInsecureConnection
+		if p.config.Tls.TrustCertsFile != "" {
+			options.TLSTrustCertsFilePath = p.config.Tls.TrustCertsFile
 		}
-		options.TLSValidateHostname = p.config.TLS.VerifyHostname
+		options.TLSValidateHostname = p.config.Tls.VerifyHostname
 	}
 
 	// Authentication options
@@ -294,21 +294,20 @@ func (p *PulsarClient) buildClientOptions() pulsar.ClientOptions {
 				options.Authentication = pulsar.NewAuthenticationToken(p.config.Auth.Token)
 			}
 		case "oauth2":
-			if p.config.Auth.OAuth2 != nil {
-				oauth2 := p.config.Auth.OAuth2
-				options.Authentication = pulsar.NewAuthenticationOAuth2(
-					pulsar.AuthenticationOAuth2Params{
-						IssuerEndpoint: oauth2.IssuerURL,
-						ClientID:       oauth2.ClientID,
-						ClientSecret:   oauth2.ClientSecret,
-						Audience:       oauth2.Audience,
-						Scope:          oauth2.Scope,
-					},
-				)
+			if p.config.Auth.Oauth2 != nil {
+				oauth2 := p.config.Auth.Oauth2
+				authParams := map[string]string{
+					"issuerEndpoint": oauth2.IssuerUrl,
+					"clientId":       oauth2.ClientId,
+					"clientSecret":   oauth2.ClientSecret,
+					"audience":       oauth2.Audience,
+					"scope":          oauth2.Scope,
+				}
+				options.Authentication = pulsar.NewAuthenticationOAuth2(authParams)
 			}
 		case "tls":
-			if p.config.Auth.TLSAuth != nil {
-				tlsAuth := p.config.Auth.TLSAuth
+			if p.config.Auth.TlsAuth != nil {
+				tlsAuth := p.config.Auth.TlsAuth
 				options.Authentication = pulsar.NewAuthenticationTLS(
 					tlsAuth.CertFile,
 					tlsAuth.KeyFile,
@@ -322,7 +321,7 @@ func (p *PulsarClient) buildClientOptions() pulsar.ClientOptions {
 
 // initializeProducers initializes all configured producers
 func (p *PulsarClient) initializeProducers() error {
-	for _, producerConfig := range p.config.GetEnabledProducers() {
+	for _, producerConfig := range p.GetEnabledProducers() {
 		if err := p.createProducer(producerConfig); err != nil {
 			return fmt.Errorf("failed to create producer %s: %w", producerConfig.Name, err)
 		}
@@ -332,7 +331,7 @@ func (p *PulsarClient) initializeProducers() error {
 
 // initializeConsumers initializes all configured consumers
 func (p *PulsarClient) initializeConsumers() error {
-	for _, consumerConfig := range p.config.GetEnabledConsumers() {
+	for _, consumerConfig := range p.GetEnabledConsumers() {
 		if err := p.createConsumer(consumerConfig); err != nil {
 			return fmt.Errorf("failed to create consumer %s: %w", consumerConfig.Name, err)
 		}
@@ -350,20 +349,22 @@ func (p *PulsarClient) createProducer(config *conf.Producer) error {
 		if config.Options.ProducerName != "" {
 			options.Name = config.Options.ProducerName
 		}
-		if config.Options.SendTimeout > 0 {
-			options.SendTimeout = config.Options.SendTimeout
+		if config.Options.SendTimeout != nil {
+			options.SendTimeout = config.Options.SendTimeout.AsDuration()
 		}
 		if config.Options.MaxPendingMessages > 0 {
 			options.MaxPendingMessages = int(config.Options.MaxPendingMessages)
 		}
 		if config.Options.BatchingEnabled {
-			options.BatchingMaxPublishDelay = config.Options.BatchingMaxPublishDelay
+			if config.Options.BatchingMaxPublishDelay != nil {
+				options.BatchingMaxPublishDelay = config.Options.BatchingMaxPublishDelay.AsDuration()
+			}
 			options.BatchingMaxMessages = uint(config.Options.BatchingMaxMessages)
 			options.BatchingMaxSize = uint(config.Options.BatchingMaxSize)
 		}
 		if config.Options.EnableChunking {
 			options.EnableChunking = true
-			options.ChunkMaxMessageSize = int(config.Options.ChunkMaxSize)
+			options.ChunkMaxMessageSize = uint(config.Options.ChunkMaxSize)
 		}
 	}
 
@@ -392,7 +393,7 @@ func (p *PulsarClient) createConsumer(config *conf.Consumer) error {
 			options.Name = config.Options.ConsumerName
 		}
 		if config.Options.SubscriptionType != "" {
-			options.SubscriptionType = p.parseSubscriptionType(config.Options.SubscriptionType)
+			options.Type = p.parseSubscriptionType(config.Options.SubscriptionType)
 		}
 		if config.Options.SubscriptionInitialPosition != "" {
 			options.SubscriptionInitialPosition = p.parseSubscriptionInitialPosition(config.Options.SubscriptionInitialPosition)
@@ -400,11 +401,8 @@ func (p *PulsarClient) createConsumer(config *conf.Consumer) error {
 		if config.Options.ReceiverQueueSize > 0 {
 			options.ReceiverQueueSize = int(config.Options.ReceiverQueueSize)
 		}
-		if config.Options.AckTimeout > 0 {
-			options.AckTimeout = config.Options.AckTimeout
-		}
-		if config.Options.NegativeAckDelay > 0 {
-			options.NegativeAckRedeliveryDelay = config.Options.NegativeAckDelay
+		if config.Options.NegativeAckDelay != nil {
+			options.NackRedeliveryDelay = config.Options.NegativeAckDelay.AsDuration()
 		}
 		if config.Options.Properties != nil {
 			options.Properties = config.Options.Properties
@@ -466,4 +464,26 @@ func (p *PulsarClient) GetClient() pulsar.Client {
 // IsConnected checks if the Pulsar client is connected
 func (p *PulsarClient) IsConnected() bool {
 	return !p.closed && p.client != nil && p.connectionManager.IsConnected()
+}
+
+// GetEnabledProducers returns all enabled producers
+func (p *PulsarClient) GetEnabledProducers() []*conf.Producer {
+	var enabled []*conf.Producer
+	for _, producer := range p.config.Producers {
+		if producer.Enabled {
+			enabled = append(enabled, producer)
+		}
+	}
+	return enabled
+}
+
+// GetEnabledConsumers returns all enabled consumers
+func (p *PulsarClient) GetEnabledConsumers() []*conf.Consumer {
+	var enabled []*conf.Consumer
+	for _, consumer := range p.config.Consumers {
+		if consumer.Enabled {
+			enabled = append(enabled, consumer)
+		}
+	}
+	return enabled
 }

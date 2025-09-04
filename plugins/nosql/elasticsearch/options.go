@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/go-lynx/lynx/plugins/nosql/elasticsearch/conf"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Option defines the plugin option function type
@@ -36,7 +37,7 @@ func WithAPIKey(apiKey string) Option {
 		if p.conf == nil {
 			p.conf = &conf.Elasticsearch{}
 		}
-		p.conf.APIKey = apiKey
+		p.conf.ApiKey = apiKey
 	}
 }
 
@@ -76,7 +77,7 @@ func WithConnectTimeout(timeout time.Duration) Option {
 		if p.conf == nil {
 			p.conf = &conf.Elasticsearch{}
 		}
-		p.conf.ConnectTimeout = timeout.String()
+		p.conf.ConnectTimeout = durationpb.New(timeout)
 	}
 }
 
@@ -86,7 +87,7 @@ func WithMaxRetries(maxRetries int) Option {
 		if p.conf == nil {
 			p.conf = &conf.Elasticsearch{}
 		}
-		p.conf.MaxRetries = maxRetries
+		p.conf.MaxRetries = int32(maxRetries)
 	}
 }
 
@@ -107,7 +108,7 @@ func WithHealthCheck(enable bool, interval time.Duration) Option {
 			p.conf = &conf.Elasticsearch{}
 		}
 		p.conf.EnableHealthCheck = enable
-		p.conf.HealthCheckInterval = interval.String()
+		p.conf.HealthCheckInterval = durationpb.New(interval)
 	}
 }
 

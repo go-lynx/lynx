@@ -7,6 +7,7 @@ import (
 
 	"github.com/dtm-labs/client/dtmcli"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-resty/resty/v2"
 )
 
 // ExampleService example service, demonstrating how to use the DTM plugin
@@ -73,9 +74,6 @@ func (s *ExampleService) OrderExample(ctx context.Context, orderID string, userI
 	// Generate global transaction ID
 	gid := s.dtmClient.GenerateGid()
 
-	// Create TCC transaction
-	tcc := s.dtmClient.NewTcc(gid)
-
 	// Inventory deduction request
 	inventoryReq := map[string]interface{}{
 		"product_id": productID,
@@ -90,32 +88,35 @@ func (s *ExampleService) OrderExample(ctx context.Context, orderID string, userI
 		"quantity":   quantity,
 	}
 
-	// Call inventory service TCC branch
-	err := tcc.CallBranch(
-		inventoryReq,
-		"http://localhost:8081/api/inventory/try",
-		"http://localhost:8081/api/inventory/confirm",
-		"http://localhost:8081/api/inventory/cancel",
-	)
-	if err != nil {
-		log.Errorf("Inventory TCC branch failed: %v", err)
-		return err
-	}
+	// Use the new TCC global transaction API
+	err := dtmcli.TccGlobalTransaction(s.dtmClient.GetServerURL(), gid, func(tcc *dtmcli.Tcc) (*resty.Response, error) {
+		// Call inventory service TCC branch
+		_, err := tcc.CallBranch(
+			inventoryReq,
+			"http://localhost:8081/api/inventory/try",
+			"http://localhost:8081/api/inventory/confirm",
+			"http://localhost:8081/api/inventory/cancel",
+		)
+		if err != nil {
+			log.Errorf("Inventory TCC branch failed: %v", err)
+			return nil, err
+		}
 
-	// Call order service TCC branch
-	err = tcc.CallBranch(
-		orderReq,
-		"http://localhost:8082/api/order/try",
-		"http://localhost:8082/api/order/confirm",
-		"http://localhost:8082/api/order/cancel",
-	)
-	if err != nil {
-		log.Errorf("Order TCC branch failed: %v", err)
-		return err
-	}
+		// Call order service TCC branch
+		_, err = tcc.CallBranch(
+			orderReq,
+			"http://localhost:8082/api/order/try",
+			"http://localhost:8082/api/order/confirm",
+			"http://localhost:8082/api/order/cancel",
+		)
+		if err != nil {
+			log.Errorf("Order TCC branch failed: %v", err)
+			return nil, err
+		}
 
-	// Submit TCC transaction
-	err = tcc.Submit()
+		return nil, nil
+	})
+
 	if err != nil {
 		log.Errorf("Order transaction failed: gid=%s, error=%v", gid, err)
 		return fmt.Errorf("order transaction failed: %w", err)
