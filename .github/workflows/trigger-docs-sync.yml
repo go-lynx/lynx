@@ -1,0 +1,29 @@
+name: Trigger Documentation Sync
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to sync to documentation (e.g., v1.2.3)'
+        required: true
+        type: string
+
+jobs:
+  trigger-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger documentation repository sync
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.DOCS_SYNC_TOKEN }}
+          repository: go-lynx/lynx.github.cn
+          event-type: new-release
+          client-payload: |
+            {
+              "version": "${{ github.event.release.tag_name || inputs.version }}",
+              "release_name": "${{ github.event.release.name || inputs.version }}",
+              "release_body": "${{ github.event.release.body || 'Manual sync' }}",
+              "triggered_by": "${{ github.actor }}"
+            }
