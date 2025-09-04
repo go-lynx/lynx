@@ -1,36 +1,36 @@
 # SQL Plugin
 
-一个简洁、灵活的 SQL 数据库插件系统，为 Lynx 框架提供数据库连接管理。
+A simple and flexible SQL database plugin system that provides database connection management for the Lynx framework.
 
-## 设计理念
+## Design Philosophy
 
-- **简洁性**：只提供核心的数据库连接管理功能
-- **自由度**：用户可以自由选择任何 ORM 或查询构建器
-- **可扩展**：轻松支持不同的数据库类型
+- **Simplicity**: Only provides core database connection management functionality
+- **Freedom**: Users can freely choose any ORM or query builder
+- **Extensibility**: Easy to support different database types
 
-## 核心功能
+## Core Features
 
-- ✅ 数据库连接池管理
-- ✅ 自动健康检查
-- ✅ 优雅关闭
-- ✅ 多数据库支持（MySQL、PostgreSQL、MSSQL等）
+- ✅ Database connection pool management
+- ✅ Automatic health checks
+- ✅ Graceful shutdown
+- ✅ Multi-database support (MySQL, PostgreSQL, MSSQL, etc.)
 
-## 使用示例
+## Usage Examples
 
-### 基础使用
+### Basic Usage
 
 ```go
-// 获取数据库连接
+// Get database connection
 db, err := sqlPlugin.GetDB()
 if err != nil {
     return err
 }
 
-// 执行原生 SQL
+// Execute raw SQL
 rows, err := db.Query("SELECT * FROM users WHERE age > ?", 18)
 ```
 
-### 与 GORM 集成
+### Integration with GORM
 
 ```go
 import (
@@ -50,7 +50,7 @@ func setupGORM(sqlPlugin interfaces.SQLPlugin) (*gorm.DB, error) {
 }
 ```
 
-### 与 sqlx 集成
+### Integration with sqlx
 
 ```go
 import "github.com/jmoiron/sqlx"
@@ -65,7 +65,7 @@ func setupSQLX(sqlPlugin interfaces.SQLPlugin) (*sqlx.DB, error) {
 }
 ```
 
-### 与 Bun 集成
+### Integration with Bun
 
 ```go
 import (
@@ -84,7 +84,7 @@ func setupBun(sqlPlugin interfaces.SQLPlugin) (*bun.DB, error) {
 }
 ```
 
-## 配置
+## Configuration
 
 ```yaml
 mysql:
@@ -98,37 +98,37 @@ mysql:
   health_check_query: "SELECT 1"  # optional custom query
 ```
 
-## 项目结构
+## Project Structure
 
 ```
 plugins/sql/
 ├── interfaces/
-│   └── sql.go          # 核心接口定义
+│   └── sql.go          # Core interface definitions
 ├── base/
-│   ├── base_plugin.go  # 基础插件实现
-│   └── health_checker.go # 健康检查
+│   ├── base_plugin.go  # Base plugin implementation
+│   └── health_checker.go # Health checker
 ├── mysql/
-│   └── mysql_plugin.go # MySQL 实现
+│   └── mysql_plugin.go # MySQL implementation
 ├── postgres/
-│   └── postgres_plugin.go # PostgreSQL 实现
+│   └── postgres_plugin.go # PostgreSQL implementation
 └── mssql/
-    └── mssql_plugin.go # MSSQL 实现
+    └── mssql_plugin.go # MSSQL implementation
 ```
 
-## 为什么这样设计？
+## Why This Design?
 
-1. **不重复造轮子**：市面上已有很多优秀的 ORM 和查询构建器，我们不需要再造一个
-2. **保持灵活性**：不同项目有不同需求，强制使用特定 ORM 会限制用户选择
-3. **专注核心功能**：插件应该专注于连接管理，让用户自由选择上层工具
-4. **易于维护**：代码简洁，功能明确，维护成本低
+1. **Don't Reinvent the Wheel**: There are already many excellent ORMs and query builders in the market, we don't need to create another one
+2. **Maintain Flexibility**: Different projects have different requirements, forcing the use of a specific ORM would limit user choices
+3. **Focus on Core Functionality**: Plugins should focus on connection management, allowing users to freely choose upper-layer tools
+4. **Easy Maintenance**: Simple code, clear functionality, low maintenance cost
 
-## 支持的数据库
+## Supported Databases
 
 - MySQL / MariaDB
 - PostgreSQL
 - Microsoft SQL Server
 - SQLite
-- ClickHouse（计划中）
+- ClickHouse (planned)
 
 ## License
 
