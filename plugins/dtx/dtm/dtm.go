@@ -3,10 +3,8 @@ package dtm
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/dtm-labs/client/dtmcli"
-	"github.com/dtm-labs/client/dtmgrpc"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/dtm/dtm/conf"
@@ -35,12 +33,12 @@ type DTMClient struct {
 	*plugins.BasePlugin
 	// DTM configuration information
 	conf *conf.DTM
-	// HTTP client for DTM
-	httpClient *dtmcli.DTM
+	// DTM server URL for HTTP client
+	serverURL string
 	// gRPC connection for DTM
 	grpcConn *grpc.ClientConn
-	// gRPC client for DTM
-	grpcClient dtmgrpc.DtmClient
+	// gRPC server address
+	grpcServer string
 }
 
 // NewDTMClient creates a new DTM plugin instance
@@ -103,21 +101,13 @@ func (d *DTMClient) StartupTasks() error {
 		return nil
 	}
 
-	// Initialize HTTP client
+	// Store server URL for HTTP client
 	if d.conf.ServerUrl != "" {
-		d.httpClient = dtmcli.New(d.conf.ServerUrl, "")
-		// Set timeout
-		d.httpClient.Timeout = time.Duration(d.conf.Timeout) * time.Second
-		// Set retry interval
-		d.httpClient.RetryInterval = time.Duration(d.conf.RetryInterval) * time.Second
-		// Set pass through headers
-		if len(d.conf.PassThroughHeaders) > 0 {
-			d.httpClient.PassthroughHeaders = d.conf.PassThroughHeaders
-		}
-		log.Infof("DTM HTTP client initialized with server: %s", d.conf.ServerUrl)
+		d.serverURL = d.conf.ServerUrl
+		log.Infof("DTM HTTP client configured with server: %s", d.conf.ServerUrl)
 	}
 
-	// Initialize gRPC client if configured
+	// Initialize gRPC connection if configured
 	if d.conf.GrpcServer != "" {
 		var err error
 		d.grpcConn, err = grpc.Dial(d.conf.GrpcServer,
@@ -127,7 +117,7 @@ func (d *DTMClient) StartupTasks() error {
 		if err != nil {
 			return fmt.Errorf("failed to connect to DTM gRPC server: %w", err)
 		}
-		d.grpcClient = dtmgrpc.NewDtmClient(d.grpcConn)
+		d.grpcServer = d.conf.GrpcServer
 		log.Infof("DTM gRPC client initialized with server: %s", d.conf.GrpcServer)
 	}
 
@@ -146,85 +136,85 @@ func (d *DTMClient) CleanupTasks() error {
 	return nil
 }
 
-// GetHTTPClient returns the HTTP client for DTM
-func (d *DTMClient) GetHTTPClient() *dtmcli.DTM {
-	return d.httpClient
+// GetServerURL returns the DTM server URL
+func (d *DTMClient) GetServerURL() string {
+	return d.serverURL
 }
 
-// GetGRPCClient returns the gRPC client for DTM
-func (d *DTMClient) GetGRPCClient() dtmgrpc.DtmClient {
-	return d.grpcClient
+// GetGRPCServer returns the gRPC server address
+func (d *DTMClient) GetGRPCServer() string {
+	return d.grpcServer
 }
 
 // NewSaga creates a new SAGA transaction
 func (d *DTMClient) NewSaga(gid string) *dtmcli.Saga {
-	if d.httpClient == nil {
-		log.Errorf("DTM HTTP client is not initialized")
+	if d.serverURL == "" {
+		log.Errorf("DTM server URL is not configured")
 		return nil
 	}
-	saga := d.httpClient.NewSaga(gid)
+	saga := dtmcli.NewSaga(d.serverURL, gid)
 	saga.TimeoutToFail = int64(d.conf.TransactionTimeout)
-	saga.BranchTimeout = int64(d.conf.BranchTimeout)
+	saga.RequestTimeout = int64(d.conf.Timeout)
+	saga.RetryInterval = int64(d.conf.RetryInterval)
 	return saga
 }
 
 // NewMsg creates a new 2-phase message transaction
 func (d *DTMClient) NewMsg(gid string) *dtmcli.Msg {
-	if d.httpClient == nil {
-		log.Errorf("DTM HTTP client is not initialized")
+	if d.serverURL == "" {
+		log.Errorf("DTM server URL is not configured")
 		return nil
 	}
-	msg := d.httpClient.NewMsg(gid)
+	msg := dtmcli.NewMsg(d.serverURL, gid)
 	msg.TimeoutToFail = int64(d.conf.TransactionTimeout)
-	msg.BranchTimeout = int64(d.conf.BranchTimeout)
+	msg.RequestTimeout = int64(d.conf.Timeout)
+	msg.RetryInterval = int64(d.conf.RetryInterval)
 	return msg
 }
 
 // NewTcc creates a new TCC transaction
 func (d *DTMClient) NewTcc(gid string) *dtmcli.Tcc {
-	if d.httpClient == nil {
-		log.Errorf("DTM HTTP client is not initialized")
+	if d.serverURL == "" {
+		log.Errorf("DTM server URL is not configured")
 		return nil
 	}
-	tcc := d.httpClient.NewTcc(gid)
-	tcc.TimeoutToFail = int64(d.conf.TransactionTimeout)
-	tcc.BranchTimeout = int64(d.conf.BranchTimeout)
-	return tcc
+	// Note: TCC transactions in the new API are created using TccGlobalTransaction
+	// This method is kept for compatibility but should be used differently
+	return nil // This will be implemented using TccGlobalTransaction
 }
 
 // NewXa creates a new XA transaction
 func (d *DTMClient) NewXa(gid string) *dtmcli.Xa {
-	if d.httpClient == nil {
-		log.Errorf("DTM HTTP client is not initialized")
+	if d.serverURL == "" {
+		log.Errorf("DTM server URL is not configured")
 		return nil
 	}
-	xa := d.httpClient.NewXa(gid)
-	xa.TimeoutToFail = int64(d.conf.TransactionTimeout)
-	xa.BranchTimeout = int64(d.conf.BranchTimeout)
-	return xa
+	// Note: XA transactions are created differently in the new API
+	// We'll need to use the global transaction function
+	return nil // This will be implemented differently
 }
 
 // GenerateGid generates a new global transaction ID
 func (d *DTMClient) GenerateGid() string {
-	if d.httpClient == nil {
-		log.Errorf("DTM HTTP client is not initialized")
+	if d.serverURL == "" {
+		log.Errorf("DTM server URL is not configured")
 		return ""
 	}
-	return d.httpClient.MustGenGid()
+	return dtmcli.MustGenGid(d.serverURL)
 }
 
 // CallBranch calls a branch transaction
 func (d *DTMClient) CallBranch(ctx context.Context, body interface{}, tryURL string, confirmURL string, cancelURL string) (*dtmcli.BranchBarrier, error) {
-	if d.httpClient == nil {
-		return nil, fmt.Errorf("DTM HTTP client is not initialized")
+	if d.serverURL == "" {
+		return nil, fmt.Errorf("DTM server URL is not configured")
 	}
-	
+
 	// Create a branch barrier for handling idempotency
 	bb, err := dtmcli.BarrierFromQuery(nil)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return bb, nil
 }
 

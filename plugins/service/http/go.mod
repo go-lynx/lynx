@@ -5,15 +5,13 @@ go 1.24.3
 require (
 	github.com/go-kratos/kratos/contrib/middleware/validate/v2 v2.0.0-20250527152916-d6f5f00cf562
 	github.com/go-kratos/kratos/v2 v2.8.4
-	github.com/go-lynx/lynx v1.2.1
+	github.com/go-lynx/lynx v1.2.3
 	github.com/prometheus/client_golang v1.23.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel/trace v1.33.0
 	golang.org/x/time v0.12.0
 	google.golang.org/protobuf v1.36.6
 )
-
-replace github.com/go-lynx/lynx => ../../..
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.5-20250307204501-0409229c3780.1 // indirect

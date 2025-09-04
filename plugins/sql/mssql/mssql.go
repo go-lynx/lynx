@@ -10,6 +10,7 @@ import (
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/sql/base"
+	"github.com/go-lynx/lynx/plugins/sql/interfaces"
 	"github.com/go-lynx/lynx/plugins/sql/mssql/conf"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
@@ -63,6 +64,9 @@ func NewMssqlClient() *DBMssqlClient {
 		closed:    false,
 	}
 
+	// Convert conf.Mssql to interfaces.Config
+	baseConfig := convertToBaseConfig(mssqlConf)
+
 	c.BaseSQLPlugin = base.NewBaseSQLPlugin(
 		plugins.GeneratePluginID("", pluginName, pluginVersion),
 		pluginName,
@@ -70,7 +74,7 @@ func NewMssqlClient() *DBMssqlClient {
 		pluginVersion,
 		confPrefix,
 		102, // Weight for MSSQL
-		c.config,
+		baseConfig,
 	)
 	return c
 }
@@ -87,13 +91,17 @@ func (m *DBMssqlClient) Configure(c any) error {
 // InitializeResources initializes the plugin with configuration
 func (m *DBMssqlClient) InitializeResources(rt plugins.Runtime) error {
 	// Validate configuration
-	if err := m.config.Validate(); err != nil {
-		return fmt.Errorf("invalid MSSQL configuration: %w", err)
+	// Validate configuration
+	if m.config.Driver == "" {
+		return fmt.Errorf("driver is required")
+	}
+	if m.config.Source == "" && m.config.ServerConfig == nil {
+		return fmt.Errorf("source or server config is required")
 	}
 
 	// Build connection string if not provided
 	if m.config.Source == "" {
-		m.config.Source = m.config.BuildConnectionString()
+		m.config.Source = buildDSN(m.config)
 	}
 
 	// Initialize base SQL plugin
@@ -137,7 +145,7 @@ func (m *DBMssqlClient) CleanupTasks() error {
 	m.closed = true
 
 	// Cleanup base SQL plugin
-	if err := m.SQLPlugin.CleanupTasks(); err != nil {
+	if err := m.BaseSQLPlugin.CleanupTasks(); err != nil {
 		return err
 	}
 
@@ -147,7 +155,7 @@ func (m *DBMssqlClient) CleanupTasks() error {
 
 // CheckHealth performs comprehensive health check on database connection
 func (m *DBMssqlClient) CheckHealth() error {
-	if err := m.SQLPlugin.CheckHealth(); err != nil {
+	if err := m.BaseSQLPlugin.CheckHealth(); err != nil {
 		return err
 	}
 
@@ -168,7 +176,7 @@ func (m *DBMssqlClient) initPrometheusMetrics() {
 
 // updateStats updates connection pool statistics
 func (m *DBMssqlClient) updateStats() {
-	stats := m.SQLPlugin.GetStats()
+	stats := m.BaseSQLPlugin.GetStats()
 	if m.prometheusMetrics != nil {
 		m.prometheusMetrics.RecordConnectionPoolStats(stats)
 	}
@@ -198,14 +206,15 @@ func (m *DBMssqlClient) GetMssqlConfig() *conf.Mssql {
 
 // TestConnection tests the database connection with a simple query
 func (m *DBMssqlClient) TestConnection(ctx context.Context) error {
-	if m.DB == nil {
+	db, err := m.BaseSQLPlugin.GetDB()
+	if err != nil || db == nil {
 		return fmt.Errorf("database connection not initialized")
 	}
 
 	// Test with a simple query
 	query := "SELECT 1"
 	var result int
-	err := m.DB.QueryRowContext(ctx, query).Scan(&result)
+	err = db.QueryRowContext(ctx, query).Scan(&result)
 	if err != nil {
 		return fmt.Errorf("connection test failed: %w", err)
 	}
@@ -219,7 +228,8 @@ func (m *DBMssqlClient) TestConnection(ctx context.Context) error {
 
 // GetServerInfo retrieves SQL Server version and configuration information
 func (m *DBMssqlClient) GetServerInfo(ctx context.Context) (map[string]interface{}, error) {
-	if m.DB == nil {
+	db, err := m.BaseSQLPlugin.GetDB()
+	if err != nil || db == nil {
 		return nil, fmt.Errorf("database connection not initialized")
 	}
 
@@ -227,7 +237,7 @@ func (m *DBMssqlClient) GetServerInfo(ctx context.Context) (map[string]interface
 
 	// Get SQL Server version
 	var version string
-	err := m.DB.QueryRowContext(ctx, "SELECT @@VERSION").Scan(&version)
+	err = db.QueryRowContext(ctx, "SELECT @@VERSION").Scan(&version)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SQL Server version: %w", err)
 	}
@@ -235,7 +245,7 @@ func (m *DBMssqlClient) GetServerInfo(ctx context.Context) (map[string]interface
 
 	// Get database name
 	var dbName string
-	err = m.DB.QueryRowContext(ctx, "SELECT DB_NAME()").Scan(&dbName)
+	err = db.QueryRowContext(ctx, "SELECT DB_NAME()").Scan(&dbName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database name: %w", err)
 	}
@@ -243,7 +253,7 @@ func (m *DBMssqlClient) GetServerInfo(ctx context.Context) (map[string]interface
 
 	// Get server name
 	var serverName string
-	err = m.DB.QueryRowContext(ctx, "SELECT @@SERVERNAME").Scan(&serverName)
+	err = db.QueryRowContext(ctx, "SELECT @@SERVERNAME").Scan(&serverName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get server name: %w", err)
 	}
@@ -251,7 +261,7 @@ func (m *DBMssqlClient) GetServerInfo(ctx context.Context) (map[string]interface
 
 	// Get connection count
 	var connectionCount int
-	err = m.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM sys.dm_exec_connections").Scan(&connectionCount)
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sys.dm_exec_connections").Scan(&connectionCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get connection count: %w", err)
 	}
@@ -262,7 +272,8 @@ func (m *DBMssqlClient) GetServerInfo(ctx context.Context) (map[string]interface
 
 // ExecuteStoredProcedure executes a stored procedure with parameters
 func (m *DBMssqlClient) ExecuteStoredProcedure(ctx context.Context, procName string, args ...interface{}) (*sql.Rows, error) {
-	if m.DB == nil {
+	db, err := m.BaseSQLPlugin.GetDB()
+	if err != nil || db == nil {
 		return nil, fmt.Errorf("database connection not initialized")
 	}
 
@@ -276,16 +287,17 @@ func (m *DBMssqlClient) ExecuteStoredProcedure(ctx context.Context, procName str
 		query += " " + strings.Join(placeholders, ", ")
 	}
 
-	return m.DB.QueryContext(ctx, query, args...)
+	return db.QueryContext(ctx, query, args...)
 }
 
 // BeginTransaction starts a new database transaction
 func (m *DBMssqlClient) BeginTransaction(ctx context.Context) (*sql.Tx, error) {
-	if m.DB == nil {
+	db, err := m.BaseSQLPlugin.GetDB()
+	if err != nil || db == nil {
 		return nil, fmt.Errorf("database connection not initialized")
 	}
 
-	return m.DB.BeginTx(ctx, &sql.TxOptions{
+	return db.BeginTx(ctx, &sql.TxOptions{
 		Isolation: sql.LevelReadCommitted,
 		ReadOnly:  false,
 	})
@@ -293,12 +305,12 @@ func (m *DBMssqlClient) BeginTransaction(ctx context.Context) (*sql.Tx, error) {
 
 // IsConnected checks if the database is connected
 func (m *DBMssqlClient) IsConnected() bool {
-	return !m.closed && m.SQLPlugin.IsConnected()
+	return !m.closed && m.BaseSQLPlugin.IsConnected()
 }
 
 // GetConnectionStats returns detailed connection statistics
 func (m *DBMssqlClient) GetConnectionStats() map[string]interface{} {
-	stats := m.SQLPlugin.GetStats()
+	stats := m.BaseSQLPlugin.GetStats()
 
 	result := map[string]interface{}{
 		"max_open_connections": stats.MaxOpenConnections,
@@ -320,4 +332,85 @@ func (m *DBMssqlClient) GetConnectionStats() map[string]interface{} {
 	}
 
 	return result
+}
+
+// convertToBaseConfig converts conf.Mssql to interfaces.Config
+func convertToBaseConfig(mssqlConf *conf.Mssql) *interfaces.Config {
+	// Build DSN from ServerConfig
+	dsn := buildDSN(mssqlConf)
+
+	// Convert duration fields
+	var maxLifetime, maxIdleTime int
+	if mssqlConf.MaxLifeTime != nil {
+		maxLifetime = int(mssqlConf.MaxLifeTime.AsDuration().Seconds())
+	}
+	if mssqlConf.MaxIdleTime != nil {
+		maxIdleTime = int(mssqlConf.MaxIdleTime.AsDuration().Seconds())
+	}
+
+	return &interfaces.Config{
+		Driver:              mssqlConf.Driver,
+		DSN:                 dsn,
+		MaxOpenConns:        int(mssqlConf.MaxConn),
+		MaxIdleConns:        int(mssqlConf.MaxIdleConn),
+		ConnMaxLifetime:     maxLifetime,
+		ConnMaxIdleTime:     maxIdleTime,
+		HealthCheckInterval: 30, // Default 30 seconds
+		HealthCheckQuery:    "SELECT 1",
+	}
+}
+
+// buildDSN builds a DSN string from ServerConfig
+func buildDSN(mssqlConf *conf.Mssql) string {
+	if mssqlConf.ServerConfig == nil {
+		return mssqlConf.Source
+	}
+
+	server := mssqlConf.ServerConfig.InstanceName
+	port := mssqlConf.ServerConfig.Port
+	database := mssqlConf.ServerConfig.Database
+
+	// Build basic DSN
+	dsn := fmt.Sprintf("server=%s;port=%d;database=%s", server, port, database)
+
+	// Add optional parameters
+	if mssqlConf.ServerConfig.Encrypt {
+		dsn += ";encrypt=true"
+	} else {
+		dsn += ";encrypt=false"
+	}
+
+	if mssqlConf.ServerConfig.TrustServerCertificate {
+		dsn += ";trustservercertificate=true"
+	}
+
+	if mssqlConf.ServerConfig.ConnectionTimeout > 0 {
+		dsn += fmt.Sprintf(";connection timeout=%d", mssqlConf.ServerConfig.ConnectionTimeout)
+	}
+
+	if mssqlConf.ServerConfig.CommandTimeout > 0 {
+		dsn += fmt.Sprintf(";command timeout=%d", mssqlConf.ServerConfig.CommandTimeout)
+	}
+
+	if mssqlConf.ServerConfig.ApplicationName != "" {
+		dsn += fmt.Sprintf(";app name=%s", mssqlConf.ServerConfig.ApplicationName)
+	}
+
+	if mssqlConf.ServerConfig.ConnectionPooling {
+		dsn += ";connection pooling=true"
+		if mssqlConf.ServerConfig.MaxPoolSize > 0 {
+			dsn += fmt.Sprintf(";max pool size=%d", mssqlConf.ServerConfig.MaxPoolSize)
+		}
+		if mssqlConf.ServerConfig.MinPoolSize > 0 {
+			dsn += fmt.Sprintf(";min pool size=%d", mssqlConf.ServerConfig.MinPoolSize)
+		}
+		if mssqlConf.ServerConfig.PoolBlockingTimeout > 0 {
+			dsn += fmt.Sprintf(";pool blocking timeout=%d", mssqlConf.ServerConfig.PoolBlockingTimeout)
+		}
+		if mssqlConf.ServerConfig.PoolLifetimeTimeout > 0 {
+			dsn += fmt.Sprintf(";pool lifetime timeout=%d", mssqlConf.ServerConfig.PoolLifetimeTimeout)
+		}
+	}
+
+	return dsn
 }

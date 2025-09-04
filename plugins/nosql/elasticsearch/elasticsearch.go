@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-lynx/lynx/app/log"
+
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/plugins"
@@ -42,7 +44,7 @@ func (p *PlugElasticsearch) Initialize(plugin plugins.Plugin, rt plugins.Runtime
 		p.startHealthCheck()
 	}
 
-	p.logger.Info("elasticsearch plugin initialized successfully")
+	log.Info("elasticsearch plugin initialized successfully")
 	return nil
 }
 
@@ -55,7 +57,7 @@ func (p *PlugElasticsearch) Start(plugin plugins.Plugin) error {
 		return fmt.Errorf("failed to test elasticsearch connection: %w", err)
 	}
 
-	p.logger.Info("elasticsearch plugin started successfully")
+	log.Info("elasticsearch plugin started successfully")
 	return nil
 }
 
@@ -73,7 +75,7 @@ func (p *PlugElasticsearch) Stop(plugin plugins.Plugin) error {
 		p.stopHealthCheck()
 	}
 
-	p.logger.Info("elasticsearch plugin stopped successfully")
+	log.Info("elasticsearch plugin stopped successfully")
 	return nil
 }
 
@@ -105,15 +107,11 @@ func (p *PlugElasticsearch) parseConfig(cfg config.Config) error {
 
 // createClient Create Elasticsearch client
 func (p *PlugElasticsearch) createClient() error {
-	// Get connection timeout
-	connectTimeout := p.conf.ConnectTimeout.AsDuration()
-
 	// Build client configuration
 	clientConfig := elasticsearch.Config{
 		Addresses:           p.conf.Addresses,
 		MaxRetries:          int(p.conf.MaxRetries),
 		CompressRequestBody: p.conf.CompressRequestBody,
-		ConnectTimeout:      connectTimeout,
 	}
 
 	// Set authentication information
@@ -202,7 +200,7 @@ func (p *PlugElasticsearch) collectMetrics() {
 	// Get cluster health status
 	healthRes, err := p.client.Cluster.Health(p.client.Cluster.Health.WithContext(ctx))
 	if err != nil {
-		p.logger.Errorf("failed to get cluster health: %v", err)
+		log.Errorf("failed to get cluster health: %v", err)
 		return
 	}
 	defer healthRes.Body.Close()
@@ -210,13 +208,13 @@ func (p *PlugElasticsearch) collectMetrics() {
 	// Get cluster statistics
 	statsRes, err := p.client.Cluster.Stats(p.client.Cluster.Stats.WithContext(ctx))
 	if err != nil {
-		p.logger.Errorf("failed to get cluster stats: %v", err)
+		log.Errorf("failed to get cluster stats: %v", err)
 		return
 	}
 	defer statsRes.Body.Close()
 
 	// Here you can send metrics to monitoring system
-	p.logger.Debug("elasticsearch metrics collected")
+	log.Debug("elasticsearch metrics collected")
 }
 
 // startHealthCheck Start health check
@@ -231,7 +229,7 @@ func (p *PlugElasticsearch) startHealthCheck() {
 			select {
 			case <-ticker.C:
 				if err := p.checkHealth(); err != nil {
-					p.logger.Errorf("elasticsearch health check failed: %v", err)
+					log.Errorf("elasticsearch health check failed: %v", err)
 				}
 			case <-p.statsQuit:
 				return

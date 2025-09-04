@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/apache/rocketmq-client-go/v2"
+	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/go-lynx/lynx/app/log"
 )
@@ -36,13 +38,13 @@ func (r *Client) SubscribeWith(ctx context.Context, consumerName string, topics 
 	}
 
 	// Get consumer
-	consumer, err := r.GetConsumer(consumerName)
+	consumerClient, err := r.GetConsumer(consumerName)
 	if err != nil {
 		return err
 	}
 
 	// Subscribe to topics
-	err = consumer.Subscribe(topics[0], primitive.MessageSelector{}, func(ctx context.Context, msgs ...*primitive.MessageExt) (primitive.ConsumeResult, error) {
+	err = consumerClient.Subscribe(topics[0], consumer.MessageSelector{}, func(ctx context.Context, msgs ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
 		for _, msg := range msgs {
 			start := time.Now()
 
@@ -50,14 +52,14 @@ func (r *Client) SubscribeWith(ctx context.Context, consumerName string, topics 
 			if err := handler(ctx, msg); err != nil {
 				r.metrics.IncrementConsumerMessagesFailed()
 				log.Error("Failed to process RocketMQ message", "consumer", consumerName, "topic", msg.Topic, "error", err)
-				return primitive.ConsumeRetryLater, err
+				return consumer.ConsumeRetryLater, err
 			}
 
 			r.metrics.RecordConsumerLatency(time.Since(start))
 			r.metrics.IncrementConsumerMessagesReceived()
 			log.Debug("Processed RocketMQ message", "consumer", consumerName, "topic", msg.Topic, "msgId", msg.MsgId)
 		}
-		return primitive.ConsumeSuccess, nil
+		return consumer.ConsumeSuccess, nil
 	})
 
 	if err != nil {
@@ -66,7 +68,7 @@ func (r *Client) SubscribeWith(ctx context.Context, consumerName string, topics 
 	}
 
 	// Start consumer
-	if err := consumer.Start(); err != nil {
+	if err := consumerClient.Start(); err != nil {
 		log.Error("Failed to start RocketMQ consumer", "consumer", consumerName, "error", err)
 		return WrapError(err, "failed to start consumer")
 	}
@@ -76,7 +78,7 @@ func (r *Client) SubscribeWith(ctx context.Context, consumerName string, topics 
 }
 
 // GetConsumer gets the underlying consumer client
-func (r *Client) GetConsumer(name string) (primitive.PushConsumer, error) {
+func (r *Client) GetConsumer(name string) (rocketmq.PushConsumer, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

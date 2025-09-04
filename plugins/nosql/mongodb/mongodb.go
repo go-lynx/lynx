@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/nosql/mongodb/conf"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Initialize initializes the MongoDB plugin
@@ -44,7 +46,7 @@ func (p *PlugMongoDB) Initialize(plugin plugins.Plugin, rt plugins.Runtime) erro
 		p.startHealthCheck()
 	}
 
-	p.logger.Info("mongodb plugin initialized successfully")
+	log.Info("mongodb plugin initialized successfully")
 	return nil
 }
 
@@ -57,7 +59,7 @@ func (p *PlugMongoDB) Start(plugin plugins.Plugin) error {
 		return fmt.Errorf("failed to test mongodb connection: %w", err)
 	}
 
-	p.logger.Info("mongodb plugin started successfully")
+	log.Info("mongodb plugin started successfully")
 	return nil
 }
 
@@ -78,11 +80,11 @@ func (p *PlugMongoDB) Stop(plugin plugins.Plugin) error {
 	// Close client connection
 	if p.client != nil {
 		if err := p.client.Disconnect(context.Background()); err != nil {
-			p.logger.Errorf("failed to disconnect mongodb client: %v", err)
+			log.Errorf("failed to disconnect mongodb client: %v", err)
 		}
 	}
 
-	p.logger.Info("mongodb plugin stopped successfully")
+	log.Info("mongodb plugin stopped successfully")
 	return nil
 }
 
@@ -96,8 +98,8 @@ func (p *PlugMongoDB) parseConfig(cfg config.Config) error {
 	p.conf = &mongodbConf
 
 	// Set default values
-	if p.conf.URI == "" {
-		p.conf.URI = "mongodb://localhost:27017"
+	if p.conf.Uri == "" {
+		p.conf.Uri = "mongodb://localhost:27017"
 	}
 	if p.conf.Database == "" {
 		p.conf.Database = "test"
@@ -108,20 +110,20 @@ func (p *PlugMongoDB) parseConfig(cfg config.Config) error {
 	if p.conf.MinPoolSize == 0 {
 		p.conf.MinPoolSize = 5
 	}
-	if p.conf.ConnectTimeout == "" {
-		p.conf.ConnectTimeout = "30s"
+	if p.conf.ConnectTimeout == nil {
+		p.conf.ConnectTimeout = durationpb.New(30 * time.Second)
 	}
-	if p.conf.ServerSelectionTimeout == "" {
-		p.conf.ServerSelectionTimeout = "30s"
+	if p.conf.ServerSelectionTimeout == nil {
+		p.conf.ServerSelectionTimeout = durationpb.New(30 * time.Second)
 	}
-	if p.conf.SocketTimeout == "" {
-		p.conf.SocketTimeout = "30s"
+	if p.conf.SocketTimeout == nil {
+		p.conf.SocketTimeout = durationpb.New(30 * time.Second)
 	}
-	if p.conf.HeartbeatInterval == "" {
-		p.conf.HeartbeatInterval = "10s"
+	if p.conf.HeartbeatInterval == nil {
+		p.conf.HeartbeatInterval = durationpb.New(10 * time.Second)
 	}
-	if p.conf.HealthCheckInterval == "" {
-		p.conf.HealthCheckInterval = "30s"
+	if p.conf.HealthCheckInterval == nil {
+		p.conf.HealthCheckInterval = durationpb.New(30 * time.Second)
 	}
 	if p.conf.ReadConcernLevel == "" {
 		p.conf.ReadConcernLevel = "local"
@@ -129,8 +131,8 @@ func (p *PlugMongoDB) parseConfig(cfg config.Config) error {
 	if p.conf.WriteConcernW == 0 {
 		p.conf.WriteConcernW = 1
 	}
-	if p.conf.WriteConcernTimeout == "" {
-		p.conf.WriteConcernTimeout = "5s"
+	if p.conf.WriteConcernTimeout == nil {
+		p.conf.WriteConcernTimeout = durationpb.New(5 * time.Second)
 	}
 
 	return nil
@@ -139,28 +141,13 @@ func (p *PlugMongoDB) parseConfig(cfg config.Config) error {
 // createClient creates the MongoDB client
 func (p *PlugMongoDB) createClient() error {
 	// Parse timeout values
-	connectTimeout, err := time.ParseDuration(p.conf.ConnectTimeout)
-	if err != nil {
-		return fmt.Errorf("invalid connect timeout: %w", err)
-	}
-
-	serverSelectionTimeout, err := time.ParseDuration(p.conf.ServerSelectionTimeout)
-	if err != nil {
-		return fmt.Errorf("invalid server selection timeout: %w", err)
-	}
-
-	socketTimeout, err := time.ParseDuration(p.conf.SocketTimeout)
-	if err != nil {
-		return fmt.Errorf("invalid socket timeout: %w", err)
-	}
-
-	heartbeatInterval, err := time.ParseDuration(p.conf.HeartbeatInterval)
-	if err != nil {
-		return fmt.Errorf("invalid heartbeat interval: %w", err)
-	}
+	connectTimeout := p.conf.ConnectTimeout.AsDuration()
+	serverSelectionTimeout := p.conf.ServerSelectionTimeout.AsDuration()
+	socketTimeout := p.conf.SocketTimeout.AsDuration()
+	heartbeatInterval := p.conf.HeartbeatInterval.AsDuration()
 
 	// Build client options
-	clientOptions := options.Client().ApplyURI(p.conf.URI)
+	clientOptions := options.Client().ApplyURI(p.conf.Uri)
 
 	// Set connection pool configuration
 	clientOptions.SetMaxPoolSize(p.conf.MaxPoolSize)
@@ -182,18 +169,24 @@ func (p *PlugMongoDB) createClient() error {
 	}
 
 	// Set TLS configuration
-	if p.conf.EnableTLS {
-		tlsConfig := options.TLS()
-		if p.conf.TLSCertFile != "" {
-			tlsConfig.SetClientCertificateKeyFile(p.conf.TLSCertFile)
+	if p.conf.EnableTls {
+		tlsOpts := make(map[string]interface{})
+		if p.conf.TlsCertFile != "" {
+			tlsOpts["certFile"] = p.conf.TlsCertFile
 		}
-		if p.conf.TLSKeyFile != "" {
-			tlsConfig.SetClientCertificateKeyFile(p.conf.TLSKeyFile)
+		if p.conf.TlsKeyFile != "" {
+			tlsOpts["keyFile"] = p.conf.TlsKeyFile
 		}
-		if p.conf.TLSCAFile != "" {
-			tlsConfig.SetCAFile(p.conf.TLSCAFile)
+		if p.conf.TlsCaFile != "" {
+			tlsOpts["caFile"] = p.conf.TlsCaFile
 		}
-		clientOptions.SetTLSConfig(tlsConfig)
+		if len(tlsOpts) > 0 {
+			tlsConfig, err := options.BuildTLSConfig(tlsOpts)
+			if err != nil {
+				return fmt.Errorf("failed to build TLS config: %w", err)
+			}
+			clientOptions.SetTLSConfig(tlsConfig)
+		}
 	}
 
 	// Set compression configuration
@@ -208,7 +201,7 @@ func (p *PlugMongoDB) createClient() error {
 
 	// Set read concern
 	if p.conf.EnableReadConcern {
-		var rc readconcern.ReadConcern
+		var rc *readconcern.ReadConcern
 		switch p.conf.ReadConcernLevel {
 		case "local":
 			rc = readconcern.Local()
@@ -226,13 +219,10 @@ func (p *PlugMongoDB) createClient() error {
 
 	// Set write concern
 	if p.conf.EnableWriteConcern {
-		writeConcernTimeout, err := time.ParseDuration(p.conf.WriteConcernTimeout)
-		if err != nil {
-			return fmt.Errorf("invalid write concern timeout: %w", err)
-		}
+		writeConcernTimeout := p.conf.WriteConcernTimeout.AsDuration()
 
 		wc := writeconcern.New(
-			writeconcern.W(p.conf.WriteConcernW),
+			writeconcern.W(int(p.conf.WriteConcernW)),
 			writeconcern.WTimeout(writeConcernTimeout),
 		)
 		clientOptions.SetWriteConcern(wc)
@@ -306,21 +296,17 @@ func (p *PlugMongoDB) collectMetrics() {
 		"dbStats": 1,
 	})
 	if stats.Err() != nil {
-		p.logger.Errorf("failed to get database stats: %v", stats.Err())
+		log.Errorf("failed to get database stats: %v", stats.Err())
 		return
 	}
 
 	// You can send metrics to the monitoring system here
-	p.logger.Debug("mongodb metrics collected")
+	log.Debug("mongodb metrics collected")
 }
 
 // startHealthCheck starts health check
 func (p *PlugMongoDB) startHealthCheck() {
-	interval, err := time.ParseDuration(p.conf.HealthCheckInterval)
-	if err != nil {
-		p.logger.Errorf("invalid health check interval: %v", err)
-		return
-	}
+	interval := p.conf.HealthCheckInterval.AsDuration()
 
 	go func() {
 		ticker := time.NewTicker(interval)
@@ -330,7 +316,7 @@ func (p *PlugMongoDB) startHealthCheck() {
 			select {
 			case <-ticker.C:
 				if err := p.checkHealth(); err != nil {
-					p.logger.Errorf("mongodb health check failed: %v", err)
+					log.Errorf("mongodb health check failed: %v", err)
 				}
 			case <-p.statsQuit:
 				return
@@ -386,7 +372,7 @@ func (p *PlugMongoDB) GetConnectionStats() map[string]any {
 		stats["max_pool_size"] = p.conf.MaxPoolSize
 		stats["min_pool_size"] = p.conf.MinPoolSize
 		stats["compression_enabled"] = p.conf.EnableCompression
-		stats["tls_enabled"] = p.conf.EnableTLS
+		stats["tls_enabled"] = p.conf.EnableTls
 	} else {
 		stats["client_initialized"] = false
 	}

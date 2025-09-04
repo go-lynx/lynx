@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/apache/rocketmq-client-go/v2"
+	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"github.com/apache/rocketmq-client-go/v2/producer"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/mq/rocketmq/conf"
@@ -19,8 +21,8 @@ type Client struct {
 	*plugins.BasePlugin
 	conf *conf.RocketMQ
 	// Multi-instance producers/consumers
-	producers       map[string]primitive.Producer
-	consumers       map[string]primitive.PushConsumer
+	producers       map[string]rocketmq.Producer
+	consumers       map[string]rocketmq.PushConsumer
 	defaultProducer string
 	defaultConsumer string
 	// Connection managers
@@ -54,8 +56,8 @@ func NewRocketMQClient() *Client {
 		cancel:       cancel,
 		metrics:      NewMetrics(),
 		retryHandler: NewRetryHandler(RetryConfig{MaxRetries: 3, BackoffTime: time.Second, MaxBackoff: 30 * time.Second}),
-		producers:    make(map[string]primitive.Producer),
-		consumers:    make(map[string]primitive.PushConsumer),
+		producers:    make(map[string]rocketmq.Producer),
+		consumers:    make(map[string]rocketmq.PushConsumer),
 		prodConnMgrs: make(map[string]*ConnectionManager),
 		consConnMgrs: make(map[string]*ConnectionManager),
 	}
@@ -267,13 +269,11 @@ func (r *Client) validateConsumerConfig(c *conf.Consumer) error {
 func (r *Client) setDefaultValues() {
 	// Set default timeouts if not specified
 	if r.conf.DialTimeout == nil {
-		r.conf.DialTimeout = &durationpb.Duration{}
-		r.conf.DialTimeout.FromDuration(parseDuration(defaultDialTimeout, 3*time.Second))
+		r.conf.DialTimeout = durationpb.New(parseDuration(defaultDialTimeout, 3*time.Second))
 	}
 
 	if r.conf.RequestTimeout == nil {
-		r.conf.RequestTimeout = &durationpb.Duration{}
-		r.conf.RequestTimeout.FromDuration(parseDuration(defaultRequestTimeout, 30*time.Second))
+		r.conf.RequestTimeout = durationpb.New(parseDuration(defaultRequestTimeout, 30*time.Second))
 	}
 
 	// Set producer defaults
@@ -285,12 +285,10 @@ func (r *Client) setDefaultValues() {
 			p.MaxRetries = defaultMaxRetries
 		}
 		if p.RetryBackoff == nil {
-			p.RetryBackoff = &durationpb.Duration{}
-			p.RetryBackoff.FromDuration(parseDuration(defaultRetryBackoff, 100*time.Millisecond))
+			p.RetryBackoff = durationpb.New(parseDuration(defaultRetryBackoff, 100*time.Millisecond))
 		}
 		if p.SendTimeout == nil {
-			p.SendTimeout = &durationpb.Duration{}
-			p.SendTimeout.FromDuration(parseDuration(defaultSendTimeout, 3*time.Second))
+			p.SendTimeout = durationpb.New(parseDuration(defaultSendTimeout, 3*time.Second))
 		}
 	}
 
@@ -306,25 +304,24 @@ func (r *Client) setDefaultValues() {
 			c.PullBatchSize = defaultPullBatchSize
 		}
 		if c.PullInterval == nil {
-			c.PullInterval = &durationpb.Duration{}
-			c.PullInterval.FromDuration(parseDuration(defaultPullInterval, 100*time.Millisecond))
+			c.PullInterval = durationpb.New(parseDuration(defaultPullInterval, 100*time.Millisecond))
 		}
 	}
 }
 
 // createProducer creates a RocketMQ producer
-func (r *Client) createProducer(name string, config *conf.Producer) (primitive.Producer, error) {
+func (r *Client) createProducer(name string, config *conf.Producer) (rocketmq.Producer, error) {
 	// Create producer options
-	opts := []primitive.ProducerOption{
-		primitive.WithNameServer(r.conf.NameServer),
-		primitive.WithGroupName(config.GroupName),
-		primitive.WithRetry(config.MaxRetries),
-		primitive.WithSendMsgTimeout(config.SendTimeout.AsDuration()),
+	opts := []producer.Option{
+		producer.WithNameServer(primitive.NamesrvAddr(r.conf.NameServer)),
+		producer.WithGroupName(config.GroupName),
+		producer.WithRetry(int(config.MaxRetries)),
+		producer.WithSendMsgTimeout(config.SendTimeout.AsDuration()),
 	}
 
 	// Add authentication if provided
 	if r.conf.AccessKey != "" && r.conf.SecretKey != "" {
-		opts = append(opts, primitive.WithCredentials(primitive.Credentials{
+		opts = append(opts, producer.WithCredentials(primitive.Credentials{
 			AccessKey: r.conf.AccessKey,
 			SecretKey: r.conf.SecretKey,
 		}))
@@ -346,19 +343,19 @@ func (r *Client) createProducer(name string, config *conf.Producer) (primitive.P
 }
 
 // createConsumer creates a RocketMQ consumer
-func (r *Client) createConsumer(name string, config *conf.Consumer) (primitive.PushConsumer, error) {
+func (r *Client) createConsumer(name string, config *conf.Consumer) (rocketmq.PushConsumer, error) {
 	// Create consumer options
-	opts := []primitive.ConsumerOption{
-		primitive.WithNameServer(r.conf.NameServer),
-		primitive.WithGroupName(config.GroupName),
-		primitive.WithConsumeFromWhere(primitive.ConsumeFromLastOffset),
-		primitive.WithConsumerModel(primitive.Clustering),
-		primitive.WithConsumeOrderly(config.ConsumeOrder == ConsumeOrderOrderly),
+	opts := []consumer.Option{
+		consumer.WithNameServer(primitive.NamesrvAddr(r.conf.NameServer)),
+		consumer.WithGroupName(config.GroupName),
+		consumer.WithConsumeFromWhere(consumer.ConsumeFromLastOffset),
+		consumer.WithConsumerModel(consumer.Clustering),
+		consumer.WithConsumerOrder(config.ConsumeOrder == ConsumeOrderOrderly),
 	}
 
 	// Add authentication if provided
 	if r.conf.AccessKey != "" && r.conf.SecretKey != "" {
-		opts = append(opts, primitive.WithCredentials(primitive.Credentials{
+		opts = append(opts, consumer.WithCredentials(primitive.Credentials{
 			AccessKey: r.conf.AccessKey,
 			SecretKey: r.conf.SecretKey,
 		}))

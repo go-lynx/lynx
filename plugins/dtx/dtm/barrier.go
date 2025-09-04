@@ -7,6 +7,7 @@ import (
 
 	"github.com/dtm-labs/client/dtmcli"
 	"github.com/dtm-labs/client/dtmcli/dtmimp"
+	"github.com/dtm-labs/client/dtmgrpc"
 	"github.com/go-lynx/lynx/app/log"
 )
 
@@ -41,20 +42,8 @@ func (b *BarrierHandler) CreateBarrierFromGin(c interface{}) (*dtmcli.BranchBarr
 
 // CreateBarrierFromGrpc create branch barrier from gRPC request
 func (b *BarrierHandler) CreateBarrierFromGrpc(ctx context.Context) (*dtmcli.BranchBarrier, error) {
-	ti := dtmimp.TransInfoFromContext(ctx)
-	if ti == nil {
-		return nil, fmt.Errorf("no transaction info in context")
-	}
-
-	bb := &dtmcli.BranchBarrier{
-		TransType: ti.TransType,
-		Gid:       ti.Gid,
-		BranchID:  ti.BranchID,
-		Op:        ti.Op,
-		BarrierID: ti.BarrierID,
-	}
-
-	return bb, nil
+	// Use the built-in function from dtmgrpc package
+	return dtmgrpc.BarrierFromGrpc(ctx)
 }
 
 // HandleTCCTry handle TCC Try phase

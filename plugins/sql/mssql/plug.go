@@ -39,8 +39,9 @@ func GetMssqlClient() *DBMssqlClient {
 //
 // Returns:
 //   - *sql.DB: The underlying database connection
+//   - error: Any error that occurred while getting the database connection
 //
 // Note: This function will panic if the plugin is not properly initialized.
-func GetMssqlDB() *sql.DB {
-	return GetMssqlClient().DB
+func GetMssqlDB() (*sql.DB, error) {
+	return GetMssqlClient().BaseSQLPlugin.GetDB()
 }

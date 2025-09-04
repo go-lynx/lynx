@@ -150,10 +150,10 @@ func (hc *HealthChecker) GetLastCheck() time.Time {
 }
 
 // GetErrorCount gets error count
-func (hc *HealthChecker) GetErrorCount() int64 {
+func (hc *HealthChecker) GetErrorCount() int {
 	hc.mu.RLock()
 	defer hc.mu.RUnlock()
-	return hc.errorCount
+	return int(hc.errorCount)
 }
 
 // run runs the health check loop

@@ -4,27 +4,28 @@ import (
 	"context"
 	"time"
 
+	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/go-lynx/lynx/app/log"
 )
 
 // SendMessage sends a single message to the specified topic
-func (r *Client) SendMessage(ctx context.Context, topic string, body []byte, opts ...primitive.MessageOption) error {
-	return r.SendMessageWith(ctx, r.defaultProducer, topic, body, opts...)
+func (r *Client) SendMessage(ctx context.Context, topic string, body []byte) error {
+	return r.SendMessageWith(ctx, r.defaultProducer, topic, body)
 }
 
 // SendMessageSync sends a message synchronously
-func (r *Client) SendMessageSync(ctx context.Context, topic string, body []byte, opts ...primitive.MessageOption) (*primitive.SendResult, error) {
-	return r.SendMessageSyncWith(ctx, r.defaultProducer, topic, body, opts...)
+func (r *Client) SendMessageSync(ctx context.Context, topic string, body []byte) (*primitive.SendResult, error) {
+	return r.SendMessageSyncWith(ctx, r.defaultProducer, topic, body)
 }
 
 // SendMessageAsync sends a message asynchronously
-func (r *Client) SendMessageAsync(ctx context.Context, topic string, body []byte, opts ...primitive.MessageOption) error {
-	return r.SendMessageAsyncWith(ctx, r.defaultProducer, topic, body, opts...)
+func (r *Client) SendMessageAsync(ctx context.Context, topic string, body []byte) error {
+	return r.SendMessageAsyncWith(ctx, r.defaultProducer, topic, body)
 }
 
 // SendMessageWith sends a message by producer instance name
-func (r *Client) SendMessageWith(ctx context.Context, producerName, topic string, body []byte, opts ...primitive.MessageOption) error {
+func (r *Client) SendMessageWith(ctx context.Context, producerName, topic string, body []byte) error {
 	start := time.Now()
 	defer func() {
 		r.metrics.RecordProducerLatency(time.Since(start))
@@ -50,9 +51,6 @@ func (r *Client) SendMessageWith(ctx context.Context, producerName, topic string
 
 	// Create message
 	msg := primitive.NewMessage(topic, body)
-	for _, opt := range opts {
-		opt(msg)
-	}
 
 	// Send message with retry
 	err = r.retryHandler.DoWithRetry(ctx, func() error {
@@ -72,7 +70,7 @@ func (r *Client) SendMessageWith(ctx context.Context, producerName, topic string
 }
 
 // SendMessageSyncWith sends a message synchronously by producer instance name
-func (r *Client) SendMessageSyncWith(ctx context.Context, producerName, topic string, body []byte, opts ...primitive.MessageOption) (*primitive.SendResult, error) {
+func (r *Client) SendMessageSyncWith(ctx context.Context, producerName, topic string, body []byte) (*primitive.SendResult, error) {
 	start := time.Now()
 	defer func() {
 		r.metrics.RecordProducerLatency(time.Since(start))
@@ -98,9 +96,6 @@ func (r *Client) SendMessageSyncWith(ctx context.Context, producerName, topic st
 
 	// Create message
 	msg := primitive.NewMessage(topic, body)
-	for _, opt := range opts {
-		opt(msg)
-	}
 
 	// Send message with retry
 	var result *primitive.SendResult
@@ -122,7 +117,7 @@ func (r *Client) SendMessageSyncWith(ctx context.Context, producerName, topic st
 }
 
 // SendMessageAsyncWith sends a message asynchronously by producer instance name
-func (r *Client) SendMessageAsyncWith(ctx context.Context, producerName, topic string, body []byte, opts ...primitive.MessageOption) error {
+func (r *Client) SendMessageAsyncWith(ctx context.Context, producerName, topic string, body []byte) error {
 	start := time.Now()
 	defer func() {
 		r.metrics.RecordProducerLatency(time.Since(start))
@@ -148,9 +143,6 @@ func (r *Client) SendMessageAsyncWith(ctx context.Context, producerName, topic s
 
 	// Create message
 	msg := primitive.NewMessage(topic, body)
-	for _, opt := range opts {
-		opt(msg)
-	}
 
 	// Send message asynchronously
 	err = producer.SendAsync(ctx, func(ctx context.Context, result *primitive.SendResult, err error) {
@@ -173,7 +165,7 @@ func (r *Client) SendMessageAsyncWith(ctx context.Context, producerName, topic s
 }
 
 // GetProducer gets the underlying producer client
-func (r *Client) GetProducer(name string) (primitive.Producer, error) {
+func (r *Client) GetProducer(name string) (rocketmq.Producer, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
