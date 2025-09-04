@@ -278,10 +278,6 @@ func (app *Application) loadPluginsWithProtection(pluginManager lynxapp.TypedPlu
 
 // runWithGracefulShutdown runs the Kratos application with graceful shutdown support
 func (app *Application) runWithGracefulShutdown(kratosApp *kratos.App) error {
-	// Create context with shutdown timeout
-	ctx, cancel := context.WithTimeout(context.Background(), app.shutdownTimeout)
-	defer cancel()
-
 	// Run Kratos application in a goroutine
 	errChan := make(chan error, 1)
 	go func() {
@@ -294,17 +290,31 @@ func (app *Application) runWithGracefulShutdown(kratosApp *kratos.App) error {
 	select {
 	case <-app.shutdownChan:
 		log.Info("Shutdown signal received, stopping Kratos application...")
-		// Stop Kratos application gracefully
-		if err := kratosApp.Stop(); err != nil {
-			log.Errorf("Error stopping Kratos application: %v", err)
+		
+		// Create context with shutdown timeout only after receiving shutdown signal
+		ctx, cancel := context.WithTimeout(context.Background(), app.shutdownTimeout)
+		defer cancel()
+		
+		// Stop Kratos application gracefully with timeout
+		stopChan := make(chan error, 1)
+		go func() {
+			stopChan <- kratosApp.Stop()
+		}()
+		
+		select {
+		case err := <-stopChan:
+			if err != nil {
+				log.Errorf("Error stopping Kratos application: %v", err)
+			}
+			return err
+		case <-ctx.Done():
+			log.Error("Shutdown timeout exceeded during graceful shutdown")
+			return fmt.Errorf("shutdown timeout exceeded during graceful shutdown")
 		}
-		return nil
+		
 	case err := <-errChan:
 		log.Error(err)
 		return fmt.Errorf("failed to run Kratos application: %w", err)
-	case <-ctx.Done():
-		log.Error("Shutdown timeout exceeded")
-		return fmt.Errorf("shutdown timeout exceeded")
 	}
 }
 

@@ -3,9 +3,22 @@ package pgsql
 import (
 	"database/sql"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/app"
+	"github.com/go-lynx/lynx/app/factory"
+	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/sql/interfaces"
 )
+
+// Plugin name constant
+const pluginName = "pgsql.client"
+
+// init function registers the PostgreSQL client plugin to the global plugin factory
+func init() {
+	factory.GlobalTypedFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
+		return NewPgsqlClient()
+	})
+}
 
 // GetDB gets the database connection from the PostgreSQL plugin
 func GetDB() (*sql.DB, error) {
@@ -53,4 +66,13 @@ func CheckHealth() error {
 		return sqlPlugin.CheckHealth()
 	}
 	return nil
+}
+
+// GetDriver gets the ent SQL driver from the PostgreSQL plugin
+func GetDriver() *entsql.Driver {
+	db, err := GetDB()
+	if err != nil || db == nil {
+		return nil
+	}
+	return entsql.OpenDB(GetDialect(), db)
 }

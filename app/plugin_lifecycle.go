@@ -71,11 +71,11 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 						ctxAware = true
 					}
 				}
-				// Warn if not context-aware for initialize step
+				// Debug info for context awareness (only show in debug mode)
 				if !supportsLC {
-					log.Warnf("plugin %s (%s) does not implement LifecycleWithContext; step=initialize. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
+					log.Debugf("plugin %s (%s) does not implement LifecycleWithContext; step=initialize. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
 				} else if !ctxAware {
-					log.Warnf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=initialize. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
+					log.Debugf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=initialize. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
 				}
 
 				// Emit plugin initializing event
@@ -113,11 +113,11 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 					"ctx_aware":   ctxAware,
 				})
 
-				// Warn if not context-aware for start step
+				// Debug info for context awareness (only show in debug mode)
 				if !supportsLC {
-					log.Warnf("plugin %s (%s) does not implement LifecycleWithContext; step=start. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
+					log.Debugf("plugin %s (%s) does not implement LifecycleWithContext; step=start. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
 				} else if !ctxAware {
-					log.Warnf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=start. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
+					log.Debugf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=start. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
 				}
 				// Emit plugin starting event
 				m.emitPluginEvent(p.ID(), events.EventPluginStarting, map[string]any{
@@ -472,11 +472,11 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 		}
 	}
 
-	// Warn if not context-aware for stop step
+	// Debug info for context awareness (only show in debug mode)
 	if !supportsLC {
-		log.Warnf("plugin %s (%s) does not implement LifecycleWithContext; step=stop. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
+		log.Debugf("plugin %s (%s) does not implement LifecycleWithContext; step=stop. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
 	} else if !ctxAware {
-		log.Warnf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=stop. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
+		log.Debugf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=stop. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
 	}
 
 	// Emit plugin stopping event

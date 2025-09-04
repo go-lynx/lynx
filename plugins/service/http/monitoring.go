@@ -248,6 +248,30 @@ func (h *ServiceHttp) CheckHealth() error {
 		return fmt.Errorf("HTTP server is not initialized")
 	}
 
+	// During startup, only check if server is configured properly
+	// Skip port connection check as server may not be listening yet
+	if h.conf != nil && h.conf.Addr != "" {
+		log.Debugf("HTTP server configured for address: %s", h.conf.Addr)
+	} else {
+		return fmt.Errorf("HTTP server address not configured")
+	}
+
+	// Record health check metrics
+	if h.healthCheckTotal != nil {
+		h.healthCheckTotal.WithLabelValues("success").Inc()
+	}
+
+	log.Debugf("HTTP service health check passed")
+	return nil
+}
+
+// CheckRuntimeHealth performs a comprehensive runtime health check including port connectivity.
+// This is used by the health check endpoint when the service is running.
+func (h *ServiceHttp) CheckRuntimeHealth() error {
+	if h.server == nil {
+		return fmt.Errorf("HTTP server is not initialized")
+	}
+
 	// Check if the listen address is accepting connections.
 	if h.conf.Addr != "" {
 		conn, err := net.DialTimeout("tcp", h.conf.Addr, 5*time.Second)
@@ -262,7 +286,7 @@ func (h *ServiceHttp) CheckHealth() error {
 		h.healthCheckTotal.WithLabelValues("success").Inc()
 	}
 
-	log.Debugf("HTTP service health check passed")
+	log.Debugf("HTTP service runtime health check passed")
 	return nil
 }
 
@@ -271,8 +295,8 @@ func (h *ServiceHttp) healthCheckHandler() nhttp.Handler {
 	return nhttp.HandlerFunc(func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		// Execute health check
-		err := h.CheckHealth()
+		// Execute runtime health check (includes port connectivity)
+		err := h.CheckRuntimeHealth()
 
 		var response map[string]interface{}
 		var statusCode int
