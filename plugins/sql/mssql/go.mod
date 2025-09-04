@@ -7,6 +7,7 @@ toolchain go1.24.4
 require (
 	github.com/go-lynx/lynx v1.2.3
 	github.com/go-lynx/lynx/plugins/sql/base v0.0.0
+	github.com/go-lynx/lynx/plugins/sql/interfaces v0.0.0
 	github.com/prometheus/client_golang v1.23.0
 	google.golang.org/protobuf v1.36.6
 )
@@ -19,7 +20,6 @@ require (
 	github.com/go-kratos/kratos/v2 v2.8.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-lynx/lynx/plugins/sql/interfaces v0.0.0 // indirect
 	github.com/go-playground/form/v4 v4.2.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
