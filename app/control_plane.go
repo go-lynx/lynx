@@ -175,23 +175,21 @@ func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
 // GetServiceRegistry returns a new service registry instance
 func GetServiceRegistry() (registry.Registrar, error) {
 	if Lynx() == nil || Lynx().GetControlPlane() == nil {
-		return nil, fmt.Errorf("control plane not initialized")
+		// No control plane available, return nil registrar (no service registration)
+		return nil, nil
 	}
 	reg := Lynx().GetControlPlane().NewServiceRegistry()
-	if reg == nil {
-		return nil, fmt.Errorf("failed to create service registry")
-	}
+	// Return the registrar even if it's nil (no service registration)
 	return reg, nil
 }
 
 // GetServiceDiscovery returns a new service discovery instance
 func GetServiceDiscovery() (registry.Discovery, error) {
 	if Lynx() == nil || Lynx().GetControlPlane() == nil {
-		return nil, fmt.Errorf("control plane not initialized")
+		// No control plane available, return nil discovery (no service discovery)
+		return nil, nil
 	}
 	disc := Lynx().GetControlPlane().NewServiceDiscovery()
-	if disc == nil {
-		return nil, fmt.Errorf("failed to create service discovery")
-	}
+	// Return the discovery even if it's nil (no service discovery)
 	return disc, nil
 }

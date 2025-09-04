@@ -86,134 +86,199 @@ func helper() *log.Helper {
 			return h
 		}
 	}
-	return &LHelper
+	// Check if LHelper is properly initialized before returning
+	if Logger != nil {
+		return &LHelper
+	}
+	// Return nil if logger is not initialized - this will be handled by calling code
+	return nil
 }
 
 // Debug uses the log helper to record debug-level log information.
 func Debug(a ...any) {
-	helper().Debug(a...)
+	if h := helper(); h != nil {
+		h.Debug(a...)
+	}
 }
 
 // DebugCtx uses the log helper to record debug-level log information with context.
 func DebugCtx(ctx context.Context, a ...any) {
-	helper().WithContext(ctx).Debug(a...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Debug(a...)
+	}
 }
 
 func Debugf(format string, a ...any) {
-	helper().Debugf(format, a...)
+	if h := helper(); h != nil {
+		h.Debugf(format, a...)
+	}
 }
 
 func DebugfCtx(ctx context.Context, format string, a ...any) {
-	helper().WithContext(ctx).Debugf(format, a...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Debugf(format, a...)
+	}
 }
 
 func Debugw(keyvals ...any) {
-	helper().Debugw(keyvals...)
+	if h := helper(); h != nil {
+		h.Debugw(keyvals...)
+	}
 }
 
 func DebugwCtx(ctx context.Context, keyvals ...any) {
-	helper().WithContext(ctx).Debugw(keyvals...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Debugw(keyvals...)
+	}
 }
 
 func Info(a ...any) {
-	helper().Info(a...)
+	if h := helper(); h != nil {
+		h.Info(a...)
+	}
 }
 
 func InfoCtx(ctx context.Context, a ...any) {
-	helper().WithContext(ctx).Info(a...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Info(a...)
+	}
 }
 
 func Infof(format string, a ...any) {
-	helper().Infof(format, a...)
+	if h := helper(); h != nil {
+		h.Infof(format, a...)
+	}
 }
 
 func InfofCtx(ctx context.Context, format string, a ...any) {
-	helper().WithContext(ctx).Infof(format, a...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Infof(format, a...)
+	}
 }
 
 func Infow(keyvals ...any) {
-	helper().Infow(keyvals...)
+	if h := helper(); h != nil {
+		h.Infow(keyvals...)
+	}
 }
 
 func InfowCtx(ctx context.Context, keyvals ...any) {
-	helper().WithContext(ctx).Infow(keyvals...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Infow(keyvals...)
+	}
 }
 
 func Warn(a ...any) {
-	helper().Warn(a...)
+	if h := helper(); h != nil {
+		h.Warn(a...)
+	}
 }
 
 func WarnCtx(ctx context.Context, a ...any) {
-	helper().WithContext(ctx).Warn(a...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Warn(a...)
+	}
 }
 
 func Warnf(format string, a ...any) {
-	helper().Warnf(format, a...)
+	if h := helper(); h != nil {
+		h.Warnf(format, a...)
+	}
 }
 
 func WarnfCtx(ctx context.Context, format string, a ...any) {
-	helper().WithContext(ctx).Warnf(format, a...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Warnf(format, a...)
+	}
 }
 
 func Warnw(keyvals ...any) {
-	helper().Warnw(keyvals...)
+	if h := helper(); h != nil {
+		h.Warnw(keyvals...)
+	}
 }
 
 func WarnwCtx(ctx context.Context, keyvals ...any) {
-	helper().WithContext(ctx).Warnw(keyvals...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Warnw(keyvals...)
+	}
 }
 
 func Error(a ...any) {
-	helper().Error(a...)
+	if h := helper(); h != nil {
+		h.Error(a...)
+	}
 }
 
 func ErrorCtx(ctx context.Context, a ...any) {
-	helper().WithContext(ctx).Error(a...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Error(a...)
+	}
 }
 
 func Errorf(format string, a ...any) {
-	helper().Errorf(format, a...)
+	if h := helper(); h != nil {
+		h.Errorf(format, a...)
+	}
 }
 
 func ErrorfCtx(ctx context.Context, format string, a ...any) {
-	helper().WithContext(ctx).Errorf(format, a...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Errorf(format, a...)
+	}
 }
 
 func Errorw(keyvals ...any) {
-	helper().Errorw(keyvals...)
+	if h := helper(); h != nil {
+		h.Errorw(keyvals...)
+	}
 }
 
 func ErrorwCtx(ctx context.Context, keyvals ...any) {
-	helper().WithContext(ctx).Errorw(keyvals...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Errorw(keyvals...)
+	}
 }
 
 // Fatal logs a message at FatalLevel.
 func Fatal(a ...any) {
 	// avoid double exit: zerolog's Fatal will exit once
-	helper().Fatal("msg", fmt.Sprint(a...))
+	if h := helper(); h != nil {
+		h.Fatal("msg", fmt.Sprint(a...))
+	}
 }
 
 // FatalCtx logs a message at FatalLevel with context.
 func FatalCtx(ctx context.Context, a ...any) {
-	helper().WithContext(ctx).Fatal("msg", fmt.Sprint(a...))
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Fatal("msg", fmt.Sprint(a...))
+	}
 }
 
 // Fatalf logs a formatted message at FatalLevel.
 func Fatalf(format string, a ...any) {
-	helper().Fatal("msg", fmt.Sprintf(format, a...))
+	if h := helper(); h != nil {
+		h.Fatal("msg", fmt.Sprintf(format, a...))
+	}
 }
 
 // FatalfCtx logs a formatted message at FatalLevel with context.
 func FatalfCtx(ctx context.Context, format string, a ...any) {
-	helper().WithContext(ctx).Fatal("msg", fmt.Sprintf(format, a...))
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Fatal("msg", fmt.Sprintf(format, a...))
+	}
 }
 
 // Fatalw logs key-value pairs at FatalLevel.
 func Fatalw(keyvals ...any) {
-	helper().Fatal(keyvals...)
+	if h := helper(); h != nil {
+		h.Fatal(keyvals...)
+	}
 }
 
 // FatalwCtx logs key-value pairs at FatalLevel with context.
 func FatalwCtx(ctx context.Context, keyvals ...any) {
-	helper().WithContext(ctx).Fatal(keyvals...)
+	if h := helper(); h != nil {
+		h.WithContext(ctx).Fatal(keyvals...)
+	}
 }

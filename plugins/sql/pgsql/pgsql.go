@@ -1,10 +1,13 @@
 package pgsql
 
 import (
+	"fmt"
+
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/sql/base"
 	"github.com/go-lynx/lynx/plugins/sql/interfaces"
+	"github.com/go-lynx/lynx/plugins/sql/pgsql/conf"
 	
 	// PostgreSQL driver
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -12,7 +15,6 @@ import (
 
 // Plugin metadata
 const (
-	pluginName        = "pgsql.client"
 	pluginVersion     = "v2.0.0"
 	pluginDescription = "pgsql client plugin for lynx framework"
 	confPrefix        = "lynx.pgsql"
@@ -21,13 +23,14 @@ const (
 // DBPgsqlClient represents PostgreSQL client plugin instance
 type DBPgsqlClient struct {
 	*base.BaseSQLPlugin
-	config *interfaces.Config
+	config    *interfaces.Config
+	pbConfig  *conf.Pgsql // protobuf configuration
 }
 
 // NewPgsqlClient creates a new PostgreSQL client plugin instance
 func NewPgsqlClient() *DBPgsqlClient {
 	config := &interfaces.Config{
-		Driver: "postgres",
+		Driver: "pgx",
 		// Default connection pool settings
 		MaxOpenConns:    25,
 		MaxIdleConns:    5,
@@ -39,7 +42,8 @@ func NewPgsqlClient() *DBPgsqlClient {
 	}
 
 	c := &DBPgsqlClient{
-		config: config,
+		config:   config,
+		pbConfig: &conf.Pgsql{},
 	}
 
 	c.BaseSQLPlugin = base.NewBaseSQLPlugin(
@@ -53,6 +57,27 @@ func NewPgsqlClient() *DBPgsqlClient {
 	)
 	
 	return c
+}
+
+// InitializeResources loads protobuf configuration and initializes resources
+func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
+	// Load protobuf configuration
+	if err := rt.GetConfig().Value(confPrefix).Scan(p.pbConfig); err != nil {
+		return fmt.Errorf("failed to load PostgreSQL configuration: %w", err)
+	}
+
+	// Update interfaces.Config from protobuf config
+	p.config.Driver = p.pbConfig.Driver
+	p.config.DSN = p.pbConfig.Source
+	if p.pbConfig.MinConn > 0 {
+		p.config.MaxIdleConns = int(p.pbConfig.MinConn)
+	}
+	if p.pbConfig.MaxConn > 0 {
+		p.config.MaxOpenConns = int(p.pbConfig.MaxConn)
+	}
+
+	// Call parent initialization
+	return p.BaseSQLPlugin.InitializeResources(rt)
 }
 
 // StartupTasks initializes database connection
