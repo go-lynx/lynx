@@ -10,7 +10,7 @@ replace (
 require (
 	github.com/go-lynx/lynx v1.2.3
 	github.com/go-lynx/lynx/plugins/sql/base v0.0.0-00010101000000-000000000000
-	github.com/go-lynx/lynx/plugins/sql/interfaces v0.0.0-00010101000000-000000000000
+	github.com/go-lynx/lynx/plugins/sql/interfaces v0.0.0
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/prometheus/client_golang v1.23.0
 	google.golang.org/protobuf v1.36.6
