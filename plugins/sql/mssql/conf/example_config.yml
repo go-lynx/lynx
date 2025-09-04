@@ -1,0 +1,101 @@
+# Microsoft SQL Server Configuration Example
+# This file demonstrates the configuration options available for the MSSQL plugin
+
+lynx:
+  mssql:
+    # Basic connection configuration
+    driver: "mssql"
+    source: ""  # Will be built from ServerConfig if not provided
+    
+    # Connection pool settings
+    min_conn: 5
+    max_conn: 20
+    max_idle_conn: 10
+    max_idle_time: 300s    # 5 minutes
+    max_life_time: 3600s   # 1 hour
+    
+    # SQL Server specific configuration
+    server_config:
+      # Server connection details
+      instance_name: "localhost"  # or "server.domain.com" for remote servers
+      port: 1433                  # Default SQL Server port
+      database: "master"          # Default database name
+      
+      # Authentication
+      username: "sa"              # SQL Server username
+      password: "your_password"   # SQL Server password
+      # Note: For Windows Authentication, leave username/password empty
+      
+      # Security settings
+      encrypt: false              # Enable encryption (true for Azure, false for on-premise)
+      trust_server_certificate: false  # Trust server certificate
+      
+      # Timeout settings
+      connection_timeout: 30      # Connection timeout in seconds
+      command_timeout: 30         # Command timeout in seconds
+      
+      # Application identification
+      application_name: "Lynx-MSSQL-Plugin"
+      workstation_id: "lynx-server"
+      
+      # Connection pooling
+      connection_pooling: true
+      max_pool_size: 20
+      min_pool_size: 5
+      pool_blocking_timeout: 30   # Pool blocking timeout in seconds
+      pool_lifetime_timeout: 3600 # Pool lifetime timeout in seconds
+
+# Alternative configuration examples:
+
+# 1. Windows Authentication (on-premise)
+# server_config:
+#   instance_name: "localhost"
+#   port: 1433
+#   database: "your_database"
+#   encrypt: false
+#   trust_server_certificate: false
+#   # username and password are not needed for Windows Authentication
+
+# 2. Azure SQL Database
+# server_config:
+#   instance_name: "your-server.database.windows.net"
+#   port: 1433
+#   database: "your_database"
+#   username: "your_username@your-server"
+#   password: "your_password"
+#   encrypt: true
+#   trust_server_certificate: false
+
+# 3. Named Instance
+# server_config:
+#   instance_name: "localhost\\SQLEXPRESS"
+#   port: 1433
+#   database: "your_database"
+#   username: "sa"
+#   password: "your_password"
+#   encrypt: false
+
+# 4. High Availability Configuration
+# server_config:
+#   instance_name: "your-availability-group-listener"
+#   port: 1433
+#   database: "your_database"
+#   username: "your_username"
+#   password: "your_password"
+#   encrypt: true
+#   connection_pooling: true
+#   max_pool_size: 50
+#   min_pool_size: 10
+
+# 5. Development Environment
+# server_config:
+#   instance_name: "localhost"
+#   port: 1433
+#   database: "dev_database"
+#   username: "dev_user"
+#   password: "dev_password"
+#   encrypt: false
+#   trust_server_certificate: true
+#   connection_pooling: true
+#   max_pool_size: 10
+#   min_pool_size: 2

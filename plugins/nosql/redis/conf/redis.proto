@@ -1,37 +1,78 @@
-// Defines the syntax version for the Protocol Buffers file.
+// Specify the syntax version used by this Protocol Buffers file
 syntax = "proto3";
 
-// Specifies the package name for the generated code.
+// Package name used for generated code
 package lynx.protobuf.plugin.redis;
 
-// Sets the Go package name for the generated code.
+// Set go_package for generated Go code
 option go_package = "github.com/go-lynx/lynx/plugins/nosql/redis/conf;conf";
 
-// Imports the Duration message type from the google/protobuf/duration.proto file.
+// Import Duration type from google/protobuf/duration.proto
 import "google/protobuf/duration.proto";
 
-// Defines a message type for Redis configuration.
+// Define Redis configuration message type
 message redis {
-  // The network type (e.g., "tcp", "udp").
+  // —— Basic Connection ——
+  // Network type (e.g.: tcp)
   string network = 1;
-  // The address of the Redis server.
-  string addr = 2;
-  // The password for the Redis server.
-  string password = 3;
-  // The database number to use.
-  int32 db = 4;
-  // The minimum number of idle connections to maintain.
-  int32 min_idle_conns = 5;
-  // The maximum number of idle connections to maintain.
-  int32 max_idle_conns = 6;
-  // The maximum number of active connections to allow.
-  int32 max_active_conns = 7;
-  // The maximum idle time for a connection.
-  google.protobuf.Duration conn_max_idle_time = 8;
-  // The timeout for establishing a connection.
-  google.protobuf.Duration dial_timeout = 9;
-  // The timeout for reading data from a connection.
-  google.protobuf.Duration read_timeout = 10;
-  // The timeout for writing data to a connection.
-  google.protobuf.Duration write_timeout = 11;
+  // Address list, supports standalone/cluster/sentinel
+  repeated string addrs = 2;
+  // ACL username
+  string username = 3;
+  // Password to access Redis
+  string password = 4;
+  // Database number to use
+  int32 db = 5;
+  // Client name (visible in Redis CLIENT LIST)
+  string client_name = 6;
+
+  // —— Connection Pool and Connection Lifecycle ——
+  // Minimum idle connections in connection pool
+  int32 min_idle_conns = 7;
+  // Maximum idle connections in connection pool
+  int32 max_idle_conns = 8;
+  // Maximum active connections in connection pool (mapped to go-redis PoolSize)
+  int32 max_active_conns = 9;
+  // Maximum idle time for connections
+  google.protobuf.Duration conn_max_idle_time = 10;
+  // Connection idle timeout
+  google.protobuf.Duration idle_timeout = 11;
+  // Maximum connection lifetime
+  google.protobuf.Duration max_conn_age = 12;
+  // Wait timeout when all connections are busy (connection pool timeout)
+  google.protobuf.Duration pool_timeout = 13;
+
+  // —— Timeout Configuration ——
+  // Connection timeout
+  google.protobuf.Duration dial_timeout = 14;
+  // Read timeout
+  google.protobuf.Duration read_timeout = 15;
+  // Write timeout
+  google.protobuf.Duration write_timeout = 16;
+
+  // —— Retry Configuration ——
+  // Maximum number of retries
+  int32 max_retries = 17;
+  // Minimum retry backoff
+  google.protobuf.Duration min_retry_backoff = 18;
+  // Maximum retry backoff
+  google.protobuf.Duration max_retry_backoff = 19;
+
+  // TLS options
+  message TLS {
+    // Whether to enable TLS
+    bool enabled = 1;
+    // Whether to skip certificate verification (for test environment only)
+    bool insecure_skip_verify = 2;
+  }
+  TLS tls = 20;
+
+  // Sentinel mode options
+  message Sentinel {
+    // Master node name (sentinel monitored master name)
+    string master_name = 1;
+    // Optional: dedicated sentinel address list; uses addrs when empty
+    repeated string addrs = 2;
+  }
+  Sentinel sentinel = 21;
 }

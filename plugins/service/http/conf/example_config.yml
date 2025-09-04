@@ -1,0 +1,162 @@
+# HTTP Plugin Configuration Example
+# This file demonstrates all available configuration options for the HTTP plugin
+
+lynx:
+  http:
+    # Basic server configuration
+    network: "tcp"                    # Network type: tcp, tcp4, tcp6, unix, unixpacket
+    addr: ":8080"                     # Listen address and port
+    timeout: "30s"                    # Request timeout
+    
+    # TLS/HTTPS configuration
+    tls_enable: false                 # Enable TLS/HTTPS
+    tls_auth_type: 0                  # TLS auth type: 0=No client auth, 1=Request client cert, 2=Require client cert
+    
+    # Monitoring configuration
+    monitoring:
+      enable_metrics: true            # Enable Prometheus metrics
+      metrics_path: "/metrics"        # Metrics endpoint path
+      health_path: "/health"          # Health check endpoint path
+      enable_request_logging: true    # Enable request logging
+      enable_error_logging: true      # Enable error logging
+      enable_route_metrics: true      # Enable detailed route metrics
+      enable_connection_metrics: true # Enable connection metrics
+      enable_queue_metrics: true      # Enable queue metrics
+      enable_error_type_metrics: true # Enable error type metrics
+    
+    # Security configuration
+    security:
+      max_request_size: 10485760      # Request size limit (10MB)
+      
+      # CORS configuration
+      cors:
+        enabled: false                # Enable CORS
+        allowed_origins: ["*"]        # Allowed origins
+        allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]  # Allowed methods
+        allowed_headers: ["*"]        # Allowed headers
+        exposed_headers: []           # Exposed headers
+        allow_credentials: false      # Allow credentials
+        max_age: 86400               # Preflight cache time (24 hours)
+      
+      # Rate limiting
+      rate_limit:
+        enabled: true                 # Enable rate limiting
+        rate_per_second: 100          # Requests per second
+        burst_limit: 200              # Burst allowance
+      
+      # Security headers
+      security_headers:
+        enabled: false                # Enable security headers
+        content_security_policy: "default-src 'self'"  # CSP header
+        x_frame_options: "DENY"       # X-Frame-Options header
+        x_content_type_options: "nosniff"  # X-Content-Type-Options header
+        x_xss_protection: "1; mode=block"  # X-XSS-Protection header
+    
+    # Performance configuration
+    performance:
+      max_connections: 1000           # Maximum concurrent connections
+      max_concurrent_requests: 500    # Maximum concurrent requests
+      read_buffer_size: 4096          # Read buffer size (4KB)
+      write_buffer_size: 4096         # Write buffer size (4KB)
+      
+      # Connection pool configuration
+      connection_pool:
+        max_idle_conns: 100           # Maximum idle connections
+        max_idle_conns_per_host: 10   # Maximum idle connections per host
+        max_conns_per_host: 100       # Maximum connections per host
+        keep_alive_duration: "30s"    # Connection reuse duration
+      
+      # Timeout configuration
+      read_timeout: "30s"             # Read timeout
+      write_timeout: "30s"            # Write timeout
+      idle_timeout: "60s"             # Idle timeout
+      read_header_timeout: "20s"      # Header read timeout
+    
+    # Middleware configuration
+    middleware:
+      enable_tracing: true            # Enable distributed tracing
+      enable_logging: true            # Enable request/response logging
+      enable_recovery: true           # Enable panic recovery
+      enable_validation: true         # Enable request validation
+      enable_rate_limit: true         # Enable rate limiting
+      enable_metrics: true            # Enable metrics middleware
+      
+      # Custom middleware configuration (key-value pairs)
+      custom_middleware:
+        # Example: custom_auth: "true"
+        # Example: custom_cache: "redis"
+    
+    # Graceful shutdown configuration
+    graceful_shutdown:
+      shutdown_timeout: "30s"         # Shutdown timeout
+      wait_for_ongoing_requests: true # Wait for ongoing requests
+      max_wait_time: "60s"            # Maximum wait time
+
+# Production Configuration Example
+# Uncomment and modify for production use
+# lynx:
+#   http:
+#     network: "tcp"
+#     addr: ":8080"
+#     timeout: "30s"
+#     tls_enable: true
+#     tls_auth_type: 2
+#     
+#     monitoring:
+#       enable_metrics: true
+#       metrics_path: "/metrics"
+#       health_path: "/health"
+#       enable_request_logging: true
+#       enable_error_logging: true
+#       enable_route_metrics: true
+#       enable_connection_metrics: true
+#       enable_queue_metrics: true
+#       enable_error_type_metrics: true
+#     
+#     security:
+#       max_request_size: 10485760
+#       cors:
+#         enabled: true
+#         allowed_origins: ["https://yourdomain.com"]
+#         allowed_methods: ["GET", "POST", "PUT", "DELETE"]
+#         allowed_headers: ["Content-Type", "Authorization"]
+#         allow_credentials: true
+#         max_age: 86400
+#       rate_limit:
+#         enabled: true
+#         rate_per_second: 1000
+#         burst_limit: 2000
+#       security_headers:
+#         enabled: true
+#         content_security_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'"
+#         x_frame_options: "DENY"
+#         x_content_type_options: "nosniff"
+#         x_xss_protection: "1; mode=block"
+#     
+#     performance:
+#       max_connections: 2000
+#       max_concurrent_requests: 1000
+#       read_buffer_size: 8192
+#       write_buffer_size: 8192
+#       connection_pool:
+#         max_idle_conns: 200
+#         max_idle_conns_per_host: 20
+#         max_conns_per_host: 200
+#         keep_alive_duration: "60s"
+#       read_timeout: "60s"
+#       write_timeout: "60s"
+#       idle_timeout: "120s"
+#       read_header_timeout: "30s"
+#     
+#     middleware:
+#       enable_tracing: true
+#       enable_logging: true
+#       enable_recovery: true
+#       enable_validation: true
+#       enable_rate_limit: true
+#       enable_metrics: true
+#     
+#     graceful_shutdown:
+#       shutdown_timeout: "60s"
+#       wait_for_ongoing_requests: true
+#       max_wait_time: "120s"

@@ -29,7 +29,7 @@ init:
 config:
 	for PROTO_FILE in $$(find . -name '*.proto'); do \
 		DIR=$$(dirname "$$PROTO_FILE"); \
-		protoc --proto_path="$$DIR" -I ./third_party -I ./boot -I ./app --go_out=paths=source_relative:"$$DIR" "$$PROTO_FILE"; \
+		PATH="$(GOPATH)/bin:$$PATH" protoc --proto_path="$$DIR" -I ./third_party -I ./boot -I ./app --go_out=paths=source_relative:"$$DIR" "$$PROTO_FILE"; \
 	done
 
 MODULES_VERSION ?=

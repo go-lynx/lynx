@@ -1,0 +1,35 @@
+# Root configuration item representing global configuration of Lynx application
+lynx:
+  # Application related configuration
+  application:
+    # Application name used to identify the app
+    name: name
+    # Application version following semantic versioning specification
+    version: v1.0.0
+  # Polaris service governance configuration
+  polaris:
+    # Polaris namespace used to isolate resources of different environments or businesses
+    namespace: dev
+    # Authentication token for accessing Polaris service
+    token: polaris-token
+    # Service instance weight for load balancing, higher value means higher probability of being selected
+    weight: 100
+    # Service instance Time To Live (TTL) in seconds, used for heartbeat detection
+    ttl: 5
+    # Timeout for requesting Polaris service, supports time unit suffixes like s (seconds), ms (milliseconds), etc.
+    timeout: 5s
+
+  # Runtime configuration
+  runtime:
+    # Event system configuration
+    event:
+      # Event queue size (>0), default 1024
+      queue_size: 1024
+      # Event dispatch worker count (>0), default 10
+      worker_count: 10
+      # Independent queue size for each listener (>0), default 256
+      listener_queue_size: 256
+      # Number of historical events to retain (<=0 means no history retention), default 1000
+      history_size: 1000
+      # Drain timeout in milliseconds when shutting down. >0 means waiting for the queue to drain as much as possible before notifying listeners to exit
+      drain_timeout_ms: 0

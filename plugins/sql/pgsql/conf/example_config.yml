@@ -1,0 +1,74 @@
+# PgSQL Plugin Configuration Example
+# This file demonstrates how to properly configure PgSQL database connections
+
+lynx:
+  pgsql:
+    # Database driver name
+    driver: "postgres"
+
+    # Database connection string
+    # Format: postgres://username:password@host:port/database?sslmode=disable
+    source: "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable"
+
+    # Connection pool configuration
+    # Minimum number of connections (idle connections)
+    min_conn: 10
+
+    # Maximum number of connections
+    max_conn: 50
+
+    # Maximum idle time for connections
+    # Idle connections exceeding this time will be closed
+    max_idle_time: "30s"
+
+    # Maximum connection lifetime
+    # Connections exceeding this time will be closed and recreated
+    max_life_time: "300s"
+
+# Advanced configuration example
+#  lynx:
+#   pgsql:
+#     driver: "postgres"
+#     source: "postgres://user:password@localhost:5432/mydb?sslmode=require&connect_timeout=10"
+#     min_conn: 5
+#     max_conn: 100
+#     max_idle_time: "60s"
+#     max_life_time: "600s"
+
+# Production environment configuration example
+#  lynx:
+#   pgsql:
+#     driver: "postgres"
+#     source: "postgres://prod_user:secure_password@prod-db.example.com:5432/production_db?sslmode=require&connect_timeout=30&statement_timeout=30000"
+#     min_conn: 20
+#     max_conn: 200
+#     max_idle_time: "300s"
+#     max_life_time: "3600s"
+#     prometheus:
+#       enabled: true
+#       metrics_path: "/metrics"
+#       metrics_port: 9090
+#       namespace: "lynx"
+#       subsystem: "pgsql"
+#       labels:
+#         environment: "production"
+#         region: "us-west-2"
+
+# Configuration example with Prometheus monitoring enabled
+#  lynx:
+#    pgsql:
+#      driver: "postgres"
+#      source: "postgres://admin:123456@127.0.0.1:5432/demo?sslmode=disable"
+#      min_conn: 10
+#      max_conn: 50
+#      max_idle_time: "30s"
+#      max_life_time: "300s"
+#      prometheus:
+#        enabled: true
+#        metrics_path: "/metrics"
+#        metrics_port: 9090
+#        namespace: "lynx"
+#        subsystem: "pgsql"
+#        labels:
+#          environment: "development"
+#          service: "myapp"

@@ -86,8 +86,8 @@ github.com/go-kit/kit v0.9.0/go.mod h1:xBxKIO96dXMWWy0MnWVtmwkA9/13aqxPnvrjFYMA2
 github.com/go-kit/log v0.1.0/go.mod h1:zbhenjAZHb184qTLMA9ZjW7ThYL0H2mk7Q6pNt4vbaY=
 github.com/go-kratos/aegis v0.2.0 h1:dObzCDWn3XVjUkgxyBp6ZeWtx/do0DPZ7LY3yNSJLUQ=
 github.com/go-kratos/aegis v0.2.0/go.mod h1:v0R2m73WgEEYB3XYu6aE2WcMwsZkJ/Rzuf5eVccm7bI=
-github.com/go-kratos/kratos/contrib/polaris/v2 v2.0.0-20250429074618-c82f7957223f h1:RK27tDg4pM2VDMDvDg78kEKe2plobCx+saeIz6ZGg04=
-github.com/go-kratos/kratos/contrib/polaris/v2 v2.0.0-20250429074618-c82f7957223f/go.mod h1:fcsO+v60BP3AgBMgWRaZWoIgpGWZwCaH0+2hdjGbd/g=
+github.com/go-kratos/kratos/contrib/polaris/v2 v2.0.0-20250731084034-f7f150c3f139 h1:j+vZAgiAtdTv4ziJ2Vj+0P3XN5Kte34ftgBHyc+EBWA=
+github.com/go-kratos/kratos/contrib/polaris/v2 v2.0.0-20250731084034-f7f150c3f139/go.mod h1:fcsO+v60BP3AgBMgWRaZWoIgpGWZwCaH0+2hdjGbd/g=
 github.com/go-kratos/kratos/v2 v2.8.4 h1:eIJLE9Qq9WSoKx+Buy2uPyrahtF/lPh+Xf4MTpxhmjs=
 github.com/go-kratos/kratos/v2 v2.8.4/go.mod h1:mq62W2101a5uYyRxe+7IdWubu7gZCGYqSNKwGFiiRcw=
 github.com/go-logfmt/logfmt v0.3.0/go.mod h1:Qt1PoO58o5twSAckw1HlFXLmHsOX5/0LbT9GBnD5lWE=

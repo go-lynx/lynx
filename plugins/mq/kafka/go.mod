@@ -4,12 +4,14 @@ go 1.24.3
 
 require (
 	github.com/go-lynx/lynx v1.2.1
+	github.com/stretchr/testify v1.10.0
 	github.com/twmb/franz-go v1.15.3
 	google.golang.org/protobuf v1.35.2
 )
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
 	github.com/go-kratos/kratos/v2 v2.8.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
@@ -21,6 +23,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/pierrec/lz4/v4 v4.1.19 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.7.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect

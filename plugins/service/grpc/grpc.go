@@ -21,58 +21,49 @@ import (
 )
 
 // Plugin metadata constants define the basic information about the gRPC plugin
-// 插件元数据常量，定义了 gRPC 插件的基本信息
 const (
 	// pluginName is the unique identifier for the gRPC server plugin
-	// pluginName 是 gRPC 服务器插件的唯一标识符
 	pluginName = "grpc.server"
 
 	// pluginVersion indicates the current version of the plugin
-	// pluginVersion 表示插件的当前版本
 	pluginVersion = "v2.0.0"
 
 	// pluginDescription provides a brief description of the plugin's functionality
-	// pluginDescription 简要描述了插件的功能
 	pluginDescription = "grpc server plugin for lynx framework"
 
 	// confPrefix is the configuration prefix used for loading gRPC settings
-	// confPrefix 是用于加载 gRPC 配置的前缀
 	confPrefix = "lynx.grpc"
 )
 
 // ServiceGrpc represents the gRPC server plugin implementation.
 // It embeds the BasePlugin for common plugin functionality and maintains
 // the gRPC server instance along with its configuration.
-// ServiceGrpc 表示 gRPC 服务器插件的实现。
-// 它嵌入了 BasePlugin 以获得通用的插件功能，并维护 gRPC 服务器实例及其配置。
 type ServiceGrpc struct {
-	// 嵌入 Lynx 框架的基础插件，继承通用的插件功能
+	// Embed Lynx framework's base plugin, inheriting common plugin functionality
 	*plugins.BasePlugin
-	// gRPC 服务器实例
+	// gRPC server instance
 	server *grpc.Server
-	// gRPC 服务器的配置信息
+	// gRPC server configuration information
 	conf *conf.Grpc
 }
 
 // NewServiceGrpc creates and initializes a new instance of the gRPC server plugin.
 // It sets up the base plugin with the appropriate metadata and returns a pointer
 // to the ServiceGrpc structure.
-// NewServiceGrpc 创建并初始化一个新的 gRPC 服务器插件实例。
-// 它使用适当的元数据设置基础插件，并返回一个指向 ServiceGrpc 结构体的指针。
 func NewServiceGrpc() *ServiceGrpc {
 	return &ServiceGrpc{
 		BasePlugin: plugins.NewBasePlugin(
-			// 生成插件的唯一 ID
+			// Generate unique plugin ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
-			// 插件名称
+			// Plugin name
 			pluginName,
-			// 插件描述
+			// Plugin description
 			pluginDescription,
-			// 插件版本
+			// Plugin version
 			pluginVersion,
-			// 配置前缀
+			// Configuration prefix
 			confPrefix,
-			// 权重
+			// Weight
 			10,
 		),
 	}
@@ -81,34 +72,31 @@ func NewServiceGrpc() *ServiceGrpc {
 // InitializeResources implements the plugin initialization interface.
 // It loads and validates the gRPC server configuration from the runtime environment.
 // If no configuration is provided, it sets up default values for the server.
-// InitializeResources 实现了插件初始化接口。
-// 它从运行时环境中加载并验证 gRPC 服务器配置。
-// 如果未提供配置，则为服务器设置默认值。
 func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
-	// 初始化一个空的配置结构
+	// Initialize an empty configuration structure
 	g.conf = &conf.Grpc{}
 
-	// 从运行时配置中扫描并加载 gRPC 配置
+	// Scan and load gRPC configuration from runtime configuration
 	err := rt.GetConfig().Value(confPrefix).Scan(g.conf)
 	if err != nil {
 		return err
 	}
 
-	// 设置默认配置
+	// Set default configuration
 	defaultConf := &conf.Grpc{
-		// 默认网络协议为 TCP
+		// Default network protocol is TCP
 		Network: "tcp",
-		// 默认监听地址为 :9090
+		// Default listening address is :9090
 		Addr: ":9090",
-		// 默认不启用 TLS
+		// TLS is disabled by default
 		TlsEnable: false,
-		// 默认不进行客户端认证
+		// No client authentication by default
 		TlsAuthType: 0,
-		// 默认超时时间为 10 秒
+		// Default timeout is 10 seconds
 		Timeout: &durationpb.Duration{Seconds: 10},
 	}
 
-	// 对未设置的字段使用默认值
+	// Use default values for unset fields
 	if g.conf.Network == "" {
 		g.conf.Network = defaultConf.Network
 	}
@@ -125,24 +113,21 @@ func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
 // StartupTasks implements the plugin startup interface.
 // It configures and starts the gRPC server with all necessary middleware and options,
 // including tracing, logging, rate limiting, validation, and recovery handlers.
-// StartupTasks 实现了插件启动接口。
-// 它使用所有必要的中间件和选项配置并启动 gRPC 服务器，
-// 包括链路追踪、日志记录、限流、参数验证和恢复处理。
 func (g *ServiceGrpc) StartupTasks() error {
-	// 记录 gRPC 服务启动日志
+	// Log gRPC service startup
 	log.Infof("starting grpc service")
 
 	var middlewares []middleware.Middleware
 
-	// 添加基础中间件
+	// Add base middleware
 	middlewares = append(middlewares,
-		// 配置链路追踪中间件，设置追踪器名称为应用名称
+		// Configure tracing middleware with application name as tracer name
 		tracing.Server(tracing.WithTracerName(app.GetName())),
-		// 配置日志中间件，使用 Lynx 框架的日志记录器
+		// Configure logging middleware using Lynx framework's logger
 		logging.Server(log.Logger),
-		// 配置参数验证中间件
+		// Configure validation middleware
 		validate.ProtoValidate(),
-		// 配置恢复中间件，处理请求处理过程中的 panic
+		// Configure recovery middleware to handle panics during request processing
 		recovery.Recovery(
 			recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
 				log.ErrorCtx(ctx, err)
@@ -150,40 +135,39 @@ func (g *ServiceGrpc) StartupTasks() error {
 			}),
 		),
 	)
-	// 配置限流中间件，使用 Lynx 框架控制平面的 HTTP 限流策略
-	// 如果有限流中间件，则追加进去
+	// Configure rate limiting middleware using Lynx framework's control plane HTTP rate limit strategy
+	// If there is a rate limiting middleware, append it
 	if rl := app.Lynx().GetControlPlane().GRPCRateLimit(); rl != nil {
 		middlewares = append(middlewares, rl)
 	}
 	gMiddlewares := grpc.Middleware(middlewares...)
 
-	// 定义 gRPC 服务器的选项列表
+	// Define gRPC server options list
 	opts := []grpc.ServerOption{
 		gMiddlewares,
 	}
 
 	// Configure server options based on configuration
-	// 根据配置信息配置服务器选项
 	if g.conf.Network != "" {
-		// 设置网络协议
+		// Set network protocol
 		opts = append(opts, grpc.Network(g.conf.Network))
 	}
 	if g.conf.Addr != "" {
-		// 设置监听地址
+		// Set listening address
 		opts = append(opts, grpc.Address(g.conf.Addr))
 	}
 	if g.conf.Timeout != nil {
-		// 设置超时时间
+		// Set timeout
 		opts = append(opts, grpc.Timeout(g.conf.Timeout.AsDuration()))
 	}
 	if g.conf.GetTlsEnable() {
-		// 如果启用 TLS，添加 TLS 配置选项
+		// If TLS is enabled, add TLS configuration options
 		opts = append(opts, g.tlsLoad())
 	}
 
-	// 创建 gRPC 服务器实例
+	// Create gRPC server instance
 	g.server = grpc.NewServer(opts...)
-	// 记录 gRPC 服务启动成功日志
+	// Log successful gRPC service startup
 	log.Infof("grpc service successfully started")
 	return nil
 }
@@ -191,16 +175,13 @@ func (g *ServiceGrpc) StartupTasks() error {
 // CleanupTasks implements the plugin cleanup interface.
 // It gracefully stops the gRPC server and performs necessary cleanup operations.
 // If the server is nil or already stopped, it will return nil.
-// CleanupTasks 实现了插件清理接口。
-// 它优雅地停止 gRPC 服务器并执行必要的清理操作。
-// 如果服务器为 nil 或已经停止，则返回 nil。
 func (g *ServiceGrpc) CleanupTasks() error {
 	if g.server == nil {
 		return nil
 	}
-	// 优雅地停止 gRPC 服务器
+	// Gracefully stop the gRPC server
 	if err := g.server.Stop(context.Background()); err != nil {
-		// 若停止失败，返回包含错误信息的插件错误
+		// If stopping fails, return plugin error with error information
 		return plugins.NewPluginError(g.ID(), "Stop", "Failed to stop HTTP server", err)
 	}
 	return nil
@@ -209,14 +190,11 @@ func (g *ServiceGrpc) CleanupTasks() error {
 // Configure allows runtime configuration updates for the gRPC server.
 // It accepts an interface{} parameter that should contain the new configuration
 // and updates the server settings accordingly.
-// Configure 允许在运行时更新 gRPC 服务器的配置。
-// 它接受一个 interface{} 类型的参数，该参数应包含新的配置信息，
-// 并相应地更新服务器设置。
 func (g *ServiceGrpc) Configure(c any) error {
 	if c == nil {
 		return nil
 	}
-	// 将传入的配置转换为 *conf.Grpc 类型并更新服务器配置
+	// Convert the incoming configuration to *conf.Grpc type and update server configuration
 	g.conf = c.(*conf.Grpc)
 	return nil
 }
@@ -224,8 +202,6 @@ func (g *ServiceGrpc) Configure(c any) error {
 // CheckHealth implements the health check interface for the gRPC server.
 // It performs necessary health checks and updates the provided health report
 // with the current status of the server.
-// CheckHealth 实现了 gRPC 服务器的健康检查接口。
-// 它执行必要的健康检查，并使用服务器的当前状态更新提供的健康报告。
 func (g *ServiceGrpc) CheckHealth() error {
 	return nil
 }

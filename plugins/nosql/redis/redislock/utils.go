@@ -2,56 +2,90 @@ package redislock
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-lynx/lynx/app/log"
-	"github.com/google/uuid"
 )
 
-// 进程级别的锁标识前缀，在进程启动时生成
+// Process-level lock identifier prefix, generated at process startup
 var lockValuePrefix string
 
-// 原子计数器，用于生成唯一序列号
+// Atomic counter, used to generate unique sequence numbers
 var sequenceNum uint64
 
-// init 初始化锁标识前缀
+// init initializes the lock identifier prefix
 func init() {
-	// 获取主机名
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "unknown-host"
-		log.ErrorCtx(context.Background(), "failed to get hostname", "error", err)
-	}
-
-	// 获取本机 IP
-	ip := "unknown-ip"
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		log.ErrorCtx(context.Background(), "failed to get interface addresses", "error", err)
-	} else {
-		for _, addr := range addrs {
-			if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-				if ipv4 := ipnet.IP.To4(); ipv4 != nil {
-					ip = ipv4.String()
-					break
-				}
-			}
-		}
-	}
-
-	// 生成进程级别的唯一标识前缀
-	lockValuePrefix = fmt.Sprintf("%s-%s-%d-", hostname, ip, os.Getpid())
+	lockValuePrefix = generateLockValuePrefix()
 }
 
-// generateLockValue 生成锁的唯一标识值
+// generateLockValuePrefix generates lock value prefix with retry mechanism
+func generateLockValuePrefix() string {
+	// Get hostname
+	hostname := getHostnameWithRetry()
+
+	// Get local IP
+	ip := getLocalIPWithRetry()
+
+	// Generate process-level unique identifier prefix
+	return fmt.Sprintf("%s-%s-%d-", hostname, ip, os.Getpid())
+}
+
+// getHostnameWithRetry gets hostname with retry mechanism
+func getHostnameWithRetry() string {
+	const maxRetries = 3
+	for i := 0; i < maxRetries; i++ {
+		hostname, err := os.Hostname()
+		if err == nil {
+			return hostname
+		}
+		log.ErrorCtx(context.Background(), "failed to get hostname", "attempt", i+1, "error", err)
+		if i < maxRetries-1 {
+			time.Sleep(time.Duration(1<<i) * 100 * time.Millisecond)
+		}
+	}
+	return "unknown-host"
+}
+
+// getLocalIPWithRetry gets local IP with retry mechanism
+func getLocalIPWithRetry() string {
+	const maxRetries = 3
+	for i := 0; i < maxRetries; i++ {
+		addrs, err := net.InterfaceAddrs()
+		if err == nil {
+			for _, addr := range addrs {
+				if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+					if ipv4 := ipnet.IP.To4(); ipv4 != nil {
+						return ipv4.String()
+					}
+				}
+			}
+			break
+		}
+		log.ErrorCtx(context.Background(), "failed to get interface addresses", "attempt", i+1, "error", err)
+		if i < maxRetries-1 {
+			time.Sleep(time.Duration(1<<i) * 100 * time.Millisecond)
+		}
+	}
+	return "unknown-ip"
+}
+
+// generateLockValue generates unique identifier value for the lock
 func generateLockValue() string {
-	// 使用原子操作获取递增的序列号
+	// Use atomic operation to get incrementing sequence number
 	seq := atomic.AddUint64(&sequenceNum, 1)
-	// 生成 UUID v4
-	uid := uuid.New()
-	// 生成唯一标识：进程前缀 + 序列号 + UUID
-	return fmt.Sprintf("%s%d-%s", lockValuePrefix, seq, uid.String())
+	// Use crypto/rand to generate 16-byte high-entropy random number and hex encode it
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// In extreme cases where entropy reading fails, fall back to timestamp, still retaining prefix and sequence number to avoid blocking
+		return fmt.Sprintf("%s%d-%d", lockValuePrefix, seq, time.Now().UnixNano())
+	}
+	token := hex.EncodeToString(b[:])
+	// Generate unique identifier: process prefix + sequence number + random token
+	return fmt.Sprintf("%s%d-%s", lockValuePrefix, seq, token)
 }

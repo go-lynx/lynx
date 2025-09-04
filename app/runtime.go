@@ -7,73 +7,64 @@ import (
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/go-lynx/lynx/app/events"
 	"github.com/go-lynx/lynx/plugins"
 )
 
-type RuntimePlugin struct {
+// Default event queue and worker parameters (kept for backward compatibility)
+const (
+	defaultEventQueueSize    = 1024
+	defaultEventWorkerCount  = 10
+	defaultListenerQueueSize = 256
+	defaultHistorySize       = 1000
+	defaultDrainTimeoutMs    = 500
+)
+
+// TypedRuntimePlugin generic runtime plugin
+type TypedRuntimePlugin struct {
 	// resources stores shared resources between plugins
-	// resources 存储插件之间共享的资源
 	resources sync.Map
 
-	// eventListeners stores registered event listeners with their filters
-	// eventListeners 存储已注册的事件监听器及其过滤器
-	listeners []listenerEntry
-
-	// eventHistory stores historical events for querying
-	// eventHistory 存储用于查询的历史事件
-	eventHistory []plugins.PluginEvent
-
-	// maxHistorySize is the maximum number of events to keep in history
-	// maxHistorySize 是历史记录中保留的最大事件数
-	maxHistorySize int
-
-	// mu protects the listeners and eventHistory
-	// mu 保护 listeners 和 eventHistory
-	mu sync.RWMutex
-
 	// logger is the plugin's logger instance
-	// logger 是插件的日志记录器实例
 	logger log.Logger
 
 	// config is the plugin's configuration
-	// config 是插件的配置
 	config config.Config
+
+	// Event bus manager for unified event handling
+	eventManager *events.EventBusManager
 }
 
-// listenerEntry represents a registered event listener with its filter
-// listenerEntry 表示一个已注册的事件监听器及其过滤器
+// listenerEntry represents a registered event listener with its filter (kept for backward compatibility)
 type listenerEntry struct {
 	listener plugins.EventListener
 	filter   *plugins.EventFilter
+	ch       chan plugins.PluginEvent
+	quit     chan struct{}
+	active   *int32
 }
 
-// NewRuntimePlugin creates a new RuntimePlugin instance with default settings.
-// NewRuntimePlugin 创建一个带有默认设置的 RuntimePlugin 实例。
-func NewRuntimePlugin() *RuntimePlugin {
-	return &RuntimePlugin{
-		maxHistorySize: 1000, // Default to keeping last 1000 events
-		listeners:      make([]listenerEntry, 0),
-		eventHistory:   make([]plugins.PluginEvent, 0),
-		logger:         log.DefaultLogger,
+// NewTypedRuntimePlugin creates a new TypedRuntimePlugin instance with default settings.
+func NewTypedRuntimePlugin() *TypedRuntimePlugin {
+	r := &TypedRuntimePlugin{
+		logger:       log.DefaultLogger,
+		eventManager: events.GetGlobalEventBus(),
 	}
+	return r
 }
 
-// GetResource retrieves a shared plugin resource by name
-// Returns the resource and any error encountered
-// GetResource 根据名称获取插件共享资源。
-// 返回资源和可能遇到的错误。
-func (r *RuntimePlugin) GetResource(name string) (any, error) {
+// GetResource retrieves a shared plugin resource by name.
+// Returns the resource and any error encountered.
+func (r *TypedRuntimePlugin) GetResource(name string) (any, error) {
 	if value, ok := r.resources.Load(name); ok {
 		return value, nil
 	}
 	return nil, fmt.Errorf("resource not found: %s", name)
 }
 
-// RegisterResource registers a resource to be shared with other plugins
-// Returns error if registration fails
-// RegisterResource 注册一个资源，以便与其他插件共享。
-// 如果注册失败，则返回错误。
-func (r *RuntimePlugin) RegisterResource(name string, resource any) error {
+// RegisterResource registers a resource to be shared with other plugins.
+// Returns an error if registration fails.
+func (r *TypedRuntimePlugin) RegisterResource(name string, resource any) error {
 	if name == "" {
 		return fmt.Errorf("resource name cannot be empty")
 	}
@@ -86,22 +77,43 @@ func (r *RuntimePlugin) RegisterResource(name string, resource any) error {
 	return nil
 }
 
-// GetConfig returns the plugin configuration manager
-// Provides access to configuration values and updates
-// GetConfig 返回插件配置管理器。
-// 提供对配置值和更新的访问。
-func (r *RuntimePlugin) GetConfig() config.Config {
+// GetTypedResource retrieves a type-safe resource (standalone helper)
+func GetTypedResource[T any](r *TypedRuntimePlugin, name string) (T, error) {
+	var zero T
+	resource, err := r.GetResource(name)
+	if err != nil {
+		return zero, err
+	}
+
+	typed, ok := resource.(T)
+	if !ok {
+		return zero, fmt.Errorf("type assertion failed for resource %s", name)
+	}
+
+	return typed, nil
+}
+
+// RegisterTypedResource registers a type-safe resource (standalone helper)
+func RegisterTypedResource[T any](r *TypedRuntimePlugin, name string, resource T) error {
+	return r.RegisterResource(name, resource)
+}
+
+// GetConfig returns the plugin configuration manager.
+// Provides access to configuration values and updates.
+func (r *TypedRuntimePlugin) GetConfig() config.Config {
 	if r.config == nil {
-		r.config = Lynx().GetGlobalConfig()
+		if app := Lynx(); app != nil {
+			if cfg := app.GetGlobalConfig(); cfg != nil {
+				r.config = cfg
+			}
+		}
 	}
 	return r.config
 }
 
-// GetLogger returns the plugin logger instance
-// Provides structured logging capabilities
-// GetLogger 返回插件日志记录器实例。
-// 提供结构化的日志记录功能。
-func (r *RuntimePlugin) GetLogger() log.Logger {
+// GetLogger returns the plugin logger instance.
+// Provides structured logging capabilities.
+func (r *TypedRuntimePlugin) GetLogger() log.Logger {
 	if r.logger == nil {
 		// Initialize with a default logger if not set
 		r.logger = log.DefaultLogger
@@ -109,11 +121,9 @@ func (r *RuntimePlugin) GetLogger() log.Logger {
 	return r.logger
 }
 
-// EmitEvent broadcasts a plugin event to all registered listeners.
+// EmitEvent broadcasts a plugin event to the unified event bus.
 // Event will be processed according to its priority and any active filters.
-// EmitEvent 向所有注册的监听器广播一个插件事件。
-// 事件将根据其优先级和任何活动的过滤器进行处理。
-func (r *RuntimePlugin) EmitEvent(event plugins.PluginEvent) {
+func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 	if event.Type == "" { // Check for zero value of EventType
 		return
 	}
@@ -122,105 +132,172 @@ func (r *RuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 		event.Timestamp = time.Now().Unix()
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// Add to history
-	r.eventHistory = append(r.eventHistory, event)
-
-	// Trim history if it exceeds max size
-	if r.maxHistorySize > 0 && len(r.eventHistory) > r.maxHistorySize {
-		r.eventHistory = r.eventHistory[len(r.eventHistory)-r.maxHistorySize:]
-	}
-
-	// Notify listeners
-	for _, entry := range r.listeners {
-		if entry.filter == nil || r.eventMatchesFilter(event, *entry.filter) {
-			// Non-blocking event dispatch
-			go entry.listener.HandleEvent(event)
+	// Convert to LynxEvent and publish to unified event bus
+	lynxEvent := events.ConvertPluginEvent(event)
+	if err := r.eventManager.PublishEvent(lynxEvent); err != nil {
+		if r.logger != nil {
+			_ = r.logger.Log(log.LevelError, "msg", "failed to publish event", "type", event.Type, "plugin", event.PluginID, "error", err)
 		}
 	}
+}
+
+// Close stops the runtime (optional to call)
+func (r *TypedRuntimePlugin) Close() {
+	// No specific cleanup needed for unified event bus
+	// The global event bus manager handles its own lifecycle
 }
 
 // AddListener registers a new event listener with optional filters.
-// Listener will only receive events that match its filter criteria.
-// AddListener 使用可选的过滤器注册一个新的事件监听器。
-// 监听器将仅接收符合其过滤条件的事件。
-func (r *RuntimePlugin) AddListener(listener plugins.EventListener, filter *plugins.EventFilter) {
+// This method is kept for backward compatibility but delegates to the unified event bus.
+func (r *TypedRuntimePlugin) AddListener(listener plugins.EventListener, filter *plugins.EventFilter) {
+	// Convert to unified event bus subscription
+	// This is a simplified implementation for backward compatibility
 	if listener == nil {
 		return
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	// Convert plugin event listener to unified event bus listener
+	unifiedListener := func(event events.LynxEvent) {
+		// Convert LynxEvent back to PluginEvent for backward compatibility
+		pluginEvent := events.ConvertLynxEvent(event)
+		listener.HandleEvent(pluginEvent)
+	}
 
-	// Add new listener with its filter
-	r.listeners = append(r.listeners, listenerEntry{
-		listener: listener,
-		filter:   filter,
-	})
+	// Convert plugin event filter to unified event bus filter
+	var unifiedFilter *events.EventFilter
+	if filter != nil {
+		unifiedFilter = &events.EventFilter{
+			EventTypes: convertEventTypes(filter.Types),
+			PluginIDs:  filter.PluginIDs,
+			Categories: filter.Categories,
+			Priorities: convertPriorities(filter.Priorities),
+			Metadata:   make(map[string]any), // Plugin filter doesn't have metadata
+		}
+	}
+
+	// Register with unified event bus using the listener manager
+	if r.eventManager != nil {
+		listenerID := fmt.Sprintf("plugin_%p", listener)
+		listenerManager := events.GetGlobalListenerManager()
+		if listenerManager != nil {
+			_ = listenerManager.AddListener(listenerID, unifiedFilter, unifiedListener, events.BusTypePlugin)
+		}
+	}
+}
+
+// convertEventTypes converts plugin event types to unified event types
+func convertEventTypes(pluginTypes []plugins.EventType) []events.EventType {
+	if len(pluginTypes) == 0 {
+		return nil
+	}
+
+	unifiedTypes := make([]events.EventType, len(pluginTypes))
+	for i, eventType := range pluginTypes {
+		unifiedTypes[i] = events.ConvertEventType(eventType)
+	}
+	return unifiedTypes
+}
+
+// convertPriorities converts plugin priorities to unified event bus priorities
+func convertPriorities(pluginPriorities []int) []events.Priority {
+	if len(pluginPriorities) == 0 {
+		return nil
+	}
+
+	unifiedPriorities := make([]events.Priority, len(pluginPriorities))
+	for i, priority := range pluginPriorities {
+		switch priority {
+		case plugins.PriorityLow:
+			unifiedPriorities[i] = events.PriorityLow
+		case plugins.PriorityNormal:
+			unifiedPriorities[i] = events.PriorityNormal
+		case plugins.PriorityHigh:
+			unifiedPriorities[i] = events.PriorityHigh
+		case plugins.PriorityCritical:
+			unifiedPriorities[i] = events.PriorityCritical
+		default:
+			unifiedPriorities[i] = events.PriorityNormal
+		}
+	}
+	return unifiedPriorities
 }
 
 // RemoveListener unregisters an event listener.
-// After removal, the listener will no longer receive any events.
-// RemoveListener 注销一个事件监听器。
-// 删除后，该监听器将不再接收任何事件。
-func (r *RuntimePlugin) RemoveListener(listener plugins.EventListener) {
+// This method is kept for backward compatibility but delegates to the unified event bus.
+func (r *TypedRuntimePlugin) RemoveListener(listener plugins.EventListener) {
+	// Convert plugin event listener to unified event bus listener removal
 	if listener == nil {
 		return
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// Remove the listener
-	newListeners := make([]listenerEntry, 0, len(r.listeners))
-	for _, entry := range r.listeners {
-		if entry.listener != listener {
-			newListeners = append(newListeners, entry)
-		}
+	// Remove from unified event bus using the listener manager
+	listenerManager := events.GetGlobalListenerManager()
+	if listenerManager != nil {
+		listenerID := fmt.Sprintf("plugin_%p", listener)
+		_ = listenerManager.RemoveListener(listenerID)
 	}
-	r.listeners = newListeners
 }
 
 // GetEventHistory retrieves historical events based on filter criteria.
-// Returns events that match the specified filter parameters.
-// GetEventHistory 根据过滤条件检索历史事件。
-// 返回符合指定过滤参数的事件。
-func (r *RuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugins.PluginEvent {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	// If no filter criteria are set, return all events
-	if len(filter.Types) == 0 && len(filter.Categories) == 0 &&
-		len(filter.PluginIDs) == 0 && len(filter.Priorities) == 0 &&
-		filter.FromTime == 0 && filter.ToTime == 0 {
-		result := make([]plugins.PluginEvent, len(r.eventHistory))
-		copy(result, r.eventHistory)
-		return result
+// This method is kept for backward compatibility but delegates to the unified event bus.
+func (r *TypedRuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugins.PluginEvent {
+	// Check if filter is empty
+	if r.isEmptyFilter(filter) {
+		// Return empty slice for empty filter
+		return []plugins.PluginEvent{}
 	}
 
-	// Apply filter
-	result := make([]plugins.PluginEvent, 0, len(r.eventHistory))
-	for _, event := range r.eventHistory {
-		if r.eventMatchesFilter(event, filter) {
-			result = append(result, event)
+	// Get history from unified event bus
+	if r.eventManager != nil {
+		// Convert plugin filter to unified event bus filter
+		unifiedFilter := &events.EventFilter{
+			EventTypes: convertEventTypes(filter.Types),
+			PluginIDs:  filter.PluginIDs,
+			Categories: filter.Categories,
+			Priorities: convertPriorities(filter.Priorities),
+			FromTime:   filter.FromTime,
+			ToTime:     filter.ToTime,
+			Metadata:   make(map[string]any), // Plugin filter doesn't have metadata
 		}
+
+		// Get events from unified event bus
+		lynxEvents := r.eventManager.GetEventHistory(unifiedFilter)
+
+		// Convert back to plugin events
+		pluginEvents := make([]plugins.PluginEvent, len(lynxEvents))
+		for i, lynxEvent := range lynxEvents {
+			pluginEvents[i] = events.ConvertLynxEvent(lynxEvent)
+		}
+
+		return pluginEvents
 	}
-	return result
+
+	return []plugins.PluginEvent{}
+}
+
+// isEmptyFilter checks if the event filter is empty
+func (r *TypedRuntimePlugin) isEmptyFilter(filter plugins.EventFilter) bool {
+	return len(filter.Types) == 0 &&
+		len(filter.Priorities) == 0 &&
+		len(filter.PluginIDs) == 0 &&
+		len(filter.Categories) == 0 &&
+		filter.FromTime == 0 &&
+		filter.ToTime == 0
 }
 
 // eventMatchesFilter checks if an event matches a specific filter.
-// This implements the detailed filter matching logic.
-// eventMatchesFilter 检查一个事件是否匹配特定的过滤器。
-// 这实现了详细的过滤器匹配逻辑。
-func (r *RuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plugins.EventFilter) bool {
+// This method is kept for backward compatibility.
+func (r *TypedRuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plugins.EventFilter) bool {
+	// Check if filter is empty - empty filter matches all events
+	if r.isEmptyFilter(filter) {
+		return true
+	}
+
 	// Check event type
-	// 检查事件类型
 	if len(filter.Types) > 0 {
 		typeMatch := false
-		for _, t := range filter.Types {
-			if event.Type == t {
+		for _, filterType := range filter.Types {
+			if event.Type == filterType {
 				typeMatch = true
 				break
 			}
@@ -231,11 +308,10 @@ func (r *RuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plu
 	}
 
 	// Check priority
-	// 检查优先级
 	if len(filter.Priorities) > 0 {
 		priorityMatch := false
-		for _, p := range filter.Priorities {
-			if event.Priority == p {
+		for _, filterPriority := range filter.Priorities {
+			if event.Priority == filterPriority {
 				priorityMatch = true
 				break
 			}
@@ -246,26 +322,24 @@ func (r *RuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plu
 	}
 
 	// Check plugin ID
-	// 检查插件 ID
 	if len(filter.PluginIDs) > 0 {
-		idMatch := false
-		for _, id := range filter.PluginIDs {
-			if event.PluginID == id {
-				idMatch = true
+		pluginMatch := false
+		for _, filterPluginID := range filter.PluginIDs {
+			if event.PluginID == filterPluginID {
+				pluginMatch = true
 				break
 			}
 		}
-		if !idMatch {
+		if !pluginMatch {
 			return false
 		}
 	}
 
 	// Check category
-	// 检查类别
 	if len(filter.Categories) > 0 {
 		categoryMatch := false
-		for _, c := range filter.Categories {
-			if event.Category == c {
+		for _, filterCategory := range filter.Categories {
+			if event.Category == filterCategory {
 				categoryMatch = true
 				break
 			}
@@ -276,7 +350,6 @@ func (r *RuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plu
 	}
 
 	// Check time range
-	// 检查时间范围
 	if filter.FromTime > 0 && event.Timestamp < filter.FromTime {
 		return false
 	}
@@ -285,4 +358,12 @@ func (r *RuntimePlugin) eventMatchesFilter(event plugins.PluginEvent, filter plu
 	}
 
 	return true
+}
+
+// RuntimePlugin backward-compatible alias of TypedRuntimePlugin
+type RuntimePlugin = TypedRuntimePlugin
+
+// NewRuntimePlugin creates a runtime plugin (backward-compatible)
+func NewRuntimePlugin() *RuntimePlugin {
+	return NewTypedRuntimePlugin()
 }

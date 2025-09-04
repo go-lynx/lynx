@@ -11,111 +11,114 @@ import (
 	"github.com/fatih/color"
 )
 
-// lynxHome 获取 Lynx 工具的主目录。
-// 若主目录不存在，则创建该目录。
-// 返回 Lynx 工具主目录的路径。
+// lynxHome gets the home directory of Lynx tool.
+// If the home directory doesn't exist, create it.
+// Returns the path to Lynx tool home directory.
 func lynxHome() string {
-	// 获取当前用户的主目录
+	// Get current user's home directory
 	dir, err := os.UserHomeDir()
 	if err != nil {
-		// 若获取失败，记录错误并终止程序
+		// If getting fails, log error and terminate program
 		log.Fatal(err)
 	}
-	// 拼接 Lynx 工具主目录的路径
+	// Concatenate the path to Lynx tool home directory
 	home := filepath.Join(dir, ".lynx")
-	// 检查主目录是否存在
+	// Check if home directory exists
 	if _, err := os.Stat(home); os.IsNotExist(err) {
-		// 若不存在，则递归创建目录
+		// If doesn't exist, recursively create directory
 		if err := os.MkdirAll(home, 0o700); err != nil {
-			// 若创建失败，记录错误并终止程序
+			// If creation fails, log error and terminate program
 			log.Fatal(err)
 		}
 	}
 	return home
 }
 
-// lynxHomeWithDir 获取 Lynx 工具主目录下指定子目录的路径。
-// 若子目录不存在，则创建该目录。
-// 参数 dir 是指定的子目录名称。
-// 返回 Lynx 工具主目录下指定子目录的路径。
+// lynxHomeWithDir gets the path of specified subdirectory under Lynx tool home directory.
+// If the subdirectory doesn't exist, create it.
+// Parameter dir is the specified subdirectory name.
+// Returns the path of specified subdirectory under Lynx tool home directory.
 func lynxHomeWithDir(dir string) string {
-	// 拼接 Lynx 工具主目录下指定子目录的路径
+	// Concatenate the path of specified subdirectory under Lynx tool home directory
 	home := filepath.Join(lynxHome(), dir)
-	// 检查子目录是否存在
+	// Check if subdirectory exists
 	if _, err := os.Stat(home); os.IsNotExist(err) {
-		// 若不存在，则递归创建目录
+		// If doesn't exist, recursively create directory
 		if err := os.MkdirAll(home, 0o700); err != nil {
-			// 若创建失败，记录错误并终止程序
+			// If creation fails, log error and terminate program
 			log.Fatal(err)
 		}
 	}
 	return home
 }
 
-// copyFile 将源文件复制到目标文件，并根据替换规则替换文件内容。
-// 参数 src 是源文件路径，dst 是目标文件路径，replaces 是替换规则列表，格式为 [old1, new1, old2, new2, ...]。
-// 返回复制过程中可能出现的错误。
+// copyFile copies source file to target file and replaces file content according to replacement rules.
+// Parameters: src is source file path, dst is target file path, replaces is replacement rules list, format is [old1, new1, old2, new2, ...].
+// Returns errors that may occur during copying.
 func copyFile(src, dst string, replaces []string) error {
-	// 获取源文件的信息
+	// Get source file information
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		return err
 	}
-	// 读取源文件的内容
+	// Read source file content
 	buf, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
-	var old string
-	// 遍历替换规则列表
-	for i, next := range replaces {
-		if i%2 == 0 {
-			// 偶数索引的元素为旧字符串
-			old = next
-			continue
+	// Simple heuristic: if contains NUL, treat as binary, skip replacement
+	if bytes.IndexByte(buf, 0) == -1 && len(replaces) > 0 {
+		var old string
+		// Iterate through replacement rules list
+		for i, next := range replaces {
+			if i%2 == 0 {
+				// Even-indexed elements are old strings
+				old = next
+				continue
+			}
+			// Odd-indexed elements are new strings, perform global replacement
+			buf = bytes.ReplaceAll(buf, []byte(old), []byte(next))
 		}
-		// 奇数索引的元素为新字符串，进行全局替换
-		buf = bytes.ReplaceAll(buf, []byte(old), []byte(next))
 	}
-	// 将替换后的内容写入目标文件，并保持文件权限不变
+	// Write replaced content to target file and maintain file permissions
 	return os.WriteFile(dst, buf, srcInfo.Mode())
 }
 
-// copyDir 递归复制源目录到目标目录，并根据替换规则替换文件内容，同时忽略指定的文件或目录。
-// 参数 src 是源目录路径，dst 是目标目录路径，replaces 是替换规则列表，ignores 是需要忽略的文件或目录列表。
-// 返回复制过程中可能出现的错误。
+// copyDir recursively copies source directory to target directory, replaces file content according to replacement rules, and ignores specified files or directories.
+// Parameters: src is source directory path, dst is target directory path, replaces is replacement rules list, ignores is list of files or directories to ignore.
+// Returns errors that may occur during copying.
 func copyDir(src, dst string, replaces, ignores []string) error {
-	// 获取源目录的信息
+	// Get source directory information
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		return err
 	}
-	// 递归创建目标目录，并保持目录权限不变
+	// Recursively create target directory and maintain directory permissions
 	err = os.MkdirAll(dst, srcInfo.Mode())
 	if err != nil {
 		return err
 	}
-	// 读取源目录下的所有文件和子目录
+	// Read all files and subdirectories under source directory
 	fds, err := os.ReadDir(src)
 	if err != nil {
 		return err
 	}
-	// 遍历源目录下的所有文件和子目录
+	// Iterate through all files and subdirectories under source directory
 	for _, fd := range fds {
-		// 检查是否需要忽略当前文件或目录
+		// Check if current file or directory should be ignored
 		if hasSets(fd.Name(), ignores) {
 			continue
 		}
-		// 拼接源文件或子目录的完整路径
+		// Concatenate complete path of source file or subdirectory
 		srcFilePath := filepath.Join(src, fd.Name())
-		// 拼接目标文件或子目录的完整路径
+		// Concatenate complete path of target file or subdirectory
 		dstFilePath := filepath.Join(dst, fd.Name())
 		var e error
 		if fd.IsDir() {
-			// 若为目录，则递归调用 copyDir 函数
+			// If it's a directory, recursively call copyDir function
 			e = copyDir(srcFilePath, dstFilePath, replaces, ignores)
 		} else {
-			// 若为文件，则调用 copyFile 函数
+			// If it's a file, call copyFile function
 			e = copyFile(srcFilePath, dstFilePath, replaces)
 		}
 		if e != nil {
@@ -125,11 +128,11 @@ func copyDir(src, dst string, replaces, ignores []string) error {
 	return nil
 }
 
-// hasSets 检查指定的名称是否在给定的集合中。
-// 参数 name 是要检查的名称，sets 是集合列表。
-// 返回布尔值，表示名称是否在集合中。
+// hasSets checks if the specified name is in the given set.
+// Parameters: name is the name to check, sets is the set list.
+// Returns boolean value indicating whether the name is in the set.
 func hasSets(name string, sets []string) bool {
-	// 遍历集合列表
+	// Iterate through the set list
 	for _, ig := range sets {
 		if ig == name {
 			return true
@@ -138,14 +141,14 @@ func hasSets(name string, sets []string) bool {
 	return false
 }
 
-// Tree 打印指定目录下所有文件的创建信息，包括文件名和文件大小。
-// 参数 path 是要遍历的目录路径，dir 是基础目录，用于格式化输出路径。
+// Tree prints creation information of all files under the specified directory, including file name and file size.
+// Parameters: path is the directory path to traverse, dir is the base directory for formatting output path.
 func Tree(path string, dir string) {
-	// 递归遍历指定目录下的所有文件和子目录
+	// Recursively traverse all files and subdirectories under the specified directory
 	_ = filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
-		// 若没有错误，且文件信息不为空，且不是目录
+		// If no error, file info is not empty, and it's not a directory
 		if err == nil && info != nil && !info.IsDir() {
-			// 打印文件创建信息，包括文件名和文件大小
+			// Print file creation information, including file name and file size
 			fmt.Printf("%s %s (%v bytes)\n", color.GreenString("CREATED"), strings.Replace(path, dir+"/", "", -1), info.Size())
 		}
 		return nil

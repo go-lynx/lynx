@@ -1,65 +1,295 @@
 package polaris
 
 import (
-	"github.com/go-kratos/kratos/contrib/polaris/v2"
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+	"sync"
+
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/polarismesh/polaris-go/api"
+	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
-// NewServiceRegistry 方法用于创建一个新的 Polaris 服务注册器
-// The NewServiceRegistry method is used to create a new Polaris service registrar.
-// 该方法会记录服务注册的日志信息，并根据配置初始化 Polaris 注册器
-// This method logs service registration information and initializes the Polaris registrar based on the configuration.
+// RegistryAdapter Polaris Registry adapter
+// Responsibility: implements Kratos registry interface, provides service registration and discovery functionality
+
+// NewServiceRegistry implements ServiceRegistry interface
 func (p *PlugPolaris) NewServiceRegistry() registry.Registrar {
-	// 使用 Lynx 应用的日志工具记录服务正在注册的信息
-	// Use the Lynx application's logging tool to record that the service is being registered.
-	log.Infof("Service registration in progress")
-	// 调用 GetPolaris() 函数获取 Polaris 实例，并通过一系列选项配置注册器
-	// Call the GetPolaris() function to obtain a Polaris instance and configure the registrar with a series of options.
-	reg := GetPolaris().Registry(
-		// 使用 WithRegistryServiceToken 方法设置服务令牌
-		// Use the WithRegistryServiceToken method to set the service token.
-		polaris.WithRegistryServiceToken(GetPlugin().conf.Token),
-		// 使用 WithRegistryTimeout 方法设置注册超时时间
-		// Use the WithRegistryTimeout method to set the registration timeout.
-		polaris.WithRegistryTimeout(GetPlugin().conf.Timeout.AsDuration()),
-		// 使用 WithRegistryTTL 方法设置注册的 TTL（生存时间）
-		// Use the WithRegistryTTL method to set the registration TTL (Time To Live).
-		polaris.WithRegistryTTL(int(GetPlugin().conf.Ttl)),
-		// 使用 WithRegistryWeight 方法设置注册的权重
-		// Use the WithRegistryWeight method to set the registration weight.
-		polaris.WithRegistryWeight(int(GetPlugin().conf.Weight)),
-	)
-	// 返回创建好的服务注册器实例
-	// Return the created service registrar instance.
-	return reg
+	if err := p.checkInitialized(); err != nil {
+		log.Warnf("Polaris plugin not initialized, returning nil registrar: %v", err)
+		return nil
+	}
+
+	// Create Provider API client
+	providerAPI := api.NewProviderAPIByContext(p.sdk)
+	if providerAPI == nil {
+		log.Errorf("Failed to create provider API")
+		return nil
+	}
+
+	// Return Polaris-based service registrar
+	return NewPolarisRegistrar(providerAPI, p.conf.Namespace)
 }
 
-// NewServiceDiscovery 方法用于创建一个新的 Polaris 服务发现器
-// The NewServiceDiscovery method is used to create a new Polaris service discoverer.
-// 该方法会记录服务发现的日志信息，并根据配置初始化 Polaris 发现器
-// This method logs service discovery information and initializes the Polaris discoverer based on the configuration.
+// NewServiceDiscovery implements ServiceRegistry interface
 func (p *PlugPolaris) NewServiceDiscovery() registry.Discovery {
-	// 使用 Lynx 应用的日志工具记录服务正在进行发现的信息
-	// Use the Lynx application's logging tool to record that the service discovery is in progress.
-	log.Infof("Service discovery in progress")
-	// 调用 GetPolaris() 函数获取 Polaris 实例，并通过一系列选项配置发现器
-	// Call the GetPolaris() function to obtain a Polaris instance and configure the discoverer with a series of options.
-	reg := GetPolaris().Registry(
-		// 使用 WithRegistryServiceToken 方法设置服务令牌
-		// Use the WithRegistryServiceToken method to set the service token.
-		polaris.WithRegistryServiceToken(GetPlugin().conf.Token),
-		// 使用 WithRegistryTimeout 方法设置发现超时时间
-		// Use the WithRegistryTimeout method to set the discovery timeout.
-		polaris.WithRegistryTimeout(GetPlugin().conf.Timeout.AsDuration()),
-		// 使用 WithRegistryTTL 方法设置发现的 TTL（生存时间）
-		// Use the WithRegistryTTL method to set the discovery TTL (Time To Live).
-		polaris.WithRegistryTTL(int(GetPlugin().conf.Ttl)),
-		// 使用 WithRegistryWeight 方法设置发现的权重
-		// Use the WithRegistryWeight method to set the discovery weight.
-		polaris.WithRegistryWeight(int(GetPlugin().conf.Weight)),
-	)
-	// 返回创建好的服务发现器实例
-	// Return the created service discoverer instance.
-	return reg
+	if err := p.checkInitialized(); err != nil {
+		log.Warnf("Polaris plugin not initialized, returning nil discovery: %v", err)
+		return nil
+	}
+
+	// Create Consumer API client
+	consumerAPI := api.NewConsumerAPIByContext(p.sdk)
+	if consumerAPI == nil {
+		log.Errorf("Failed to create consumer API")
+		return nil
+	}
+
+	// Return Polaris-based service discovery client
+	return NewPolarisDiscovery(consumerAPI, p.conf.Namespace)
+}
+
+// parseEndpoints parses endpoint information
+func parseEndpoints(endpoints []string) (host string, port int, protocol string) {
+	if len(endpoints) == 0 {
+		return "localhost", 8080, "http"
+	}
+
+	endpoint := endpoints[0]
+
+	if strings.HasPrefix(endpoint, "http://") {
+		protocol = "http"
+		endpoint = strings.TrimPrefix(endpoint, "http://")
+	} else if strings.HasPrefix(endpoint, "https://") {
+		protocol = "https"
+		endpoint = strings.TrimPrefix(endpoint, "https://")
+	} else if strings.HasPrefix(endpoint, "grpc://") {
+		protocol = "grpc"
+		endpoint = strings.TrimPrefix(endpoint, "grpc://")
+	} else {
+		protocol = "http"
+	}
+
+	if strings.Contains(endpoint, ":") {
+		parts := strings.Split(endpoint, ":")
+		host = parts[0]
+		if len(parts) > 1 {
+			portStr := strings.Split(parts[1], "?")[0]
+			if p, err := strconv.Atoi(portStr); err == nil {
+				port = p
+			} else {
+				port = 8080
+			}
+		} else {
+			port = 8080
+		}
+	} else {
+		host = endpoint
+		port = 8080
+	}
+
+	return host, port, protocol
+}
+
+// PolarisRegistrar Polaris-based service registrar
+// Implements Kratos registry.Registrar interface
+type PolarisRegistrar struct {
+	provider  api.ProviderAPI
+	namespace string
+	instances map[string]*registry.ServiceInstance
+	mu        sync.RWMutex
+}
+
+// NewPolarisRegistrar creates new Polaris registrar
+func NewPolarisRegistrar(provider api.ProviderAPI, namespace string) *PolarisRegistrar {
+	return &PolarisRegistrar{
+		provider:  provider,
+		namespace: namespace,
+		instances: make(map[string]*registry.ServiceInstance),
+	}
+}
+
+// Register registers service instance
+func (r *PolarisRegistrar) Register(ctx context.Context, service *registry.ServiceInstance) error {
+	if service == nil {
+		return fmt.Errorf("service instance is nil")
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	host, port, protocol := parseEndpoints(service.Endpoints)
+
+	req := &api.InstanceRegisterRequest{
+		InstanceRegisterRequest: model.InstanceRegisterRequest{
+			Service:   service.Name,
+			Namespace: r.namespace,
+			Host:      host,
+			Port:      port,
+			Protocol:  &protocol,
+			Version:   &service.Version,
+			Metadata:  service.Metadata,
+			Weight:    &[]int{100}[0],
+			Healthy:   &[]bool{true}[0],
+			Isolate:   &[]bool{false}[0],
+		},
+	}
+
+	_, err := r.provider.Register(req)
+	if err != nil {
+		return fmt.Errorf("failed to register service %s: %w", service.Name, err)
+	}
+
+	instanceKey := fmt.Sprintf("%s:%s:%d", service.Name, host, port)
+	r.instances[instanceKey] = service
+
+	log.Infof("Successfully registered service %s at %s:%d", service.Name, host, port)
+	return nil
+}
+
+// Deregister deregisters service instance
+func (r *PolarisRegistrar) Deregister(ctx context.Context, service *registry.ServiceInstance) error {
+	if service == nil {
+		return fmt.Errorf("service instance is nil")
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	host, port, _ := parseEndpoints(service.Endpoints)
+
+	req := &api.InstanceDeRegisterRequest{
+		InstanceDeRegisterRequest: model.InstanceDeRegisterRequest{
+			Service:   service.Name,
+			Namespace: r.namespace,
+			Host:      host,
+			Port:      port,
+		},
+	}
+
+	err := r.provider.Deregister(req)
+	if err != nil {
+		return fmt.Errorf("failed to deregister service %s: %w", service.Name, err)
+	}
+
+	instanceKey := fmt.Sprintf("%s:%s:%d", service.Name, host, port)
+	delete(r.instances, instanceKey)
+
+	log.Infof("Successfully deregistered service %s at %s:%d", service.Name, host, port)
+	return nil
+}
+
+// GetService gets service information (implements Discovery interface)
+func (r *PolarisRegistrar) GetService(ctx context.Context, name string) ([]*registry.ServiceInstance, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var instances []*registry.ServiceInstance
+	for _, instance := range r.instances {
+		if instance.Name == name {
+			instances = append(instances, instance)
+		}
+	}
+
+	return instances, nil
+}
+
+// Watch watches service changes (implements Discovery interface)
+func (r *PolarisRegistrar) Watch(ctx context.Context, name string) (registry.Watcher, error) {
+	return &PolarisWatcher{
+		ctx:  ctx,
+		name: name,
+	}, nil
+}
+
+// PolarisDiscovery Polaris-based service discovery client
+// Implements Kratos registry.Discovery interface
+type PolarisDiscovery struct {
+	consumer  api.ConsumerAPI
+	namespace string
+}
+
+// NewPolarisDiscovery creates new Polaris discovery client
+func NewPolarisDiscovery(consumer api.ConsumerAPI, namespace string) *PolarisDiscovery {
+	return &PolarisDiscovery{
+		consumer:  consumer,
+		namespace: namespace,
+	}
+}
+
+// GetService gets service instance list
+func (d *PolarisDiscovery) GetService(ctx context.Context, name string) ([]*registry.ServiceInstance, error) {
+	req := &api.GetInstancesRequest{
+		GetInstancesRequest: model.GetInstancesRequest{
+			Service:   name,
+			Namespace: d.namespace,
+		},
+	}
+
+	resp, err := d.consumer.GetInstances(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get service instances for %s: %w", name, err)
+	}
+
+	var instances []*registry.ServiceInstance
+	for _, instance := range resp.Instances {
+		endpoint := fmt.Sprintf("%s://%s:%d", instance.GetProtocol(), instance.GetHost(), instance.GetPort())
+
+		instances = append(instances, &registry.ServiceInstance{
+			ID:        instance.GetId(),
+			Name:      name,
+			Version:   instance.GetVersion(),
+			Metadata:  instance.GetMetadata(),
+			Endpoints: []string{endpoint},
+		})
+	}
+
+	return instances, nil
+}
+
+// Watch watches service changes
+func (d *PolarisDiscovery) Watch(ctx context.Context, name string) (registry.Watcher, error) {
+	req := &api.WatchServiceRequest{
+		WatchServiceRequest: model.WatchServiceRequest{
+			Key: model.ServiceKey{
+				Service:   name,
+				Namespace: d.namespace,
+			},
+		},
+	}
+
+	resp, err := d.consumer.WatchService(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to watch service %s: %w", name, err)
+	}
+
+	return &PolarisWatcher{
+		ctx:      ctx,
+		name:     name,
+		response: resp,
+	}, nil
+}
+
+// PolarisWatcher Polaris service watcher
+// Implements Kratos registry.Watcher interface
+type PolarisWatcher struct {
+	ctx      context.Context
+	name     string
+	response *model.WatchServiceResponse
+}
+
+// Next gets next service change event
+func (w *PolarisWatcher) Next() ([]*registry.ServiceInstance, error) {
+	if w.response == nil {
+		return []*registry.ServiceInstance{}, nil
+	}
+	return []*registry.ServiceInstance{}, nil
+}
+
+// Stop stops watching
+func (w *PolarisWatcher) Stop() error {
+	return nil
 }

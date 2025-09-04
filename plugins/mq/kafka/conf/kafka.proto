@@ -6,76 +6,100 @@ option go_package = "github.com/go-lynx/lynx/plugins/mq/kafka/conf;conf";
 
 import "google/protobuf/duration.proto";
 
-// Kafka 消息定义了 Kafka 客户端的配置信息
+// Kafka message defines the configuration information for Kafka client
 message Kafka {
-  // brokers 表示 Kafka 集群的地址列表
+  // brokers represents the address list of Kafka cluster
   repeated string brokers = 1;
-  
-  // producer 生产者配置
-  Producer producer = 2;
-  
-  // consumer 消费者配置
-  Consumer consumer = 3;
-  
-  // 通用配置
-  // sasl 认证配置
+
+  // producers multiple producer instance configurations
+  repeated Producer producers = 2;
+
+  // consumers multiple consumer instance configurations
+  repeated Consumer consumers = 3;
+
+  // Common configurations
+  // sasl authentication configuration
   SASL sasl = 4;
-  // tls 配置
-  bool tls = 5;
-  // 连接超时时间
+  // tls configuration object
+  TLS tls = 5;
+  // Connection timeout
   google.protobuf.Duration dial_timeout = 6;
 }
 
-// Producer 生产者配置
+// Producer configuration
 message Producer {
-  // 是否启用生产者
+  // Whether to enable producer
   bool enabled = 1;
-  // 是否需要等待所有副本确认
-  bool required_acks = 2;
-  // 最大重试次数
+  // Acknowledgment level: -1=all ISR, 1=leader only, 0=no acknowledgment required
+  int32 required_acks = 2;
+  // Maximum number of retries
   int32 max_retries = 3;
-  // 重试间隔
+  // Retry interval
   google.protobuf.Duration retry_backoff = 4;
-  // 批量发送大小
+  // Batch send size
   int32 batch_size = 5;
-  // 批量发送等待时间
+  // Batch send waiting time
   google.protobuf.Duration batch_timeout = 6;
-  // 压缩类型：none, gzip, snappy, lz4, zstd
+  // Compression type: none, gzip, snappy, lz4, zstd
   string compression = 7;
+  // Instance name (for differentiation, routing), do not reuse occupied tags
+  string name = 8;
+  // Optional: list of allowed topics to send, for routing/permissions
+  repeated string topics = 9;
 }
 
-// Consumer 消费者配置
+// Consumer configuration
 message Consumer {
-  // 是否启用消费者
+  // Whether to enable consumer
   bool enabled = 1;
-  // 消费组 ID
+  // Consumer group ID
   string group_id = 2;
-  // 自动提交间隔
+  // Auto commit interval
   google.protobuf.Duration auto_commit_interval = 3;
-  // 是否自动提交
+  // Whether to auto commit
   bool auto_commit = 4;
-  // 消费起始位置：latest, earliest
+  // Consumption start position: latest, earliest
   string start_offset = 5;
-  // 最大处理并发数
+  // Maximum processing concurrency
   int32 max_concurrency = 6;
-  // 最小批量大小
+  // Minimum batch size
   int32 min_batch_size = 7;
-  // 最大批量大小
+  // Maximum batch size
   int32 max_batch_size = 8;
-  // 最大等待时间
+  // Maximum waiting time
   google.protobuf.Duration max_wait_time = 9;
-  // 重平衡超时时间
+  // Rebalance timeout
   google.protobuf.Duration rebalance_timeout = 10;
+  // Instance name (for differentiation/routing)
+  string name = 11;
+  // Subscribed topic list (or extended to pattern in the future)
+  repeated string topics = 12;
 }
 
-// SASL 认证配置
+// SASL authentication configuration
 message SASL {
-  // 是否启用 SASL
+  // Whether to enable SASL
   bool enabled = 1;
-  // 认证机制：PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
+  // Authentication mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
   string mechanism = 2;
-  // 用户名
+  // Username
   string username = 3;
-  // 密码
+  // Password
   string password = 4;
+}
+
+// TLS configuration
+message TLS {
+  // Whether to enable TLS
+  bool enabled = 1;
+  // Root CA certificate file path
+  string ca_file = 2;
+  // Client certificate file path (optional, for mutual authentication)
+  string cert_file = 3;
+  // Client private key file path (optional, for mutual authentication)
+  string key_file = 4;
+  // Whether to skip server certificate verification (not recommended)
+  bool insecure_skip_verify = 5;
+  // Specify SNI/certificate verification domain name
+  string server_name = 6;
 }

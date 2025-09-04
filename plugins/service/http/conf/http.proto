@@ -7,35 +7,280 @@ option go_package = "github.com/go-lynx/lynx/plugins/service/http/conf;conf";
 import "google/protobuf/duration.proto";
 
 // Http defines the configuration for the HTTP server plugin
-// Http 定义了 HTTP 服务器插件的配置信息。
 message http {
   // Network specifies the network type (e.g., "tcp", "unix")
-  // Network 指定网络类型（例如 "tcp"、"unix"）。
+  // Default: "tcp"
   string network = 1;
 
   // Addr specifies the address to listen on (e.g., ":8080", "localhost:8080")
-  // Addr 指定 HTTP 服务器监听的地址（例如 ":8080"、"localhost:8080"）。
+  // Default: ":8080"
   string addr = 2;
 
   // Tls indicates whether TLS/HTTPS is enabled
-  // Tls 指示是否启用 TLS/HTTPS 加密。
+  // Default: false
   bool tls_enable = 3;
 
   // TlsAuthType specifies the TLS authentication type:
-  // 0: No client auth
+  // 0: No client auth (default)
   // 1: Request client cert
   // 2: Require client cert
   // 3: Verify client cert
   // 4: Verify client cert if given
-  // TlsAuthType 指定 TLS 客户端认证类型，具体含义如下：
-  // 0: 不进行客户端认证
-  // 1: 请求客户端证书，但不强制要求
-  // 2: 强制要求客户端提供证书
-  // 3: 验证客户端证书
-  // 4: 若客户端提供证书，则进行验证
+  // Default: 0
   int32 tls_auth_type = 4;
 
   // Timeout specifies the maximum duration for handling HTTP requests
-  // Timeout 指定处理 HTTP 请求的最大时长。
+  // Default: 30s
   google.protobuf.Duration timeout = 5;
+
+  // Monitoring configuration
+  // Default: all monitoring features enabled
+  MonitoringConfig monitoring = 6;
+
+  // Security configuration
+  // Default: basic security settings
+  SecurityConfig security = 7;
+
+  // Performance configuration
+  // Default: optimized for most use cases
+  PerformanceConfig performance = 8;
+
+  // Middleware configuration
+  // Default: all middlewares enabled
+  MiddlewareConfig middleware = 9;
+
+  // Graceful shutdown configuration
+  // Default: 30s shutdown timeout
+  GracefulShutdownConfig graceful_shutdown = 10;
+}
+
+// Monitoring configuration
+message MonitoringConfig {
+  // Whether to enable Prometheus metrics
+  // Default: true
+  bool enable_metrics = 1;
+
+  // Metrics endpoint path
+  // Default: "/metrics"
+  string metrics_path = 2;
+
+  // Health check endpoint path
+  // Default: "/health"
+  string health_path = 3;
+
+  // Whether to enable request logging
+  // Default: true
+  bool enable_request_logging = 4;
+
+  // Whether to enable error logging
+  // Default: true
+  bool enable_error_logging = 5;
+
+  // Whether to enable detailed route metrics
+  // Default: true
+  bool enable_route_metrics = 6;
+
+  // Whether to enable connection metrics
+  // Default: true
+  bool enable_connection_metrics = 7;
+
+  // Whether to enable queue metrics
+  // Default: true
+  bool enable_queue_metrics = 8;
+
+  // Whether to enable error type metrics
+  // Default: true
+  bool enable_error_type_metrics = 9;
+}
+
+// Security configuration
+message SecurityConfig {
+  // CORS configuration
+  // Default: CORS disabled
+  CorsConfig cors = 1;
+
+  // Request size limit in bytes
+  // Default: 10MB (10485760 bytes)
+  int64 max_request_size = 2;
+
+  // Rate limiting configuration
+  // Default: 100 req/s, burst 200
+  RateLimitConfig rate_limit = 3;
+
+  // Security headers configuration
+  // Default: security headers disabled
+  SecurityHeadersConfig security_headers = 4;
+}
+
+// CORS configuration
+message CorsConfig {
+  // Whether to enable CORS
+  // Default: false
+  bool enabled = 1;
+
+  // Allowed origins
+  // Default: ["*"] (when enabled)
+  repeated string allowed_origins = 2;
+
+  // Allowed methods
+  // Default: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  repeated string allowed_methods = 3;
+
+  // Allowed headers
+  // Default: ["*"]
+  repeated string allowed_headers = 4;
+
+  // Exposed headers
+  // Default: []
+  repeated string exposed_headers = 5;
+
+  // Whether to allow credentials
+  // Default: false
+  bool allow_credentials = 6;
+
+  // Max age for preflight requests in seconds
+  // Default: 86400 (24 hours)
+  int32 max_age = 7;
+}
+
+// Rate limiting configuration
+message RateLimitConfig {
+  // Whether to enable rate limiting
+  // Default: true
+  bool enabled = 1;
+
+  // Rate limit per second
+  // Default: 100
+  int32 rate_per_second = 2;
+
+  // Burst limit
+  // Default: 200
+  int32 burst_limit = 3;
+}
+
+// Security headers configuration
+message SecurityHeadersConfig {
+  // Whether to enable security headers
+  // Default: false
+  bool enabled = 1;
+
+  // Content Security Policy
+  // Default: "default-src 'self'"
+  string content_security_policy = 2;
+
+  // X-Frame-Options
+  // Default: "DENY"
+  string x_frame_options = 3;
+
+  // X-Content-Type-Options
+  // Default: "nosniff"
+  string x_content_type_options = 4;
+
+  // X-XSS-Protection
+  // Default: "1; mode=block"
+  string x_xss_protection = 5;
+}
+
+// Performance configuration
+message PerformanceConfig {
+  // Maximum number of concurrent connections
+  // Default: 1000
+  int32 max_connections = 1;
+
+  // Maximum number of concurrent requests
+  // Default: 500
+  int32 max_concurrent_requests = 2;
+
+  // Read buffer size in bytes
+  // Default: 4096 (4KB)
+  int32 read_buffer_size = 3;
+
+  // Write buffer size in bytes
+  // Default: 4096 (4KB)
+  int32 write_buffer_size = 4;
+
+  // Connection pool configuration
+  // Default: optimized connection pool settings
+  ConnectionPoolConfig connection_pool = 5;
+
+  // Read timeout
+  // Default: 30s
+  google.protobuf.Duration read_timeout = 6;
+
+  // Write timeout
+  // Default: 30s
+  google.protobuf.Duration write_timeout = 7;
+
+  // Idle timeout
+  // Default: 60s
+  google.protobuf.Duration idle_timeout = 8;
+
+  // Header read timeout
+  // Default: 20s
+  google.protobuf.Duration read_header_timeout = 9;
+}
+
+// Connection pool configuration
+message ConnectionPoolConfig {
+  // Maximum number of idle connections
+  // Default: 100
+  int32 max_idle_conns = 1;
+
+  // Maximum number of idle connections per host
+  // Default: 10
+  int32 max_idle_conns_per_host = 2;
+
+  // Maximum number of connections per host
+  // Default: 100
+  int32 max_conns_per_host = 3;
+
+   // Connection reuse duration
+  // Default: 30s
+  google.protobuf.Duration keep_alive_duration = 4;
+}
+
+// Middleware configuration
+message MiddlewareConfig {
+  // Whether to enable tracing middleware
+  // Default: true
+  bool enable_tracing = 1;
+
+  // Whether to enable logging middleware
+  // Default: true
+  bool enable_logging = 2;
+
+  // Whether to enable recovery middleware
+  // Default: true
+  bool enable_recovery = 3;
+
+  // Whether to enable validation middleware
+  // Default: true
+  bool enable_validation = 4;
+
+  // Whether to enable rate limiting middleware
+  // Default: true
+  bool enable_rate_limit = 5;
+
+  // Whether to enable metrics middleware
+  // Default: true
+  bool enable_metrics = 6;
+
+  // Custom middleware configuration (key-value pairs)
+  // Default: empty
+  map<string, string> custom_middleware = 7;
+}
+
+// Graceful shutdown configuration
+message GracefulShutdownConfig {
+  // Shutdown timeout
+  // Default: 30s
+  google.protobuf.Duration shutdown_timeout = 1;
+
+  // Whether to wait for ongoing requests
+  // Default: true
+  bool wait_for_ongoing_requests = 2;
+
+  // Maximum wait time for ongoing requests
+  // Default: 60s
+  google.protobuf.Duration max_wait_time = 3;
 }

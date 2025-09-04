@@ -1,0 +1,264 @@
+version: '3.8'
+
+services:
+  # Redis服务
+  redis:
+    image: redis:7-alpine
+    container_name: lynx-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # MySQL服务
+  mysql:
+    image: mysql:8.0
+    container_name: lynx-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: lynx123456
+      MYSQL_DATABASE: lynx_test
+      MYSQL_USER: lynx
+      MYSQL_PASSWORD: lynx123456
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # PostgreSQL服务
+  postgres:
+    image: postgres:15-alpine
+    container_name: lynx-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: lynx
+      POSTGRES_PASSWORD: lynx123456
+      POSTGRES_DB: lynx_test
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lynx"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # Kafka服务
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: lynx-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - lynx-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: lynx-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # Elasticsearch服务
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: lynx-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # MongoDB服务
+  mongodb:
+    image: mongo:latest
+    container_name: lynx-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: lynx
+      MONGO_INITDB_ROOT_PASSWORD: lynx123456
+      MONGO_INITDB_DATABASE: lynx_test
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # RabbitMQ服务
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: lynx-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: lynx
+      RABBITMQ_DEFAULT_PASS: lynx123456
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # RocketMQ NameServer
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.1.0
+    container_name: lynx-rocketmq-namesrv
+    ports:
+      - "9876:9876"
+    command: sh mqnamesrv
+    environment:
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+    networks:
+      - lynx-network
+
+  # RocketMQ Broker
+  rocketmq-broker:
+    image: apache/rocketmq:5.1.0
+    container_name: lynx-rocketmq-broker
+    ports:
+      - "10911:10911"
+      - "10909:10909"
+    command: sh mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/rocketmq-5.1.0/conf/broker.conf
+    environment:
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+    depends_on:
+      - rocketmq-namesrv
+    networks:
+      - lynx-network
+
+  # Jaeger服务（用于链路追踪）
+  jaeger:
+    image: jaegertracing/all-in-one:1.50
+    container_name: lynx-jaeger
+    ports:
+      - "5775:5775/udp"
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+      - "5778:5778"
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+      - "9411:9411"
+    environment:
+      COLLECTOR_ZIPKIN_HOST_PORT: ":9411"
+    networks:
+      - lynx-network
+
+  # Polaris服务（服务治理）
+  polaris:
+    image: polarismesh/polaris-standalone:latest
+    container_name: lynx-polaris
+    ports:
+      - "8090:8090"  # HTTP API端口
+      - "8091:8091"  # gRPC端口
+      - "8093:8093"  # 配置中心HTTP端口
+      - "8761:8761"  # Eureka端口
+      - "15010:15010" # xDS v3端口
+    volumes:
+      - polaris-data:/data
+    networks:
+      - lynx-network
+
+  # Prometheus服务
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: lynx-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - lynx-network
+
+  # Grafana服务
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: lynx-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=lynx123456
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/:/etc/grafana/provisioning/dashboards/
+    depends_on:
+      - prometheus
+    networks:
+      - lynx-network
+
+volumes:
+  redis-data:
+  mysql-data:
+  postgres-data:
+  es-data:
+  mongo-data:
+  rabbitmq-data:
+  polaris-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  lynx-network:
+    driver: bridge
