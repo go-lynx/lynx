@@ -93,7 +93,9 @@ type Polaris struct {
 	EnableLogging bool `protobuf:"varint,24,opt,name=enable_logging,json=enableLogging,proto3" json:"enable_logging,omitempty"`
 	// log_level log level.
 	// Supported levels: debug, info, warn, error
-	LogLevel      string `protobuf:"bytes,25,opt,name=log_level,json=logLevel,proto3" json:"log_level,omitempty"`
+	LogLevel string `protobuf:"bytes,25,opt,name=log_level,json=logLevel,proto3" json:"log_level,omitempty"`
+	// service_config configuration for remote service configuration loading
+	ServiceConfig *ServiceConfig `protobuf:"bytes,26,opt,name=service_config,json=serviceConfig,proto3" json:"service_config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -296,11 +298,160 @@ func (x *Polaris) GetLogLevel() string {
 	return ""
 }
 
+func (x *Polaris) GetServiceConfig() *ServiceConfig {
+	if x != nil {
+		return x.ServiceConfig
+	}
+	return nil
+}
+
+// ServiceConfig defines configuration for loading remote service configurations
+type ServiceConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// group is the configuration group name in Polaris
+	// If empty, defaults to application name
+	Group string `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`
+	// filename is the configuration file name in Polaris
+	// If empty, defaults to application name with .yaml extension
+	Filename string `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	// namespace is the namespace for the configuration
+	// If empty, uses the main polaris namespace
+	Namespace string `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// additional_configs defines additional configuration files to load
+	// Each entry specifies a separate configuration file to load
+	AdditionalConfigs []*ConfigFile `protobuf:"bytes,4,rep,name=additional_configs,json=additionalConfigs,proto3" json:"additional_configs,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ServiceConfig) Reset() {
+	*x = ServiceConfig{}
+	mi := &file_polaris_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceConfig) ProtoMessage() {}
+
+func (x *ServiceConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_polaris_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceConfig.ProtoReflect.Descriptor instead.
+func (*ServiceConfig) Descriptor() ([]byte, []int) {
+	return file_polaris_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ServiceConfig) GetGroup() string {
+	if x != nil {
+		return x.Group
+	}
+	return ""
+}
+
+func (x *ServiceConfig) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *ServiceConfig) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *ServiceConfig) GetAdditionalConfigs() []*ConfigFile {
+	if x != nil {
+		return x.AdditionalConfigs
+	}
+	return nil
+}
+
+// ConfigFile defines a single configuration file to load
+type ConfigFile struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// group is the configuration group name
+	Group string `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`
+	// filename is the configuration file name
+	Filename string `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	// namespace is the namespace for this specific configuration
+	// If empty, uses the service_config namespace
+	Namespace     string `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigFile) Reset() {
+	*x = ConfigFile{}
+	mi := &file_polaris_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigFile) ProtoMessage() {}
+
+func (x *ConfigFile) ProtoReflect() protoreflect.Message {
+	mi := &file_polaris_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigFile.ProtoReflect.Descriptor instead.
+func (*ConfigFile) Descriptor() ([]byte, []int) {
+	return file_polaris_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ConfigFile) GetGroup() string {
+	if x != nil {
+		return x.Group
+	}
+	return ""
+}
+
+func (x *ConfigFile) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *ConfigFile) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
 var File_polaris_proto protoreflect.FileDescriptor
 
 const file_polaris_proto_rawDesc = "" +
 	"\n" +
-	"\rpolaris.proto\x12\x1clynx.protobuf.plugin.polaris\x1a\x1egoogle/protobuf/duration.proto\"\xb6\b\n" +
+	"\rpolaris.proto\x12\x1clynx.protobuf.plugin.polaris\x1a\x1egoogle/protobuf/duration.proto\"\x8a\t\n" +
 	"\aPolaris\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x16\n" +
@@ -327,7 +478,18 @@ const file_polaris_proto_rawDesc = "" +
 	"\x18enable_graceful_shutdown\x18\x16 \x01(\bR\x16enableGracefulShutdown\x12D\n" +
 	"\x10shutdown_timeout\x18\x17 \x01(\v2\x19.google.protobuf.DurationR\x0fshutdownTimeout\x12%\n" +
 	"\x0eenable_logging\x18\x18 \x01(\bR\renableLogging\x12\x1b\n" +
-	"\tlog_level\x18\x19 \x01(\tR\blogLevelB3Z1github.com/go-lynx/lynx/plugins/polaris/conf;confb\x06proto3"
+	"\tlog_level\x18\x19 \x01(\tR\blogLevel\x12R\n" +
+	"\x0eservice_config\x18\x1a \x01(\v2+.lynx.protobuf.plugin.polaris.ServiceConfigR\rserviceConfig\"\xb8\x01\n" +
+	"\rServiceConfig\x12\x14\n" +
+	"\x05group\x18\x01 \x01(\tR\x05group\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x1c\n" +
+	"\tnamespace\x18\x03 \x01(\tR\tnamespace\x12W\n" +
+	"\x12additional_configs\x18\x04 \x03(\v2(.lynx.protobuf.plugin.polaris.ConfigFileR\x11additionalConfigs\"\\\n" +
+	"\n" +
+	"ConfigFile\x12\x14\n" +
+	"\x05group\x18\x01 \x01(\tR\x05group\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x1c\n" +
+	"\tnamespace\x18\x03 \x01(\tR\tnamespaceB3Z1github.com/go-lynx/lynx/plugins/polaris/conf;confb\x06proto3"
 
 var (
 	file_polaris_proto_rawDescOnce sync.Once
@@ -341,21 +503,25 @@ func file_polaris_proto_rawDescGZIP() []byte {
 	return file_polaris_proto_rawDescData
 }
 
-var file_polaris_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_polaris_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_polaris_proto_goTypes = []any{
 	(*Polaris)(nil),             // 0: lynx.protobuf.plugin.polaris.Polaris
-	(*durationpb.Duration)(nil), // 1: google.protobuf.Duration
+	(*ServiceConfig)(nil),       // 1: lynx.protobuf.plugin.polaris.ServiceConfig
+	(*ConfigFile)(nil),          // 2: lynx.protobuf.plugin.polaris.ConfigFile
+	(*durationpb.Duration)(nil), // 3: google.protobuf.Duration
 }
 var file_polaris_proto_depIdxs = []int32{
-	1, // 0: lynx.protobuf.plugin.polaris.Polaris.timeout:type_name -> google.protobuf.Duration
-	1, // 1: lynx.protobuf.plugin.polaris.Polaris.health_check_interval:type_name -> google.protobuf.Duration
-	1, // 2: lynx.protobuf.plugin.polaris.Polaris.retry_interval:type_name -> google.protobuf.Duration
-	1, // 3: lynx.protobuf.plugin.polaris.Polaris.shutdown_timeout:type_name -> google.protobuf.Duration
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	3, // 0: lynx.protobuf.plugin.polaris.Polaris.timeout:type_name -> google.protobuf.Duration
+	3, // 1: lynx.protobuf.plugin.polaris.Polaris.health_check_interval:type_name -> google.protobuf.Duration
+	3, // 2: lynx.protobuf.plugin.polaris.Polaris.retry_interval:type_name -> google.protobuf.Duration
+	3, // 3: lynx.protobuf.plugin.polaris.Polaris.shutdown_timeout:type_name -> google.protobuf.Duration
+	1, // 4: lynx.protobuf.plugin.polaris.Polaris.service_config:type_name -> lynx.protobuf.plugin.polaris.ServiceConfig
+	2, // 5: lynx.protobuf.plugin.polaris.ServiceConfig.additional_configs:type_name -> lynx.protobuf.plugin.polaris.ConfigFile
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_polaris_proto_init() }
@@ -369,7 +535,7 @@ func file_polaris_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_polaris_proto_rawDesc), len(file_polaris_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

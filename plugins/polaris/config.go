@@ -2,11 +2,13 @@ package polaris
 
 import (
 	"fmt"
-	"github.com/polarismesh/polaris-go/pkg/model"
 	"os"
+
+	"github.com/polarismesh/polaris-go/pkg/model"
 
 	"github.com/go-kratos/kratos/contrib/polaris/v2"
 	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/polarismesh/polaris-go/api"
 	"gopkg.in/yaml.v3"
@@ -24,6 +26,121 @@ func (p *PlugPolaris) GetConfig(fileName string, group string) (config.Source, e
 				Name:  fileName,
 				Group: group,
 			}))
+}
+
+// GetConfigSources gets all configuration sources for multi-config loading
+// This method implements the MultiConfigControlPlane interface
+func (p *PlugPolaris) GetConfigSources() ([]config.Source, error) {
+	if err := p.checkInitialized(); err != nil {
+		return nil, err
+	}
+
+	var sources []config.Source
+
+	// Get main configuration source
+	mainSource, err := p.getMainConfigSource()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get main config source: %w", err)
+	}
+	if mainSource != nil {
+		sources = append(sources, mainSource)
+	}
+
+	// Get additional configuration sources
+	additionalSources, err := p.getAdditionalConfigSources()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get additional config sources: %w", err)
+	}
+	sources = append(sources, additionalSources...)
+
+	return sources, nil
+}
+
+// getMainConfigSource gets the main configuration source based on service_config
+func (p *PlugPolaris) getMainConfigSource() (config.Source, error) {
+	if p.conf.ServiceConfig == nil {
+		// Fallback to default behavior if service_config is not configured
+		appName := app.GetName()
+		if appName == "" {
+			appName = "application"
+		}
+		configFileName := fmt.Sprintf("%s.yaml", appName)
+		group := appName
+		namespace := p.conf.Namespace
+
+		log.Infof("Loading main configuration - File: [%s] Group: [%s] Namespace: [%s]",
+			configFileName, group, namespace)
+
+		return p.GetConfig(configFileName, group)
+	}
+
+	// Use service_config configuration
+	serviceConfig := p.conf.ServiceConfig
+
+	// Determine filename
+	filename := serviceConfig.Filename
+	if filename == "" {
+		appName := app.GetName()
+		if appName == "" {
+			appName = "application"
+		}
+		filename = fmt.Sprintf("%s.yaml", appName)
+	}
+
+	// Determine group
+	group := serviceConfig.Group
+	if group == "" {
+		group = app.GetName()
+		if group == "" {
+			group = "DEFAULT_GROUP"
+		}
+	}
+
+	// Determine namespace
+	namespace := serviceConfig.Namespace
+	if namespace == "" {
+		namespace = p.conf.Namespace
+	}
+
+	log.Infof("Loading main configuration - File: [%s] Group: [%s] Namespace: [%s]",
+		filename, group, namespace)
+
+	return p.GetConfig(filename, group)
+}
+
+// getAdditionalConfigSources gets additional configuration sources
+func (p *PlugPolaris) getAdditionalConfigSources() ([]config.Source, error) {
+	if p.conf.ServiceConfig == nil || len(p.conf.ServiceConfig.AdditionalConfigs) == 0 {
+		return nil, nil
+	}
+
+	var sources []config.Source
+	serviceConfig := p.conf.ServiceConfig
+
+	for _, configFile := range serviceConfig.AdditionalConfigs {
+		// Determine namespace for this config file
+		namespace := configFile.Namespace
+		if namespace == "" {
+			namespace = serviceConfig.Namespace
+		}
+		if namespace == "" {
+			namespace = p.conf.Namespace
+		}
+
+		log.Infof("Loading additional configuration - File: [%s] Group: [%s] Namespace: [%s]",
+			configFile.Filename, configFile.Group, namespace)
+
+		source, err := p.GetConfig(configFile.Filename, configFile.Group)
+		if err != nil {
+			log.Errorf("Failed to load additional configuration - File: [%s] Group: [%s] Namespace: [%s] Error: %v",
+				configFile.Filename, configFile.Group, namespace, err)
+			return nil, fmt.Errorf("failed to load additional config %s:%s: %w", configFile.Group, configFile.Filename, err)
+		}
+
+		sources = append(sources, source)
+	}
+
+	return sources, nil
 }
 
 // GetConfigValue gets configuration value

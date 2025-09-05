@@ -100,4 +100,39 @@ message Polaris {
   // log_level log level.
   // Supported levels: debug, info, warn, error
   string log_level = 25;
+  
+  // service_config configuration for remote service configuration loading
+  ServiceConfig service_config = 26;
+}
+
+// ServiceConfig defines configuration for loading remote service configurations
+message ServiceConfig {
+  // group is the configuration group name in Polaris
+  // If empty, defaults to application name
+  string group = 1;
+  
+  // filename is the configuration file name in Polaris
+  // If empty, defaults to application name with .yaml extension
+  string filename = 2;
+  
+  // namespace is the namespace for the configuration
+  // If empty, uses the main polaris namespace
+  string namespace = 3;
+  
+  // additional_configs defines additional configuration files to load
+  // Each entry specifies a separate configuration file to load
+  repeated ConfigFile additional_configs = 4;
+}
+
+// ConfigFile defines a single configuration file to load
+message ConfigFile {
+  // group is the configuration group name
+  string group = 1;
+  
+  // filename is the configuration file name
+  string filename = 2;
+  
+  // namespace is the namespace for this specific configuration
+  // If empty, uses the service_config namespace
+  string namespace = 3;
 }

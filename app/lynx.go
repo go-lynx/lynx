@@ -165,13 +165,6 @@ func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
 
 // initializeApp handles the actual initialization of the LynxApp instance.
 func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
-	// Get system hostname
-	hostname, err := os.Hostname()
-	// Return error if hostname retrieval fails
-	if err != nil {
-		return nil, fmt.Errorf("failed to get hostname: %w", err)
-	}
-
 	// Parse bootstrap configuration
 	var bConf conf.Bootstrap
 	// Scan configuration into bConf; return error if scanning fails
@@ -182,6 +175,16 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 	// Validate bootstrap configuration
 	if bConf.Lynx == nil || bConf.Lynx.Application == nil {
 		return nil, fmt.Errorf("invalid bootstrap configuration: missing required fields")
+	}
+
+	// Get host from configuration, fallback to system hostname if not configured
+	host := bConf.Lynx.Application.Host
+	if host == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get hostname: %w", err)
+		}
+		host = hostname
 	}
 
 	// Initialize unified event system
@@ -195,7 +198,7 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 	// Create new application instance
 	typedMgr := NewTypedPluginManager(plugins...)
 	app := &LynxApp{
-		host:               hostname,
+		host:               host,
 		name:               bConf.Lynx.Application.Name,
 		version:            bConf.Lynx.Application.Version,
 		bootConfig:         &bConf,

@@ -32,6 +32,22 @@ lynx:
     weight: 100
     ttl: 30
     timeout: "10s"
+    # Service configuration for remote configuration loading
+    service_config:
+      # Configuration group name in Polaris (optional, defaults to application name)
+      group: DEFAULT_GROUP
+      # Configuration file name in Polaris (optional, defaults to application name with .yaml extension)
+      filename: application.yaml
+      # Namespace for the configuration (optional, uses main polaris namespace if not specified)
+      namespace: default
+      # Additional configuration files to load
+      additional_configs:
+        - group: SHARED_GROUP
+          filename: shared-config.yaml
+          namespace: default
+        - group: FEATURE_GROUP
+          filename: feature-flags.yaml
+          namespace: default
 ```
 
 ### Configuration Options
@@ -41,6 +57,11 @@ lynx:
 - `weight`: Service weight for load balancing (default: 100)
 - `ttl`: Service TTL in seconds (default: 30)
 - `timeout`: Request timeout duration (default: 10s)
+- `service_config`: Configuration for remote service configuration loading
+  - `group`: Configuration group name (optional, defaults to application name)
+  - `filename`: Configuration file name (optional, defaults to application name with .yaml extension)
+  - `namespace`: Namespace for the configuration (optional, uses main polaris namespace)
+  - `additional_configs`: List of additional configuration files to load
 
 ## Usage
 
@@ -115,6 +136,10 @@ defer watcher.Stop()
 
 ### Configuration Management
 
+The Polaris plugin supports both single and multiple configuration file loading:
+
+#### Single Configuration Loading
+
 ```go
 // Get configuration value
 configValue, err := plugin.GetConfigValue("config-file", "group")
@@ -127,6 +152,22 @@ configWatcher, err := plugin.WatchConfig("config-file", "group")
 if err != nil {
     log.Errorf("Failed to watch config: %v", err)
 }
+```
+
+#### Multiple Configuration Loading
+
+When `service_config` is configured, the plugin automatically loads multiple configuration files:
+
+1. **Main Configuration**: Loaded based on `service_config` settings
+   - If `filename` is not specified, defaults to `{application_name}.yaml`
+   - If `group` is not specified, defaults to application name
+   - If `namespace` is not specified, uses main polaris namespace
+
+2. **Additional Configurations**: Loaded from `additional_configs` list
+   - Each entry can specify its own group, filename, and namespace
+   - Namespace defaults to `service_config.namespace` if not specified
+
+The plugin implements the `MultiConfigControlPlane` interface to support this functionality, allowing the Lynx framework to load and merge multiple configuration sources automatically.
 
 // Set up callbacks for config changes
 configWatcher.SetOnConfigChanged(func(config polaris.ConfigFile) {

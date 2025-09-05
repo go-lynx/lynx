@@ -180,21 +180,24 @@ services:
     networks:
       - lynx-network
 
-  # Jaeger服务（用于链路追踪）
+  # Jaeger服务（用于链路追踪）- 升级到1.60版本支持OTLP协议
   jaeger:
-    image: jaegertracing/all-in-one:1.50
+    image: jaegertracing/all-in-one:1.60
     container_name: lynx-jaeger
     ports:
-      - "5775:5775/udp"
-      - "6831:6831/udp"
-      - "6832:6832/udp"
-      - "5778:5778"
-      - "16686:16686"
-      - "14268:14268"
-      - "14250:14250"
-      - "9411:9411"
+      - "5775:5775/udp"      # Jaeger agent UDP (Legacy)
+      - "6831:6831/udp"      # Jaeger agent UDP (Legacy)  
+      - "6832:6832/udp"      # Jaeger agent UDP (Legacy)
+      - "5778:5778"          # Agent HTTP
+      - "16686:16686"        # Jaeger UI 界面
+      - "14268:14268"        # Jaeger HTTP collector
+      - "14250:14250"        # Jaeger gRPC collector
+      - "4317:4317"          # OTLP gRPC receiver (新增支持)
+      - "4318:4318"          # OTLP HTTP receiver (新增支持)
+      - "9411:9411"          # Zipkin compatible endpoint
     environment:
       COLLECTOR_ZIPKIN_HOST_PORT: ":9411"
+      COLLECTOR_OTLP_ENABLED: "true"
     networks:
       - lynx-network
 

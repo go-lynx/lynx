@@ -80,9 +80,8 @@ func (app *Application) validateConfig(cfg config.Config) error {
 	// Check if required configuration items exist
 	// Additional validation logic can be added here based on actual requirements
 	requiredKeys := []string{
-		"lynx.name",
-		"lynx.version",
-		"lynx.host",
+		"lynx.application.name",
+		"lynx.application.version",
 	}
 
 	for _, key := range requiredKeys {
@@ -116,7 +115,7 @@ func (app *Application) setupConfigCleanup(cfg config.Config) error {
 // GetName gets application name
 func (app *Application) GetName() string {
 	if app.conf != nil {
-		if name, err := app.conf.Value("lynx.name").String(); err == nil {
+		if name, err := app.conf.Value("lynx.application.name").String(); err == nil {
 			return name
 		}
 	}
@@ -126,7 +125,7 @@ func (app *Application) GetName() string {
 // GetHost gets application host
 func (app *Application) GetHost() string {
 	if app.conf != nil {
-		if host, err := app.conf.Value("lynx.host").String(); err == nil {
+		if host, err := app.conf.Value("lynx.application.host").String(); err == nil {
 			return host
 		}
 	}
@@ -136,7 +135,7 @@ func (app *Application) GetHost() string {
 // GetVersion gets application version
 func (app *Application) GetVersion() string {
 	if app.conf != nil {
-		if version, err := app.conf.Value("lynx.version").String(); err == nil {
+		if version, err := app.conf.Value("lynx.application.version").String(); err == nil {
 			return version
 		}
 	}
