@@ -8,6 +8,7 @@ replace (
 )
 
 require (
+	entgo.io/ent v0.14.5
 	github.com/go-lynx/lynx v1.2.3
 	github.com/go-lynx/lynx/plugins/sql/base v1.2.3
 	github.com/go-lynx/lynx/plugins/sql/interfaces v1.2.3

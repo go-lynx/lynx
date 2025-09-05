@@ -9,7 +9,7 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass lynx123456
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -202,12 +202,20 @@ services:
   polaris:
     image: polarismesh/polaris-standalone:latest
     container_name: lynx-polaris
+    restart: unless-stopped
     ports:
-      - "8090:8090"  # HTTP API端口
-      - "8091:8091"  # gRPC端口
-      - "8093:8093"  # 配置中心HTTP端口
-      - "8761:8761"  # Eureka端口
-      - "15010:15010" # xDS v3端口
+      - "8080:8080"   # 控制台 UI
+      - "8090:8090"   # HTTP API
+      - "8091:8091"   # gRPC API
+      - "8093:8093"   # 配置中心 HTTP
+      - "8761:8761"   # Eureka 兼容
+      - "8848:8848"   # Nacos 兼容 API
+      - "9848:9848"   # Nacos gRPC 兼容
+      - "15010:15010" # xDS v3 (Envoy)
+      - "9090:9090"   # Prometheus metrics
+      - "9091:9091"   # 管理接口
+      - "8100:8100"   # 内部端口（非必须）
+      - "8101:8101"   # 内部端口（非必须）
     volumes:
       - polaris-data:/data
     networks:
@@ -218,7 +226,7 @@ services:
     image: prom/prometheus:v2.48.0
     container_name: lynx-prometheus
     ports:
-      - "9091:9090"
+      - "19090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
