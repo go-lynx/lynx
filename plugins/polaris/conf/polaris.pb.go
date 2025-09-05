@@ -391,7 +391,15 @@ type ConfigFile struct {
 	Filename string `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
 	// namespace is the namespace for this specific configuration
 	// If empty, uses the service_config namespace
-	Namespace     string `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Namespace string `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// priority defines the merge priority (higher number = higher priority)
+	// Default is 0, higher priority configs will override lower priority ones
+	Priority int32 `protobuf:"varint,4,opt,name=priority,proto3" json:"priority,omitempty"`
+	// merge_strategy defines how to handle conflicts with existing configs
+	// "override" (default): later configs override earlier ones
+	// "merge": merge nested objects, override leaf values
+	// "append": append to arrays, override other values
+	MergeStrategy string `protobuf:"bytes,5,opt,name=merge_strategy,json=mergeStrategy,proto3" json:"merge_strategy,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -447,6 +455,20 @@ func (x *ConfigFile) GetNamespace() string {
 	return ""
 }
 
+func (x *ConfigFile) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
+
+func (x *ConfigFile) GetMergeStrategy() string {
+	if x != nil {
+		return x.MergeStrategy
+	}
+	return ""
+}
+
 var File_polaris_proto protoreflect.FileDescriptor
 
 const file_polaris_proto_rawDesc = "" +
@@ -484,12 +506,14 @@ const file_polaris_proto_rawDesc = "" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x1c\n" +
 	"\tnamespace\x18\x03 \x01(\tR\tnamespace\x12W\n" +
-	"\x12additional_configs\x18\x04 \x03(\v2(.lynx.protobuf.plugin.polaris.ConfigFileR\x11additionalConfigs\"\\\n" +
+	"\x12additional_configs\x18\x04 \x03(\v2(.lynx.protobuf.plugin.polaris.ConfigFileR\x11additionalConfigs\"\x9f\x01\n" +
 	"\n" +
 	"ConfigFile\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x1c\n" +
-	"\tnamespace\x18\x03 \x01(\tR\tnamespaceB3Z1github.com/go-lynx/lynx/plugins/polaris/conf;confb\x06proto3"
+	"\tnamespace\x18\x03 \x01(\tR\tnamespace\x12\x1a\n" +
+	"\bpriority\x18\x04 \x01(\x05R\bpriority\x12%\n" +
+	"\x0emerge_strategy\x18\x05 \x01(\tR\rmergeStrategyB3Z1github.com/go-lynx/lynx/plugins/polaris/conf;confb\x06proto3"
 
 var (
 	file_polaris_proto_rawDescOnce sync.Once

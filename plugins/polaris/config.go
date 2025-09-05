@@ -3,6 +3,7 @@ package polaris
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/polarismesh/polaris-go/pkg/model"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/plugins/polaris/conf"
 	"github.com/polarismesh/polaris-go/api"
 	"gopkg.in/yaml.v3"
 )
@@ -114,10 +116,19 @@ func (p *PlugPolaris) getAdditionalConfigSources() ([]config.Source, error) {
 		return nil, nil
 	}
 
-	var sources []config.Source
 	serviceConfig := p.conf.ServiceConfig
 
-	for _, configFile := range serviceConfig.AdditionalConfigs {
+	// Sort config files by priority (lower priority first, so higher priority overrides)
+	configFiles := make([]*conf.ConfigFile, len(serviceConfig.AdditionalConfigs))
+	copy(configFiles, serviceConfig.AdditionalConfigs)
+
+	// Sort by priority (ascending order)
+	sort.Slice(configFiles, func(i, j int) bool {
+		return configFiles[i].Priority < configFiles[j].Priority
+	})
+
+	var sources []config.Source
+	for _, configFile := range configFiles {
 		// Determine namespace for this config file
 		namespace := configFile.Namespace
 		if namespace == "" {
@@ -127,8 +138,14 @@ func (p *PlugPolaris) getAdditionalConfigSources() ([]config.Source, error) {
 			namespace = p.conf.Namespace
 		}
 
-		log.Infof("Loading additional configuration - File: [%s] Group: [%s] Namespace: [%s]",
-			configFile.Filename, configFile.Group, namespace)
+		// Determine merge strategy
+		mergeStrategy := configFile.MergeStrategy
+		if mergeStrategy == "" {
+			mergeStrategy = "override" // default strategy
+		}
+
+		log.Infof("Loading additional configuration - File: [%s] Group: [%s] Namespace: [%s] Priority: [%d] Strategy: [%s]",
+			configFile.Filename, configFile.Group, namespace, configFile.Priority, mergeStrategy)
 
 		source, err := p.GetConfig(configFile.Filename, configFile.Group)
 		if err != nil {

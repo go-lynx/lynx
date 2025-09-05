@@ -33,9 +33,18 @@ lynx:
         - group: SHARED_GROUP
           filename: shared-config.yaml
           namespace: dev
+          priority: 10
+          merge_strategy: "override"
         - group: FEATURE_GROUP
           filename: feature-flags.yaml
           namespace: dev
+          priority: 20
+          merge_strategy: "override"
+        - group: ENV_SPECIFIC_GROUP
+          filename: env-specific.yaml
+          namespace: dev
+          priority: 30
+          merge_strategy: "merge"
 
   # Runtime configuration
   runtime:
