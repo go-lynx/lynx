@@ -62,6 +62,11 @@ lynx:
   - `filename`: Configuration file name (optional, defaults to application name with .yaml extension)
   - `namespace`: Namespace for the configuration (optional, uses main polaris namespace)
   - `additional_configs`: List of additional configuration files to load
+    - `group`: Configuration group name
+    - `filename`: Configuration file name
+    - `namespace`: Namespace for this specific configuration (optional, uses service_config namespace)
+    - `priority`: Merge priority (higher number = higher priority, default: 0)
+    - `merge_strategy`: How to handle conflicts ("override", "merge", "append", default: "override")
 
 ## Usage
 
@@ -168,6 +173,55 @@ When `service_config` is configured, the plugin automatically loads multiple con
    - Namespace defaults to `service_config.namespace` if not specified
 
 The plugin implements the `MultiConfigControlPlane` interface to support this functionality, allowing the Lynx framework to load and merge multiple configuration sources automatically.
+
+#### Configuration Merge Strategy
+
+When multiple configuration files are loaded, the plugin handles conflicts using the following strategies:
+
+1. **Priority-based Loading**: Configuration files are loaded in priority order (ascending)
+   - Lower priority configs are loaded first
+   - Higher priority configs override lower priority ones
+   - Default priority is 0
+
+2. **Merge Strategies**:
+   - **`override`** (default): Later configs completely override earlier ones for the same field
+   - **`merge`**: Merge nested objects, override leaf values
+   - **`append`**: Append to arrays, override other values
+
+3. **Loading Order**:
+   ```
+   Main Config (priority: 0) → Additional Configs (by priority) → Final Config
+   ```
+
+4. **Conflict Resolution Example**:
+   ```yaml
+   # Main config (application.yaml)
+   lynx:
+     http:
+       addr: "0.0.0.0:8080"
+       timeout: "5s"
+   
+   # Additional config 1 (shared-config.yaml, priority: 10)
+   lynx:
+     http:
+       addr: "0.0.0.0:9090"  # Overrides main config
+     db:
+       driver: "mysql"
+   
+   # Additional config 2 (env-specific.yaml, priority: 20)
+   lynx:
+     http:
+       timeout: "10s"        # Overrides both previous configs
+     feature:
+       new_api: true
+   ```
+
+5. **Logging**: The plugin logs detailed information about configuration loading, including:
+   - File names and groups
+   - Namespaces
+   - Priorities
+   - Merge strategies
+   - Any conflicts or overrides
 
 // Set up callbacks for config changes
 configWatcher.SetOnConfigChanged(func(config polaris.ConfigFile) {

@@ -135,4 +135,14 @@ message ConfigFile {
   // namespace is the namespace for this specific configuration
   // If empty, uses the service_config namespace
   string namespace = 3;
+  
+  // priority defines the merge priority (higher number = higher priority)
+  // Default is 0, higher priority configs will override lower priority ones
+  int32 priority = 4;
+  
+  // merge_strategy defines how to handle conflicts with existing configs
+  // "override" (default): later configs override earlier ones
+  // "merge": merge nested objects, override leaf values
+  // "append": append to arrays, override other values
+  string merge_strategy = 5;
 }
