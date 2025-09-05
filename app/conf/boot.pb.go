@@ -266,8 +266,10 @@ type Application struct {
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// version field represents the application version number.
 	Version string `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	// host field represents the application host address.
+	Host string `protobuf:"bytes,3,opt,name=host,proto3" json:"host,omitempty"`
 	// close_banner field controls whether to close the banner information displayed when the application starts.
-	CloseBanner   bool `protobuf:"varint,3,opt,name=close_banner,json=closeBanner,proto3" json:"close_banner,omitempty"`
+	CloseBanner   bool `protobuf:"varint,4,opt,name=close_banner,json=closeBanner,proto3" json:"close_banner,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -312,6 +314,13 @@ func (x *Application) GetName() string {
 func (x *Application) GetVersion() string {
 	if x != nil {
 		return x.Version
+	}
+	return ""
+}
+
+func (x *Application) GetHost() string {
+	if x != nil {
+		return x.Host
 	}
 	return ""
 }
@@ -470,11 +479,12 @@ const file_boot_proto_rawDesc = "" +
 	"\x04Lynx\x12E\n" +
 	"\vapplication\x18\x01 \x01(\v2#.lynx.protobuf.app.conf.ApplicationR\vapplication\x12K\n" +
 	"\rsubscriptions\x18\x02 \x01(\v2%.lynx.protobuf.app.conf.SubscriptionsR\rsubscriptions\x129\n" +
-	"\aruntime\x18\x03 \x01(\v2\x1f.lynx.protobuf.app.conf.RuntimeR\aruntime\"^\n" +
+	"\aruntime\x18\x03 \x01(\v2\x1f.lynx.protobuf.app.conf.RuntimeR\aruntime\"r\n" +
 	"\vApplication\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\x12!\n" +
-	"\fclose_banner\x18\x03 \x01(\bR\vcloseBanner\">\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\x12\x12\n" +
+	"\x04host\x18\x03 \x01(\tR\x04host\x12!\n" +
+	"\fclose_banner\x18\x04 \x01(\bR\vcloseBanner\">\n" +
 	"\aRuntime\x123\n" +
 	"\x05event\x18\x01 \x01(\v2\x1d.lynx.protobuf.app.conf.EventR\x05event\"\xc6\x01\n" +
 	"\x05Event\x12\x1d\n" +

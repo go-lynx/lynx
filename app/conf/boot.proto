@@ -46,8 +46,10 @@ message Application {
   string name = 1;
   // version field represents the application version number.
   string version = 2;
+  // host field represents the application host address.
+  string host = 3;
   // close_banner field controls whether to close the banner information displayed when the application starts.
-  bool close_banner = 3;
+  bool close_banner = 4;
 }
 
 // Runtime configuration

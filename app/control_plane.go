@@ -61,6 +61,13 @@ type ConfigManager interface {
 	GetConfig(fileName string, group string) (config.Source, error)
 }
 
+// MultiConfigControlPlane extends ControlPlane to support multiple configuration sources
+type MultiConfigControlPlane interface {
+	ControlPlane
+	// GetConfigSources retrieves all configuration sources for multi-config loading
+	GetConfigSources() ([]config.Source, error)
+}
+
 // DefaultControlPlane provides a basic implementation of the ControlPlane interface
 // for local development and testing purposes
 type DefaultControlPlane struct {
@@ -137,7 +144,44 @@ func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
 		return cfg, nil
 	}
 
-	// Default configuration file name based on application name
+	// Get configuration sources from control plane
+	configSources, err := a.GetControlPlaneConfigSources()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get configuration sources: %w", err)
+	}
+
+	// Create and load configuration with multiple sources
+	cfg := config.New(config.WithSource(configSources...))
+	if cfg == nil {
+		return nil, fmt.Errorf("failed to create configuration with sources")
+	}
+
+	// Load configuration
+	if err := cfg.Load(); err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Set global configuration
+	if err := a.SetGlobalConfig(cfg); err != nil {
+		return nil, fmt.Errorf("failed to set global configuration: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// GetControlPlaneConfigSources gets all configuration sources from the control plane
+// This method supports loading multiple configuration files from remote sources
+func (a *LynxApp) GetControlPlaneConfigSources() ([]config.Source, error) {
+	if a == nil || a.GetControlPlane() == nil {
+		return nil, fmt.Errorf("control plane not available")
+	}
+
+	// Check if control plane supports multi-config loading
+	if multiConfigPlane, ok := a.GetControlPlane().(MultiConfigControlPlane); ok {
+		return multiConfigPlane.GetConfigSources()
+	}
+
+	// Fallback to single config loading for backward compatibility
 	configFileName := fmt.Sprintf("%s.yaml", GetName())
 	namespace := a.GetControlPlane().GetNamespace()
 
@@ -153,23 +197,7 @@ func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
 		return nil, fmt.Errorf("failed to load configuration source: %w", err)
 	}
 
-	// Create and load configuration
-	cfg := config.New(config.WithSource(configSource))
-	if cfg == nil {
-		return nil, fmt.Errorf("failed to create configuration with source")
-	}
-
-	// Load configuration
-	if err := cfg.Load(); err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %w", err)
-	}
-
-	// Set global configuration
-	if err := a.SetGlobalConfig(cfg); err != nil {
-		return nil, fmt.Errorf("failed to set global configuration: %w", err)
-	}
-
-	return cfg, nil
+	return []config.Source{configSource}, nil
 }
 
 // GetServiceRegistry returns a new service registry instance

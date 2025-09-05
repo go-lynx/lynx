@@ -58,7 +58,8 @@ The `boot` package is responsible for the bootstrap and startup process of Lynx 
 
 ### 6. Configuration Validation
 - **New Feature**: Added configuration validation to ensure necessary configuration items exist
-- **Validation Items**: `lynx.name`, `lynx.version`, `lynx.host`
+- **Validation Items**: `lynx.application.name`, `lynx.application.version`
+- **Note**: `lynx.application.host` is optional and defaults to system hostname if not specified
 
 ### 7. Modularization Improvement
 - **Original Issue**: Used global variable [flagConf](file:///Users/claire/GolandProjects/lynx/lynx/boot/application.go#L21-L21)

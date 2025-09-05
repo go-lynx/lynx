@@ -6,6 +6,8 @@ lynx:
     name: name
     # Application version following semantic versioning specification
     version: v1.0.0
+    # Application host address (optional, defaults to system hostname if not specified)
+    host: localhost
   # Polaris service governance configuration
   polaris:
     # Polaris namespace used to isolate resources of different environments or businesses
@@ -18,6 +20,22 @@ lynx:
     ttl: 5
     # Timeout for requesting Polaris service, supports time unit suffixes like s (seconds), ms (milliseconds), etc.
     timeout: 5s
+    # Service configuration for remote configuration loading
+    service_config:
+      # Configuration group name in Polaris (optional, defaults to application name)
+      group: DEFAULT_GROUP
+      # Configuration file name in Polaris (optional, defaults to application name with .yaml extension)
+      filename: application.yaml
+      # Namespace for the configuration (optional, uses main polaris namespace if not specified)
+      namespace: dev
+      # Additional configuration files to load
+      additional_configs:
+        - group: SHARED_GROUP
+          filename: shared-config.yaml
+          namespace: dev
+        - group: FEATURE_GROUP
+          filename: feature-flags.yaml
+          namespace: dev
 
   # Runtime configuration
   runtime:
