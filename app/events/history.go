@@ -1,6 +1,7 @@
 package events
 
 import (
+	"reflect"
 	"sync"
 	"time"
 )
@@ -236,13 +237,13 @@ func (h *EventHistory) eventMatchesFilter(event LynxEvent, filter *EventFilter) 
 		return false
 	}
 
-	// Check metadata
+	// Check metadata (deep equality to support maps/slices without panic)
 	if len(filter.Metadata) > 0 {
+		if event.Metadata == nil {
+			return false
+		}
 		for key, value := range filter.Metadata {
-			if event.Metadata == nil {
-				return false
-			}
-			if eventValue, exists := event.Metadata[key]; !exists || eventValue != value {
+			if eventValue, exists := event.Metadata[key]; !exists || !reflect.DeepEqual(eventValue, value) {
 				return false
 			}
 		}
