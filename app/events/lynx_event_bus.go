@@ -22,6 +22,108 @@ type SimpleThrottler struct {
 	mu       sync.Mutex
 }
 
+// helper: choose queue by priority
+func (b *LynxEventBus) queueByPriority(p Priority) chan LynxEvent {
+    switch p {
+    case PriorityCritical:
+        return b.criticalQ
+    case PriorityHigh:
+        return b.highQ
+    case PriorityLow:
+        return b.lowQ
+    default:
+        return b.normalQ
+    }
+}
+
+// helper: total queue size
+func (b *LynxEventBus) totalQueueSize() int {
+    return len(b.lowQ) + len(b.normalQ) + len(b.highQ) + len(b.criticalQ)
+}
+
+// helper: total queue capacity
+func (b *LynxEventBus) totalQueueCap() int {
+    return cap(b.lowQ) + cap(b.normalQ) + cap(b.highQ) + cap(b.criticalQ)
+}
+
+// helper: non-blocking receive
+func (b *LynxEventBus) tryRecv(q chan LynxEvent) (LynxEvent, bool) {
+    select {
+    case ev := <-q:
+        return ev, true
+    default:
+        return LynxEvent{}, false
+    }
+}
+
+// helper: publish to dispatcher and update monitor after dequeue
+func (b *LynxEventBus) publish(ev LynxEvent) {
+    if b.workerPool != nil {
+        // Submit to worker pool; in blocking mode errors are rare (e.g., pool released)
+        if err := b.workerPool.Submit(func() { kelindarEvent.Publish(b.dispatcher, ev) }); err != nil {
+            // overload or pool closed -> sync fallback and record
+            if b.logger != nil {
+                log.NewHelper(b.logger).Warnf("worker pool submit failed: %v", err)
+            }
+            GetGlobalMonitor().SetError(fmt.Errorf("worker_pool_submit_failed: %v", err))
+            kelindarEvent.Publish(b.dispatcher, ev)
+        }
+    } else {
+        kelindarEvent.Publish(b.dispatcher, ev)
+    }
+    GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+}
+
+// helper: publish a batch of events
+func (b *LynxEventBus) publishBatch(events []LynxEvent) {
+    // Check if throttling is active during degradation
+    if b.isDegraded.Load() && b.throttler != nil {
+        // Apply throttling to the batch
+        throttledEvents := make([]LynxEvent, 0, len(events))
+        for _, ev := range events {
+            if b.throttler.Allow() {
+                throttledEvents = append(throttledEvents, ev)
+            } else {
+                // Event is throttled, log it and continue
+                if b.logger != nil {
+                    log.NewHelper(b.logger).Debugf("event throttled during degradation: type=%d, plugin=%s", ev.EventType, ev.PluginID)
+                }
+            }
+        }
+        // Use throttled events instead of original events
+        events = throttledEvents
+    }
+
+    // Limit per-batch submissions to reduce burstiness
+    limit := len(events)
+    if b.config.WorkerCount > 0 {
+        if m := b.config.WorkerCount * 2; m < limit {
+            limit = m
+        }
+    }
+    if b.workerPool != nil {
+        for i := 0; i < limit; i++ {
+            ev := events[i]
+            if err := b.workerPool.Submit(func() { kelindarEvent.Publish(b.dispatcher, ev) }); err != nil {
+                if b.logger != nil {
+                    log.NewHelper(b.logger).Warnf("worker pool submit failed: %v", err)
+                }
+                GetGlobalMonitor().SetError(fmt.Errorf("worker_pool_submit_failed: %v", err))
+                kelindarEvent.Publish(b.dispatcher, ev)
+            }
+        }
+        // overflow part (if any) publish synchronously to avoid long waits
+        for i := limit; i < len(events); i++ {
+            kelindarEvent.Publish(b.dispatcher, events[i])
+        }
+    } else {
+        for i := range events {
+            kelindarEvent.Publish(b.dispatcher, events[i])
+        }
+    }
+    GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+}
+
 // NewSimpleThrottler creates a new throttler
 func NewSimpleThrottler(rate, burst int) *SimpleThrottler {
 	return &SimpleThrottler{
@@ -101,6 +203,12 @@ type LynxEventBus struct {
 	// Worker pool for parallel dispatching
 	workerPool *ants.Pool
 
+	// Retry bounding (limit concurrent scheduled retries)
+	retrySem chan struct{}
+
+	// Fairness index for round-robin dequeue across priorities
+	fairIdx int
+
 	// Memory optimization
 	bufferPool   *EventBufferPool
 	metadataPool *MetadataPool
@@ -152,6 +260,11 @@ func NewLynxEventBus(config BusConfig, busType BusType) *LynxEventBus {
 	// Initialize throttler if enabled
 	if config.EnableThrottling {
 		bus.throttler = NewSimpleThrottler(config.ThrottleRate, config.ThrottleBurst)
+	}
+
+	// Initialize retry semaphore if configured
+	if config.MaxConcurrentRetries > 0 {
+		bus.retrySem = make(chan struct{}, config.MaxConcurrentRetries)
 	}
 
 	// Initialize memory pools
@@ -420,9 +533,23 @@ func (b *LynxEventBus) checkDegradation() {
 	}
 
 	usagePercent := b.totalQueueSize() * 100 / totalCap
-	if usagePercent >= b.config.DegradationThreshold {
+	// Determine recover threshold with hysteresis (fallback to derived default)
+	recoverThresh := b.config.DegradationRecoverThreshold
+	if recoverThresh <= 0 || (b.config.DegradationThreshold > 0 && recoverThresh >= b.config.DegradationThreshold) {
+		// default: max(trigger-20, 50)
+		t := b.config.DegradationThreshold
+		if t <= 0 {
+			t = 90
+		}
+		recoverThresh = t - 20
+		if recoverThresh < 50 {
+			recoverThresh = 50
+		}
+	}
+
+	if !b.isDegraded.Load() && usagePercent >= b.config.DegradationThreshold {
 		b.triggerDegradation()
-	} else if b.isDegraded.Load() {
+	} else if b.isDegraded.Load() && usagePercent <= recoverThresh {
 		b.clearDegradation()
 	}
 }
@@ -577,33 +704,18 @@ func (b *LynxEventBus) run() {
 				// batch drain with priority fill
 				bs := max(b.config.BatchSize, 1)
 				buf := b.bufferPool.GetWithCapacity(bs)
-				// Return to pool immediately after processing
-				defer func() {
-					b.bufferPool.Put(buf)
-				}()
 				for len(buf) < bs {
-					if ev, ok := b.tryRecv(b.criticalQ); ok {
+					if ev, ok := b.fetchOneFair(); ok {
 						buf = append(buf, ev)
-						continue
+					} else {
+						break
 					}
-					if ev, ok := b.tryRecv(b.highQ); ok {
-						buf = append(buf, ev)
-						continue
-					}
-					if ev, ok := b.tryRecv(b.normalQ); ok {
-						buf = append(buf, ev)
-						continue
-					}
-					if ev, ok := b.tryRecv(b.lowQ); ok {
-						buf = append(buf, ev)
-						continue
-					}
-					break
 				}
 				if len(buf) > 0 {
 					b.publishBatch(buf)
 					drained = true
 				}
+				b.bufferPool.Put(buf)
 				GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
 				if !drained {
 					return
@@ -622,33 +734,17 @@ func (b *LynxEventBus) run() {
 			// Try to batch collect non-blocking events, fill by priority
 			batchSize := max(b.config.BatchSize, 1)
 			buf := b.bufferPool.GetWithCapacity(batchSize)
-			// Return to pool immediately after processing
-			defer func() {
-				b.bufferPool.Put(buf)
-			}()
 			for len(buf) < batchSize {
-				if ev, ok := b.tryRecv(b.criticalQ); ok {
+				if ev, ok := b.fetchOneFair(); ok {
 					buf = append(buf, ev)
-					continue
+				} else {
+					break
 				}
-				if ev, ok := b.tryRecv(b.highQ); ok {
-					buf = append(buf, ev)
-					continue
-				}
-				if ev, ok := b.tryRecv(b.normalQ); ok {
-					buf = append(buf, ev)
-					continue
-				}
-				if ev, ok := b.tryRecv(b.lowQ); ok {
-					buf = append(buf, ev)
-					continue
-				}
-				break
 			}
 			if len(buf) > 0 {
 				b.publishBatch(buf)
-				continue
 			}
+			b.bufferPool.Put(buf)
 			// block until any event arrives or ticker/done
 			select {
 			case <-b.done:
@@ -658,91 +754,77 @@ func (b *LynxEventBus) run() {
 			case ev := <-b.criticalQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
 				buf = append(buf, ev)
-				// Return to pool immediately after processing
-				defer func() {
-					b.bufferPool.Put(buf)
-				}()
-				// Additional non-blocking fill
+				// Additional non-blocking fair fill start from next priority after critical
+				b.fairIdx = 1
 				for len(buf) < max(b.config.BatchSize, 1) {
-					if ev2, ok := b.tryRecv(b.criticalQ); ok {
+					if ev2, ok := b.fetchOneFair(); ok {
 						buf = append(buf, ev2)
-						continue
+					} else {
+						break
 					}
-					if ev2, ok := b.tryRecv(b.highQ); ok {
-						buf = append(buf, ev2)
-						continue
-					}
-					if ev2, ok := b.tryRecv(b.normalQ); ok {
-						buf = append(buf, ev2)
-						continue
-					}
-					if ev2, ok := b.tryRecv(b.lowQ); ok {
-						buf = append(buf, ev2)
-						continue
-					}
-					break
 				}
 				b.publishBatch(buf)
+				b.bufferPool.Put(buf)
 			case ev := <-b.highQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
 				buf = append(buf, ev)
-				// Return to pool immediately after processing
-				defer func() {
-					b.bufferPool.Put(buf)
-				}()
+				b.fairIdx = 2
 				for len(buf) < max(b.config.BatchSize, 1) {
-					if ev2, ok := b.tryRecv(b.highQ); ok {
+					if ev2, ok := b.fetchOneFair(); ok {
 						buf = append(buf, ev2)
-						continue
+					} else {
+						break
 					}
-					if ev2, ok := b.tryRecv(b.normalQ); ok {
-						buf = append(buf, ev2)
-						continue
-					}
-					if ev2, ok := b.tryRecv(b.lowQ); ok {
-						buf = append(buf, ev2)
-						continue
-					}
-					break
 				}
 				b.publishBatch(buf)
+				b.bufferPool.Put(buf)
 			case ev := <-b.normalQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
 				buf = append(buf, ev)
-				// Return to pool immediately after processing
-				defer func() {
-					b.bufferPool.Put(buf)
-				}()
+				b.fairIdx = 3
 				for len(buf) < max(b.config.BatchSize, 1) {
-					if ev2, ok := b.tryRecv(b.normalQ); ok {
+					if ev2, ok := b.fetchOneFair(); ok {
 						buf = append(buf, ev2)
-						continue
+					} else {
+						break
 					}
-					if ev2, ok := b.tryRecv(b.lowQ); ok {
-						buf = append(buf, ev2)
-						continue
-					}
-					break
 				}
 				b.publishBatch(buf)
+				b.bufferPool.Put(buf)
 			case ev := <-b.lowQ:
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
 				buf = append(buf, ev)
-				// Return to pool immediately after processing
-				defer func() {
-					b.bufferPool.Put(buf)
-				}()
+				b.fairIdx = 0
 				for len(buf) < max(b.config.BatchSize, 1) {
-					if ev2, ok := b.tryRecv(b.lowQ); ok {
+					if ev2, ok := b.fetchOneFair(); ok {
 						buf = append(buf, ev2)
-						continue
+					} else {
+						break
 					}
-					break
 				}
 				b.publishBatch(buf)
+				b.bufferPool.Put(buf)
 			}
 		}
 	}
+}
+
+// fetchOneFair attempts to dequeue a single event using a rotating start index across
+// [critical, high, normal, low] to avoid starvation of low priority queues.
+func (b *LynxEventBus) fetchOneFair() (LynxEvent, bool) {
+	order := [4]chan LynxEvent{b.criticalQ, b.highQ, b.normalQ, b.lowQ}
+	start := 0
+	if b.fairIdx >= 0 {
+		start = b.fairIdx % len(order)
+	}
+	for i := 0; i < len(order); i++ {
+		idx := (start + i) % len(order)
+		if ev, ok := b.tryRecv(order[idx]); ok {
+			b.fairIdx = (idx + 1) % len(order)
+			return ev, true
+		}
+	}
+	return LynxEvent{}, false
 }
 
 // Pause stops consuming events from internal queues (publishing still enqueues)
@@ -879,211 +961,136 @@ func (b *LynxEventBus) UpdateConfig(cfg BusConfig) {
 			b.config.HistorySize = size
 		}
 	}
-	// Note: Changing FlushInterval/MaxQueue requires rebuilding the run loop/queue, not currently supported online
 }
-
-// wrapHandler wraps user handler to collect metrics & latency and recover panics
 func (b *LynxEventBus) wrapHandler(handler func(LynxEvent)) func(LynxEvent) {
-	return func(ev LynxEvent) {
-		var attempts int64
-		start := time.Now()
-		for {
-			attempts++
-			panicked := false
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						panicked = true
-					}
-				}()
-				handler(ev)
-			}()
-
-			duration := time.Since(start)
-			if panicked {
-				// metrics & monitor for failure
-				if b.metrics != nil {
-					b.metrics.IncrementFailed()
-				}
-				GetGlobalMonitor().IncrementFailed()
-				GetGlobalMonitor().SetError(fmt.Errorf("handler panic: bus=%d type=%d attempt=%d", b.busType, ev.EventType, attempts))
-				if b.logger != nil {
-					log.NewHelper(b.logger).Errorf("event handler panic: bus=%d type=%d attempt=%d", b.busType, ev.EventType, attempts)
-				}
-
-				maxRetries := max(b.config.MaxRetries, 0)
-				if attempts <= int64(maxRetries) {
-					// Improved exponential backoff with jitter and max delay
-					backoffDelay := calculateBackoffDelay(int(attempts), maxRetries)
-					time.Sleep(backoffDelay)
-					continue
-				}
-
-				// emit error event (DLQ-like)
-				b.emitErrorEvent(ev, int(attempts))
-				// update latency (failed)
-				if b.metrics != nil {
-					b.metrics.UpdateLatency(duration)
-				}
-				GetGlobalMonitor().UpdateLatency(duration)
-				return
-			}
-
-			// success path
-			if b.metrics != nil {
-				b.metrics.UpdateLatency(duration)
-				b.metrics.IncrementProcessed()
-			}
-			GetGlobalMonitor().UpdateLatency(duration)
-			GetGlobalMonitor().IncrementProcessed()
-			return
-		}
-	}
+    return func(ev LynxEvent) {
+        // Start first attempt; subsequent retries will be scheduled asynchronously
+        b.handleWithRetry(ev, handler, 1)
+    }
 }
 
-// helper: choose queue by priority
-func (b *LynxEventBus) queueByPriority(p Priority) chan LynxEvent {
-	switch p {
-	case PriorityCritical:
-		return b.criticalQ
-	case PriorityHigh:
-		return b.highQ
-	case PriorityLow:
-		return b.lowQ
-	default:
-		return b.normalQ
-	}
-}
+// handleWithRetry executes the handler with panic recovery and schedules retries asynchronously
+func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), attempt int) {
+    start := time.Now()
+    panicked := false
+    func() {
+        defer func() {
+            if r := recover(); r != nil {
+                panicked = true
+            }
+        }()
+        handler(ev)
+    }()
 
-// helper: total queue size
-func (b *LynxEventBus) totalQueueSize() int {
-	return len(b.lowQ) + len(b.normalQ) + len(b.highQ) + len(b.criticalQ)
-}
+    duration := time.Since(start)
+    if panicked {
+        // metrics & monitor for failure
+        if b.metrics != nil {
+            b.metrics.IncrementFailed()
+        }
+        GetGlobalMonitor().IncrementFailed()
+        GetGlobalMonitor().SetError(fmt.Errorf("handler panic: bus=%d type=%d attempt=%d", b.busType, ev.EventType, attempt))
+        if b.logger != nil {
+            log.NewHelper(b.logger).Errorf("event handler panic: bus=%d type=%d attempt=%d", b.busType, ev.EventType, attempt)
+        }
 
-// helper: total queue capacity
-func (b *LynxEventBus) totalQueueCap() int {
-	return cap(b.lowQ) + cap(b.normalQ) + cap(b.highQ) + cap(b.criticalQ)
-}
+        maxRetries := max(b.config.MaxRetries, 0)
+        if attempt <= maxRetries {
+            // schedule next attempt asynchronously to avoid blocking worker threads
+            backoffDelay := calculateBackoffDelay(attempt, maxRetries)
+            // Bounded concurrency: respect MaxConcurrentRetries if configured
+            if b.retrySem != nil {
+                select {
+                case b.retrySem <- struct{}{}:
+                    time.AfterFunc(backoffDelay, func() {
+                        defer func() { <-b.retrySem }()
+                        if b.isClosed.Load() {
+                            return
+                        }
+                        if b.workerPool != nil {
+                            _ = b.workerPool.Submit(func() { b.handleWithRetry(ev, handler, attempt+1) })
+                        } else {
+                            go b.handleWithRetry(ev, handler, attempt+1)
+                        }
+                    })
+                default:
+                    // Retry capacity exhausted; emit error and stop retrying this event
+                    if b.logger != nil {
+                        log.NewHelper(b.logger).Warnf("retry capacity exhausted, dropping retries: bus=%d type=%d attempt=%d", b.busType, ev.EventType, attempt)
+                    }
+                    b.emitErrorEvent(ev, attempt)
+                }
+            } else {
+                time.AfterFunc(backoffDelay, func() {
+                    if b.isClosed.Load() {
+                        return
+                    }
+                    if b.workerPool != nil {
+                        _ = b.workerPool.Submit(func() { b.handleWithRetry(ev, handler, attempt+1) })
+                    } else {
+                        go b.handleWithRetry(ev, handler, attempt+1)
+                    }
+                })
+            }
+            return
+        }
 
-// helper: non-blocking receive
-func (b *LynxEventBus) tryRecv(q chan LynxEvent) (LynxEvent, bool) {
-	select {
-	case ev := <-q:
-		return ev, true
-	default:
-		return LynxEvent{}, false
-	}
-}
+        // emit error event (DLQ-like)
+        b.emitErrorEvent(ev, attempt)
+        // update latency (failed)
+        if b.metrics != nil {
+            b.metrics.UpdateLatency(duration)
+        }
+        GetGlobalMonitor().UpdateLatency(duration)
+        return
+    }
 
-// helper: publish to dispatcher and update monitor after dequeue
-func (b *LynxEventBus) publish(ev LynxEvent) {
-	if b.workerPool != nil {
-		// Submit to worker pool; in blocking mode errors are rare (e.g., pool released)
-		if err := b.workerPool.Submit(func() { kelindarEvent.Publish(b.dispatcher, ev) }); err != nil {
-			// overload or pool closed -> sync fallback and record
-			if b.logger != nil {
-				log.NewHelper(b.logger).Warnf("worker pool submit failed: %v", err)
-			}
-			GetGlobalMonitor().SetError(fmt.Errorf("worker_pool_submit_failed: %v", err))
-			kelindarEvent.Publish(b.dispatcher, ev)
-		}
-	} else {
-		kelindarEvent.Publish(b.dispatcher, ev)
-	}
-	GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
-}
-
-// helper: publish a batch of events
-func (b *LynxEventBus) publishBatch(events []LynxEvent) {
-	// Check if throttling is active during degradation
-	if b.isDegraded.Load() && b.throttler != nil {
-		// Apply throttling to the batch
-		throttledEvents := make([]LynxEvent, 0, len(events))
-		for _, ev := range events {
-			if b.throttler.Allow() {
-				throttledEvents = append(throttledEvents, ev)
-			} else {
-				// Event is throttled, log it and continue
-				if b.logger != nil {
-					log.NewHelper(b.logger).Debugf("event throttled during degradation: type=%d, plugin=%s", ev.EventType, ev.PluginID)
-				}
-			}
-		}
-		// Use throttled events instead of original events
-		events = throttledEvents
-	}
-
-	// Limit per-batch submissions to reduce burstiness
-	limit := len(events)
-	if b.config.WorkerCount > 0 {
-		if m := b.config.WorkerCount * 2; m < limit {
-			limit = m
-		}
-	}
-	if b.workerPool != nil {
-		for i := 0; i < limit; i++ {
-			ev := events[i]
-			if err := b.workerPool.Submit(func() { kelindarEvent.Publish(b.dispatcher, ev) }); err != nil {
-				if b.logger != nil {
-					log.NewHelper(b.logger).Warnf("worker pool submit failed: %v", err)
-				}
-				GetGlobalMonitor().SetError(fmt.Errorf("worker_pool_submit_failed: %v", err))
-				kelindarEvent.Publish(b.dispatcher, ev)
-			}
-		}
-		// overflow part (if any) publish synchronously to avoid long waits
-		for i := limit; i < len(events); i++ {
-			kelindarEvent.Publish(b.dispatcher, events[i])
-		}
-	} else {
-		for i := range events {
-			kelindarEvent.Publish(b.dispatcher, events[i])
-		}
-	}
-	GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+    // success path
+    if b.metrics != nil {
+        b.metrics.UpdateLatency(duration)
+        b.metrics.IncrementProcessed()
+    }
+    GetGlobalMonitor().UpdateLatency(duration)
+    GetGlobalMonitor().IncrementProcessed()
 }
 
 // helper: emit a system error event to act as DLQ
 func (b *LynxEventBus) emitErrorEvent(original LynxEvent, attempts int) {
-	m := b.metadataPool.Get()
-	defer b.metadataPool.Put(m)
-
-	m["bus_type"] = b.busType
-	m["event_type"] = original.EventType
-	m["attempts"] = attempts
-	m["reason"] = "handler panic"
-	// copy some metadata if present
-	for k, v := range original.Metadata {
-		// don't overwrite our keys
-		if k == "bus_type" || k == "event_type" || k == "attempts" || k == "reason" {
-			continue
-		}
-		if m["metadata"] == nil {
-			m["metadata"] = map[string]any{}
-		}
-		mmeta := m["metadata"].(map[string]any)
-		mmeta[k] = v
-	}
-	errEv := NewLynxEvent(EventErrorOccurred, original.PluginID, original.Source).WithPriority(PriorityHigh)
-	errEv.Category = original.Category
-	errEv.Metadata = m
-	// best effort publish via global manager if available
-	if manager := GetGlobalEventBus(); manager != nil {
-		_ = manager.PublishEvent(errEv)
-	}
-}
-
-// max returns the maximum of two ints
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
+    // Create a fresh metadata map for the event to avoid referencing pooled objects
+    meta := make(map[string]any, 6)
+    meta["bus_type"] = b.busType
+    meta["event_type"] = original.EventType
+    meta["attempts"] = attempts
+    meta["reason"] = "handler panic"
+    if len(original.Metadata) > 0 {
+        // Deep-copy original metadata into a nested map to avoid aliasing
+        copied := make(map[string]any, len(original.Metadata))
+        for k, v := range original.Metadata {
+            // don't overwrite our reserved keys if present at top-level
+            copied[k] = v
+        }
+        meta["metadata"] = copied
+    }
+    errEv := NewLynxEvent(EventErrorOccurred, original.PluginID, original.Source).WithPriority(PriorityHigh)
+    errEv.Category = original.Category
+    errEv.Metadata = meta
+    // best effort publish via global manager if available
+    if manager := GetGlobalEventBus(); manager != nil {
+        _ = manager.PublishEvent(errEv)
+    }
 }
 
 // min returns the minimum of two ints
 func min(a, b int) int {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+// max returns the maximum of two ints
+func max(a, b int) int {
+	if a > b {
 		return a
 	}
 	return b

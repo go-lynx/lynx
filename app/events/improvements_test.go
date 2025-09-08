@@ -44,18 +44,17 @@ func TestErrorCallback(t *testing.T) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
+outer:
 	for {
 		select {
 		case <-timeout:
 			t.Log("Timeout waiting for error callback")
-			break
+			break outer
 		case <-ticker.C:
 			if callbackCalled {
-				break
+				break outer
 			}
-			continue
 		}
-		break
 	}
 
 	// Check if callback was called

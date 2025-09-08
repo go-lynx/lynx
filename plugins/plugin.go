@@ -436,11 +436,11 @@ type simpleRuntime struct {
 	// Configuration
 	config config.Config
 	// Mutex
-	mu sync.RWMutex
+	mu *sync.RWMutex
 
 	// Plugin context
 	currentPluginContext string
-	contextMu            sync.RWMutex
+	contextMu            *sync.RWMutex
 
 	// Event bus manager for unified event handling
 	eventManager interface{}
@@ -457,6 +457,8 @@ func NewSimpleRuntime() *simpleRuntime {
 		privateResources: make(map[string]map[string]any),
 		sharedResources:  make(map[string]any),
 		resourceInfo:     make(map[string]*ResourceInfo),
+		mu:               &sync.RWMutex{},
+		contextMu:        &sync.RWMutex{},
 		eventManager:     nil, // Will be set later to avoid import cycle
 		workerPoolSize:   0,
 		eventTimeout:     0, // Initialize to 0
@@ -725,7 +727,7 @@ func (r *simpleRuntime) GetResource(name string) (any, error) {
 
 // RegisterResource register resource (compatible with old interface, register as shared resource)
 func (r *simpleRuntime) RegisterResource(name string, resource any) error {
-	return r.RegisterSharedResource(name, resource)
+    return r.RegisterSharedResource(name, resource)
 }
 
 // GetPrivateResource get private resource
@@ -750,46 +752,6 @@ func (r *simpleRuntime) GetPrivateResource(name string) (any, error) {
 	return nil, NewPluginError("runtime", "GetPrivateResource", "Private resource not found: "+name, nil)
 }
 
-// RegisterPrivateResource register private resource
-func (r *simpleRuntime) RegisterPrivateResource(name string, resource any) error {
-	if name == "" {
-		return NewPluginError("runtime", "RegisterPrivateResource", "Resource name cannot be empty", nil)
-	}
-	if resource == nil {
-		return NewPluginError("runtime", "RegisterPrivateResource", "Resource cannot be nil", nil)
-	}
-
-	r.contextMu.RLock()
-	pluginName := r.currentPluginContext
-	r.contextMu.RUnlock()
-
-	if pluginName == "" {
-		return NewPluginError("runtime", "RegisterPrivateResource", "Plugin context not available", nil)
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// Ensure the plugin's private resource map exists
-	if r.privateResources[pluginName] == nil {
-		r.privateResources[pluginName] = make(map[string]any)
-	}
-
-	r.privateResources[pluginName][name] = resource
-	return nil
-}
-
-// GetSharedResource get shared resource - fix concurrency safety issues
-func (r *simpleRuntime) GetSharedResource(name string) (any, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if value, ok := r.sharedResources[name]; ok {
-		return value, nil
-	}
-	return nil, NewPluginError("runtime", "GetSharedResource", "Shared resource not found: "+name, nil)
-}
-
 // RegisterSharedResource register shared resource - fix concurrency safety issues
 func (r *simpleRuntime) RegisterSharedResource(name string, resource any) error {
 	if name == "" {
@@ -803,22 +765,48 @@ func (r *simpleRuntime) RegisterSharedResource(name string, resource any) error 
 	pluginName := r.currentPluginContext
 	r.contextMu.RUnlock()
 
+	if pluginName == "" {
+		pluginName = "system"
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	// Duplicate registration policy
+	if existing, ok := r.sharedResources[name]; ok {
+		oldType := fmt.Sprintf("%T", existing)
+		newType := fmt.Sprintf("%T", resource)
+		if oldType != newType {
+			return NewPluginError("runtime", "RegisterSharedResource", fmt.Sprintf("resource '%s' already exists with different type: old=%s new=%s", name, oldType, newType), nil)
+		}
+		// Warn about overwrite with same type
+		log.Warnf("Shared resource '%s' already exists with type %s, overwriting", name, newType)
+	}
+
 	r.sharedResources[name] = resource
 
-	// Record resource info
-	r.resourceInfo[name] = &ResourceInfo{
-		Name:        name,
-		Type:        fmt.Sprintf("%T", resource),
-		PluginID:    pluginName,
-		IsPrivate:   false,
-		CreatedAt:   time.Now(),
-		LastUsedAt:  time.Now(),
-		AccessCount: 0,
-		Size:        r.estimateResourceSize(resource),
-		Metadata:    make(map[string]any),
+	// Record or update resource info
+	now := time.Now()
+	size := r.estimateResourceSize(resource)
+	if info, exists := r.resourceInfo[name]; exists {
+		// Preserve CreatedAt, update others
+		info.Type = fmt.Sprintf("%T", resource)
+		info.PluginID = pluginName
+		info.IsPrivate = false
+		info.LastUsedAt = now
+		info.Size = size
+	} else {
+		r.resourceInfo[name] = &ResourceInfo{
+			Name:        name,
+			Type:        fmt.Sprintf("%T", resource),
+			PluginID:    pluginName,
+			IsPrivate:   false,
+			CreatedAt:   now,
+			LastUsedAt:  now,
+			AccessCount: 0,
+			Size:        size,
+			Metadata:    make(map[string]any),
+		}
 	}
 
 	return nil
@@ -853,8 +841,11 @@ func (r *simpleRuntime) WithPluginContext(pluginName string) Runtime {
 	contextRuntime := &simpleRuntime{
 		privateResources:     r.privateResources,
 		sharedResources:      r.sharedResources,
+		resourceInfo:         r.resourceInfo,
 		config:               r.config,
 		currentPluginContext: pluginName,
+		mu:                   r.mu,
+		contextMu:            r.contextMu,
 		eventManager:         r.eventManager,
 		workerPoolSize:       r.workerPoolSize,
 		eventTimeout:         r.eventTimeout, // Copy event timeout
@@ -877,6 +868,15 @@ func (r *simpleRuntime) GetResourceInfo(name string) (*ResourceInfo, error) {
 
 	if info, exists := r.resourceInfo[name]; exists {
 		return info, nil
+	}
+	// Also try private resource composite key under current plugin context
+	r.contextMu.RLock()
+	pluginName := r.currentPluginContext
+	r.contextMu.RUnlock()
+	if pluginName != "" {
+		if info, ok := r.resourceInfo[fmt.Sprintf("%s:%s", pluginName, name)]; ok {
+			return info, nil
+		}
 	}
 	return nil, NewPluginError("runtime", "GetResourceInfo", "Resource info not found: "+name, nil)
 }
@@ -916,7 +916,8 @@ func (r *simpleRuntime) CleanupResources(pluginID string) error {
 			} else {
 				cleanupStats[fmt.Sprintf("private_%s_success", resourceName)] = true
 			}
-			delete(r.resourceInfo, resourceName)
+			// Private resources are recorded with composite key: pluginID:name
+			delete(r.resourceInfo, fmt.Sprintf("%s:%s", pluginID, resourceName))
 			cleanedPrivate++
 		}
 		delete(r.privateResources, pluginID)

@@ -3,7 +3,9 @@ package events
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
+	"sync/atomic"
 )
 
 // EventListener represents an event listener
@@ -12,7 +14,7 @@ type EventListener struct {
 	Filter  *EventFilter
 	Handler func(LynxEvent)
 	BusType BusType
-	Active  bool
+	Active  atomic.Bool
 	Cancel  context.CancelFunc
 }
 
@@ -38,14 +40,20 @@ func (m *EventListenerManager) AddListener(id string, filter *EventFilter, handl
 		return fmt.Errorf("listener with ID %s already exists", id)
 	}
 
+	// Deep-copy filter to avoid external mutation races
+	var cloned *EventFilter
+	if filter != nil {
+		cloned = filter.Clone()
+	}
 	listener := &EventListener{
 		ID:      id,
-		Filter:  filter,
+		Filter:  cloned,
 		Handler: handler,
 		BusType: busType,
-		Active:  true,
+		Active:  atomic.Bool{},
 		Cancel:  nil,
 	}
+	listener.Active.Store(true)
 
 	m.listeners[id] = listener
 
@@ -59,7 +67,7 @@ func (m *EventListenerManager) AddListener(id string, filter *EventFilter, handl
 	// If filter is empty, subscribe to all events on the bus
 	if filter == nil || filter.IsEmpty() {
 		cancel, err := eventManager.SubscribeWithCancel(busType, func(event LynxEvent) {
-			if listener.Active {
+			if listener.Active.Load() {
 				listener.Handler(event)
 			}
 		})
@@ -69,29 +77,45 @@ func (m *EventListenerManager) AddListener(id string, filter *EventFilter, handl
 		}
 		listener.Cancel = cancel
 	} else {
-		// Subscribe to specific event types
-		var cancels []context.CancelFunc
-		for _, eventType := range filter.EventTypes {
-			cancel, err := eventManager.SubscribeToWithCancel(eventType, func(event LynxEvent) {
-				if listener.Active && filter.Matches(event) {
+		// Use cloned filter for thread safety
+		lf := listener.Filter
+		// If filter has no EventTypes specified, subscribe at bus-level with predicate
+		if len(lf.EventTypes) == 0 {
+			cancel, err := eventManager.SubscribeWithCancel(busType, func(event LynxEvent) {
+				if listener.Active.Load() && lf.Matches(event) {
 					listener.Handler(event)
 				}
 			})
 			if err != nil {
-				// cancel already registered ones
-				for _, c := range cancels {
-					c()
-				}
 				delete(m.listeners, id)
-				return fmt.Errorf("failed to subscribe to event type %d: %w", eventType, err)
+				return fmt.Errorf("failed to subscribe to bus with filter: %w", err)
 			}
-			cancels = append(cancels, cancel)
-		}
-		// compose cancel
-		listener.Cancel = func() {
-			for _, c := range cancels {
-				if c != nil {
-					c()
+			listener.Cancel = cancel
+		} else {
+			// Subscribe to specific event types
+			var cancels []context.CancelFunc
+			for _, eventType := range lf.EventTypes {
+				cancel, err := eventManager.SubscribeToWithCancel(eventType, func(event LynxEvent) {
+					if listener.Active.Load() && lf.Matches(event) {
+						listener.Handler(event)
+					}
+				})
+				if err != nil {
+					// cancel already registered ones
+					for _, c := range cancels {
+						c()
+					}
+					delete(m.listeners, id)
+					return fmt.Errorf("failed to subscribe to event type %d: %w", eventType, err)
+				}
+				cancels = append(cancels, cancel)
+			}
+			// compose cancel
+			listener.Cancel = func() {
+				for _, c := range cancels {
+					if c != nil {
+						c()
+					}
 				}
 			}
 		}
@@ -111,7 +135,7 @@ func (m *EventListenerManager) RemoveListener(id string) error {
 	}
 
 	// Cancel the listener
-	listener.Active = false
+	listener.Active.Store(false)
 	if listener.Cancel != nil {
 		listener.Cancel()
 	}
@@ -260,7 +284,7 @@ func filtersEqual(a, b *EventFilter) bool {
 		return false
 	}
 	for k, va := range a.Metadata {
-		if vb, ok := b.Metadata[k]; !ok || vb != va {
+		if vb, ok := b.Metadata[k]; !ok || !reflect.DeepEqual(vb, va) {
 			return false
 		}
 	}

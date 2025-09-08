@@ -1,6 +1,7 @@
 package events
 
 import (
+	"reflect"
 	"time"
 )
 
@@ -34,6 +35,9 @@ type EventFilter struct {
 	// Status filters
 	Statuses []string `yaml:"statuses" json:"statuses"`
 }
+
+// deepEqual performs safe deep-equality on interface values
+func deepEqual(a, b any) bool { return reflect.DeepEqual(a, b) }
 
 // NewEventFilter creates a new event filter
 func NewEventFilter() *EventFilter {
@@ -186,10 +190,14 @@ func (f *EventFilter) Matches(event LynxEvent) bool {
 		return false
 	}
 
-	// Check metadata
+	// Check metadata (use deep equality, safe for maps/slices)
 	if len(f.Metadata) > 0 {
 		for key, expectedValue := range f.Metadata {
-			if actualValue, exists := event.Metadata[key]; !exists || actualValue != expectedValue {
+			actualValue, exists := event.Metadata[key]
+			if !exists {
+				return false
+			}
+			if !deepEqual(actualValue, expectedValue) {
 				return false
 			}
 		}
@@ -229,4 +237,65 @@ func (f *EventFilter) IsEmpty() bool {
 		len(f.Metadata) == 0 &&
 		!f.HasError &&
 		len(f.Statuses) == 0
+}
+
+// Clone returns a deep copy of the filter suitable for use across goroutines/listeners.
+// Slices and the Metadata map are copied. For Metadata values, this performs a best-effort
+// deep copy for common types (map[string]any, []any, []string). Other values are copied as-is.
+func (f *EventFilter) Clone() *EventFilter {
+	if f == nil {
+		return nil
+	}
+	nf := &EventFilter{
+		EventTypes: append([]EventType(nil), f.EventTypes...),
+		Priorities: append([]Priority(nil), f.Priorities...),
+		Sources:    append([]string(nil), f.Sources...),
+		Categories: append([]string(nil), f.Categories...),
+		PluginIDs:  append([]string(nil), f.PluginIDs...),
+		FromTime:   f.FromTime,
+		ToTime:     f.ToTime,
+		HasError:   f.HasError,
+		Statuses:   append([]string(nil), f.Statuses...),
+	}
+	if f.Metadata != nil {
+		nf.Metadata = deepCopyMapStringAny(f.Metadata)
+	} else {
+		nf.Metadata = make(map[string]any)
+	}
+	return nf
+}
+
+func deepCopyMapStringAny(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = deepCopyAny(v)
+	}
+	return dst
+}
+
+func deepCopyAny(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		return deepCopyMapStringAny(x)
+	case []any:
+		out := make([]any, len(x))
+		for i := range x {
+			out[i] = deepCopyAny(x[i])
+		}
+		return out
+	case []string:
+		out := make([]string, len(x))
+		copy(out, x)
+		return out
+	case []int:
+		out := make([]int, len(x))
+		copy(out, x)
+		return out
+	default:
+		// For scalars and unsupported complex types, return as-is
+		return x
+	}
 }
