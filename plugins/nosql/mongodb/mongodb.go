@@ -59,6 +59,11 @@ func (p *PlugMongoDB) Start(plugin plugins.Plugin) error {
 		return fmt.Errorf("failed to test mongodb connection: %w", err)
 	}
 
+	// Ensure shared quit channel is initialized when any background task is enabled
+	if p.statsQuit == nil && (p.conf.EnableMetrics || p.conf.EnableHealthCheck) {
+		p.statsQuit = make(chan struct{})
+	}
+
 	log.Info("mongodb plugin started successfully")
 	return nil
 }
@@ -77,12 +82,14 @@ func (p *PlugMongoDB) Stop(plugin plugins.Plugin) error {
 		p.stopHealthCheck()
 	}
 
-	// Close client connection
-	if p.client != nil {
-		if err := p.client.Disconnect(context.Background()); err != nil {
-			log.Errorf("failed to disconnect mongodb client: %v", err)
-		}
-	}
+    // Close client connection with timeout to avoid blocking shutdown
+    if p.client != nil {
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+        if err := p.client.Disconnect(ctx); err != nil {
+            log.Errorf("failed to disconnect mongodb client: %v", err)
+        }
+    }
 
 	log.Info("mongodb plugin stopped successfully")
 	return nil
@@ -257,7 +264,9 @@ func (p *PlugMongoDB) testConnection() error {
 
 // startMetricsCollection starts metrics collection
 func (p *PlugMongoDB) startMetricsCollection() {
-	p.statsQuit = make(chan struct{})
+	if p.statsQuit == nil {
+		p.statsQuit = make(chan struct{})
+	}
 	p.statsWG.Add(1)
 
 	go func() {
@@ -279,7 +288,7 @@ func (p *PlugMongoDB) startMetricsCollection() {
 // stopMetricsCollection stops metrics collection
 func (p *PlugMongoDB) stopMetricsCollection() {
 	if p.statsQuit != nil {
-		close(p.statsQuit)
+		p.closeStatsQuitOnce()
 		p.statsWG.Wait()
 	}
 }
@@ -308,7 +317,14 @@ func (p *PlugMongoDB) collectMetrics() {
 func (p *PlugMongoDB) startHealthCheck() {
 	interval := p.conf.HealthCheckInterval.AsDuration()
 
+	// Ensure quit channel exists
+	if p.statsQuit == nil {
+		p.statsQuit = make(chan struct{})
+	}
+
+	p.statsWG.Add(1)
 	go func() {
+		defer p.statsWG.Done()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
@@ -327,7 +343,31 @@ func (p *PlugMongoDB) startHealthCheck() {
 
 // stopHealthCheck stops health check
 func (p *PlugMongoDB) stopHealthCheck() {
-	// Health check uses the same quit channel
+	if p.statsQuit != nil {
+		p.closeStatsQuitOnce()
+		// Wait for all goroutines (metrics + health) to exit, set timeout to avoid infinite wait
+		done := make(chan struct{})
+		go func() {
+			p.statsWG.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+			log.Infof("mongodb background tasks stopped successfully")
+		case <-time.After(10 * time.Second):
+			log.Warnf("timeout waiting for mongodb background tasks to stop")
+		}
+	}
+}
+
+// closeStatsQuitOnce closes statsQuit only once in a thread-safe way
+func (p *PlugMongoDB) closeStatsQuitOnce() {
+	p.statsMu.Lock()
+	defer p.statsMu.Unlock()
+	if !p.statsClosed && p.statsQuit != nil {
+		close(p.statsQuit)
+		p.statsClosed = true
+	}
 }
 
 // checkHealth executes health check

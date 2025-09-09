@@ -42,6 +42,45 @@ type TransactionOptions struct {
 	Concurrent bool
 }
 
+// ExecuteXA execute XA transaction
+func (h *TransactionHelper) ExecuteXA(ctx context.Context, gid string, branches []XABranch, opts *TransactionOptions) error {
+    if opts == nil {
+        opts = DefaultTransactionOptions()
+    }
+
+    // Use XA global transaction API
+    err := dtmcli.XaGlobalTransaction(h.client.GetServerURL(), gid, func(xa *dtmcli.Xa) (*resty.Response, error) {
+        // Set transaction options
+        xa.TimeoutToFail = opts.TimeoutToFail
+        xa.RequestTimeout = opts.BranchTimeout
+        xa.RetryInterval = opts.RetryInterval
+
+        // Call all XA branches
+        for _, branch := range branches {
+            _, err := xa.CallBranch(branch.Action, branch.Data)
+            if err != nil {
+                log.Errorf("XA branch failed: gid=%s, action=%s, error=%v", gid, branch.Action, err)
+                return nil, err
+            }
+        }
+        return nil, nil
+    })
+
+    if err != nil {
+        log.Errorf("XA transaction failed: gid=%s, error=%v", gid, err)
+        return err
+    }
+
+    log.Infof("XA transaction submitted successfully: gid=%s", gid)
+
+    // If need to wait for result
+    if opts.WaitResult {
+        return h.waitTransactionResult(ctx, gid, TransTypeXA)
+    }
+
+    return nil
+}
+
 // DefaultTransactionOptions returns default transaction options
 func DefaultTransactionOptions() *TransactionOptions {
 	return &TransactionOptions{
@@ -245,6 +284,12 @@ type TCCBranch struct {
 type MsgBranch struct {
 	Action string      // Operation URL
 	Data   interface{} // Request data
+}
+
+// XABranch XA branch definition
+type XABranch struct {
+	Action string // Operation URL
+	Data   string // Request data as serialized string (e.g., JSON)
 }
 
 // CreateGrpcContext create gRPC Context containing transaction information

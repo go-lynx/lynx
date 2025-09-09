@@ -75,33 +75,46 @@ func UseSaga() {
 ```
 
 
-### TCC Transaction
+### TCC Transaction（推荐：Helper 或 Global Transaction API）
+
+使用 Helper 封装（推荐）：
 
 ```go
-func UseTCC() {
+func UseTCCWithHelper(ctx context.Context) {
+    dtmPlugin := app.GetPlugin("dtm.server").(*dtm.DTMClient)
+    helper := dtm.NewTransactionHelper(dtmPlugin)
+    gid := helper.MustGenGid()
+
+    branches := []dtm.TCCBranch{
+        { // 示例分支1
+            Try:     "http://localhost:8081/api/inventory/try",
+            Confirm: "http://localhost:8081/api/inventory/confirm",
+            Cancel:  "http://localhost:8081/api/inventory/cancel",
+            Data:    map[string]any{"product_id": "sku-1", "quantity": 2},
+        },
+    }
+    opts := &dtm.TransactionOptions{TimeoutToFail: 60, BranchTimeout: 10}
+    if err := helper.ExecuteTCC(ctx, gid, branches, opts); err != nil {
+        log.Errorf("ExecuteTCC failed: %v", err)
+    }
+}
+```
+
+使用 Global Transaction API（原生用法）：
+
+```go
+func UseTCCWithNative(ctx context.Context) {
     dtmPlugin := app.GetPlugin("dtm.server").(*dtm.DTMClient)
     gid := dtmPlugin.GenerateGid()
-    
-    // Create TCC transaction
-    tcc := dtmPlugin.NewTcc(gid)
-    
-    // Register branch transaction
-    err := tcc.CallBranch(
-        map[string]interface{}{"amount": 100},
-        "http://localhost:8080/api/TransOutTry",
-        "http://localhost:8080/api/TransOutConfirm",
-        "http://localhost:8080/api/TransOutCancel",
-    )
-    if err != nil {
-        log.Errorf("TCC branch failed: %v", err)
-        return
-    }
-    
-    // Submit global transaction
-    err = tcc.Submit()
-    if err != nil {
-        log.Errorf("TCC transaction failed: %v", err)
-    }
+    _ = dtmcli.TccGlobalTransaction(dtmPlugin.GetServerURL(), gid, func(tcc *dtmcli.Tcc) (*resty.Response, error) {
+        _, err := tcc.CallBranch(
+            map[string]any{"product_id": "sku-1", "quantity": 2},
+            "http://localhost:8081/api/inventory/try",
+            "http://localhost:8081/api/inventory/confirm",
+            "http://localhost:8081/api/inventory/cancel",
+        )
+        return nil, err
+    })
 }
 ```
 
@@ -142,31 +155,39 @@ func UseMsg() {
 ```
 
 
-### XA Transaction
+### XA Transaction（推荐：Helper 或 Global Transaction API）
+
+使用 Helper 封装（推荐）：
 
 ```go
-func UseXA() {
+func UseXAWithHelper(ctx context.Context) {
+    dtmPlugin := app.GetPlugin("dtm.server").(*dtm.DTMClient)
+    helper := dtm.NewTransactionHelper(dtmPlugin)
+    gid := helper.MustGenGid()
+
+    branches := []dtm.XABranch{
+        { // XABranch.Data 使用字符串（例如 JSON）
+            Action: "http://localhost:8080/api/TransOut",
+            Data:   `{"amount": 100}`,
+        },
+    }
+    opts := &dtm.TransactionOptions{TimeoutToFail: 60, BranchTimeout: 10}
+    if err := helper.ExecuteXA(ctx, gid, branches, opts); err != nil {
+        log.Errorf("ExecuteXA failed: %v", err)
+    }
+}
+```
+
+使用 Global Transaction API（原生用法）：
+
+```go
+func UseXAWithNative(ctx context.Context) {
     dtmPlugin := app.GetPlugin("dtm.server").(*dtm.DTMClient)
     gid := dtmPlugin.GenerateGid()
-    
-    // Create XA transaction
-    xa := dtmPlugin.NewXa(gid)
-    
-    // Register XA branch
-    err := xa.CallBranch(
-        "http://localhost:8080/api/TransOut",
-        map[string]interface{}{"amount": 100},
-    )
-    if err != nil {
-        log.Errorf("XA branch failed: %v", err)
-        return
-    }
-    
-    // Submit XA transaction
-    err = xa.Submit()
-    if err != nil {
-        log.Errorf("XA transaction failed: %v", err)
-    }
+    _ = dtmcli.XaGlobalTransaction(dtmPlugin.GetServerURL(), gid, func(xa *dtmcli.Xa) (*resty.Response, error) {
+        _, err := xa.CallBranch("http://localhost:8080/api/TransOut", `{"amount": 100}`)
+        return nil, err
+    })
 }
 ```
 
@@ -191,3 +212,7 @@ tar -xzvf dtm_1.17.0_linux_amd64.tar.gz
 - [DTM Official Documentation](https://dtm.pub)
 - [DTM GitHub](https://github.com/dtm-labs/dtm)
 - [DTM Go SDK](https://github.com/dtm-labs/client)
+
+## Notes
+
+- `NewTcc()` 与 `NewXa()` 在当前版本中不提供直接返回实例的实现，请使用上文所示的 Helper 或 DTM 原生的 Global Transaction API。

@@ -44,6 +44,9 @@ type ConsumerGroup struct {
 	// per-partition serial processing channels, ensuring strict order for the same partition
 	partChans map[string]chan []*kgo.Record
 	partMu    sync.Mutex
+
+	// internal wait group for background goroutines (errors/rebalances)
+	wg sync.WaitGroup
 }
 
 // ConsumerGroupOptions optional parameters for creating consumer group
@@ -304,10 +307,18 @@ func (cg *ConsumerGroup) Start() error {
 	}()
 
 	// Start error handling goroutine
-	go cg.handleErrors()
+	cg.wg.Add(1)
+	go func() {
+		defer cg.wg.Done()
+		cg.handleErrors()
+	}()
 
 	// Start rebalance handling goroutine
-	go cg.handleRebalances()
+	cg.wg.Add(1)
+	go func() {
+		defer cg.wg.Done()
+		cg.handleRebalances()
+	}()
 
 	// Begin consuming
 	for {
@@ -514,6 +525,15 @@ func (cg *ConsumerGroup) handleRebalances() {
 func (cg *ConsumerGroup) Stop() {
 	cg.cancel()
 	cg.pool.Wait()
+	// Close and purge all partition channels to release workers promptly
+	cg.partMu.Lock()
+	for key, ch := range cg.partChans {
+		delete(cg.partChans, key)
+		close(ch)
+	}
+	cg.partMu.Unlock()
+	// Wait background goroutines to finish
+	cg.wg.Wait()
 }
 
 // IsRunning checks whether it is running

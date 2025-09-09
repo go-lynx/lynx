@@ -90,6 +90,21 @@ type Plugin interface {
 	DependencyAware
 }
 
+// updateAccessStats increments AccessCount and updates LastUsedAt for a resource
+// If isPrivate is true, the key used is "pluginID:name"; otherwise it is just name.
+func (r *simpleRuntime) updateAccessStats(name string, isPrivate bool, pluginID string) {
+	key := name
+	if isPrivate {
+		key = fmt.Sprintf("%s:%s", pluginID, name)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if info, ok := r.resourceInfo[key]; ok {
+		info.AccessCount++
+		info.LastUsedAt = time.Now()
+	}
+}
+
 // LifecycleWithContext defines optional context-aware lifecycle methods.
 // Plugins implementing this interface can receive cancellation/timeout signals
 // and are encouraged to stop work promptly when the context is done.
@@ -714,20 +729,13 @@ func getListenerID(listener EventListener) string {
 
 // GetResource get resource - fix concurrency safety issues
 func (r *simpleRuntime) GetResource(name string) (any, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	// Prioritize shared resources
-	if value, ok := r.sharedResources[name]; ok {
-		return value, nil
-	}
-
-	return nil, NewPluginError("runtime", "GetResource", "Resource not found: "+name, nil)
+	// For backward-compatibility, treat as shared resource lookup
+	return r.GetSharedResource(name)
 }
 
 // RegisterResource register resource (compatible with old interface, register as shared resource)
 func (r *simpleRuntime) RegisterResource(name string, resource any) error {
-    return r.RegisterSharedResource(name, resource)
+	return r.RegisterSharedResource(name, resource)
 }
 
 // GetPrivateResource get private resource
@@ -741,15 +749,106 @@ func (r *simpleRuntime) GetPrivateResource(name string) (any, error) {
 	}
 
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if pluginResources, ok := r.privateResources[pluginName]; ok {
-		if resource, exists := pluginResources[name]; exists {
-			return resource, nil
+	resource, ok := func() (any, bool) {
+		if pluginResources, ok := r.privateResources[pluginName]; ok {
+			if res, exists := pluginResources[name]; exists {
+				return res, true
+			}
 		}
+		return nil, false
+	}()
+	r.mu.RUnlock()
+	if ok {
+		// Update access stats for private resource (composite key)
+		r.updateAccessStats(name, true, pluginName)
+		return resource, nil
 	}
 
 	return nil, NewPluginError("runtime", "GetPrivateResource", "Private resource not found: "+name, nil)
+}
+
+// GetSharedResource get shared resource
+func (r *simpleRuntime) GetSharedResource(name string) (any, error) {
+	r.mu.RLock()
+	value, ok := r.sharedResources[name]
+	r.mu.RUnlock()
+	if ok {
+		r.updateAccessStats(name, false, "")
+		return value, nil
+	}
+	return nil, NewPluginError("runtime", "GetSharedResource", "Shared resource not found: "+name, nil)
+}
+
+// RegisterPrivateResource register private resource
+func (r *simpleRuntime) RegisterPrivateResource(name string, resource any) error {
+	if name == "" {
+		return NewPluginError("runtime", "RegisterPrivateResource", "Resource name cannot be empty", nil)
+	}
+	if resource == nil {
+		return NewPluginError("runtime", "RegisterPrivateResource", "Resource cannot be nil", nil)
+	}
+
+	r.contextMu.RLock()
+	pluginName := r.currentPluginContext
+	r.contextMu.RUnlock()
+	if pluginName == "" {
+		return NewPluginError("runtime", "RegisterPrivateResource", "Plugin context not available", nil)
+	}
+
+	// Two-phase overwrite: detect old, replace state quickly under lock, cleanup outside lock to avoid long hold
+	var oldResource any
+	var hadOld bool
+
+	r.mu.Lock()
+	if _, ok := r.privateResources[pluginName]; !ok {
+		r.privateResources[pluginName] = make(map[string]any)
+	}
+	if existing, exists := r.privateResources[pluginName][name]; exists {
+		oldType := fmt.Sprintf("%T", existing)
+		newType := fmt.Sprintf("%T", resource)
+		if oldType != newType {
+			r.mu.Unlock()
+			return NewPluginError("runtime", "RegisterPrivateResource", fmt.Sprintf("resource '%s' already exists for plugin '%s' with different type: old=%s new=%s", name, pluginName, oldType, newType), nil)
+		}
+		// Warn about overwrite and capture old instance for cleanup later
+		log.Warnf("Private resource '%s' for plugin '%s' already exists with type %s, overwriting", name, pluginName, newType)
+		oldResource = existing
+		hadOld = true
+	}
+	r.privateResources[pluginName][name] = resource
+
+	// Record or update resource info (private recorded with composite key: pluginID:name)
+	key := fmt.Sprintf("%s:%s", pluginName, name)
+	now := time.Now()
+	size := r.estimateResourceSize(resource)
+	if info, exists := r.resourceInfo[key]; exists {
+		info.Type = fmt.Sprintf("%T", resource)
+		info.PluginID = pluginName
+		info.IsPrivate = true
+		info.LastUsedAt = now
+		info.Size = size
+	} else {
+		r.resourceInfo[key] = &ResourceInfo{
+			Name:        name,
+			Type:        fmt.Sprintf("%T", resource),
+			PluginID:    pluginName,
+			IsPrivate:   true,
+			CreatedAt:   now,
+			LastUsedAt:  now,
+			AccessCount: 0,
+			Size:        size,
+			Metadata:    make(map[string]any),
+		}
+	}
+	r.mu.Unlock()
+
+	// Cleanup old instance outside lock to prevent long lock hold and potential leaks
+	if hadOld && oldResource != nil {
+		if err := r.cleanupResourceGracefully(name, oldResource); err != nil {
+			log.Warnf("Failed to cleanup previous private resource '%s' for plugin '%s': %v", name, pluginName, err)
+		}
+	}
+	return nil
 }
 
 // RegisterSharedResource register shared resource - fix concurrency safety issues
@@ -769,18 +868,26 @@ func (r *simpleRuntime) RegisterSharedResource(name string, resource any) error 
 		pluginName = "system"
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	// Two-phase overwrite with owner-change warning
+	var oldResource any
+	var hadOld bool
+	var oldOwner string
 
-	// Duplicate registration policy
+	r.mu.Lock()
 	if existing, ok := r.sharedResources[name]; ok {
 		oldType := fmt.Sprintf("%T", existing)
 		newType := fmt.Sprintf("%T", resource)
 		if oldType != newType {
+			r.mu.Unlock()
 			return NewPluginError("runtime", "RegisterSharedResource", fmt.Sprintf("resource '%s' already exists with different type: old=%s new=%s", name, oldType, newType), nil)
 		}
-		// Warn about overwrite with same type
+		// Capture previous owner for warning and instance for cleanup
+		if info, exists := r.resourceInfo[name]; exists && info != nil {
+			oldOwner = info.PluginID
+		}
 		log.Warnf("Shared resource '%s' already exists with type %s, overwriting", name, newType)
+		oldResource = existing
+		hadOld = true
 	}
 
 	r.sharedResources[name] = resource
@@ -808,6 +915,18 @@ func (r *simpleRuntime) RegisterSharedResource(name string, resource any) error 
 			Metadata:    make(map[string]any),
 		}
 	}
+	// Owner changed?
+	if hadOld && oldOwner != "" && oldOwner != pluginName {
+		log.Warnf("Shared resource '%s' owner changed from '%s' to '%s'", name, oldOwner, pluginName)
+	}
+	r.mu.Unlock()
+
+	// Cleanup old instance outside lock to prevent long lock hold and potential leaks
+	if hadOld && oldResource != nil {
+		if err := r.cleanupResourceGracefully(name, oldResource); err != nil {
+			log.Warnf("Failed to cleanup previous shared resource '%s' (old owner='%s'): %v", name, oldOwner, err)
+		}
+	}
 
 	return nil
 }
@@ -833,25 +952,37 @@ func (r *simpleRuntime) GetLogger() log.Logger {
 
 // WithPluginContext create runtime with plugin context
 func (r *simpleRuntime) WithPluginContext(pluginName string) Runtime {
-	if pluginName == "" {
+	// Context forging prevention rules:
+	// 1) If current context is empty and pluginName is non-empty: allow one-time set.
+	// 2) If current context equals pluginName or pluginName is empty: no-op.
+	// 3) Otherwise: deny switching to another plugin, return current runtime.
+	r.contextMu.RLock()
+	cur := r.currentPluginContext
+	r.contextMu.RUnlock()
+
+	// case 2
+	if pluginName == "" || pluginName == cur {
 		return r
 	}
-
-	// Create a new runtime instance, sharing underlying resources but with a different context
-	contextRuntime := &simpleRuntime{
-		privateResources:     r.privateResources,
-		sharedResources:      r.sharedResources,
-		resourceInfo:         r.resourceInfo,
-		config:               r.config,
-		currentPluginContext: pluginName,
-		mu:                   r.mu,
-		contextMu:            r.contextMu,
-		eventManager:         r.eventManager,
-		workerPoolSize:       r.workerPoolSize,
-		eventTimeout:         r.eventTimeout, // Copy event timeout
+	// case 1
+	if cur == "" && pluginName != "" {
+		contextRuntime := &simpleRuntime{
+			privateResources:     r.privateResources,
+			sharedResources:      r.sharedResources,
+			resourceInfo:         r.resourceInfo,
+			config:               r.config,
+			currentPluginContext: pluginName,
+			mu:                   r.mu,
+			contextMu:            r.contextMu,
+			eventManager:         r.eventManager,
+			workerPoolSize:       r.workerPoolSize,
+			eventTimeout:         r.eventTimeout,
+		}
+		return contextRuntime
 	}
-
-	return contextRuntime
+	// case 3: deny switching
+	log.Warnf("denied WithPluginContext switch from %q to %q", cur, pluginName)
+	return r
 }
 
 // GetCurrentPluginContext get current plugin context
@@ -864,19 +995,39 @@ func (r *simpleRuntime) GetCurrentPluginContext() string {
 // GetResourceInfo get resource info
 func (r *simpleRuntime) GetResourceInfo(name string) (*ResourceInfo, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	if info, exists := r.resourceInfo[name]; exists {
-		return info, nil
+		// Return a deep-ish copy (new Metadata map) to avoid exposing internal mutable state
+		copy := *info
+		if info.Metadata != nil {
+			md := make(map[string]any, len(info.Metadata))
+			for k, v := range info.Metadata {
+				md[k] = v
+			}
+			copy.Metadata = md
+		}
+		r.mu.RUnlock()
+		return &copy, nil
 	}
+	r.mu.RUnlock()
 	// Also try private resource composite key under current plugin context
 	r.contextMu.RLock()
 	pluginName := r.currentPluginContext
 	r.contextMu.RUnlock()
 	if pluginName != "" {
+		r.mu.RLock()
 		if info, ok := r.resourceInfo[fmt.Sprintf("%s:%s", pluginName, name)]; ok {
-			return info, nil
+			copy := *info
+			if info.Metadata != nil {
+				md := make(map[string]any, len(info.Metadata))
+				for k, v := range info.Metadata {
+					md[k] = v
+				}
+				copy.Metadata = md
+			}
+			r.mu.RUnlock()
+			return &copy, nil
 		}
+		r.mu.RUnlock()
 	}
 	return nil, NewPluginError("runtime", "GetResourceInfo", "Resource info not found: "+name, nil)
 }
@@ -888,7 +1039,16 @@ func (r *simpleRuntime) ListResources() []*ResourceInfo {
 
 	var resources []*ResourceInfo
 	for _, info := range r.resourceInfo {
-		resources = append(resources, info)
+		// Return deep-ish copies to avoid external mutation of internal state
+		copy := *info
+		if info.Metadata != nil {
+			md := make(map[string]any, len(info.Metadata))
+			for k, v := range info.Metadata {
+				md[k] = v
+			}
+			copy.Metadata = md
+		}
+		resources = append(resources, &copy)
 	}
 	return resources
 }
@@ -898,51 +1058,63 @@ func (r *simpleRuntime) CleanupResources(pluginID string) error {
 	if pluginID == "" {
 		return fmt.Errorf("plugin ID cannot be empty")
 	}
+	// Permission check: only the owner (current plugin context) or privileged (no context) can cleanup
+	r.contextMu.RLock()
+	caller := r.currentPluginContext
+	r.contextMu.RUnlock()
+	if caller != "" && caller != pluginID {
+		return fmt.Errorf("permission denied: plugin %q cannot cleanup resources of plugin %q", caller, pluginID)
+	}
+
+	// Phase 1: collect and detach resources under short lock
+	type resItem struct{ name string; res any }
+	var privItems []resItem
+	var sharedItems []resItem
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	var errors []error
-	var cleanedPrivate, cleanedShared int
-	var cleanupStats = make(map[string]interface{})
-
-	// Clean up private resources
 	if pluginResources, exists := r.privateResources[pluginID]; exists {
 		for resourceName, resource := range pluginResources {
-			// Attempt graceful cleanup if resource implements cleanup interface
-			if err := r.cleanupResourceGracefully(resourceName, resource); err != nil {
-				errors = append(errors, fmt.Errorf("failed to cleanup private resource %s: %w", resourceName, err))
-				cleanupStats[fmt.Sprintf("private_%s_error", resourceName)] = err.Error()
-			} else {
-				cleanupStats[fmt.Sprintf("private_%s_success", resourceName)] = true
-			}
-			// Private resources are recorded with composite key: pluginID:name
+			privItems = append(privItems, resItem{name: resourceName, res: resource})
+			// Remove resource info (private uses composite key)
 			delete(r.resourceInfo, fmt.Sprintf("%s:%s", pluginID, resourceName))
-			cleanedPrivate++
 		}
 		delete(r.privateResources, pluginID)
 	}
-
-	// Clean up shared resources (if the plugin is the owner)
-	var sharedResourcesToRemove []string
+	// Identify and detach shared resources owned by this plugin
 	for name, info := range r.resourceInfo {
 		if info.PluginID == pluginID && !info.IsPrivate {
-			sharedResourcesToRemove = append(sharedResourcesToRemove, name)
+			if resource, exists := r.sharedResources[name]; exists {
+				sharedItems = append(sharedItems, resItem{name: name, res: resource})
+				delete(r.sharedResources, name)
+			}
+			delete(r.resourceInfo, name)
 		}
 	}
+	r.mu.Unlock()
 
-	for _, name := range sharedResourcesToRemove {
-		if resource, exists := r.sharedResources[name]; exists {
-			if err := r.cleanupResourceGracefully(name, resource); err != nil {
-				errors = append(errors, fmt.Errorf("failed to cleanup shared resource %s: %w", name, err))
-				cleanupStats[fmt.Sprintf("shared_%s_error", name)] = err.Error()
-			} else {
-				cleanupStats[fmt.Sprintf("shared_%s_success", name)] = true
-			}
-			cleanedShared++
+	// Phase 2: cleanup outside lock
+	var errors []error
+	var cleanedPrivate, cleanedShared int
+	cleanupStats := make(map[string]interface{})
+
+	for _, it := range privItems {
+		if err := r.cleanupResourceGracefully(it.name, it.res); err != nil {
+			errors = append(errors, fmt.Errorf("failed to cleanup private resource %s: %w", it.name, err))
+			cleanupStats[fmt.Sprintf("private_%s_error", it.name)] = err.Error()
+		} else {
+			cleanupStats[fmt.Sprintf("private_%s_success", it.name)] = true
 		}
-		delete(r.sharedResources, name)
-		delete(r.resourceInfo, name)
+		cleanedPrivate++
+	}
+
+	for _, it := range sharedItems {
+		if err := r.cleanupResourceGracefully(it.name, it.res); err != nil {
+			errors = append(errors, fmt.Errorf("failed to cleanup shared resource %s: %w", it.name, err))
+			cleanupStats[fmt.Sprintf("shared_%s_error", it.name)] = err.Error()
+		} else {
+			cleanupStats[fmt.Sprintf("shared_%s_success", it.name)] = true
+		}
+		cleanedShared++
 	}
 
 	// Record cleanup statistics
@@ -972,6 +1144,13 @@ func (r *simpleRuntime) cleanupResourceGracefully(name string, resource any) err
 		return nil
 	}
 
+	// Guard against panics during cleanup
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Warnf("Panic during resource cleanup %s: %v", name, rec)
+		}
+	}()
+
 	// Record cleanup start
 	startTime := time.Now()
 	defer func() {
@@ -981,22 +1160,52 @@ func (r *simpleRuntime) cleanupResourceGracefully(name string, resource any) err
 		}
 	}()
 
-	// Check if resource implements common cleanup interfaces
+	// Prefer context-aware graceful shutdown with a short timeout
+	cleanupTimeout := 3 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	defer cancel()
+
+	// Context-aware interfaces first (graceful)
 	switch v := resource.(type) {
-	case interface{ Close() error }:
-		if err := v.Close(); err != nil {
-			log.Errorf("Failed to close resource %s: %v", name, err)
+	case interface{ ShutdownContext(context.Context) error }:
+		if err := v.ShutdownContext(ctx); err != nil {
+			log.Errorf("Failed to shutdown (ctx) resource %s: %v", name, err)
 			return err
 		}
-		log.Debugf("Successfully closed resource %s", name)
+		log.Debugf("Successfully shutdown (ctx) resource %s", name)
 		return nil
-	case interface{ Cleanup() error }:
-		if err := v.Cleanup(); err != nil {
-			log.Errorf("Failed to cleanup resource %s: %v", name, err)
+	case interface{ StopContext(context.Context) error }:
+		if err := v.StopContext(ctx); err != nil {
+			log.Errorf("Failed to stop (ctx) resource %s: %v", name, err)
 			return err
 		}
-		log.Debugf("Successfully cleaned up resource %s", name)
+		log.Debugf("Successfully stopped (ctx) resource %s", name)
 		return nil
+	case interface{ CloseContext(context.Context) error }:
+		if err := v.CloseContext(ctx); err != nil {
+			log.Errorf("Failed to close (ctx) resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully closed (ctx) resource %s", name)
+		return nil
+	case interface{ CleanupContext(context.Context) error }:
+		if err := v.CleanupContext(ctx); err != nil {
+			log.Errorf("Failed to cleanup (ctx) resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully cleaned up (ctx) resource %s", name)
+		return nil
+	case interface{ DestroyContext(context.Context) error }:
+		if err := v.DestroyContext(ctx); err != nil {
+			log.Errorf("Failed to destroy (ctx) resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully destroyed (ctx) resource %s", name)
+		return nil
+	}
+
+	// Then non-context graceful methods (ordered by gracefulness)
+	switch v := resource.(type) {
 	case interface{ Shutdown() error }:
 		if err := v.Shutdown(); err != nil {
 			log.Errorf("Failed to shutdown resource %s: %v", name, err)
@@ -1011,6 +1220,13 @@ func (r *simpleRuntime) cleanupResourceGracefully(name string, resource any) err
 		}
 		log.Debugf("Successfully stopped resource %s", name)
 		return nil
+	case interface{ Cleanup() error }:
+		if err := v.Cleanup(); err != nil {
+			log.Errorf("Failed to cleanup resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully cleaned up resource %s", name)
+		return nil
 	case interface{ Destroy() error }:
 		if err := v.Destroy(); err != nil {
 			log.Errorf("Failed to destroy resource %s: %v", name, err)
@@ -1018,19 +1234,44 @@ func (r *simpleRuntime) cleanupResourceGracefully(name string, resource any) err
 		}
 		log.Debugf("Successfully destroyed resource %s", name)
 		return nil
+	case interface{ Release() error }:
+		if err := v.Release(); err != nil {
+			log.Errorf("Failed to release resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully released resource %s", name)
+		return nil
+	case interface{ Close() error }:
+		if err := v.Close(); err != nil {
+			log.Errorf("Failed to close resource %s: %v", name, err)
+			return err
+		}
+		log.Debugf("Successfully closed resource %s", name)
+		return nil
+	case context.CancelFunc:
+		v()
+		log.Debugf("Successfully invoked cancel func for resource %s", name)
+		return nil
+	case func():
+		// Generic function used as cleanup callback
+		v()
+		log.Debugf("Successfully invoked cleanup func for resource %s", name)
+		return nil
 	}
 
-	// For channels, attempt to close them safely
+	// For channels, attempt to close them safely (only non-recv-only)
 	if val := reflect.ValueOf(resource); val.Kind() == reflect.Chan {
-		// Use reflection to safely close channel
-		defer func() {
-			if r := recover(); r != nil {
-				log.Warnf("Panic while closing channel resource %s: %v", name, r)
-			}
-		}()
-		val.Close()
-		log.Debugf("Successfully closed channel resource %s", name)
-		return nil
+		// Ensure channel is not receive-only before closing
+		if val.Type().ChanDir() != reflect.RecvDir {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warnf("Panic while closing channel resource %s: %v", name, r)
+				}
+			}()
+			val.Close()
+			log.Debugf("Successfully closed channel resource %s", name)
+			return nil
+		}
 	}
 
 	// For other types of resources, log warning but don't error

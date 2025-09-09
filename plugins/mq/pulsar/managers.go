@@ -17,6 +17,7 @@ type HealthChecker struct {
 	errorCount int
 	lastError  error
 	mu         sync.RWMutex
+	stopped    bool
 }
 
 // NewHealthChecker creates a new health checker
@@ -35,7 +36,19 @@ func (h *HealthChecker) Start() {
 
 // Stop stops the health checker
 func (h *HealthChecker) Stop() {
-	close(h.stopChan)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.stopped {
+		return
+	}
+	h.stopped = true
+	select {
+	case <-h.stopChan:
+		// already closed
+		return
+	default:
+		close(h.stopChan)
+	}
 }
 
 // IsHealthy returns the health status
@@ -98,6 +111,7 @@ type ConnectionManager struct {
 	connected bool
 	stopChan  chan struct{}
 	mu        sync.RWMutex
+	stopped   bool
 }
 
 // NewConnectionManager creates a new connection manager
@@ -121,8 +135,19 @@ func (c *ConnectionManager) Start() {
 func (c *ConnectionManager) Stop() {
 	c.mu.Lock()
 	c.connected = false
+	if c.stopped {
+		c.mu.Unlock()
+		return
+	}
+	c.stopped = true
+	ch := c.stopChan
 	c.mu.Unlock()
-	close(c.stopChan)
+	select {
+	case <-ch:
+		// already closed
+	default:
+		close(ch)
+	}
 	log.Infof("Pulsar connection manager stopped")
 }
 

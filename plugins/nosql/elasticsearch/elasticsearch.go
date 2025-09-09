@@ -57,6 +57,11 @@ func (p *PlugElasticsearch) Start(plugin plugins.Plugin) error {
 		return fmt.Errorf("failed to test elasticsearch connection: %w", err)
 	}
 
+	// Ensure shared quit channel is initialized when any background task is enabled
+	if p.statsQuit == nil && (p.conf.EnableMetrics || p.conf.EnableHealthCheck) {
+		p.statsQuit = make(chan struct{})
+	}
+
 	log.Info("elasticsearch plugin started successfully")
 	return nil
 }
@@ -163,7 +168,9 @@ func (p *PlugElasticsearch) testConnection() error {
 
 // startMetricsCollection Start metrics collection
 func (p *PlugElasticsearch) startMetricsCollection() {
-	p.statsQuit = make(chan struct{})
+	if p.statsQuit == nil {
+		p.statsQuit = make(chan struct{})
+	}
 	p.statsWG.Add(1)
 
 	go func() {
@@ -185,7 +192,7 @@ func (p *PlugElasticsearch) startMetricsCollection() {
 // stopMetricsCollection Stop metrics collection
 func (p *PlugElasticsearch) stopMetricsCollection() {
 	if p.statsQuit != nil {
-		close(p.statsQuit)
+		p.closeStatsQuitOnce()
 		p.statsWG.Wait()
 	}
 }
@@ -221,7 +228,14 @@ func (p *PlugElasticsearch) collectMetrics() {
 func (p *PlugElasticsearch) startHealthCheck() {
 	interval := p.conf.HealthCheckInterval.AsDuration()
 
+	// Ensure quit channel exists
+	if p.statsQuit == nil {
+		p.statsQuit = make(chan struct{})
+	}
+
+	p.statsWG.Add(1)
 	go func() {
+		defer p.statsWG.Done()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
@@ -240,25 +254,53 @@ func (p *PlugElasticsearch) startHealthCheck() {
 
 // stopHealthCheck Stop health check
 func (p *PlugElasticsearch) stopHealthCheck() {
-	// Health check uses the same quit channel
+	if p.statsQuit != nil {
+		p.closeStatsQuitOnce()
+		// Wait for all goroutines (metrics + health) to exit, set timeout to avoid infinite wait
+		done := make(chan struct{})
+		go func() {
+			p.statsWG.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+			log.Infof("elasticsearch background tasks stopped successfully")
+		case <-time.After(10 * time.Second):
+			log.Warnf("timeout waiting for elasticsearch background tasks to stop")
+		}
+	}
+}
+
+// closeStatsQuitOnce closes statsQuit only once in a thread-safe way
+func (p *PlugElasticsearch) closeStatsQuitOnce() {
+	p.statsMu.Lock()
+	defer p.statsMu.Unlock()
+	if !p.statsClosed && p.statsQuit != nil {
+		close(p.statsQuit)
+		p.statsClosed = true
+	}
 }
 
 // checkHealth Perform health check
 func (p *PlugElasticsearch) checkHealth() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+    // 使用轻量 Ping 进行健康检查，避免 Cluster Health 的较高开销
+    ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+    defer cancel()
 
-	res, err := p.client.Cluster.Health(p.client.Cluster.Health.WithContext(ctx))
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
+    start := time.Now()
+    res, err := p.client.Ping(p.client.Ping.WithContext(ctx))
+    if err != nil {
+        return err
+    }
+    defer res.Body.Close()
+    latency := time.Since(start)
 
-	if res.IsError() {
-		return fmt.Errorf("health check failed with status: %d", res.StatusCode)
-	}
+    if res.IsError() {
+        return fmt.Errorf("ping health check failed: status=%d, latency=%s", res.StatusCode, latency)
+    }
 
-	return nil
+    log.Debugf("elasticsearch ping ok: status=%d, latency=%s", res.StatusCode, latency)
+    return nil
 }
 
 // GetClient Get Elasticsearch client

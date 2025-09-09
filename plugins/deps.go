@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	semver "github.com/Masterminds/semver/v3"
 )
 
 // DependencyType defines dependency types
@@ -374,29 +376,76 @@ func (dg *DependencyGraph) CheckVersionConflicts() ([]VersionConflict, error) {
 // checkVersionConstraint checks a single version constraint
 func (dg *DependencyGraph) checkVersionConstraint(plugin Plugin, dep *Dependency, depPlugin Plugin) *VersionConflict {
 	constraint := dep.VersionConstraint
-	depVersion := depPlugin.Version()
+	depVersionStr := depPlugin.Version()
+
+	// Try parse dependency version as semver; if fail, fall back to string compares
+	depVer, depErr := semver.NewVersion(normalizeSemver(depVersionStr))
 
 	// Check exact version
-	if constraint.ExactVersion != "" && constraint.ExactVersion != depVersion {
-		return &VersionConflict{
-			PluginID:         plugin.ID(),
-			DependencyID:     dep.ID,
-			RequiredVersion:  constraint.ExactVersion,
-			AvailableVersion: depVersion,
-			ConflictType:     "exact_version_mismatch",
-			Description: fmt.Sprintf("Plugin %s requires exact version %s of %s, but %s is available",
-				plugin.ID(), constraint.ExactVersion, dep.ID, depVersion),
+	if constraint.ExactVersion != "" {
+		exactVer, exactErr := semver.NewVersion(normalizeSemver(constraint.ExactVersion))
+		if depErr == nil && exactErr == nil {
+			if !depVer.Equal(exactVer) {
+				return &VersionConflict{
+					PluginID:         plugin.ID(),
+					DependencyID:     dep.ID,
+					RequiredVersion:  constraint.ExactVersion,
+					AvailableVersion: depVersionStr,
+					ConflictType:     "exact_version_mismatch",
+					Description: fmt.Sprintf("Plugin %s requires exact version %s of %s, but %s is available",
+						plugin.ID(), constraint.ExactVersion, dep.ID, depVersionStr),
+				}
+			}
+		} else {
+			if constraint.ExactVersion != depVersionStr {
+				return &VersionConflict{
+					PluginID:         plugin.ID(),
+					DependencyID:     dep.ID,
+					RequiredVersion:  constraint.ExactVersion,
+					AvailableVersion: depVersionStr,
+					ConflictType:     "exact_version_mismatch",
+					Description: fmt.Sprintf("Plugin %s requires exact version %s of %s, but %s is available",
+						plugin.ID(), constraint.ExactVersion, dep.ID, depVersionStr),
+				}
+			}
 		}
 	}
 
 	// Check excluded versions
 	for _, excludedVersion := range constraint.ExcludeVersions {
-		if excludedVersion == depVersion {
+		if excludedVersion == "" {
+			continue
+		}
+		if depErr == nil {
+			if exVer, exErr := semver.NewVersion(normalizeSemver(excludedVersion)); exErr == nil {
+				if depVer.Equal(exVer) {
+					return &VersionConflict{
+						PluginID:         plugin.ID(),
+						DependencyID:     dep.ID,
+						RequiredVersion:  "any version except " + excludedVersion,
+						AvailableVersion: depVersionStr,
+						ConflictType:     "excluded_version",
+						Description: fmt.Sprintf("Plugin %s excludes version %s of %s",
+							plugin.ID(), excludedVersion, dep.ID),
+					}
+				}
+			} else if excludedVersion == depVersionStr { // fallback
+				return &VersionConflict{
+					PluginID:         plugin.ID(),
+					DependencyID:     dep.ID,
+					RequiredVersion:  "any version except " + excludedVersion,
+					AvailableVersion: depVersionStr,
+					ConflictType:     "excluded_version",
+					Description: fmt.Sprintf("Plugin %s excludes version %s of %s",
+						plugin.ID(), excludedVersion, dep.ID),
+				}
+			}
+		} else if excludedVersion == depVersionStr { // fallback
 			return &VersionConflict{
 				PluginID:         plugin.ID(),
 				DependencyID:     dep.ID,
 				RequiredVersion:  "any version except " + excludedVersion,
-				AvailableVersion: depVersion,
+				AvailableVersion: depVersionStr,
 				ConflictType:     "excluded_version",
 				Description: fmt.Sprintf("Plugin %s excludes version %s of %s",
 					plugin.ID(), excludedVersion, dep.ID),
@@ -404,33 +453,105 @@ func (dg *DependencyGraph) checkVersionConstraint(plugin Plugin, dep *Dependency
 		}
 	}
 
-	// Check version range (version comparison logic needs to be implemented here)
-	// For simplicity, only basic string comparison is done here
-	if constraint.MinVersion != "" && depVersion < constraint.MinVersion {
-		return &VersionConflict{
-			PluginID:         plugin.ID(),
-			DependencyID:     dep.ID,
-			RequiredVersion:  ">= " + constraint.MinVersion,
-			AvailableVersion: depVersion,
-			ConflictType:     "version_too_low",
-			Description: fmt.Sprintf("Plugin %s requires version >= %s of %s, but %s is available",
-				plugin.ID(), constraint.MinVersion, dep.ID, depVersion),
+	// Check MinVersion
+	if constraint.MinVersion != "" {
+		if depErr == nil {
+			if minVer, minErr := semver.NewVersion(normalizeSemver(constraint.MinVersion)); minErr == nil {
+				if depVer.LessThan(minVer) {
+					return &VersionConflict{
+						PluginID:         plugin.ID(),
+						DependencyID:     dep.ID,
+						RequiredVersion:  ">= " + constraint.MinVersion,
+						AvailableVersion: depVersionStr,
+						ConflictType:     "version_too_low",
+						Description: fmt.Sprintf("Plugin %s requires version >= %s of %s, but %s is available",
+							plugin.ID(), constraint.MinVersion, dep.ID, depVersionStr),
+					}
+				}
+			} else if depVersionStr < constraint.MinVersion { // fallback
+				return &VersionConflict{
+					PluginID:         plugin.ID(),
+					DependencyID:     dep.ID,
+					RequiredVersion:  ">= " + constraint.MinVersion,
+					AvailableVersion: depVersionStr,
+					ConflictType:     "version_too_low",
+					Description: fmt.Sprintf("Plugin %s requires version >= %s of %s, but %s is available",
+						plugin.ID(), constraint.MinVersion, dep.ID, depVersionStr),
+				}
+			}
+		} else if depVersionStr < constraint.MinVersion { // fallback
+			return &VersionConflict{
+				PluginID:         plugin.ID(),
+				DependencyID:     dep.ID,
+				RequiredVersion:  ">= " + constraint.MinVersion,
+				AvailableVersion: depVersionStr,
+				ConflictType:     "version_too_low",
+				Description: fmt.Sprintf("Plugin %s requires version >= %s of %s, but %s is available",
+					plugin.ID(), constraint.MinVersion, dep.ID, depVersionStr),
+			}
 		}
 	}
 
-	if constraint.MaxVersion != "" && depVersion > constraint.MaxVersion {
-		return &VersionConflict{
-			PluginID:         plugin.ID(),
-			DependencyID:     dep.ID,
-			RequiredVersion:  "<= " + constraint.MaxVersion,
-			AvailableVersion: depVersion,
-			ConflictType:     "version_too_high",
-			Description: fmt.Sprintf("Plugin %s requires version <= %s of %s, but %s is available",
-				plugin.ID(), constraint.MaxVersion, dep.ID, depVersion),
+	// Check MaxVersion
+	if constraint.MaxVersion != "" {
+		if depErr == nil {
+			if maxVer, maxErr := semver.NewVersion(normalizeSemver(constraint.MaxVersion)); maxErr == nil {
+				if depVer.GreaterThan(maxVer) {
+					return &VersionConflict{
+						PluginID:         plugin.ID(),
+						DependencyID:     dep.ID,
+						RequiredVersion:  "<= " + constraint.MaxVersion,
+						AvailableVersion: depVersionStr,
+						ConflictType:     "version_too_high",
+						Description: fmt.Sprintf("Plugin %s requires version <= %s of %s, but %s is available",
+							plugin.ID(), constraint.MaxVersion, dep.ID, depVersionStr),
+					}
+				}
+			} else if depVersionStr > constraint.MaxVersion { // fallback
+				return &VersionConflict{
+					PluginID:         plugin.ID(),
+					DependencyID:     dep.ID,
+					RequiredVersion:  "<= " + constraint.MaxVersion,
+					AvailableVersion: depVersionStr,
+					ConflictType:     "version_too_high",
+					Description: fmt.Sprintf("Plugin %s requires version <= %s of %s, but %s is available",
+						plugin.ID(), constraint.MaxVersion, dep.ID, depVersionStr),
+				}
+			}
+		} else if depVersionStr > constraint.MaxVersion { // fallback
+			return &VersionConflict{
+				PluginID:         plugin.ID(),
+				DependencyID:     dep.ID,
+				RequiredVersion:  "<= " + constraint.MaxVersion,
+				AvailableVersion: depVersionStr,
+				ConflictType:     "version_too_high",
+				Description: fmt.Sprintf("Plugin %s requires version <= %s of %s, but %s is available",
+					plugin.ID(), constraint.MaxVersion, dep.ID, depVersionStr),
+			}
 		}
 	}
 
 	return nil
+}
+
+// normalizeSemver normalizes version string to semver-like form for better parsing robustness.
+// It appends missing .0 components when only major or major.minor provided.
+func normalizeSemver(ver string) string {
+	s := strings.TrimSpace(ver)
+	if s == "" {
+		return s
+	}
+	t := s
+	if strings.HasPrefix(t, "v") || strings.HasPrefix(t, "V") {
+		t = t[1:]
+	}
+	dotCnt := strings.Count(t, ".")
+	if dotCnt == 0 {
+		t = t + ".0.0"
+	} else if dotCnt == 1 {
+		t = t + ".0"
+	}
+	return t
 }
 
 // ValidateDependencies validates whether all dependencies are satisfied

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -63,6 +62,8 @@ func (app *ProductionApp) initHTTPServer() *khttp.Server {
 	opts := []khttp.ServerOption{
 		khttp.Middleware(
 			recovery.Recovery(),
+		),
+		khttp.Filter(
 			app.loggingMiddleware(),
 			app.rateLimitMiddleware(),
 		),
@@ -574,10 +575,6 @@ func main() {
 	<-quit
 
 	log.Info("Shutting down server...")
-
-	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	if err := kratosApp.Stop(); err != nil {
 		log.Error(err)
