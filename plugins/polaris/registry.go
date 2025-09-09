@@ -6,9 +6,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/plugins/polaris/conf"
 	"github.com/polarismesh/polaris-go/api"
 	"github.com/polarismesh/polaris-go/pkg/model"
 )
@@ -48,8 +50,8 @@ func (p *PlugPolaris) NewServiceDiscovery() registry.Discovery {
 		return nil
 	}
 
-	// Return Polaris-based service discovery client
-	return NewPolarisDiscovery(consumerAPI, p.conf.Namespace)
+	// Return Polaris-based service discovery client with configurable watch interval and retry policy
+	return NewPolarisDiscovery(consumerAPI, p.conf.Namespace, p.conf)
 }
 
 // parseEndpoints parses endpoint information
@@ -208,16 +210,46 @@ func (r *PolarisRegistrar) Watch(ctx context.Context, name string) (registry.Wat
 // PolarisDiscovery Polaris-based service discovery client
 // Implements Kratos registry.Discovery interface
 type PolarisDiscovery struct {
-	consumer  api.ConsumerAPI
-	namespace string
+	consumer       api.ConsumerAPI
+	namespace      string
+	watchInterval  time.Duration
+	enableRetry    bool
+	maxRetryTimes  int
+	baseRetry      time.Duration
 }
 
 // NewPolarisDiscovery creates new Polaris discovery client
-func NewPolarisDiscovery(consumer api.ConsumerAPI, namespace string) *PolarisDiscovery {
-	return &PolarisDiscovery{
+func NewPolarisDiscovery(consumer api.ConsumerAPI, namespace string, cfg *conf.Polaris) *PolarisDiscovery {
+	pd := &PolarisDiscovery{
 		consumer:  consumer,
 		namespace: namespace,
 	}
+	// Configure watch interval and retry policy from cfg (with sane defaults)
+	if cfg != nil {
+		if cfg.HealthCheckInterval != nil && cfg.HealthCheckInterval.AsDuration() > 0 {
+			pd.watchInterval = cfg.HealthCheckInterval.AsDuration()
+		}
+		pd.enableRetry = cfg.EnableRetry
+		if cfg.MaxRetryTimes > 0 {
+			pd.maxRetryTimes = int(cfg.MaxRetryTimes)
+		} else {
+			pd.maxRetryTimes = 3
+		}
+		if cfg.RetryInterval != nil && cfg.RetryInterval.AsDuration() > 0 {
+			pd.baseRetry = cfg.RetryInterval.AsDuration()
+		} else {
+			pd.baseRetry = 2 * time.Second
+		}
+	} else {
+		pd.watchInterval = 5 * time.Second
+		pd.enableRetry = true
+		pd.maxRetryTimes = 3
+		pd.baseRetry = 2 * time.Second
+	}
+	if pd.watchInterval <= 0 {
+		pd.watchInterval = 5 * time.Second
+	}
+	return pd
 }
 
 // GetService gets service instance list
@@ -265,31 +297,135 @@ func (d *PolarisDiscovery) Watch(ctx context.Context, name string) (registry.Wat
 	if err != nil {
 		return nil, fmt.Errorf("failed to watch service %s: %w", name, err)
 	}
-
+	// create child context to allow Stop() cancel
+	cctx, cancel := context.WithCancel(ctx)
 	return &PolarisWatcher{
-		ctx:      ctx,
-		name:     name,
-		response: resp,
+		ctx:          cctx,
+		cancel:       cancel,
+		name:         name,
+		response:     resp,
+		consumer:     d.consumer,
+		namespace:    d.namespace,
+		pollInterval: d.watchInterval,
+		enableRetry:  d.enableRetry,
+		maxRetries:   d.maxRetryTimes,
+		baseRetry:    d.baseRetry,
 	}, nil
 }
 
 // PolarisWatcher Polaris service watcher
 // Implements Kratos registry.Watcher interface
 type PolarisWatcher struct {
-	ctx      context.Context
-	name     string
-	response *model.WatchServiceResponse
+	ctx          context.Context
+	cancel       context.CancelFunc
+	name         string
+	response     *model.WatchServiceResponse
+	consumer     api.ConsumerAPI
+	namespace    string
+	lastKey      string
+	pollInterval time.Duration
+	enableRetry  bool
+	maxRetries   int
+	baseRetry    time.Duration
 }
 
 // Next gets next service change event
 func (w *PolarisWatcher) Next() ([]*registry.ServiceInstance, error) {
-	if w.response == nil {
-		return []*registry.ServiceInstance{}, nil
+	// 轮询回退：使用可配置的间隔，错误时指数退避并记录日志
+	interval := w.pollInterval
+	if interval <= 0 {
+		interval = 5 * time.Second
 	}
-	return []*registry.ServiceInstance{}, nil
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	attempt := 0
+
+	for {
+		select {
+		case <-w.ctx.Done():
+			return nil, w.ctx.Err()
+		case <-ticker.C:
+			if w.consumer == nil {
+				log.Warnf("polaris watcher consumer is nil, service=%s", w.name)
+				return []*registry.ServiceInstance{}, nil
+			}
+			req := &api.GetInstancesRequest{
+				GetInstancesRequest: model.GetInstancesRequest{
+					Service:   w.name,
+					Namespace: w.namespace,
+				},
+			}
+			resp, err := w.consumer.GetInstances(req)
+			if err != nil {
+				if w.enableRetry {
+					// 指数退避，最大不超过 30s
+					attempt++
+					backoff := w.baseRetry
+					if backoff <= 0 {
+						backoff = 2 * time.Second
+					}
+					for i := 1; i < attempt; i++ {
+						backoff *= 2
+						if backoff > 30*time.Second {
+							backoff = 30 * time.Second
+							break
+						}
+					}
+					if attempt > w.maxRetries && w.maxRetries > 0 {
+						log.Errorf("polaris watcher retries exceeded: service=%s, err=%v", w.name, err)
+						return nil, fmt.Errorf("watch get instances failed after retries: %w", err)
+					}
+					log.Warnf("polaris watcher get instances failed, retrying in %s: service=%s, attempt=%d, err=%v", backoff, w.name, attempt, err)
+					select {
+					case <-w.ctx.Done():
+						return nil, w.ctx.Err()
+					case <-time.After(backoff):
+						continue
+					}
+				}
+				return nil, fmt.Errorf("failed to get service instances for %s: %w", w.name, err)
+			}
+			attempt = 0 // reset after success
+
+			// Build current key
+			var keyBuilder strings.Builder
+			for _, inst := range resp.Instances {
+				keyBuilder.WriteString(inst.GetId())
+				keyBuilder.WriteString("|")
+				keyBuilder.WriteString(inst.GetHost())
+				keyBuilder.WriteString(":")
+				keyBuilder.WriteString(fmt.Sprintf("%d", inst.GetPort()))
+				keyBuilder.WriteString("|")
+				keyBuilder.WriteString(inst.GetVersion())
+				keyBuilder.WriteString(";")
+			}
+			curKey := keyBuilder.String()
+			if curKey != w.lastKey {
+				w.lastKey = curKey
+				// Convert to registry.ServiceInstance
+				var instances []*registry.ServiceInstance
+				for _, instance := range resp.Instances {
+					endpoint := fmt.Sprintf("%s://%s:%d", instance.GetProtocol(), instance.GetHost(), instance.GetPort())
+					instances = append(instances, &registry.ServiceInstance{
+						ID:        instance.GetId(),
+						Name:      w.name,
+						Version:   instance.GetVersion(),
+						Metadata:  instance.GetMetadata(),
+						Endpoints: []string{endpoint},
+					})
+				}
+				log.Infof("polaris watcher detected change: service=%s, instances=%d", w.name, len(instances))
+				return instances, nil
+			}
+		}
+	}
 }
 
 // Stop stops watching
 func (w *PolarisWatcher) Stop() error {
+	if w.cancel != nil {
+		w.cancel()
+	}
 	return nil
 }

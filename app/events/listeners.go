@@ -31,6 +31,24 @@ func NewEventListenerManager() *EventListenerManager {
 	}
 }
 
+// AddListenerWithContext adds a new event listener bound to a context.
+// When ctx is canceled, the listener is automatically removed to avoid leaks.
+func (m *EventListenerManager) AddListenerWithContext(ctx context.Context, id string, filter *EventFilter, handler func(LynxEvent), busType BusType) error {
+	if ctx == nil {
+		// Fallback to normal AddListener if ctx is nil
+		return m.AddListener(id, filter, handler, busType)
+	}
+	if err := m.AddListener(id, filter, handler, busType); err != nil {
+		return err
+	}
+	// Detach goroutine to observe ctx.Done() and cleanup listener
+	go func() {
+		<-ctx.Done()
+		_ = m.RemoveListener(id)
+	}()
+	return nil
+}
+
 // AddListener adds a new event listener
 func (m *EventListenerManager) AddListener(id string, filter *EventFilter, handler func(LynxEvent), busType BusType) error {
 	m.mu.Lock()
@@ -239,6 +257,11 @@ func GetGlobalListenerManager() *EventListenerManager {
 // AddGlobalListener adds a listener to the global listener manager
 func AddGlobalListener(id string, filter *EventFilter, handler func(LynxEvent), busType BusType) error {
 	return GetGlobalListenerManager().AddListener(id, filter, handler, busType)
+}
+
+// AddGlobalListenerWithContext adds a listener to the global listener manager and auto-removes on ctx cancellation.
+func AddGlobalListenerWithContext(ctx context.Context, id string, filter *EventFilter, handler func(LynxEvent), busType BusType) error {
+	return GetGlobalListenerManager().AddListenerWithContext(ctx, id, filter, handler, busType)
 }
 
 // RemoveGlobalListener removes a listener from the global listener manager

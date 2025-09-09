@@ -35,8 +35,36 @@ type EventMonitor struct {
 	lastError  error
 	errorCount int64
 
+	// Enhanced observability
+	droppedByReason      map[string]int64
+	publishedByPriority  map[Priority]int64
+
 	// Mutex for thread safety
 	mu sync.RWMutex
+}
+
+// copyReasonBuckets returns a shallow copy to avoid leaking internal map
+func copyReasonBuckets(in map[string]int64) map[string]int64 {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]int64, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+// copyPriorityBuckets returns a shallow copy to avoid leaking internal map
+func copyPriorityBuckets(in map[Priority]int64) map[Priority]int64 {
+	if in == nil {
+		return nil
+	}
+	out := make(map[Priority]int64, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // NewEventMonitor creates a new event monitor
@@ -47,6 +75,8 @@ func NewEventMonitor() *EventMonitor {
 		minLatency: time.Hour, // Start with a high value
 		sampleCap:  512,       // default window size
 		latSamples: make([]int64, 512),
+		droppedByReason:     make(map[string]int64),
+		publishedByPriority: make(map[Priority]int64),
 	}
 }
 
@@ -83,6 +113,14 @@ func (m *EventMonitor) IncrementPublished() {
 	m.totalEventsPublished++
 }
 
+// IncrementPublishedByPriority increments published counter and bucket by priority
+func (m *EventMonitor) IncrementPublishedByPriority(p Priority) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.totalEventsPublished++
+	m.publishedByPriority[p] = m.publishedByPriority[p] + 1
+}
+
 // IncrementProcessed increments the processed events counter
 func (m *EventMonitor) IncrementProcessed() {
 	m.mu.Lock()
@@ -99,12 +137,24 @@ func (m *EventMonitor) IncrementDropped() {
 	m.totalEventsDropped++
 }
 
+// IncrementDroppedByReason increments dropped counter and bucket by reason
+func (m *EventMonitor) IncrementDroppedByReason(reason string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.totalEventsDropped++
+	if reason == "" {
+		reason = "unknown"
+	}
+	m.droppedByReason[reason] = m.droppedByReason[reason] + 1
+}
+
 // IncrementFailed increments the failed events counter
 func (m *EventMonitor) IncrementFailed() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.totalEventsFailed++
+	m.errorCount++
 }
 
 // UpdateLatency updates latency metrics
@@ -173,6 +223,8 @@ func (m *EventMonitor) GetMetrics() map[string]interface{} {
 		"total_events_processed": m.totalEventsProcessed,
 		"total_events_dropped":   m.totalEventsDropped,
 		"total_events_failed":    m.totalEventsFailed,
+		"published_by_priority":  copyPriorityBuckets(m.publishedByPriority),
+		"dropped_by_reason":      copyReasonBuckets(m.droppedByReason),
 		"avg_latency_ms":         m.avgLatency.Milliseconds(),
 		"max_latency_ms":         m.maxLatency.Milliseconds(),
 		"min_latency_ms":         m.minLatency.Milliseconds(),

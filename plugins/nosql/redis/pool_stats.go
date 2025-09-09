@@ -7,7 +7,9 @@ import (
 
 // startPoolStatsCollector periodically collects PoolStats and reports to Prometheus
 func (r *PlugRedis) startPoolStatsCollector() {
-	r.statsQuit = make(chan struct{})
+    if r.statsQuit == nil {
+        r.statsQuit = make(chan struct{})
+    }
 	r.statsWG.Add(1)
 	go func() {
 		defer r.statsWG.Done()

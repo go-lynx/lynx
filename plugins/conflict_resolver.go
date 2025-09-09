@@ -333,7 +333,6 @@ func (cr *DefaultConflictResolver) detectResourceConflicts(graph *DependencyGrap
 	return conflicts
 }
 
-// generateResourceConflictSolutions generates resource conflict solutions
 func (cr *DefaultConflictResolver) generateResourceConflictSolutions(name string, pluginIDs []string) []ConflictSolution {
 	var solutions []ConflictSolution
 
@@ -341,12 +340,12 @@ func (cr *DefaultConflictResolver) generateResourceConflictSolutions(name string
 	solutions = append(solutions, ConflictSolution{
 		ID:          "rename_plugin",
 		Type:        SolutionTypeConfigure,
-		Description: fmt.Sprintf("Rename plugins to avoid name conflict: %s", name),
+		Description: "Rename plugins to avoid name conflict: " + name,
 		Actions: []SolutionAction{
 			{
 				Type:        "rename",
 				Target:      strings.Join(pluginIDs, ","),
-				Description: fmt.Sprintf("Rename plugins to have unique names"),
+				Description: "Rename plugins to have unique names",
 			},
 		},
 		Risk:     SolutionRiskLow,
@@ -357,12 +356,12 @@ func (cr *DefaultConflictResolver) generateResourceConflictSolutions(name string
 	solutions = append(solutions, ConflictSolution{
 		ID:          "remove_duplicate",
 		Type:        SolutionTypeRemove,
-		Description: fmt.Sprintf("Remove duplicate plugins with name: %s", name),
+		Description: "Remove duplicate plugins with name: " + name,
 		Actions: []SolutionAction{
 			{
 				Type:        "remove",
 				Target:      strings.Join(pluginIDs[1:], ","),
-				Description: fmt.Sprintf("Keep first plugin, remove others with same name"),
+				Description: "Keep first plugin, remove others with same name",
 			},
 		},
 		Risk:     SolutionRiskMedium,
@@ -373,12 +372,12 @@ func (cr *DefaultConflictResolver) generateResourceConflictSolutions(name string
 	solutions = append(solutions, ConflictSolution{
 		ID:          "merge_plugins",
 		Type:        SolutionTypeConfigure,
-		Description: fmt.Sprintf("Merge plugins with same name: %s", name),
+		Description: "Merge plugins with same name: " + name,
 		Actions: []SolutionAction{
 			{
 				Type:        "merge",
 				Target:      strings.Join(pluginIDs, ","),
-				Description: fmt.Sprintf("Merge functionality of duplicate plugins"),
+				Description: "Merge functionality of duplicate plugins",
 			},
 		},
 		Risk:     SolutionRiskHigh,
@@ -387,8 +386,6 @@ func (cr *DefaultConflictResolver) generateResourceConflictSolutions(name string
 
 	return solutions
 }
-
-// generateCircularDependencySolutions generates circular dependency solutions
 func (cr *DefaultConflictResolver) generateCircularDependencySolutions(cycle []string) []ConflictSolution {
 	var solutions []ConflictSolution
 

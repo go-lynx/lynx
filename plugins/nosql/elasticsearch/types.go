@@ -17,6 +17,8 @@ type PlugElasticsearch struct {
 	// Elasticsearch client instance
 	client *elasticsearch.Client
 	// Metrics collection
-	statsQuit chan struct{}
-	statsWG   sync.WaitGroup
+	statsQuit   chan struct{}
+	statsWG     sync.WaitGroup
+	statsClosed bool
+	statsMu     sync.Mutex
 }

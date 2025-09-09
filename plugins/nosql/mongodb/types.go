@@ -19,6 +19,8 @@ type PlugMongoDB struct {
 	// MongoDB database instance
 	database *mongo.Database
 	// Metrics collection
-	statsQuit chan struct{}
-	statsWG   sync.WaitGroup
+	statsQuit   chan struct{}
+	statsWG     sync.WaitGroup
+	statsClosed bool
+	statsMu     sync.Mutex
 }

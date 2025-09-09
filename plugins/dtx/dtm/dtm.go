@@ -178,9 +178,9 @@ func (d *DTMClient) NewTcc(gid string) *dtmcli.Tcc {
 		log.Errorf("DTM server URL is not configured")
 		return nil
 	}
-	// Note: TCC transactions in the new API are created using TccGlobalTransaction
-	// This method is kept for compatibility but should be used differently
-	return nil // This will be implemented using TccGlobalTransaction
+	// Not implemented with current dtmcli version. Please use TCC via dtmcli.TccGlobalTransaction.
+	log.Warnf("NewTcc is not implemented; please use TccGlobalTransaction for TCC")
+	return nil
 }
 
 // NewXa creates a new XA transaction
@@ -189,9 +189,9 @@ func (d *DTMClient) NewXa(gid string) *dtmcli.Xa {
 		log.Errorf("DTM server URL is not configured")
 		return nil
 	}
-	// Note: XA transactions are created differently in the new API
-	// We'll need to use the global transaction function
-	return nil // This will be implemented differently
+	// Not implemented with current dtmcli version. Please use XA via dtmcli.XaGlobalTransaction or equivalent helper.
+	log.Warnf("NewXa is not implemented; please use XaGlobalTransaction for XA")
+	return nil
 }
 
 // GenerateGid generates a new global transaction ID

@@ -5,6 +5,18 @@ import (
 	"time"
 )
 
+// DropPolicy represents queue overflow handling strategy
+type DropPolicy string
+
+const (
+    // DropNewest indicates dropping the incoming event when the queue is full
+    DropNewest DropPolicy = "drop_newest"
+    // DropOldest indicates dropping one oldest event in queue to make room
+    DropOldest DropPolicy = "drop_oldest"
+    // Block indicates blocking for a short time to wait for capacity, then drop if still full
+    DropBlock  DropPolicy = "block"
+)
+
 // ErrorCallback is called when events are dropped or failed
 type ErrorCallback func(event LynxEvent, reason string, err error)
 
@@ -40,6 +52,11 @@ type BusConfig struct {
 
 	// Retry bounding to avoid timer/goroutine storms
 	MaxConcurrentRetries int `yaml:"max_concurrent_retries" json:"max_concurrent_retries"`
+
+    // Drop policy and critical event protection
+    DropPolicy          DropPolicy    `yaml:"drop_policy" json:"drop_policy"`
+    ReserveForCritical  int           `yaml:"reserve_for_critical" json:"reserve_for_critical"`
+    EnqueueBlockTimeout time.Duration `yaml:"enqueue_block_timeout" json:"enqueue_block_timeout"`
 }
 
 // DegradationMode represents the degradation strategy
@@ -71,6 +88,9 @@ func DefaultBusConfig() BusConfig {
 		ThrottleRate:         1000, // 1000 events per second
 		ThrottleBurst:        100,  // 100 events burst
 		MaxConcurrentRetries: 256,
+        DropPolicy:           DropNewest,
+        ReserveForCritical:   0,
+        EnqueueBlockTimeout:  5 * time.Millisecond,
 	}
 }
 
@@ -107,6 +127,9 @@ func DefaultBusConfigs() BusConfigs {
 			ThrottleRate:         1000, // 1000 events per second
 			ThrottleBurst:        100,  // 100 events burst
 			MaxConcurrentRetries: 256,
+            DropPolicy:           DropNewest,
+            ReserveForCritical:   0,
+            EnqueueBlockTimeout:  5 * time.Millisecond,
 		},
 		System: BusConfig{
 			MaxQueue:             5000,
@@ -126,6 +149,9 @@ func DefaultBusConfigs() BusConfigs {
 			ThrottleRate:         1000, // 1000 events per second
 			ThrottleBurst:        100,  // 100 events burst
 			MaxConcurrentRetries: 256,
+            DropPolicy:           DropNewest,
+            ReserveForCritical:   0,
+            EnqueueBlockTimeout:  5 * time.Millisecond,
 		},
 		Business: BusConfig{
 			MaxQueue:             20000,
@@ -145,6 +171,9 @@ func DefaultBusConfigs() BusConfigs {
 			ThrottleRate:         1000, // 1000 events per second
 			ThrottleBurst:        100,  // 100 events burst
 			MaxConcurrentRetries: 256,
+            DropPolicy:           DropNewest,
+            ReserveForCritical:   0,
+            EnqueueBlockTimeout:  5 * time.Millisecond,
 		},
 		Health: BusConfig{
 			MaxQueue:             1000,
@@ -164,6 +193,9 @@ func DefaultBusConfigs() BusConfigs {
 			ThrottleRate:         1000, // 1000 events per second
 			ThrottleBurst:        100,  // 100 events burst
 			MaxConcurrentRetries: 256,
+            DropPolicy:           DropNewest,
+            ReserveForCritical:   0,
+            EnqueueBlockTimeout:  5 * time.Millisecond,
 		},
 		Config: BusConfig{
 			MaxQueue:             2000,
@@ -183,6 +215,9 @@ func DefaultBusConfigs() BusConfigs {
 			ThrottleRate:         1000, // 1000 events per second
 			ThrottleBurst:        100,  // 100 events burst
 			MaxConcurrentRetries: 256,
+            DropPolicy:           DropNewest,
+            ReserveForCritical:   0,
+            EnqueueBlockTimeout:  5 * time.Millisecond,
 		},
 		Resource: BusConfig{
 			MaxQueue:             3000,
@@ -202,6 +237,9 @@ func DefaultBusConfigs() BusConfigs {
 			ThrottleRate:         1000, // 1000 events per second
 			ThrottleBurst:        100,  // 100 events burst
 			MaxConcurrentRetries: 256,
+            DropPolicy:           DropNewest,
+            ReserveForCritical:   0,
+            EnqueueBlockTimeout:  5 * time.Millisecond,
 		},
 		Security: BusConfig{
 			MaxQueue:             1000,
@@ -221,6 +259,9 @@ func DefaultBusConfigs() BusConfigs {
 			ThrottleRate:         1000, // 1000 events per second
 			ThrottleBurst:        100,  // 100 events burst
 			MaxConcurrentRetries: 256,
+            DropPolicy:           DropNewest,
+            ReserveForCritical:   0,
+            EnqueueBlockTimeout:  5 * time.Millisecond,
 		},
 		Metrics: BusConfig{
 			MaxQueue:             5000,
@@ -240,6 +281,9 @@ func DefaultBusConfigs() BusConfigs {
 			ThrottleRate:         1000, // 1000 events per second
 			ThrottleBurst:        100,  // 100 events burst
 			MaxConcurrentRetries: 256,
+            DropPolicy:           DropNewest,
+            ReserveForCritical:   0,
+            EnqueueBlockTimeout:  5 * time.Millisecond,
 		},
 	}
 }
@@ -335,5 +379,18 @@ func (c *BusConfigs) validateBusConfig(name string, config BusConfig) error {
 	if config.MaxConcurrentRetries < 0 {
 		return fmt.Errorf("bus %s: max_concurrent_retries must be >= 0", name)
 	}
+    // Drop policy
+    switch config.DropPolicy {
+    case "", DropNewest, DropOldest, DropBlock:
+        // ok, empty means defaulting elsewhere
+    default:
+        return fmt.Errorf("bus %s: invalid drop_policy: %s", name, config.DropPolicy)
+    }
+    if config.ReserveForCritical < 0 || config.ReserveForCritical >= config.MaxQueue {
+        return fmt.Errorf("bus %s: reserve_for_critical must be in [0, max_queue)", name)
+    }
+    if config.EnqueueBlockTimeout < 0 {
+        return fmt.Errorf("bus %s: enqueue_block_timeout must be >= 0", name)
+    }
 	return nil
 }

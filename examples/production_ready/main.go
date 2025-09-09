@@ -176,12 +176,12 @@ func demonstrateProductionFeatures() {
 	defer errorRecoveryManager.Stop()
 
 	// Record some errors
-	errorRecoveryManager.RecordError("database", "connection timeout", "mysql-plugin", app.ErrorSeverityMedium, map[string]interface{}{
+	errorRecoveryManager.RecordError("database", app.ErrorCategoryDatabase, "connection timeout", "mysql-plugin", app.ErrorSeverityMedium, map[string]interface{}{
 		"timeout": "5s",
 		"retries": 3,
 	})
 
-	errorRecoveryManager.RecordError("network", "connection refused", "http-client", app.ErrorSeverityLow, map[string]interface{}{
+	errorRecoveryManager.RecordError("network", app.ErrorCategoryNetwork, "connection refused", "http-client", app.ErrorSeverityLow, map[string]interface{}{
 		"host": "api.example.com",
 		"port": 8080,
 	})
@@ -235,7 +235,7 @@ func ExampleUsage() {
 
 			// Simulate occasional errors
 			if time.Now().Unix()%30 == 0 {
-				errorRecoveryManager.RecordError("service", "temporary failure", "my-service", app.ErrorSeverityLow, nil)
+				errorRecoveryManager.RecordError("service", app.ErrorCategorySystem, "temporary failure", "my-service", app.ErrorSeverityLow, nil)
 			}
 		}
 	}()
