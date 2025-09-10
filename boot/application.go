@@ -164,8 +164,8 @@ func (app *Application) Run() error {
 		return err
 	}
 
-	// Initialize Kratos application
-	kratosApp, err := app.wire(log.Logger)
+    // Initialize Kratos application with proxy logger (hot-swappable inner)
+    kratosApp, err := app.wire(log.GetProxyLogger())
 	if err != nil {
 		log.Error(err)
 		return fmt.Errorf("failed to initialize Kratos application: %w", err)
