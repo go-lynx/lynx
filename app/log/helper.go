@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/rs/zerolog"
 )
 
 // LogLevel represents the logging level.
@@ -43,35 +42,37 @@ var (
 
 // SetLevel sets the global logging level.
 func SetLevel(level LogLevel) {
+	// map public LogLevel to Kratos level, apply, and rebuild logger
+	var lvl log.Level
 	switch level {
 	case DebugLevel:
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		lvl = log.LevelDebug
 	case InfoLevel:
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		lvl = log.LevelInfo
 	case WarnLevel:
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
-	case ErrorLevel:
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
-	case FatalLevel:
-		// map to ErrorLevel for runtime logging; Fatal is per-entry behavior
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+		lvl = log.LevelWarn
+	case ErrorLevel, FatalLevel:
+		lvl = log.LevelError
 	default:
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		lvl = log.LevelInfo
 	}
+	applyLevel(lvl)
+	rebuildLogger()
 }
 
 // GetLevel returns the current global logging level.
 func GetLevel() LogLevel {
-	switch zerolog.GlobalLevel() {
-	case zerolog.DebugLevel:
+	// reflect current Kratos filter minimal level
+	switch kratosMinLevel {
+	case log.LevelDebug:
 		return DebugLevel
-	case zerolog.InfoLevel:
+	case log.LevelInfo:
 		return InfoLevel
-	case zerolog.WarnLevel:
+	case log.LevelWarn:
 		return WarnLevel
-	case zerolog.ErrorLevel:
+	case log.LevelError:
 		return ErrorLevel
-	case zerolog.FatalLevel:
+	case log.LevelFatal:
 		return FatalLevel
 	default:
 		return InfoLevel
