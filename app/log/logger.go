@@ -334,12 +334,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// Update atomic helper to avoid data race during hot updates
 	helperStore.Store(lHelper)
 
-	// Initialize and display the application banner
-	if err := initBanner(cfg); err != nil {
-		// If banner initialization fails, log warning but don't affect program execution
-		lHelper.Warnf("failed to initialize banner: %v", err)
-		// Continue execution as banner display is not critical
-	}
+	// Banner display has been decoupled from logger initialization (see app/banner)
 
 	// First try Watch mechanism based on configuration source (e.g., local files, Polaris, etc. may support)
 	apply := func(nc *lconf.Log) {
