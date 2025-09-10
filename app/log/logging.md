@@ -65,5 +65,7 @@ Note: Sampling and rate limiting currently only apply to `info/debug`; `warn/err
 ### Programmatic level update
 `log.SetLevel()` now updates zerolog and Kratos filter consistently and rebuilds the logger so that helper methods take effect immediately.
 
+Additionally, initialization (`InitLogger`), hot-update (`apply()`), and `SetLevel()` all reuse `applyLevel()` to set levels in a unified way, ensuring identical behavior across all paths. See `app/log/logger.go` for `applyLevel()` implementation.
+
 ## Complete Example (configs/log-example.yaml)
 

@@ -39,7 +39,33 @@ var (
 	// timezone for logging (atomic)
 	tzLocAtomic  atomic.Value // *time.Location
 	tzNameAtomic atomic.Value // string
+
+	// proxy logger so Kratos app receives a stable logger whose inner can be hot-swapped
+	pLogger *proxyLogger
 )
+
+// proxyLogger forwards Log calls to an inner logger stored atomically.
+type proxyLogger struct{ inner atomic.Value } // of log.Logger
+
+func (p *proxyLogger) Log(level log.Level, keyvals ...interface{}) error {
+	if p == nil {
+		return nil
+	}
+	if v := p.inner.Load(); v != nil {
+		if l, ok := v.(log.Logger); ok && l != nil {
+			return l.Log(level, keyvals...)
+		}
+	}
+	return nil
+}
+
+// GetProxyLogger returns a process-wide proxy logger for passing into Kratos app.
+func GetProxyLogger() log.Logger {
+	if pLogger == nil {
+		pLogger = &proxyLogger{}
+	}
+	return pLogger
+}
 
 // setTimezoneByName updates the timezone atomically. Accepts IANA names or "Local".
 func setTimezoneByName(tz string) {
@@ -164,6 +190,9 @@ func rebuildLogger() {
 		newHelper := log.NewHelper(newLogger)
 		LHelper = *newHelper
 		helperStore.Store(newHelper)
+		if pLogger != nil {
+			pLogger.inner.Store(newLogger)
+		}
 	}
 }
 
@@ -235,12 +264,24 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		}
 
 		// Configure log rotation
+		ms := int(logConfig.GetMaxSizeMb())
+		if ms <= 0 {
+			ms = 100 // default MB
+		}
+		mb := int(logConfig.GetMaxBackups())
+		if mb < 0 {
+			mb = 0 // clamp to non-negative
+		}
+		ma := int(logConfig.GetMaxAgeDays())
+		if ma < 0 {
+			ma = 0 // 0 means no age-based removal in lumberjack
+		}
 		fileWriter := &lumberjack.Logger{
 			Filename:   logConfig.GetFilePath(),
-			MaxSize:    int(logConfig.GetMaxSizeMb()),  // Maximum size of single file, in MB
-			MaxBackups: int(logConfig.GetMaxBackups()), // Maximum number of old files to keep
-			MaxAge:     int(logConfig.GetMaxAgeDays()), // Maximum age of old files in days
-			Compress:   logConfig.GetCompress(),        // Whether to compress old files
+			MaxSize:    ms,              // MB
+			MaxBackups: mb,              // files
+			MaxAge:     ma,              // days
+			Compress:   logConfig.GetCompress(),
 		}
 		writers = append(writers, fileWriter)
 	}
@@ -255,8 +296,8 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 
 	// Set global time format and timezone
 	zerolog.TimeFieldFormat = time.RFC3339Nano
-	// timezone from config (e.g., "Asia/Shanghai", "UTC")
-	if tz, err := cfg.Value("lynx.log.timezone").String(); err == nil && tz != "" {
+	// timezone from log config (prefer scanned field)
+	if tz := strings.TrimSpace(logConfig.GetTimezone()); tz != "" {
 		setTimezoneByName(tz)
 	} else {
 		setTimezoneByName("Local")
@@ -264,26 +305,22 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// Timestamp function reads current timezone atomically
 	zerolog.TimestampFunc = func() time.Time { return time.Now().In(getTZLoc()) }
 
-	// Set global log level (unified zerolog + kratos)
+	// Set global log level (unified via applyLevel)
 	logLevel := strings.ToLower(logConfig.GetLevel())
+	var initLvl log.Level
 	switch logLevel {
 	case "debug":
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-		kratosMinLevel = log.LevelDebug
+		initLvl = log.LevelDebug
 	case "info":
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-		kratosMinLevel = log.LevelInfo
+		initLvl = log.LevelInfo
 	case "warn":
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
-		kratosMinLevel = log.LevelWarn
+		initLvl = log.LevelWarn
 	case "error":
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
-		kratosMinLevel = log.LevelError
+		initLvl = log.LevelError
 	default:
-		// Default to Info level
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-		kratosMinLevel = log.LevelInfo
+		initLvl = log.LevelInfo
 	}
+	applyLevel(initLvl)
 
 	// callerSkip is configurable
 	callerSkipCurrent = callerSkipDefault
@@ -334,12 +371,18 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// Update atomic helper to avoid data race during hot updates
 	helperStore.Store(lHelper)
 
+	// Initialize proxy logger inner for Kratos app consumption
+	GetProxyLogger() // ensure pLogger initialized
+	if pLogger != nil {
+		pLogger.inner.Store(logger)
+	}
+
 	// Banner display has been decoupled from logger initialization (see app/banner)
 
 	// First try Watch mechanism based on configuration source (e.g., local files, Polaris, etc. may support)
 	apply := func(nc *lconf.Log) {
-		// timezone update
-		if tz, err := cfg.Value("lynx.log.timezone").String(); err == nil && tz != "" {
+		// timezone update (use nc field)
+		if tz := strings.TrimSpace(nc.GetTimezone()); tz != "" {
 			setTimezoneByName(tz)
 		} else {
 			setTimezoneByName("Local")
