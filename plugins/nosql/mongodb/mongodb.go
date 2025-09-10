@@ -235,11 +235,13 @@ func (p *PlugMongoDB) createClient() error {
 		clientOptions.SetWriteConcern(wc)
 	}
 
-	// Create client
-	client, err := mongo.Connect(context.Background(), clientOptions)
-	if err != nil {
-		return err
-	}
+    // Create client with timeout to avoid startup hang
+    ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+    defer cancel()
+    client, err := mongo.Connect(ctx, clientOptions)
+    if err != nil {
+        return err
+    }
 
 	p.client = client
 

@@ -12,7 +12,6 @@ This logging system is a unified encapsulation based on zerolog + Kratos, with t
 
 Core logging code is located at:
 - [app/log/logger.go](file:///Users/claire/GolandProjects/lynx/lynx/app/log/logger.go)
-- `app/log/lynx_log.go`
 - Configuration Proto: [app/log/conf/log.proto](file:///Users/claire/GolandProjects/lynx/lynx/app/log/conf/log.proto)
 
 ## Configuration Structure (YAML)
@@ -22,12 +21,11 @@ The configuration path key is `lynx.log` (i.e., under `lynx:` in YAML, there is 
 Example: See the "Complete Example" section below.
 
 ### Top-level Fields
-- [level](file:///Users/claire/GolandProjects/lynx/lynx/app/plugin_topology.go#L10-L10): Log level (debug/info/warn/error). Default is `info`.
+- `level`: Log level (debug/info/warn/error). Default is `info`.
 - `console_output`: Whether to output to console (bool).
-- `file_output`: Whether to output to file (bool).
-- `file_path`: Log file path (only valid when `file_output=true`).
-- `max_size`: Maximum size of a single log file (MB).
-- `max_age`: Number of days to retain logs.
+- `file_path`: Log file path. When non-empty, file output is enabled.
+- `max_size_mb`: Maximum size of a single log file before rotation (MB).
+- `max_age_days`: Number of days to retain rotated logs.
 - `max_backups`: Number of backup files to retain.
 - `compress`: Whether to compress rotated logs.
 - `timezone`: Timezone for log timestamps (e.g., `Asia/Shanghai`, `UTC`). Defaults to local timezone if not configured.
@@ -38,7 +36,7 @@ Example: See the "Complete Example" section below.
 - `enable`: Whether to enable stack output.
 - `skip`: Number of frames to skip when collecting stack (used to eliminate internal logging stack frames).
 - `max_frames`: Maximum number of frames to collect.
-- [level](file:///Users/claire/GolandProjects/lynx/lynx/app/plugin_topology.go#L10-L10): Minimum log level that triggers stack output (debug/info/warn/error/fatal).
+- `level`: Minimum log level that triggers stack output (debug/info/warn/error/fatal).
 - `filter_prefixes`: List of frame prefix filters (package names or file path prefixes).
 
 ### Sampling (Sampling and Rate Limiting)
@@ -53,16 +51,19 @@ Note: Sampling and rate limiting currently only apply to `info/debug`; `warn/err
 
 ## Dynamic Configuration Updates
 
-- Prefer to use the Watch mechanism of the configuration source; if Watch is not supported, fall back to polling `lynx.log` every 2 seconds.
-- Currently supported hot-update fields: [level](file:///Users/claire/GolandProjects/lynx/lynx/app/plugin_topology.go#L10-L10), `timezone`, `caller_skip`.
+- Prefer to use the Watch mechanism of the configuration source; if Watch is not supported, falls back to polling `lynx.log` every 2 seconds.
+- Supported hot-update fields: `level`, `timezone`, `caller_skip`, `stack.*`, `sampling.*`.
 
 ## Usage
 
-- Initialization is called by [log.InitLogger(...)](file:///Users/claire/GolandProjects/lynx/lynx/app/log/logger.go#L48-L310) in `boot/strap.go` at application startup, no explicit call is needed from business code.
+- Initialization is called by [log.InitLogger(...)](file:///Users/claire/GolandProjects/lynx/lynx/app/log/logger.go#L48-L310) at application startup, no explicit call is needed from business code.
 - Quick methods in business code:
   - `log.Debug/Info/Warn/Error/Fatal`
   - With context: [log.InfoCtx(ctx, ...)](file:///Users/claire/GolandProjects/lynx/lynx/app/log/helper.go#L121-L123) etc.
   - Structured: [log.Infow("key", val, ...)](file:///Users/claire/GolandProjects/lynx/lynx/app/log/helper.go#L133-L135)
+
+### Programmatic level update
+`log.SetLevel()` now updates zerolog and Kratos filter consistently and rebuilds the logger so that helper methods take effect immediately.
 
 ## Complete Example (configs/log-example.yaml)
 

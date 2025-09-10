@@ -180,9 +180,12 @@ func (g *ServiceGrpc) CleanupTasks() error {
 		return nil
 	}
 	// Gracefully stop the gRPC server
-	if err := g.server.Stop(context.Background()); err != nil {
+	// Use timeout to avoid indefinite blocking on shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), g.conf.GetTimeout().AsDuration())
+	defer cancel()
+	if err := g.server.Stop(ctx); err != nil {
 		// If stopping fails, return plugin error with error information
-		return plugins.NewPluginError(g.ID(), "Stop", "Failed to stop HTTP server", err)
+		return plugins.NewPluginError(g.ID(), "Stop", "Failed to stop gRPC server", err)
 	}
 	return nil
 }

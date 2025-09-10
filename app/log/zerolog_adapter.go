@@ -75,10 +75,9 @@ func (l zeroLogLogger) Log(level log.Level, keyvals ...interface{}) error {
 		event = event.Interface(key, val)
 	}
 
-	// Attach stack trace if enabled and level reaches threshold
-	if stackEnabled && level >= stackMinLevel {
-		stack := captureStack(stackSkip, stackMaxFrames, stackFilterPrefixes)
-		if stack != "" {
+	// Attach stack trace if enabled and level reaches threshold (runtime-configurable)
+	if sc := getStackConfig(); sc != nil && sc.enabled && level >= sc.minLevel {
+		if stack := captureStack(); stack != "" {
 			event = event.Str("stack", stack)
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	kconf "github.com/go-kratos/kratos/v2/config"
@@ -29,10 +30,142 @@ var (
 	callerSkipDefault = 5
 	callerSkipCurrent = 5
 
-	// timezone for logging
-	tzLoc  *time.Location
-	tzName string
+	// base adapter and service metadata for rebuilds
+	baseAdapter    zeroLogLogger
+	serviceName    string
+	serviceHost    string
+	serviceVersion string
+
+	// timezone for logging (atomic)
+	tzLocAtomic  atomic.Value // *time.Location
+	tzNameAtomic atomic.Value // string
 )
+
+// setTimezoneByName updates the timezone atomically. Accepts IANA names or "Local".
+func setTimezoneByName(tz string) {
+	var loc *time.Location
+	name := tz
+	if tz == "" || strings.EqualFold(tz, "local") {
+		loc = time.Local
+		name = "Local"
+	} else if l, err := time.LoadLocation(tz); err == nil {
+		loc = l
+		name = tz
+	} else {
+		loc = time.Local
+		name = "Local"
+	}
+	tzLocAtomic.Store(loc)
+	tzNameAtomic.Store(name)
+}
+
+func getTZLoc() *time.Location {
+	if v := tzLocAtomic.Load(); v != nil {
+		if l, ok := v.(*time.Location); ok && l != nil {
+			return l
+		}
+	}
+	return time.Local
+}
+
+func getTZName() string {
+	if v := tzNameAtomic.Load(); v != nil {
+		if s, ok := v.(string); ok && s != "" {
+			return s
+		}
+	}
+	return "Local"
+}
+
+// applyLevel sets zerolog and kratos levels in sync.
+func applyLevel(lvl log.Level) {
+	switch lvl {
+	case log.LevelDebug:
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	case log.LevelInfo:
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	case log.LevelWarn:
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	case log.LevelError, log.LevelFatal:
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	default:
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		lvl = log.LevelInfo
+	}
+	kratosMinLevel = lvl
+}
+
+// applyStackFromConfig applies stack configuration from proto config.
+func applyStackFromConfig(c *lconf.Log) {
+	if c == nil {
+		return
+	}
+	s := c.GetStack()
+	if s == nil {
+		return
+	}
+	// map level string to log.Level
+	var minLvl log.Level
+	switch strings.ToLower(s.GetLevel()) {
+	case "debug":
+		minLvl = log.LevelDebug
+	case "info":
+		minLvl = log.LevelInfo
+	case "warn":
+		minLvl = log.LevelWarn
+	case "error":
+		minLvl = log.LevelError
+	case "fatal":
+		minLvl = log.LevelFatal
+	default:
+		minLvl = log.LevelError
+	}
+	setStackConfig(
+		s.GetEnable(),
+		minLvl,
+		int(s.GetSkip()),
+		int(s.GetMaxFrames()),
+		s.GetFilterPrefixes(),
+	)
+}
+
+// applySamplingFromConfig applies sampling configuration from proto config.
+func applySamplingFromConfig(c *lconf.Log) {
+	if c == nil {
+		return
+	}
+	sm := c.GetSampling()
+	if sm == nil {
+		// leave defaults
+		return
+	}
+	setSamplingConfig(
+		sm.GetEnable(),
+		float64(sm.GetInfoRatio()),
+		float64(sm.GetDebugRatio()),
+		int(sm.GetMaxInfoPerSec()),
+		int(sm.GetMaxDebugPerSec()),
+	)
+}
+
+// rebuildLogger rebuilds Logger and Helper and stores helper atomically.
+func rebuildLogger() {
+	newLogger := log.With(
+		log.NewFilter(baseAdapter, log.FilterLevel(kratosMinLevel)),
+		"caller", Caller(callerSkipCurrent),
+		"service.id", serviceHost,
+		"service.name", serviceName,
+		"service.version", serviceVersion,
+		"trace.id", tracing.TraceID(),
+		"span.id", tracing.SpanID(),
+	)
+	if newLogger != nil {
+		Logger = newLogger
+		newHelper := log.NewHelper(newLogger)
+		LHelper = *newHelper
+		helperStore.Store(newHelper)
+	}
+}
 
 // InitLogger initializes the application's logging system.
 // InitLogger initializes the application's logging system with the provided configuration.
@@ -58,9 +191,8 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		return fmt.Errorf("configuration instance cannot be nil")
 	}
 
-	// Log the initialization of the logging component
-	// Use Info level as this is an important system event
-	log.Info("initializing Lynx logging component")
+	// Log the initialization of the logging component using fmt to avoid uninitialized logger discrepancies
+	fmt.Println("[lynx] initializing logging component")
 
 	// Parse log configuration
 	var logConfig lconf.Log
@@ -123,24 +255,14 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 
 	// Set global time format and timezone
 	zerolog.TimeFieldFormat = time.RFC3339Nano
-	// Prefer explicit timezone string: lynx.log.timezone (e.g., "Asia/Shanghai", "UTC")
+	// timezone from config (e.g., "Asia/Shanghai", "UTC")
 	if tz, err := cfg.Value("lynx.log.timezone").String(); err == nil && tz != "" {
-		if loc, e := time.LoadLocation(tz); e == nil {
-			tzLoc = loc
-			tzName = tz
-			zerolog.TimestampFunc = func() time.Time { return time.Now().In(tzLoc) }
-		} else {
-			// invalid timezone -> default to Local
-			tzLoc = time.Local
-			tzName = "Local"
-			zerolog.TimestampFunc = func() time.Time { return time.Now().In(tzLoc) }
-		}
+		setTimezoneByName(tz)
 	} else {
-		// no timezone configured -> default to Local
-		tzLoc = time.Local
-		tzName = "Local"
-		zerolog.TimestampFunc = func() time.Time { return time.Now().In(tzLoc) }
+		setTimezoneByName("Local")
 	}
+	// Timestamp function reads current timezone atomically
+	zerolog.TimestampFunc = func() time.Time { return time.Now().In(getTZLoc()) }
 
 	// Set global log level (unified zerolog + kratos)
 	logLevel := strings.ToLower(logConfig.GetLevel())
@@ -169,12 +291,21 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		callerSkipCurrent = int(v)
 	}
 
+	// apply stack & sampling initial config
+	applyStackFromConfig(&logConfig)
+	applySamplingFromConfig(&logConfig)
+
 	// Initialize underlying logger with zeroLogger
-	zeroLogger := zerolog.New(output).With().Timestamp().Logger()
+	z := zerolog.New(output).With().Timestamp().Logger()
+
+	// Store service metadata for rebuilds
+	serviceName = name
+	serviceHost = host
+	serviceVersion = version
 
 	// Initialize the main logger with level filter and default fields
-	base := zeroLogLogger{zeroLogger}
-	filtered := log.NewFilter(base, log.FilterLevel(kratosMinLevel))
+	baseAdapter = zeroLogLogger{z}
+	filtered := log.NewFilter(baseAdapter, log.FilterLevel(kratosMinLevel))
 	logger := log.With(
 		filtered,
 		"caller", Caller(callerSkipCurrent),
@@ -212,55 +343,37 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 
 	// First try Watch mechanism based on configuration source (e.g., local files, Polaris, etc. may support)
 	apply := func(nc *lconf.Log) {
-		// Apply updates: prefer timezone string, otherwise default to Local
+		// timezone update
 		if tz, err := cfg.Value("lynx.log.timezone").String(); err == nil && tz != "" {
-			if loc, e := time.LoadLocation(tz); e == nil {
-				tzLoc = loc
-				tzName = tz
-			} else {
-				tzLoc = time.Local
-				tzName = "Local"
-			}
+			setTimezoneByName(tz)
 		} else {
-			tzLoc = time.Local
-			tzName = "Local"
+			setTimezoneByName("Local")
 		}
 
+		// level update
 		switch strings.ToLower(nc.GetLevel()) {
 		case "debug":
-			zerolog.SetGlobalLevel(zerolog.DebugLevel)
-			kratosMinLevel = log.LevelDebug
+			applyLevel(log.LevelDebug)
 		case "info":
-			zerolog.SetGlobalLevel(zerolog.InfoLevel)
-			kratosMinLevel = log.LevelInfo
+			applyLevel(log.LevelInfo)
 		case "warn":
-			zerolog.SetGlobalLevel(zerolog.WarnLevel)
-			kratosMinLevel = log.LevelWarn
+			applyLevel(log.LevelWarn)
 		case "error":
-			zerolog.SetGlobalLevel(zerolog.ErrorLevel)
-			kratosMinLevel = log.LevelError
+			applyLevel(log.LevelError)
 		}
 
+		// caller skip update
 		callerSkipCurrent = callerSkipDefault
 		if v := nc.GetCallerSkip(); v > 0 {
 			callerSkipCurrent = int(v)
 		}
 
-		// Rebuild logger
-		newLogger := log.With(
-			log.NewFilter(base, log.FilterLevel(kratosMinLevel)),
-			"caller", Caller(callerSkipCurrent),
-			"service.id", host,
-			"service.name", name,
-			"service.version", version,
-			"trace.id", tracing.TraceID(),
-			"span.id", tracing.SpanID(),
-		)
-		if newLogger != nil {
-			Logger = newLogger
-			newHelper := log.NewHelper(newLogger)
-			LHelper = *newHelper
-		}
+		// stack & sampling update
+		applyStackFromConfig(nc)
+		applySamplingFromConfig(nc)
+
+		// Rebuild logger to reflect caller skip and any changes
+		rebuildLogger()
 	}
 
 	// Use Watch, fallback to polling if not supported
@@ -274,14 +387,27 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		// Lightweight polling hot update (fallback when backend doesn't support Watch)
 		// Read lynx.log every 2s, apply if configuration changes
 		go func() {
-			// Generate signature function
+			// Generate signature
 			signature := func(c *lconf.Log) string {
 				if c == nil {
 					return ""
 				}
 				var sb strings.Builder
-				// include timezone name if present
-				fmt.Fprintf(&sb, "lvl=%s;tz=%s;caller=%d;", strings.ToLower(c.GetLevel()), tzName, c.GetCallerSkip())
+				// base fields
+				fmt.Fprintf(&sb, "lvl=%s;tz=%s;caller=%d;", strings.ToLower(c.GetLevel()), getTZName(), c.GetCallerSkip())
+				// stack fields
+				if s := c.GetStack(); s != nil {
+					fmt.Fprintf(&sb, "stack_en=%t;stack_lvl=%s;stack_skip=%d;stack_max=%d;", s.GetEnable(), strings.ToLower(s.GetLevel()), s.GetSkip(), s.GetMaxFrames())
+					if fps := s.GetFilterPrefixes(); len(fps) > 0 {
+						sb.WriteString("stack_fp=")
+						sb.WriteString(strings.Join(fps, ","))
+						sb.WriteString(";")
+					}
+				}
+				// sampling fields
+				if sm := c.GetSampling(); sm != nil {
+					fmt.Fprintf(&sb, "smp_en=%t;smp_ir=%.3f;smp_dr=%.3f;smp_i_max=%d;smp_d_max=%d;", sm.GetEnable(), sm.GetInfoRatio(), sm.GetDebugRatio(), sm.GetMaxInfoPerSec(), sm.GetMaxDebugPerSec())
+				}
 				return sb.String()
 			}
 
