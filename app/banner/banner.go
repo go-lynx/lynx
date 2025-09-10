@@ -1,4 +1,4 @@
-package log
+package banner
 
 import (
 	"embed"
@@ -7,15 +7,17 @@ import (
 	"os"
 
 	kconf "github.com/go-kratos/kratos/v2/config"
-	"github.com/go-lynx/lynx/app/conf"
+	appconf "github.com/go-lynx/lynx/app/conf"
 )
 
-//go:generate echo "banner.go"
+// Embedded banner file for application startup
+//go:embed banner.txt
+var bannerFS embed.FS
 
-// initBanner initializes and displays the application banner.
+// Init initializes and displays the application banner.
 // It first attempts to read from a local banner file, then falls back to an embedded banner.
 // The banner display can be disabled through application configuration.
-func initBanner(cfg kconf.Config) error {
+func Init(cfg kconf.Config) error {
 	const (
 		localBannerPath    = "configs/banner.txt"
 		embeddedBannerPath = "banner.txt"
@@ -24,16 +26,16 @@ func initBanner(cfg kconf.Config) error {
 	// Try to read banner data, with fallback options
 	bannerData, err := loadBannerData(localBannerPath)
 	if err != nil {
-		// Log the local file read failure and try embedded banner
-		Debugf("could not read local banner: %v, falling back to embedded banner", err)
-		bannerData, err = fs.ReadFile(bannerFS, embeddedBannerPath)
-		if err != nil {
-			return fmt.Errorf("failed to read embedded banner: %v", err)
+		// Fallback to embedded banner silently
+		if data, e := fs.ReadFile(bannerFS, embeddedBannerPath); e == nil {
+			bannerData = data
+		} else {
+			return fmt.Errorf("failed to read banner: local=%v, embedded=%v", err, e)
 		}
 	}
 
 	// Parse application configuration
-	var bootConfig conf.Bootstrap
+	var bootConfig appconf.Bootstrap
 	if err := cfg.Scan(&bootConfig); err != nil {
 		return fmt.Errorf("failed to parse configuration: %v", err)
 	}
@@ -53,11 +55,6 @@ func initBanner(cfg kconf.Config) error {
 
 	return nil
 }
-
-// Embedded banner file for application startup
-//
-//go:embed banner.txt
-var bannerFS embed.FS
 
 // loadBannerData attempts to read banner data from the specified file.
 // It returns the banner content as bytes or an error if the read fails.

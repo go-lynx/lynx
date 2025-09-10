@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/encoding/json"
+	"github.com/go-lynx/lynx/app/banner"
 	"github.com/go-lynx/lynx/app/log"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -142,6 +143,11 @@ func (app *Application) Run() error {
 	// Initialize logger
 	if err := log.InitLogger(app.GetName(), app.GetHost(), app.GetVersion(), app.conf); err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+
+	// Show startup banner (decoupled from logger)
+	if err := banner.Init(app.conf); err != nil {
+		log.Warnf("failed to initialize/show banner: %v", err)
 	}
 
 	// Log application startup information
