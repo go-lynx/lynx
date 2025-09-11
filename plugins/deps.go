@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -173,25 +174,42 @@ func (dg *DependencyGraph) RemoveDependency(pluginID string, dependencyID string
 		return fmt.Errorf("plugin %s has no dependencies", pluginID)
 	}
 
-	// Find and remove dependency
-	for i, dep := range deps {
-		if dep.ID == dependencyID {
-			dg.dependencies[pluginID] = append(deps[:i], deps[i+1:]...)
-
-			// Update dependent relationship
-			if dependents, ok := dg.dependents[dependencyID]; ok {
-				for j, dep := range dependents {
-					if dep == pluginID {
-						dg.dependents[dependencyID] = append(dependents[:j], dependents[j+1:]...)
-						break
-					}
-				}
-			}
-			return nil
+	// Remove all occurrences of the dependency from the list
+	filtered := deps[:0]
+	removed := 0
+	for _, dep := range deps {
+		if dep != nil && dep.ID == dependencyID {
+			removed++
+			continue
 		}
+		filtered = append(filtered, dep)
 	}
 
-	return fmt.Errorf("dependency %s not found for plugin %s", dependencyID, pluginID)
+	if removed == 0 {
+		return fmt.Errorf("dependency %s not found for plugin %s", dependencyID, pluginID)
+	}
+
+	if len(filtered) == 0 {
+		delete(dg.dependencies, pluginID)
+	} else {
+		dg.dependencies[pluginID] = filtered
+	}
+
+	// Update dependent relationship: remove all occurrences of pluginID
+	if dependents, ok := dg.dependents[dependencyID]; ok {
+		newDeps := dependents[:0]
+		for _, d := range dependents {
+			if d != pluginID {
+				newDeps = append(newDeps, d)
+			}
+		}
+		if len(newDeps) == 0 {
+			delete(dg.dependents, dependencyID)
+		} else {
+			dg.dependents[dependencyID] = newDeps
+		}
+	}
+	return nil
 }
 
 // GetDependencies gets all dependencies of a plugin
@@ -298,11 +316,12 @@ func (dg *DependencyGraph) ResolveDependencies() ([]string, error) {
 	}
 
 	// Build graph and calculate in-degrees
+	// Use edges: dependency -> plugin (so that dependencies are before dependents)
 	for pluginID, deps := range dg.dependencies {
 		for _, dep := range deps {
 			if dep.Type == DependencyTypeRequired {
-				graph[pluginID] = append(graph[pluginID], dep.ID)
-				inDegree[dep.ID]++
+				graph[dep.ID] = append(graph[dep.ID], pluginID)
+				inDegree[pluginID]++
 			}
 		}
 	}
@@ -311,7 +330,7 @@ func (dg *DependencyGraph) ResolveDependencies() ([]string, error) {
 	var result []string
 	queue := make([]string, 0)
 
-	// Find all nodes with in-degree 0
+	// Find all nodes with in-degree 0 (no required dependencies)
 	for pluginID, degree := range inDegree {
 		if degree == 0 {
 			queue = append(queue, pluginID)
@@ -324,11 +343,11 @@ func (dg *DependencyGraph) ResolveDependencies() ([]string, error) {
 		queue = queue[1:]
 		result = append(result, current)
 
-		// Update in-degrees of related nodes
-		for _, dep := range graph[current] {
-			inDegree[dep]--
-			if inDegree[dep] == 0 {
-				queue = append(queue, dep)
+		// Update in-degrees of nodes that depend on current
+		for _, next := range graph[current] {
+			inDegree[next]--
+			if inDegree[next] == 0 {
+				queue = append(queue, next)
 			}
 		}
 	}
@@ -398,7 +417,19 @@ func (dg *DependencyGraph) checkVersionConstraint(plugin Plugin, dep *Dependency
 				}
 			}
 		} else {
-			if constraint.ExactVersion != depVersionStr {
+			if cmp, ok := compareVersionNumeric(depVersionStr, constraint.ExactVersion); ok {
+				if cmp != 0 {
+					return &VersionConflict{
+						PluginID:         plugin.ID(),
+						DependencyID:     dep.ID,
+						RequiredVersion:  constraint.ExactVersion,
+						AvailableVersion: depVersionStr,
+						ConflictType:     "exact_version_mismatch",
+						Description: fmt.Sprintf("Plugin %s requires exact version %s of %s, but %s is available",
+							plugin.ID(), constraint.ExactVersion, dep.ID, depVersionStr),
+					}
+				}
+			} else if constraint.ExactVersion != depVersionStr { // fallback
 				return &VersionConflict{
 					PluginID:         plugin.ID(),
 					DependencyID:     dep.ID,
@@ -430,7 +461,31 @@ func (dg *DependencyGraph) checkVersionConstraint(plugin Plugin, dep *Dependency
 							plugin.ID(), excludedVersion, dep.ID),
 					}
 				}
+			} else if cmp, ok := compareVersionNumeric(depVersionStr, excludedVersion); ok {
+				if cmp == 0 {
+					return &VersionConflict{
+						PluginID:         plugin.ID(),
+						DependencyID:     dep.ID,
+						RequiredVersion:  "any version except " + excludedVersion,
+						AvailableVersion: depVersionStr,
+						ConflictType:     "excluded_version",
+						Description: fmt.Sprintf("Plugin %s excludes version %s of %s",
+							plugin.ID(), excludedVersion, dep.ID),
+					}
+				}
 			} else if excludedVersion == depVersionStr { // fallback
+				return &VersionConflict{
+					PluginID:         plugin.ID(),
+					DependencyID:     dep.ID,
+					RequiredVersion:  "any version except " + excludedVersion,
+					AvailableVersion: depVersionStr,
+					ConflictType:     "excluded_version",
+					Description: fmt.Sprintf("Plugin %s excludes version %s of %s",
+						plugin.ID(), excludedVersion, dep.ID),
+				}
+			}
+		} else if cmp, ok := compareVersionNumeric(depVersionStr, excludedVersion); ok {
+			if cmp == 0 {
 				return &VersionConflict{
 					PluginID:         plugin.ID(),
 					DependencyID:     dep.ID,
@@ -554,6 +609,37 @@ func normalizeSemver(ver string) string {
 		t += ".0"
 	}
 	return t
+}
+
+// compareVersionNumeric compares two version strings numerically.
+func compareVersionNumeric(a, b string) (int, bool) {
+	aParts := strings.Split(a, ".")
+	bParts := strings.Split(b, ".")
+
+	for i := 0; i < len(aParts) || i < len(bParts); i++ {
+		aPart, aOk := aParts[i], i < len(aParts)
+		bPart, bOk := bParts[i], i < len(bParts)
+
+		if !aOk {
+			return -1, true
+		}
+		if !bOk {
+			return 1, true
+		}
+
+		aNum, aErr := strconv.Atoi(aPart)
+		bNum, bErr := strconv.Atoi(bPart)
+
+		if aErr != nil || bErr != nil {
+			return 0, false
+		}
+
+		if aNum != bNum {
+			return aNum - bNum, true
+		}
+	}
+
+	return 0, true
 }
 
 // ValidateDependencies validates whether all dependencies are satisfied
