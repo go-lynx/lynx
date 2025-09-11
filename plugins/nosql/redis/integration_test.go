@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/go-lynx/lynx/plugins"
+	"github.com/go-lynx/lynx/plugins/nosql/redis/conf"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // RedisIntegrationTestSuite 定义Redis集成测试套件
@@ -70,22 +72,19 @@ func (suite *RedisIntegrationTestSuite) SetupSuite() {
 	suite.plugin = NewRedisClient()
 
 	// 设置配置
-	config := &Config{
-		Mode: "single",
-		Single: &SingleConfig{
-			Addr:     "localhost:6379",
-			Password: "",
-			Db:       0,
-		},
-		PoolSize:     10,
-		MinIdleConn:  5,
-		MaxIdleConn:  10,
-		MaxRetries:   3,
-		DialTimeout:  5,
-		ReadTimeout:  3,
-		WriteTimeout: 3,
-		PoolTimeout:  4,
-		IdleTimeout:  300,
+	config := &conf.Redis{
+		Addrs:          []string{"localhost:6379"},
+		Password:       "",
+		Db:             0,
+		MaxActiveConns: 10,
+		MinIdleConns:   5,
+		MaxIdleConns:   10,
+		MaxRetries:     3,
+		DialTimeout:    durationpb.New(5 * time.Second),
+		ReadTimeout:    durationpb.New(3 * time.Second),
+		WriteTimeout:   durationpb.New(3 * time.Second),
+		PoolTimeout:    durationpb.New(4 * time.Second),
+		IdleTimeout:    durationpb.New(300 * time.Second),
 	}
 
 	suite.plugin.conf = config
@@ -95,7 +94,7 @@ func (suite *RedisIntegrationTestSuite) SetupSuite() {
 	require.NoError(suite.T(), err)
 
 	// 启动插件
-	err = suite.plugin.Start()
+	err = suite.plugin.Start(suite.plugin)
 	require.NoError(suite.T(), err)
 
 	// 获取客户端
@@ -112,7 +111,7 @@ func (suite *RedisIntegrationTestSuite) TearDownSuite() {
 		suite.client.FlushDB(suite.ctx)
 	}
 	if suite.plugin != nil {
-		suite.plugin.Stop()
+		suite.plugin.Stop(suite.plugin)
 	}
 	suite.cancel()
 }

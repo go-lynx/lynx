@@ -128,10 +128,11 @@ func (dg *DependencyGraph) RemovePlugin(pluginID string) {
 	delete(dg.dependencies, pluginID)
 
 	// Remove from all dependent lists
-	for _, deps := range dg.dependents {
+	delete(dg.dependents, pluginID)
+	for id, deps := range dg.dependents {
 		for i, dep := range deps {
 			if dep == pluginID {
-				deps = append(deps[:i], deps[i+1:]...)
+				dg.dependents[id] = append(deps[:i], deps[i+1:]...)
 				break
 			}
 		}
@@ -546,10 +547,11 @@ func normalizeSemver(ver string) string {
 		t = t[1:]
 	}
 	dotCnt := strings.Count(t, ".")
-	if dotCnt == 0 {
-		t = t + ".0.0"
-	} else if dotCnt == 1 {
-		t = t + ".0"
+	switch dotCnt {
+	case 0:
+		t += ".0.0"
+	case 1:
+		t += ".0"
 	}
 	return t
 }
