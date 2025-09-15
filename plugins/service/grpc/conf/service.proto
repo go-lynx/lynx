@@ -1,13 +1,13 @@
 syntax = "proto3";
 
-package lynx.protobuf.plugin.grpc;
+package lynx.protobuf.plugin.grpc.service;
 
 option go_package = "github.com/go-lynx/lynx/plugins/service/grpc/conf;conf";
 
 import "google/protobuf/duration.proto";
 
-// The grpc message defines the configuration information for the gRPC server plugin.
-message grpc {
+// The service message defines the configuration information for the gRPC service plugin.
+message service {
   // Network specifies the network type (e.g., "tcp", "unix") for the gRPC server to listen on.
   string network = 1;
 

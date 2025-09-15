@@ -1,6 +1,6 @@
-// Package grpc provides a gRPC server plugin for the Lynx framework.
+// Package grpc provides a gRPC service plugin for the Lynx framework.
 // It implements the necessary interfaces to integrate with the Lynx plugin system
-// and provides functionality for setting up and managing a gRPC server with various
+// and provides functionality for setting up and managing a gRPC service with various
 // middleware options and TLS support.
 package grpc
 
@@ -26,36 +26,36 @@ import (
 
 // Plugin metadata constants define the basic information about the gRPC plugin
 const (
-	// pluginName is the unique identifier for the gRPC server plugin
-	pluginName = "grpc.server"
+	// pluginName is the unique identifier for the gRPC service plugin
+	pluginName = "grpc.service"
 
 	// pluginVersion indicates the current version of the plugin
 	pluginVersion = "v2.0.0"
 
 	// pluginDescription provides a brief description of the plugin's functionality
-	pluginDescription = "grpc server plugin for lynx framework"
+	pluginDescription = "grpc service plugin for lynx framework"
 
-	// confPrefix is the configuration prefix used for loading gRPC settings
-	confPrefix = "lynx.grpc"
+	// confPrefix is the configuration prefix used for loading gRPC service settings
+	confPrefix = "lynx.grpc.service"
 )
 
-// ServiceGrpc represents the gRPC server plugin implementation.
+// GrpcService represents the gRPC service plugin implementation.
 // It embeds the BasePlugin for common plugin functionality and maintains
 // the gRPC server instance along with its configuration.
-type ServiceGrpc struct {
+type GrpcService struct {
 	// Embed Lynx framework's base plugin, inheriting common plugin functionality
 	*plugins.BasePlugin
 	// gRPC server instance
 	server *grpc.Server
-	// gRPC server configuration information
-	conf *conf.Grpc
+	// gRPC service configuration information
+	conf *conf.Service
 }
 
-// NewServiceGrpc creates and initializes a new instance of the gRPC server plugin.
+// NewGrpcService creates and initializes a new instance of the gRPC service plugin.
 // It sets up the base plugin with the appropriate metadata and returns a pointer
-// to the ServiceGrpc structure.
-func NewServiceGrpc() *ServiceGrpc {
-	return &ServiceGrpc{
+// to the GrpcService structure.
+func NewGrpcService() *GrpcService {
+	return &GrpcService{
 		BasePlugin: plugins.NewBasePlugin(
 			// Generate unique plugin ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
@@ -76,9 +76,9 @@ func NewServiceGrpc() *ServiceGrpc {
 // InitializeResources implements the plugin initialization interface.
 // It loads and validates the gRPC server configuration from the runtime environment.
 // If no configuration is provided, it sets up default values for the server.
-func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
+func (g *GrpcService) InitializeResources(rt plugins.Runtime) error {
 	// Initialize an empty configuration structure
-	g.conf = &conf.Grpc{}
+	g.conf = &conf.Service{}
 
 	// Scan and load gRPC configuration from runtime configuration
 	err := rt.GetConfig().Value(confPrefix).Scan(g.conf)
@@ -87,7 +87,7 @@ func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
 	}
 
 	// Set default configuration
-	defaultConf := &conf.Grpc{
+	defaultConf := &conf.Service{
 		// Default network protocol is TCP
 		Network: "tcp",
 		// Default listening address is :9090
@@ -122,7 +122,7 @@ func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
 // StartupTasks implements the plugin startup interface.
 // It configures and starts the gRPC server with all necessary middleware and options,
 // including tracing, logging, rate limiting, validation, and recovery handlers.
-func (g *ServiceGrpc) StartupTasks() error {
+func (g *GrpcService) StartupTasks() error {
 	// Log gRPC service startup
 	log.Infof("starting grpc service")
 
@@ -213,7 +213,7 @@ func (g *ServiceGrpc) StartupTasks() error {
 // CleanupTasks implements the plugin cleanup interface.
 // It gracefully stops the gRPC server and performs necessary cleanup operations.
 // If the server is nil or already stopped, it will return nil.
-func (g *ServiceGrpc) CleanupTasks() error {
+func (g *GrpcService) CleanupTasks() error {
 	if g.server == nil {
 		return nil
 	}
@@ -231,19 +231,19 @@ func (g *ServiceGrpc) CleanupTasks() error {
 // Configure allows runtime configuration updates for the gRPC server.
 // It accepts an interface{} parameter that should contain the new configuration
 // and updates the server settings accordingly.
-func (g *ServiceGrpc) Configure(c any) error {
+func (g *GrpcService) Configure(c any) error {
 	if c == nil {
 		return nil
 	}
-	// Convert the incoming configuration to *conf.Grpc type and update server configuration
-	g.conf = c.(*conf.Grpc)
+	// Convert the incoming configuration to *conf.Service type and update server configuration
+	g.conf = c.(*conf.Service)
 	return nil
 }
 
 // CheckHealth implements the health check interface for the gRPC server.
 // It performs necessary health checks and updates the provided health report
 // with the current status of the server.
-func (g *ServiceGrpc) CheckHealth() error {
+func (g *GrpcService) CheckHealth() error {
 	if g.server == nil {
 		return fmt.Errorf("gRPC server is not initialized")
 	}
@@ -272,7 +272,7 @@ func (g *ServiceGrpc) CheckHealth() error {
 }
 
 // checkPortAvailability checks if the configured port is available for binding
-func (g *ServiceGrpc) checkPortAvailability() error {
+func (g *GrpcService) checkPortAvailability() error {
 	if g.conf == nil || g.conf.Addr == "" {
 		return fmt.Errorf("server address not configured")
 	}
@@ -294,7 +294,7 @@ func (g *ServiceGrpc) checkPortAvailability() error {
 }
 
 // validateTLSConfig validates TLS configuration
-func (g *ServiceGrpc) validateTLSConfig() error {
+func (g *GrpcService) validateTLSConfig() error {
 	if !g.conf.GetTlsEnable() {
 		return nil
 	}
@@ -323,7 +323,7 @@ func (g *ServiceGrpc) validateTLSConfig() error {
 }
 
 // validateConfig validates the gRPC server configuration
-func (g *ServiceGrpc) validateConfig() error {
+func (g *GrpcService) validateConfig() error {
 	if g.conf == nil {
 		return fmt.Errorf("configuration is nil")
 	}
@@ -354,7 +354,7 @@ func (g *ServiceGrpc) validateConfig() error {
 }
 
 // validateAddress validates the server address format
-func (g *ServiceGrpc) validateAddress(addr string) error {
+func (g *GrpcService) validateAddress(addr string) error {
 	if addr == "" {
 		return fmt.Errorf("address cannot be empty")
 	}

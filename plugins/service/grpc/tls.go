@@ -18,7 +18,7 @@ import (
 // Returns:
 //   - grpc.ServerOption: A configured TLS option for the gRPC server
 //   - error: Any error that occurred during TLS configuration
-func (g *ServiceGrpc) tlsLoad() (grpc.ServerOption, error) {
+func (g *GrpcService) tlsLoad() (grpc.ServerOption, error) {
 	// Load the X.509 certificate and private key pair from the paths provided by the application.
 	// Get the certificate provider
 	certProvider := app.Lynx().Certificate()

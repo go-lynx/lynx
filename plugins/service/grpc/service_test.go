@@ -10,8 +10,8 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
-func TestNewServiceGrpc(t *testing.T) {
-	plugin := NewServiceGrpc()
+func TestNewGrpcService(t *testing.T) {
+	plugin := NewGrpcService()
 	assert.NotNil(t, plugin)
 	assert.Equal(t, pluginName, plugin.Name())
 	assert.Equal(t, pluginVersion, plugin.Version())
@@ -21,7 +21,7 @@ func TestNewServiceGrpc(t *testing.T) {
 }
 
 func TestInitializeResources(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Test default configuration - skip due to complex interface requirements
 	// In real usage, this would be called by the framework
@@ -33,7 +33,7 @@ func TestInitializeResources(t *testing.T) {
 }
 
 func TestCheckHealth(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Test uninitialized state
 	err := plugin.CheckHealth()
@@ -41,7 +41,7 @@ func TestCheckHealth(t *testing.T) {
 	assert.Contains(t, err.Error(), "not initialized")
 
 	// Test normal state with configuration - skip due to server initialization requirement
-	// plugin.conf = &conf.Grpc{
+	// plugin.conf = &conf.Service{
 	// 	Addr: ":9090",
 	// }
 	// err = plugin.CheckHealth()
@@ -52,7 +52,7 @@ func TestCheckHealth(t *testing.T) {
 }
 
 func TestValidateConfig(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Test nil configuration
 	err := plugin.validateConfig()
@@ -60,7 +60,7 @@ func TestValidateConfig(t *testing.T) {
 	assert.Contains(t, err.Error(), "configuration is nil")
 
 	// Test normal configuration
-	plugin.conf = &conf.Grpc{
+	plugin.conf = &conf.Service{
 		Network: "tcp",
 		Addr:    ":9090",
 		Timeout: durationpb.New(10 * time.Second),
@@ -83,8 +83,8 @@ func TestValidateConfig(t *testing.T) {
 }
 
 func TestValidateAddress(t *testing.T) {
-	plugin := NewServiceGrpc()
-	plugin.conf = &conf.Grpc{Network: "tcp"}
+	plugin := NewGrpcService()
+	plugin.conf = &conf.Service{Network: "tcp"}
 
 	// Test empty address
 	err := plugin.validateAddress("")
@@ -105,15 +105,15 @@ func TestValidateAddress(t *testing.T) {
 }
 
 func TestValidateTLSConfig(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Test TLS disabled
-	plugin.conf = &conf.Grpc{TlsEnable: false}
+	plugin.conf = &conf.Service{TlsEnable: false}
 	err := plugin.validateTLSConfig()
 	assert.NoError(t, err)
 
 	// Test TLS enabled but invalid configuration
-	plugin.conf = &conf.Grpc{
+	plugin.conf = &conf.Service{
 		TlsEnable:   true,
 		TlsAuthType: 5, // Invalid authentication type
 	}
@@ -123,14 +123,14 @@ func TestValidateTLSConfig(t *testing.T) {
 }
 
 func TestConfigure(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Test nil configuration
 	err := plugin.Configure(nil)
 	assert.NoError(t, err)
 
 	// Test valid configuration
-	config := &conf.Grpc{
+	config := &conf.Service{
 		Network: "tcp",
 		Addr:    ":8080",
 	}

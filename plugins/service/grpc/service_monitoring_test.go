@@ -10,8 +10,8 @@ import (
 )
 
 func TestRecordHealthCheckMetrics(t *testing.T) {
-	plugin := NewServiceGrpc()
-	plugin.conf = &conf.Grpc{Addr: ":9090"}
+	plugin := NewGrpcService()
+	plugin.conf = &conf.Service{Addr: ":9090"}
 
 	// Test recording health check metrics
 	plugin.recordHealthCheckMetricsInternal(true)
@@ -22,7 +22,7 @@ func TestRecordHealthCheckMetrics(t *testing.T) {
 }
 
 func TestRecordRequestMetrics(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Test recording request metrics
 	plugin.recordRequestMetrics("test.Method", 100*time.Millisecond, "success")
@@ -33,7 +33,7 @@ func TestRecordRequestMetrics(t *testing.T) {
 }
 
 func TestUpdateConnectionMetrics(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Test updating connection metrics
 	plugin.updateConnectionMetrics(10)
@@ -44,7 +44,7 @@ func TestUpdateConnectionMetrics(t *testing.T) {
 }
 
 func TestRecordServerStartTime(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Test recording server start time
 	plugin.recordServerStartTime()
@@ -54,7 +54,7 @@ func TestRecordServerStartTime(t *testing.T) {
 }
 
 func TestRecordServerError(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Test recording server errors
 	plugin.recordServerError("test_error")
@@ -65,7 +65,7 @@ func TestRecordServerError(t *testing.T) {
 }
 
 func TestGetMetricsHandler(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Get metrics handler
 	handler := plugin.getMetricsHandler()
@@ -82,7 +82,7 @@ func mockHandler(ctx context.Context, req interface{}) (interface{}, error) {
 }
 
 func TestMetricsHandlerIntegration(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 	handler := plugin.getMetricsHandler()
 
 	// Skip this integration test due to type mismatch
