@@ -12,7 +12,6 @@ import (
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
 	kratosgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
-	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/service/grpc/conf"
@@ -94,7 +93,9 @@ func (c *ClientPlugin) InitializeResources(rt plugins.Runtime) error {
 	}
 
 	// Get discovery from control plane
-	c.discovery = app.Lynx().GetControlPlane().Discovery()
+	// Note: This needs to be injected via dependency injection
+	// For now, we'll set it to nil and handle it later
+	c.discovery = nil
 
 	return nil
 }

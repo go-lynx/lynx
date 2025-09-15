@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-lynx/lynx/app"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
@@ -75,9 +74,9 @@ func (g *GrpcService) recordHealthCheckMetricsInternal(healthy bool) {
 	}
 
 	if healthy {
-		grpcServerUp.WithLabelValues(app.GetName(), g.conf.Addr).Set(1)
+		grpcServerUp.WithLabelValues(g.getAppName(), g.conf.Addr).Set(1)
 	} else {
-		grpcServerUp.WithLabelValues(app.GetName(), g.conf.Addr).Set(0)
+		grpcServerUp.WithLabelValues(g.getAppName(), g.conf.Addr).Set(0)
 	}
 }
 
@@ -89,12 +88,12 @@ func (g *GrpcService) recordRequestMetrics(method string, duration time.Duration
 
 // updateConnectionMetrics updates connection metrics
 func (g *GrpcService) updateConnectionMetrics(active int) {
-	grpcActiveConnections.WithLabelValues(app.GetName()).Set(float64(active))
+	grpcActiveConnections.WithLabelValues(g.getAppName()).Set(float64(active))
 }
 
 // recordServerStartTime records server start time
 func (g *GrpcService) recordServerStartTime() {
-	grpcServerStartTime.WithLabelValues(app.GetName()).Set(float64(time.Now().Unix()))
+	grpcServerStartTime.WithLabelValues(g.getAppName()).Set(float64(time.Now().Unix()))
 }
 
 // recordServerError records server errors
