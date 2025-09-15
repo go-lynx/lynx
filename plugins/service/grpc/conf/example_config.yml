@@ -1,31 +1,33 @@
-# gRPC Plugin Configuration Example
+# gRPC Service Plugin Configuration Example
 lynx:
   grpc:
-    # Network type: tcp or unix
-    network: "tcp"
-    
-    # Server address and port
-    addr: ":9090"
-    
-    # Enable/disable TLS
-    tls_enable: false
-    
-    # TLS client authentication type:
-    # 0: No client authentication
-    # 1: Request client certificate, but not mandatory
-    # 2: Require client certificate
-    # 3: Verify client certificate
-    # 4: Verify client certificate if provided
-    tls_auth_type: 0
-    
-    # Request timeout duration (in seconds)
-    timeout: 10
+    service:
+      # Network type: tcp or unix
+      network: "tcp"
+      
+      # Server address and port
+      addr: ":9090"
+      
+      # Enable/disable TLS
+      tls_enable: false
+      
+      # TLS client authentication type:
+      # 0: No client authentication
+      # 1: Request client certificate, but not mandatory
+      # 2: Require client certificate
+      # 3: Verify client certificate
+      # 4: Verify client certificate if provided
+      tls_auth_type: 0
+      
+      # Request timeout duration (in seconds)
+      timeout: 10
 
 # Example with TLS enabled
 # lynx:
 #   grpc:
-#     network: "tcp"
-#     addr: ":9090"
-#     tls_enable: true
-#     tls_auth_type: 4  # Mutual TLS authentication
-#     timeout: 30
+#     service:
+#       network: "tcp"
+#       addr: ":9090"
+#       tls_enable: true
+#       tls_auth_type: 4  # Mutual TLS authentication
+#       timeout: 30

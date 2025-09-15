@@ -1,9 +1,10 @@
 # gRPC Plugin for Lynx Framework
 
-This plugin provides gRPC server functionality for the Lynx framework, offering features such as TLS support, middleware integration, and configuration management.
+This plugin provides both gRPC service (server) and client functionality for the Lynx framework, offering features such as TLS support, middleware integration, and configuration management.
 
 ## Features
 
+### gRPC Service (Server)
 - Full gRPC server implementation
 - TLS support with client authentication
 - Built-in middleware support:
@@ -20,6 +21,16 @@ This plugin provides gRPC server functionality for the Lynx framework, offering 
 - Error handling and recovery
 - Configuration validation
 
+### gRPC Client
+- Full gRPC client implementation
+- Connection pooling and management
+- Automatic retry with backoff
+- Service discovery integration
+- TLS support with client authentication
+- Middleware support for client-side operations
+- Metrics collection for client operations
+- Load balancing and failover
+
 ## Installation
 
 ```bash
@@ -28,30 +39,59 @@ go get github.com/go-lynx/plugin-grpc/v2
 
 ## Configuration
 
-The plugin can be configured through the Lynx configuration system. Here's an example configuration:
+The plugin can be configured through the Lynx configuration system with separate configurations for service and client:
 
 ```yaml
 lynx:
-  server:
-    network: "tcp"
-    addr: ":9090"
-    timeout: "1s"
-    tls: true
-    tls_auth_type: 4  # Mutual TLS authentication
+  grpc:
+    # gRPC Service Configuration (Server-side)
+    service:
+      network: "tcp"
+      addr: ":9090"
+      timeout: 10
+      tls_enable: true
+      tls_auth_type: 4  # Mutual TLS authentication
+    
+    # gRPC Client Configuration (Client-side)
+    client:
+      default_timeout: "10s"
+      default_keep_alive: "30s"
+      max_retries: 3
+      retry_backoff: "1s"
+      max_connections: 10
+      tls_enable: true
+      tls_auth_type: 4
+      connection_pooling: true
+      pool_size: 5
 ```
 
 ### Configuration Options
 
+#### gRPC Service Configuration (`lynx.grpc.service`)
+
 - `network`: Network type (default: "tcp")
 - `addr`: Server address (default: ":9090")
-- `timeout`: Request timeout duration
-- `tls`: Enable/disable TLS
+- `timeout`: Request timeout duration (in seconds)
+- `tls_enable`: Enable/disable TLS
 - `tls_auth_type`: TLS authentication type
   - 0: No client authentication
   - 1: Request client certificate
   - 2: Require any client certificate
   - 3: Verify client certificate if given
   - 4: Require and verify client certificate
+
+#### gRPC Client Configuration (`lynx.grpc.client`)
+
+- `default_timeout`: Default timeout for gRPC client requests
+- `default_keep_alive`: Default keep-alive interval for gRPC connections
+- `max_retries`: Maximum number of retries for failed requests
+- `retry_backoff`: Backoff duration between retries
+- `max_connections`: Maximum number of connections per service
+- `tls_enable`: Enable TLS for gRPC client connections
+- `tls_auth_type`: TLS authentication type (0-4)
+- `connection_pooling`: Enable connection pooling
+- `pool_size`: Connection pool size
+- `services`: Service-specific configurations
 
 ## Usage
 

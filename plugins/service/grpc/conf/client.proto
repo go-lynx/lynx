@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.grpc.client;
+
+option go_package = "github.com/go-lynx/lynx/plugins/service/grpc/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// The grpc_client message defines the configuration information for the gRPC client plugin.
+message grpc_client {
+  // Default timeout for gRPC client requests
+  google.protobuf.Duration default_timeout = 1;
+
+  // Default keep-alive interval for gRPC connections
+  google.protobuf.Duration default_keep_alive = 2;
+
+  // Maximum number of retries for failed requests
+  int32 max_retries = 3;
+
+  // Backoff duration between retries
+  google.protobuf.Duration retry_backoff = 4;
+
+  // Maximum number of connections per service
+  int32 max_connections = 5;
+
+  // Enable TLS for gRPC client connections
+  bool tls_enable = 6;
+
+  // TLS authentication type
+  int32 tls_auth_type = 7;
+
+  // Enable connection pooling
+  bool connection_pooling = 8;
+
+  // Connection pool size
+  int32 pool_size = 9;
+
+  // Connection idle timeout
+  google.protobuf.Duration idle_timeout = 10;
+
+  // Enable health checking for connections
+  bool health_check_enabled = 11;
+
+  // Health check interval
+  google.protobuf.Duration health_check_interval = 12;
+
+  // Enable metrics collection
+  bool metrics_enabled = 13;
+
+  // Enable distributed tracing
+  bool tracing_enabled = 14;
+
+  // Enable request logging
+  bool logging_enabled = 15;
+
+  // Maximum message size in bytes
+  int32 max_message_size = 16;
+
+  // Enable compression
+  bool compression_enabled = 17;
+
+  // Compression type (gzip, deflate, etc.)
+  string compression_type = 18;
+}
+

@@ -9,16 +9,16 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// init function registers the gRPC server plugin to the global plugin factory.
+// init function registers the gRPC service plugin to the global plugin factory.
 // This function is automatically called when the package is imported.
-// It creates a new ServiceGrpc instance and registers it to the package grpc
+// It creates a new GrpcService instance and registers it to the package grpc
 
 func init() {
 	// Call the RegisterPlugin method of the global plugin factory for plugin registration
 	// Pass in the plugin name, configuration prefix, and a function that returns a plugins.Plugin interface instance
 	factory.GlobalTypedFactory().RegisterPlugin(pluginName, confPrefix, func() plugins.Plugin {
-		// Create and return a new ServiceGrpc instance
-		return NewServiceGrpc()
+		// Create and return a new GrpcService instance
+		return NewGrpcService()
 	})
 }
 
@@ -36,8 +36,8 @@ func GetGrpcServer() (*grpc.Server, error) {
 		return nil, fmt.Errorf("gRPC plugin not found")
 	}
 
-	// Convert to *ServiceGrpc type
-	grpcPlugin, ok := plugin.(*ServiceGrpc)
+	// Convert to *GrpcService type
+	grpcPlugin, ok := plugin.(*GrpcService)
 	if !ok {
 		return nil, fmt.Errorf("invalid gRPC plugin type")
 	}

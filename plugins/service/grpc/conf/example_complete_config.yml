@@ -1,0 +1,91 @@
+# Complete gRPC Plugin Configuration Example
+# This file demonstrates the configuration structure for both gRPC service and client plugins
+
+lynx:
+  grpc:
+    # gRPC Service Configuration (Server-side)
+    service:
+      # Network type: tcp or unix
+      network: "tcp"
+      
+      # Server address and port
+      addr: ":9090"
+      
+      # Enable/disable TLS
+      tls_enable: false
+      
+      # TLS client authentication type:
+      # 0: No client authentication
+      # 1: Request client certificate, but not mandatory
+      # 2: Require client certificate
+      # 3: Verify client certificate
+      # 4: Verify client certificate if provided
+      tls_auth_type: 0
+      
+      # Request timeout duration (in seconds)
+      timeout: 10
+
+    # gRPC Client Configuration (Client-side)
+    client:
+      # Default timeout for gRPC client requests
+      default_timeout: "10s"
+      
+      # Default keep-alive interval for gRPC connections
+      default_keep_alive: "30s"
+      
+      # Maximum number of retries for failed requests
+      max_retries: 3
+      
+      # Backoff duration between retries
+      retry_backoff: "1s"
+      
+      # Maximum number of connections per service
+      max_connections: 10
+      
+      # Enable TLS for gRPC client connections
+      tls_enable: false
+      
+      # TLS authentication type (0-4)
+      tls_auth_type: 0
+      
+      # Enable connection pooling
+      connection_pooling: true
+      
+      # Connection pool size
+      pool_size: 5
+      
+      # Service-specific configurations
+      services:
+        - name: "user-service"
+          endpoint: "localhost:9091"
+          timeout: "5s"
+          tls_enable: true
+          tls_auth_type: 2
+          
+        - name: "order-service"
+          endpoint: "localhost:9092"
+          timeout: "15s"
+          tls_enable: false
+          max_retries: 5
+
+# Example with TLS enabled for both service and client
+# lynx:
+#   grpc:
+#     service:
+#       network: "tcp"
+#       addr: ":9090"
+#       tls_enable: true
+#       tls_auth_type: 4  # Mutual TLS authentication
+#       timeout: 30
+#     
+#     client:
+#       default_timeout: "15s"
+#       default_keep_alive: "60s"
+#       max_retries: 5
+#       retry_backoff: "2s"
+#       max_connections: 20
+#       tls_enable: true
+#       tls_auth_type: 4  # Mutual TLS authentication
+#       connection_pooling: true
+#       pool_size: 10
+

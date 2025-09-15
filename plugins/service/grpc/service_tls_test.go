@@ -17,7 +17,7 @@ import (
 )
 
 func TestTlsLoad(t *testing.T) {
-	plugin := NewServiceGrpc()
+	plugin := NewGrpcService()
 
 	// Test certificate provider is nil - skip due to external dependencies
 	// This would require mocking the app.Lynx() call which is complex
