@@ -12,9 +12,13 @@ This plugin provides gRPC server functionality for the Lynx framework, offering 
   - Rate limiting
   - Request validation
   - Panic recovery
-- Dynamic configuration
-- Health checking
+  - Metrics collection
+- Dynamic configuration with validation
+- Comprehensive health checking
 - Graceful shutdown
+- Prometheus metrics integration
+- Error handling and recovery
+- Configuration validation
 
 ## Installation
 
@@ -69,7 +73,10 @@ func main() {
     // The gRPC plugin will be automatically registered and initialized
     
     // Get the gRPC server instance
-    server := grpc.GetServer()
+    server, err := grpc.GetGrpcServer()
+    if err != nil {
+        log.Fatalf("Failed to get gRPC server: %v", err)
+    }
     
     // Register your gRPC service
     pb.RegisterYourServiceServer(server, &YourServiceImpl{})
@@ -113,7 +120,10 @@ func main() {
     application := app.NewApplication()
     
     // Get the gRPC server
-    server := grpc.GetServer()
+    server, err := grpc.GetGrpcServer()
+    if err != nil {
+        log.Fatalf("Failed to get gRPC server: %v", err)
+    }
     
     // Add your custom middleware
     server.Use(YourCustomMiddleware())
@@ -134,7 +144,27 @@ func YourCustomMiddleware() grpc.UnaryServerInterceptor {
 
 ## Health Checking
 
-The plugin implements health checking through the Lynx plugin system. You can monitor the gRPC server's health status through your application's health checking mechanism.
+The plugin implements comprehensive health checking through the Lynx plugin system. Health checks include:
+
+- Server initialization status
+- Configuration validation
+- Port availability
+- TLS configuration validation (if enabled)
+
+You can monitor the gRPC server's health status through your application's health checking mechanism.
+
+## Monitoring and Metrics
+
+The plugin provides Prometheus metrics for monitoring:
+
+- `grpc_server_up`: Whether the gRPC server is up
+- `grpc_requests_total`: Total number of gRPC requests
+- `grpc_request_duration_seconds`: Duration of gRPC requests
+- `grpc_active_connections`: Number of active gRPC connections
+- `grpc_server_start_time_seconds`: Unix timestamp of server start time
+- `grpc_server_errors_total`: Total number of server errors
+
+These metrics are automatically collected and can be scraped by Prometheus for monitoring and alerting.
 
 ## Dependencies
 

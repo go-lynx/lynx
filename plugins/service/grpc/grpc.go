@@ -6,6 +6,10 @@ package grpc
 
 import (
 	"context"
+	"fmt"
+	"net"
+	"strings"
+	"time"
 
 	"github.com/go-kratos/kratos/contrib/middleware/validate/v2"
 	"github.com/go-kratos/kratos/v2/middleware"
@@ -107,6 +111,11 @@ func (g *ServiceGrpc) InitializeResources(rt plugins.Runtime) error {
 		g.conf.Timeout = defaultConf.Timeout
 	}
 
+	// Validate configuration
+	if err := g.validateConfig(); err != nil {
+		return fmt.Errorf("invalid gRPC configuration: %v", err)
+	}
+
 	return nil
 }
 
@@ -131,9 +140,30 @@ func (g *ServiceGrpc) StartupTasks() error {
 		recovery.Recovery(
 			recovery.WithHandler(func(ctx context.Context, req, err interface{}) error {
 				log.ErrorCtx(ctx, err)
+				g.recordServerError("panic_recovery")
 				return nil
 			}),
 		),
+		// Add metrics middleware - using a custom middleware function
+		func(handler middleware.Handler) middleware.Handler {
+			return func(ctx context.Context, req interface{}) (interface{}, error) {
+				// This is a simplified version - in practice, you'd need to extract
+				// method info from context or use a different approach
+				start := time.Now()
+				resp, err := handler(ctx, req)
+				duration := time.Since(start)
+
+				status := "success"
+				if err != nil {
+					status = "error"
+					g.recordServerError("request_error")
+				}
+
+				// Record basic metrics without method info
+				g.recordRequestMetrics("unknown", duration, status)
+				return resp, err
+			}
+		},
 	)
 	// Configure rate limiting middleware using Lynx framework's control plane HTTP rate limit strategy
 	// If there is a rate limiting middleware, append it
@@ -162,11 +192,19 @@ func (g *ServiceGrpc) StartupTasks() error {
 	}
 	if g.conf.GetTlsEnable() {
 		// If TLS is enabled, add TLS configuration options
-		opts = append(opts, g.tlsLoad())
+		tlsOption, err := g.tlsLoad()
+		if err != nil {
+			return fmt.Errorf("failed to load TLS configuration: %v", err)
+		}
+		opts = append(opts, tlsOption)
 	}
 
 	// Create gRPC server instance
 	g.server = grpc.NewServer(opts...)
+
+	// Record server start time for metrics
+	g.recordServerStartTime()
+
 	// Log successful gRPC service startup
 	log.Infof("grpc service successfully started")
 	return nil
@@ -206,5 +244,146 @@ func (g *ServiceGrpc) Configure(c any) error {
 // It performs necessary health checks and updates the provided health report
 // with the current status of the server.
 func (g *ServiceGrpc) CheckHealth() error {
+	if g.server == nil {
+		return fmt.Errorf("gRPC server is not initialized")
+	}
+
+	// Check server configuration
+	if g.conf == nil || g.conf.Addr == "" {
+		return fmt.Errorf("gRPC server address not configured")
+	}
+
+	// Check port availability
+	if err := g.checkPortAvailability(); err != nil {
+		return fmt.Errorf("gRPC server port not available: %v", err)
+	}
+
+	// Check TLS configuration if enabled
+	if g.conf.GetTlsEnable() {
+		if err := g.validateTLSConfig(); err != nil {
+			return fmt.Errorf("TLS configuration invalid: %v", err)
+		}
+	}
+
+	// Record health check metrics
+	g.recordHealthCheckMetricsInternal(true)
+
+	return nil
+}
+
+// checkPortAvailability checks if the configured port is available for binding
+func (g *ServiceGrpc) checkPortAvailability() error {
+	if g.conf == nil || g.conf.Addr == "" {
+		return fmt.Errorf("server address not configured")
+	}
+
+	// Parse address to get port
+	addr := g.conf.Addr
+	if !strings.Contains(addr, ":") {
+		addr = ":" + addr
+	}
+
+	// Try to listen on the port to check availability
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("port %s is not available: %v", addr, err)
+	}
+	defer listener.Close()
+
+	return nil
+}
+
+// validateTLSConfig validates TLS configuration
+func (g *ServiceGrpc) validateTLSConfig() error {
+	if !g.conf.GetTlsEnable() {
+		return nil
+	}
+
+	// Check TLS auth type is valid
+	authType := g.conf.GetTlsAuthType()
+	if authType < 0 || authType > 4 {
+		return fmt.Errorf("invalid TLS auth type: %d", authType)
+	}
+
+	// Check if certificate provider is available
+	certProvider := app.Lynx().Certificate()
+	if certProvider == nil {
+		return fmt.Errorf("certificate provider not configured")
+	}
+
+	// Check if certificates are provided
+	if len(certProvider.GetCertificate()) == 0 {
+		return fmt.Errorf("server certificate not provided")
+	}
+	if len(certProvider.GetPrivateKey()) == 0 {
+		return fmt.Errorf("server private key not provided")
+	}
+
+	return nil
+}
+
+// validateConfig validates the gRPC server configuration
+func (g *ServiceGrpc) validateConfig() error {
+	if g.conf == nil {
+		return fmt.Errorf("configuration is nil")
+	}
+
+	// Validate network type
+	if g.conf.Network != "" && g.conf.Network != "tcp" && g.conf.Network != "unix" {
+		return fmt.Errorf("unsupported network type: %s, supported types are 'tcp' and 'unix'", g.conf.Network)
+	}
+
+	// Validate address format
+	if err := g.validateAddress(g.conf.Addr); err != nil {
+		return fmt.Errorf("invalid address format: %v", err)
+	}
+
+	// Validate TLS configuration
+	if g.conf.GetTlsEnable() {
+		if err := g.validateTLSConfig(); err != nil {
+			return fmt.Errorf("invalid TLS configuration: %v", err)
+		}
+	}
+
+	// Validate timeout configuration
+	if g.conf.Timeout != nil && g.conf.Timeout.AsDuration() <= 0 {
+		return fmt.Errorf("timeout must be positive, got: %v", g.conf.Timeout.AsDuration())
+	}
+
+	return nil
+}
+
+// validateAddress validates the server address format
+func (g *ServiceGrpc) validateAddress(addr string) error {
+	if addr == "" {
+		return fmt.Errorf("address cannot be empty")
+	}
+
+	// For TCP network, validate port format
+	if g.conf.Network == "tcp" || g.conf.Network == "" {
+		if !strings.Contains(addr, ":") {
+			return fmt.Errorf("TCP address must include port (e.g., ':9090' or 'localhost:9090')")
+		}
+
+		// Try to parse the address
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return fmt.Errorf("invalid address format: %v", err)
+		}
+
+		// Validate port number
+		if port == "" {
+			return fmt.Errorf("port cannot be empty")
+		}
+
+		// For host validation, allow empty host (means all interfaces)
+		if host != "" {
+			// Try to resolve the hostname
+			if _, err := net.LookupHost(host); err != nil {
+				log.Warnf("Warning: could not resolve hostname '%s': %v", host, err)
+			}
+		}
+	}
+
 	return nil
 }
