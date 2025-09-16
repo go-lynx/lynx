@@ -76,6 +76,16 @@ func (h *ServiceHttp) buildMiddlewares() []middleware.Middleware {
 		middlewares = append(middlewares, h.rateLimitMiddleware())
 		log.Infof("Rate limit middleware enabled")
 	}
+	
+	// Connection limit middleware
+	if h.maxConnections > 0 || h.maxConcurrentRequests > 0 {
+		middlewares = append(middlewares, h.connectionLimitMiddleware())
+		log.Infof("Connection limit middleware enabled")
+	}
+	
+	// Circuit breaker middleware
+	middlewares = append(middlewares, h.circuitBreakerMiddleware())
+	log.Infof("Circuit breaker middleware enabled")
 
 	// Configure rate limit middleware using Lynx control plane HTTP rate limit policy
 	// If a rate limit middleware exists, append it
@@ -89,6 +99,72 @@ func (h *ServiceHttp) buildMiddlewares() []middleware.Middleware {
 	// Tracked in enhancement request #HTTP-1234
 
 	return middlewares
+}
+
+// connectionLimitMiddleware returns a connection limit middleware.
+func (h *ServiceHttp) connectionLimitMiddleware() middleware.Middleware {
+	// Create semaphores for connection and request limits
+	var connectionSem chan struct{}
+	var requestSem chan struct{}
+	
+	if h.maxConnections > 0 {
+		connectionSem = make(chan struct{}, h.maxConnections)
+	}
+	if h.maxConcurrentRequests > 0 {
+		requestSem = make(chan struct{}, h.maxConcurrentRequests)
+	}
+	
+	return func(handler middleware.Handler) middleware.Handler {
+		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
+			// Apply connection limit
+			if connectionSem != nil {
+				select {
+				case connectionSem <- struct{}{}:
+					defer func() { <-connectionSem }()
+				default:
+					// Connection limit exceeded
+					if h.errorCounter != nil {
+						method := "unknown"
+						path := "unknown"
+						if tr, ok := transport.FromServerContext(ctx); ok {
+							method = tr.RequestHeader().Get("X-HTTP-Method")
+							if method == "" {
+								method = "POST"
+							}
+							path = tr.Operation()
+						}
+						h.errorCounter.WithLabelValues(method, path, "connection_limit_exceeded").Inc()
+					}
+					return nil, fmt.Errorf("connection limit exceeded: max %d connections", h.maxConnections)
+				}
+			}
+			
+			// Apply concurrent request limit
+			if requestSem != nil {
+				select {
+				case requestSem <- struct{}{}:
+					defer func() { <-requestSem }()
+				default:
+					// Request limit exceeded
+					if h.errorCounter != nil {
+						method := "unknown"
+						path := "unknown"
+						if tr, ok := transport.FromServerContext(ctx); ok {
+							method = tr.RequestHeader().Get("X-HTTP-Method")
+							if method == "" {
+								method = "POST"
+							}
+							path = tr.Operation()
+						}
+						h.errorCounter.WithLabelValues(method, path, "request_limit_exceeded").Inc()
+					}
+					return nil, fmt.Errorf("concurrent request limit exceeded: max %d requests", h.maxConcurrentRequests)
+				}
+			}
+			
+			return handler(ctx, req)
+		}
+	}
 }
 
 // recoveryMiddleware returns a recovery middleware.

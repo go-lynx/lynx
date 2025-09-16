@@ -50,7 +50,7 @@ func TestCheckHealth(t *testing.T) {
 	}
 	err = plugin.CheckHealth()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "server not running")
+	assert.Contains(t, err.Error(), "gRPC server is not initialized")
 
 	// Test with mock server running
 	plugin.server = grpc.NewServer()
@@ -193,9 +193,12 @@ func (m mockRuntime) RemoveListener(listener plugins.EventListener) {}
 func (m mockRuntime) RemovePluginListener(pluginName string, listener plugins.EventListener) {}
 func (m mockRuntime) SetConfig(conf config.Config) {}
 func (m mockRuntime) SetEventDispatchMode(mode string) error { return nil }
+func (m mockRuntime) SetEventTimeout(timeout time.Duration) {}
+func (m mockRuntime) SetEventWorkerPoolSize(size int) {}
 func (m mockRuntime) UnregisterPrivateResource(name string) error { return nil }
 func (m mockRuntime) UnregisterResource(name string) error { return nil }
 func (m mockRuntime) UnregisterSharedResource(name string) error { return nil }
+func (m mockRuntime) WithPluginContext(pluginName string) plugins.Runtime { return m }
 
 type mockConfig struct{}
 

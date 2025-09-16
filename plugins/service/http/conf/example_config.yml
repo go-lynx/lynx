@@ -91,6 +91,14 @@ lynx:
       shutdown_timeout: "30s"         # Shutdown timeout
       wait_for_ongoing_requests: true # Wait for ongoing requests
       max_wait_time: "60s"            # Maximum wait time
+    
+    # Circuit breaker configuration
+    circuit_breaker:
+      enabled: true                   # Enable circuit breaker
+      max_failures: 5                 # Max failures before opening circuit
+      timeout: "60s"                  # Timeout before attempting to close
+      max_requests: 10                # Max requests in half-open state
+      failure_threshold: 0.5          # Failure rate threshold (50%)
 
 # Production Configuration Example
 # Uncomment and modify for production use

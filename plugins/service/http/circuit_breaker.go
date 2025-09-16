@@ -153,15 +153,24 @@ func (cb *CircuitBreaker) GetStats() (int32, int32, int32, CircuitBreakerState) 
 
 // circuitBreakerMiddleware creates a circuit breaker middleware for HTTP requests
 func (h *ServiceHttp) circuitBreakerMiddleware() middleware.Middleware {
-	// Create circuit breaker with default configuration
-	config := CircuitBreakerConfig{
-		MaxFailures:      5,
-		Timeout:          60 * time.Second,
-		MaxRequests:      10,
-		FailureThreshold: 0.5,
+	// Skip if circuit breaker is disabled
+	if h.conf.CircuitBreaker == nil || !h.conf.CircuitBreaker.Enabled {
+		return func(handler middleware.Handler) middleware.Handler {
+			return handler
+		}
 	}
 	
-	cb := NewCircuitBreaker(config)
+	// Create circuit breaker with configuration if not already created
+	if h.circuitBreaker == nil {
+		config := CircuitBreakerConfig{
+			MaxFailures:      h.conf.CircuitBreaker.MaxFailures,
+			Timeout:          h.conf.CircuitBreaker.Timeout.AsDuration(),
+			MaxRequests:      h.conf.CircuitBreaker.MaxRequests,
+			FailureThreshold: h.conf.CircuitBreaker.FailureThreshold,
+		}
+		h.circuitBreaker = NewCircuitBreaker(config)
+	}
+	cb := h.circuitBreaker
 	
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
@@ -201,15 +210,21 @@ func (h *ServiceHttp) circuitBreakerMiddleware() middleware.Middleware {
 	}
 }
 
-// GetCircuitBreakerStats returns circuit breaker statistics for monitoring
+// GetCircuitBreakerStats returns circuit breaker statistics
 func (h *ServiceHttp) GetCircuitBreakerStats() map[string]interface{} {
-	// This would be implemented to return actual circuit breaker stats
-	// For now, return a placeholder
+	if h.circuitBreaker == nil {
+		return map[string]interface{}{
+			"enabled": false,
+		}
+	}
+	
+	failures, requests, successes, state := h.circuitBreaker.GetStats()
+	
 	return map[string]interface{}{
-		"circuit_breaker_enabled": true,
-		"state":                   "closed",
-		"failures":                0,
-		"requests":                0,
-		"successes":               0,
+		"enabled":  true,
+		"state":    state,
+		"failures": failures,
+		"requests": requests,
+		"successes": successes,
 	}
 }

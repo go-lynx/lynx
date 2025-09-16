@@ -134,9 +134,12 @@ func (m *mockRuntimeMonitoring) RemoveListener(listener plugins.EventListener) {
 func (m *mockRuntimeMonitoring) RemovePluginListener(pluginName string, listener plugins.EventListener) {}
 func (m *mockRuntimeMonitoring) SetConfig(conf config.Config) {}
 func (m *mockRuntimeMonitoring) SetEventDispatchMode(mode string) error { return nil }
+func (m *mockRuntimeMonitoring) SetEventTimeout(timeout time.Duration) {}
+func (m *mockRuntimeMonitoring) SetEventWorkerPoolSize(size int) {}
 func (m *mockRuntimeMonitoring) UnregisterPrivateResource(name string) error { return nil }
 func (m *mockRuntimeMonitoring) UnregisterResource(name string) error { return nil }
 func (m *mockRuntimeMonitoring) UnregisterSharedResource(name string) error { return nil }
+func (m *mockRuntimeMonitoring) WithPluginContext(pluginName string) plugins.Runtime { return m }
 
 type mockConfigMonitoring struct{}
 
