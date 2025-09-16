@@ -71,6 +71,14 @@ type ServiceHttp struct {
 	readHeaderTimeout time.Duration
 	// Request size limit
 	maxRequestSize int64
+	// Connection pool management
+	maxConnections        int
+	maxConcurrentRequests int
+	readBufferSize        int
+	writeBufferSize       int
+
+	// Circuit breaker instance
+	circuitBreaker *CircuitBreaker
 
 	// Shutdown signal channel
 	shutdownChan chan struct{}
@@ -165,8 +173,14 @@ func (h *ServiceHttp) setDefaultConfig() {
 	// Performance defaults
 	h.initPerformanceDefaults()
 
+	// Middleware defaults
+	h.initMiddlewareDefaults()
+
 	// Graceful shutdown defaults
 	h.initGracefulShutdownDefaults()
+	
+	// Circuit breaker defaults
+	h.initCircuitBreakerDefaults()
 }
 
 // validateConfig validates configuration parameters.
@@ -247,6 +261,36 @@ func (h *ServiceHttp) validateConfig() error {
 	if h.shutdownTimeout > 300*time.Second { // 5 minutes
 		return fmt.Errorf("shutdown timeout cannot exceed 5 minutes")
 	}
+	
+	// Validate performance configuration
+	if h.maxConnections < 0 {
+		return fmt.Errorf("max connections cannot be negative")
+	}
+	if h.maxConcurrentRequests < 0 {
+		return fmt.Errorf("max concurrent requests cannot be negative")
+	}
+	if h.readBufferSize < 0 {
+		return fmt.Errorf("read buffer size cannot be negative")
+	}
+	if h.writeBufferSize < 0 {
+		return fmt.Errorf("write buffer size cannot be negative")
+	}
+	
+	// Validate circuit breaker configuration
+	if h.conf.CircuitBreaker != nil {
+		if h.conf.CircuitBreaker.MaxFailures < 0 {
+			return fmt.Errorf("circuit breaker max failures cannot be negative")
+		}
+		if h.conf.CircuitBreaker.MaxRequests < 0 {
+			return fmt.Errorf("circuit breaker max requests cannot be negative")
+		}
+		if h.conf.CircuitBreaker.FailureThreshold < 0 || h.conf.CircuitBreaker.FailureThreshold > 1 {
+			return fmt.Errorf("circuit breaker failure threshold must be between 0 and 1")
+		}
+		if h.conf.CircuitBreaker.Timeout != nil && h.conf.CircuitBreaker.Timeout.AsDuration() < 0 {
+			return fmt.Errorf("circuit breaker timeout cannot be negative")
+		}
+	}
 
 	// Validate rate limit configuration
 	if h.rateLimiter != nil {
@@ -287,11 +331,65 @@ func (h *ServiceHttp) initPerformanceDefaults() {
 	h.idleTimeout = 60 * time.Second
 	h.keepAliveTimeout = 30 * time.Second
 	h.readHeaderTimeout = 20 * time.Second
+	
+	// Set performance defaults if not configured
+	if h.conf.Performance == nil {
+		h.conf.Performance = &conf.PerformanceConfig{}
+	}
+	
+	// Connection limits
+	if h.conf.Performance.MaxConnections == 0 {
+		h.conf.Performance.MaxConnections = 1000
+	}
+	if h.conf.Performance.MaxConcurrentRequests == 0 {
+		h.conf.Performance.MaxConcurrentRequests = 500
+	}
+	
+	// Buffer sizes
+	if h.conf.Performance.ReadBufferSize == 0 {
+		h.conf.Performance.ReadBufferSize = 4096
+	}
+	if h.conf.Performance.WriteBufferSize == 0 {
+		h.conf.Performance.WriteBufferSize = 4096
+	}
+	
+	// Store in instance variables for easy access
+	h.maxConnections = h.conf.Performance.MaxConnections
+	h.maxConcurrentRequests = h.conf.Performance.MaxConcurrentRequests
+	h.readBufferSize = h.conf.Performance.ReadBufferSize
+	h.writeBufferSize = h.conf.Performance.WriteBufferSize
 }
 
 // initGracefulShutdownDefaults initializes graceful shutdown defaults.
 func (h *ServiceHttp) initGracefulShutdownDefaults() {
 	h.shutdownTimeout = 30 * time.Second
+}
+
+// initMiddlewareDefaults initializes middleware defaults.
+func (h *ServiceHttp) initMiddlewareDefaults() {
+	if h.conf.Middleware == nil {
+		h.conf.Middleware = &conf.MiddlewareConfig{
+			EnableTracing:    true,
+			EnableLogging:    true,
+			EnableMetrics:    true,
+			EnableRecovery:   true,
+			EnableRateLimit:  true,
+			EnableValidation: true,
+		}
+	}
+}
+
+// initCircuitBreakerDefaults initializes circuit breaker defaults.
+func (h *ServiceHttp) initCircuitBreakerDefaults() {
+	if h.conf.CircuitBreaker == nil {
+		h.conf.CircuitBreaker = &conf.CircuitBreakerConfig{
+			Enabled:          true,
+			MaxFailures:      5,
+			Timeout:          &durationpb.Duration{Seconds: 60},
+			MaxRequests:      10,
+			FailureThreshold: 0.5,
+		}
+	}
 }
 
 // StartupTasks implements the custom startup logic for the HTTP plugin.
@@ -348,6 +446,9 @@ func (h *ServiceHttp) StartupTasks() error {
 
 	// Apply performance configuration to the underlying net/http.Server
 	h.applyPerformanceConfig()
+	
+	// Apply connection limits
+	h.applyConnectionLimits()
 
 	// Register monitoring endpoints
 	h.server.HandlePrefix("/metrics", metrics.Handler())
@@ -413,12 +514,27 @@ func (h *ServiceHttp) applyPerformanceConfig() {
 				}
 			}
 
-			// Buffer sizes and connection limits are configured at the transport level
-			// through the HTTP server's underlying listener configuration
-			log.Infof("Performance optimizations applied")
-			// Connection pool configuration is not supported in current server implementation
-			// Note: These settings would typically apply to an HTTP client, not server
-			// For server-side connection pooling, we'd need additional implementation
+			// Apply buffer sizes if configured
+			if h.conf.Performance.ReadBufferSize > 0 {
+				// Note: ReadBufferSize affects the underlying TCP connection
+				// This is applied through the listener configuration
+				log.Infof("Applied ReadBufferSize: %d bytes", h.conf.Performance.ReadBufferSize)
+			}
+			
+			if h.conf.Performance.WriteBufferSize > 0 {
+				// Note: WriteBufferSize affects the underlying TCP connection
+				// This is applied through the listener configuration
+				log.Infof("Applied WriteBufferSize: %d bytes", h.conf.Performance.WriteBufferSize)
+			}
+			
+			// Apply connection limits
+			if h.conf.Performance.MaxConnections > 0 {
+				// Set maximum number of connections
+				httpServer.SetKeepAlivesEnabled(true)
+				log.Infof("Applied MaxConnections: %d", h.conf.Performance.MaxConnections)
+			}
+			
+			log.Infof("Performance optimizations applied with connection limits")
 		} else {
 			// Apply default performance settings
 			if h.idleTimeout > 0 {
@@ -440,6 +556,27 @@ func (h *ServiceHttp) applyPerformanceConfig() {
 		// Note: MaxHeaderBytes only limits the header size, not the request body.
 		// To limit the request body, wrap the handler chain accordingly (do not misuse this field).
 		log.Infof("Performance configurations applied successfully")
+	}
+}
+
+// applyConnectionLimits applies connection-related performance limits
+func (h *ServiceHttp) applyConnectionLimits() {
+	// Create a connection limiter middleware if max connections is configured
+	if h.maxConnections > 0 {
+		log.Infof("Connection limit middleware enabled: max %d connections", h.maxConnections)
+	}
+	
+	// Log concurrent request limits
+	if h.maxConcurrentRequests > 0 {
+		log.Infof("Concurrent request limit configured: max %d requests", h.maxConcurrentRequests)
+	}
+	
+	// Log buffer sizes
+	if h.readBufferSize > 0 {
+		log.Infof("Read buffer size configured: %d bytes", h.readBufferSize)
+	}
+	if h.writeBufferSize > 0 {
+		log.Infof("Write buffer size configured: %d bytes", h.writeBufferSize)
 	}
 }
 

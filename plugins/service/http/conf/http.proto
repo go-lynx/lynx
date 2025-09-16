@@ -52,6 +52,10 @@ message http {
   // Graceful shutdown configuration
   // Default: 30s shutdown timeout
   GracefulShutdownConfig graceful_shutdown = 10;
+
+  // Circuit breaker configuration
+  // Default: circuit breaker enabled with default settings
+  CircuitBreakerConfig circuit_breaker = 11;
 }
 
 // Monitoring configuration
@@ -283,4 +287,27 @@ message GracefulShutdownConfig {
   // Maximum wait time for ongoing requests
   // Default: 60s
   google.protobuf.Duration max_wait_time = 3;
+}
+
+// Circuit breaker configuration
+message CircuitBreakerConfig {
+  // Whether to enable circuit breaker
+  // Default: true
+  bool enabled = 1;
+
+  // Maximum number of failures before opening the circuit
+  // Default: 5
+  int32 max_failures = 2;
+
+  // Timeout before attempting to close the circuit
+  // Default: 60s
+  google.protobuf.Duration timeout = 3;
+
+  // Maximum number of requests allowed in half-open state
+  // Default: 10
+  int32 max_requests = 4;
+
+  // Failure rate threshold (0.0 to 1.0)
+  // Default: 0.5 (50%)
+  double failure_threshold = 5;
 }
