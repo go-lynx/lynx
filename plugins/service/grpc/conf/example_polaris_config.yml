@@ -1,0 +1,67 @@
+# gRPC Client Configuration with Polaris Service Discovery
+# This example shows how to configure gRPC client when using Polaris for service discovery
+
+lynx:
+  # Polaris service discovery configuration
+  polaris:
+    namespace: "default"
+    server_addresses:
+      - "127.0.0.1:8091"
+    enable_retry: true
+    max_retry_times: 3
+    retry_interval: "2s"
+    health_check_interval: "5s"
+
+  grpc:
+    # gRPC Client Configuration with Service Discovery
+    client:
+      # Global client settings
+      default_timeout: "10s"
+      default_keep_alive: "30s"
+      max_retries: 3
+      retry_backoff: "1s"
+      max_connections: 10
+      tls_enable: false
+      connection_pooling: true
+      pool_size: 5
+      
+      # Service subscriptions via Polaris service discovery
+      subscribe_services:
+        # Service discovered via Polaris - no endpoint needed
+        - name: "user-service"
+          timeout: "5s"
+          required: true
+          load_balancer: "round_robin"
+          circuit_breaker_enabled: true
+          circuit_breaker_threshold: 5
+          metadata:
+            version: "v1.0"
+            
+        # Another service with custom settings
+        - name: "order-service"
+          timeout: "8s"
+          max_retries: 5
+          required: false
+          load_balancer: "weighted_round_robin"
+          
+        # Service with fallback endpoint (used only if Polaris is unavailable)
+        - name: "payment-service"
+          endpoint: "payment-fallback.internal:9093"  # Fallback only
+          timeout: "12s"
+          required: true
+          tls_enable: true
+          tls_auth_type: 2
+          
+        # Optional service that doesn't need to be available at startup
+        - name: "notification-service"
+          timeout: "3s"
+          required: false
+          circuit_breaker_enabled: true
+          circuit_breaker_threshold: 3
+
+# Key Points:
+# 1. When Polaris is configured, services are discovered automatically
+# 2. No need to specify 'endpoint' for services registered in Polaris
+# 3. 'endpoint' can be used as fallback when service discovery fails
+# 4. 'required: true' services are checked at startup
+# 5. Load balancing and circuit breaker can be configured per service
