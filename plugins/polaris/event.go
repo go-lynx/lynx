@@ -212,7 +212,7 @@ func (p *PlugPolaris) handleServiceWatchDegradation(serviceName string, err erro
 	// 1. Use cached service instances
 	p.useCachedServiceInstances(serviceName)
 
-	// 2. Switch to backup service discovery mechanism
+	// 2. Switch to back up service discovery mechanism
 	p.switchToBackupDiscovery(serviceName)
 
 	// 3. Notify related components to enter degradation mode

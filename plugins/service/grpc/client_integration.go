@@ -122,7 +122,7 @@ func (g *GrpcClientIntegration) CloseConnection(serviceName string) error {
 		return fmt.Errorf("gRPC client plugin not initialized")
 	}
 
-	return g.clientPlugin.CloseConnection(serviceName)
+	return g.clientPlugin.connectionPool.CloseConnection(serviceName)
 }
 
 // GetConnectionStatus returns the status of all connections

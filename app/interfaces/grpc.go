@@ -1,19 +1,18 @@
 package interfaces
 
 import (
-	"context"
 	"crypto/tls"
 
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
-	"github.com/go-kratos/kratos/v2/transport/grpc"
+	kratosgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
 	"google.golang.org/grpc"
 )
 
 // GrpcServiceProvider defines the interface for gRPC service operations
 type GrpcServiceProvider interface {
 	// GetServer returns the gRPC server instance
-	GetServer() (*grpc.Server, error)
+	GetServer() (*kratosgrpc.Server, error)
 	
 	// GetApplicationName returns the application name
 	GetApplicationName() string
@@ -80,7 +79,7 @@ type CertificateProvider interface {
 // ControlPlane defines the interface for control plane operations
 type ControlPlane interface {
 	// Discovery returns the service discovery instance
-	Discovery() registry.Discovery
+	Discovery() interface{}
 	
 	// GRPCRateLimit returns the gRPC rate limit middleware
 	GRPCRateLimit() interface{}

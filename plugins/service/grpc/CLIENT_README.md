@@ -85,26 +85,57 @@ lynx:
       compression_type: "gzip"
 ```
 
-### Service Subscriptions Configuration
+### Service Discovery Configuration (Recommended)
+
+When using service discovery (like Polaris), configure services using `subscribe_services`:
 
 ```yaml
-subscriptions:
+lynx:
   grpc:
-    - service: "user-service"
-      tls: false
-      required: true
-      ca_name: ""
-      ca_group: ""
-    - service: "order-service"
-      tls: true
-      required: true
-      ca_name: "order-ca"
-      ca_group: "certificates"
-    - service: "payment-service"
-      tls: true
-      required: false
-      ca_name: "payment-ca"
-      ca_group: "certificates"
+    client:
+      # Global settings...
+      
+      # Service subscription configurations (recommended)
+      subscribe_services:
+        - name: "user-service"
+          # No endpoint needed - discovered via service registry
+          timeout: "5s"
+          required: true
+          load_balancer: "round_robin"
+          circuit_breaker_enabled: true
+          circuit_breaker_threshold: 5
+          metadata:
+            version: "v1.0"
+            
+        - name: "order-service"
+          timeout: "8s"
+          max_retries: 5
+          required: false
+          load_balancer: "weighted_round_robin"
+          
+        - name: "payment-service"
+          # Fallback endpoint (used only if service discovery fails)
+          endpoint: "payment-fallback.internal:9093"
+          timeout: "12s"
+          required: true
+          tls_enable: true
+          tls_auth_type: 2
+```
+
+### Legacy Static Configuration (Deprecated)
+
+For static endpoints without service discovery:
+
+```yaml
+lynx:
+  grpc:
+    client:
+      # Legacy static service configurations (deprecated)
+      services:
+        - name: "legacy-service"
+          endpoint: "legacy.internal:9094"
+          timeout: "10s"
+          tls_enable: false
 ```
 
 ## Usage

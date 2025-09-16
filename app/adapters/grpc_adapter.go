@@ -1,10 +1,10 @@
 package adapters
 
 import (
+	kratosgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/interfaces"
 	"github.com/go-lynx/lynx/app/log"
-	"github.com/go-kratos/kratos/v2/transport/grpc"
 )
 
 // GrpcServiceAdapter adapts the app package to the GrpcServiceProvider interface
@@ -16,7 +16,7 @@ func NewGrpcServiceAdapter() *GrpcServiceAdapter {
 }
 
 // GetServer returns the gRPC server instance
-func (a *GrpcServiceAdapter) GetServer() (*grpc.Server, error) {
+func (a *GrpcServiceAdapter) GetServer() (*kratosgrpc.Server, error) {
 	// This will be implemented by the gRPC plugin
 	return nil, nil
 }
@@ -68,7 +68,7 @@ func (a *CertificateProviderAdapter) GetRootCA() []byte {
 	if provider == nil {
 		return nil
 	}
-	return provider.GetRootCA()
+	return provider.GetRootCACertificate()
 }
 
 // ControlPlaneAdapter adapts the app control plane
@@ -76,10 +76,18 @@ type ControlPlaneAdapter struct{}
 
 // Discovery returns the service discovery instance
 func (a *ControlPlaneAdapter) Discovery() interface{} {
-	return app.Lynx().GetControlPlane().Discovery()
+	controlPlane := app.Lynx().GetControlPlane()
+	if controlPlane == nil {
+		return nil
+	}
+	return controlPlane.NewServiceDiscovery()
 }
 
 // GRPCRateLimit returns the gRPC rate limit middleware
 func (a *ControlPlaneAdapter) GRPCRateLimit() interface{} {
-	return app.Lynx().GetControlPlane().GRPCRateLimit()
+	controlPlane := app.Lynx().GetControlPlane()
+	if controlPlane == nil {
+		return nil
+	}
+	return controlPlane.GRPCRateLimit()
 }

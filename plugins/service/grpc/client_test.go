@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-lynx/lynx/plugins/service/grpc/conf"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -131,16 +132,16 @@ func TestClientMetrics(t *testing.T) {
 	metrics.RecordConnectionCreated("test-service")
 	metrics.RecordConnectionClosed("test-service")
 	metrics.RecordConnectionFailed("test-service")
-	metrics.RecordRequest(100*time.Millisecond, "success")
+	metrics.RecordRequest("test-service", "TestMethod", "success", 100*time.Millisecond)
 	metrics.RecordRequestWithDetails("test-service", "TestMethod", 200*time.Millisecond, "error")
 	metrics.RecordRequestError("test-service", "TestMethod", "timeout")
-	metrics.RecordRetry("test-service", "TestMethod", 50*time.Millisecond)
+	metrics.RecordRetry("test-service", "TestMethod", "timeout")
 	metrics.RecordHealthCheck("test-service", 10*time.Millisecond, "healthy")
 	metrics.RecordPoolSize("test-service", 5)
 	metrics.RecordPoolActive("test-service", 3)
 	metrics.RecordPoolIdle("test-service", 2)
 	metrics.RecordMessageSize("test-service", "TestMethod", "request", 1024)
-	metrics.RecordCircuitBreakerState("test-service", 1)
+	metrics.RecordCircuitBreakerState("test-service", "open")
 	metrics.RecordCircuitBreakerTrip("test-service")
 
 	// Test getters
@@ -200,7 +201,7 @@ func TestClientPluginConnectionManagement(t *testing.T) {
 	assert.Empty(t, status)
 
 	// Test close non-existent connection
-	err := plugin.CloseConnection("non-existent")
+	err := plugin.connectionPool.CloseConnection("non-existent")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }

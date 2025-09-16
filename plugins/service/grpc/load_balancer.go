@@ -11,11 +11,10 @@ import (
 
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
-	"github.com/go-kratos/kratos/v2/selector/node"
 	"github.com/go-kratos/kratos/v2/selector/p2c"
 	"github.com/go-kratos/kratos/v2/selector/random"
 	"github.com/go-kratos/kratos/v2/selector/wrr"
-	"./filter"
+	"github.com/go-lynx/lynx/plugins/service/grpc/filter"
 )
 
 // LoadBalancerType defines the type of load balancing strategy
@@ -86,7 +85,7 @@ func (lb *LoadBalancer) ConfigureService(serviceName string, config *LoadBalance
 }
 
 // SelectNode selects a node for the given service using the configured load balancing strategy
-func (lb *LoadBalancer) SelectNode(ctx context.Context, serviceName string) (node.Node, func(context.Context, selector.DoneInfo), error) {
+func (lb *LoadBalancer) SelectNode(ctx context.Context, serviceName string) (selector.Node, func(context.Context, selector.DoneInfo), error) {
 	lb.mu.RLock()
 	sel, exists := lb.selectors[serviceName]
 	lb.mu.RUnlock()
@@ -119,14 +118,19 @@ func (lb *LoadBalancer) SelectNode(ctx context.Context, serviceName string) (nod
 	}
 
 	// Convert registry instances to selector nodes
-	nodes := make([]node.Node, 0, len(instances))
+	nodes := make([]selector.Node, 0, len(instances))
 	for _, instance := range instances {
-		n := filter.NewRegistryNode(instance)
+		n := &registryNode{instance: instance}
 		nodes = append(nodes, n)
 	}
 
+	// Apply nodes to selector
+	if applier, ok := sel.(interface{ Apply([]selector.Node) }); ok {
+		applier.Apply(nodes)
+	}
+
 	// Apply the selector
-	selectedNode, done, err := sel.Select(ctx, selector.WithNodeFilter(nodes...))
+	selectedNode, done, err := sel.Select(ctx)
 	if err != nil {
 		if lb.metrics != nil {
 			lb.metrics.RecordLoadBalancerError(serviceName, "selection_failed")
@@ -244,9 +248,7 @@ func (lb *LoadBalancer) createSelector(config *LoadBalancerConfig) (selector.Sel
 				filters = append(filters, nodeFilter)
 			}
 		}
-		if len(filters) > 0 {
-			builder = selector.NewBuilder(builder, filters...)
-		}
+		// Note: Filter application would need to be handled by the specific selector implementation
 	}
 
 	return builder.Build(), nil
@@ -327,10 +329,6 @@ func (n *registryNode) Version() string {
 	return ""
 }
 
-func (n *registryNode) Metadata() map[string]string {
-	return n.instance.Metadata
-}
-
 // parseWeight parses weight string to int64
 func parseWeight(weightStr string) int64 {
 	// Simple implementation - in production you might want more robust parsing
@@ -360,7 +358,7 @@ func parseWeight(weightStr string) int64 {
 
 // ConsistentHashSelector implements consistent hash load balancing
 type ConsistentHashSelector struct {
-	nodes []node.Node
+	nodes []selector.Node
 	hash  func(string) uint32
 	mu    sync.RWMutex
 }
@@ -375,7 +373,7 @@ func NewConsistentHashSelector(hashFunc func(string) uint32) *ConsistentHashSele
 	}
 }
 
-func (s *ConsistentHashSelector) Select(ctx context.Context, opts ...selector.SelectOption) (node.Node, func(context.Context, selector.DoneInfo), error) {
+func (s *ConsistentHashSelector) Select(ctx context.Context, opts ...selector.SelectOption) (selector.Node, func(context.Context, selector.DoneInfo), error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -401,10 +399,10 @@ func (s *ConsistentHashSelector) Select(ctx context.Context, opts ...selector.Se
 	return selectedNode, done, nil
 }
 
-func (s *ConsistentHashSelector) Apply(nodes []node.Node) {
+func (s *ConsistentHashSelector) Apply(nodes []selector.Node) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.nodes = make([]node.Node, len(nodes))
+	s.nodes = make([]selector.Node, len(nodes))
 	copy(s.nodes, nodes)
 }
 

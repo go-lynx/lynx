@@ -19,6 +19,150 @@
   <a href="https://github.com/go-lynx/lynx/stargazers"><img src="https://img.shields.io/github/stars/go-lynx/lynx" alt="Stars"></a>
 </p>
 
+## 📊 Event System
+
+Lynx provides a unified event system for inter-plugin communication:
+
+### Event Types
+
+Lynx supports various event types:
+
+```go
+// Add event listener
+listener := &MyEventListener{}
+runtime.AddListener(listener, nil)
+
+// Add plugin-specific listener
+runtime.AddPluginListener("my-plugin", listener, nil)
+
+// Emit events
+runtime.EmitPluginEvent("my-plugin", "started", map[string]any{
+    "timestamp": time.Now().Unix(),
+})
+```
+
+### Event Filtering
+
+Lynx supports event filtering to process only relevant events:
+
+```yaml
+event_filters:
+  - type: "started"
+    plugin: "http"
+  - type: "stopped"
+    plugin: "grpc"
+```
+
+## 📈 Monitoring and Observability
+
+Lynx provides comprehensive monitoring and observability features:
+
+### Metrics
+
+Lynx integrates with Prometheus for metrics collection:
+
+```yaml
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  namespace: "lynx"
+  subsystem: "http"
+  labels:
+    - "service"
+    - "instance"
+```
+
+### Tracing
+
+Lynx integrates with OpenTelemetry for distributed tracing:
+
+```yaml
+tracing:
+  enabled: true
+  provider: "otlp"
+  endpoint: "localhost:4317"
+  service_name: "demo"
+  sample_rate: 0.1
+```
+
+### Logging
+
+Lynx provides structured logging with Zap:
+
+```yaml
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  caller: true
+  stacktrace: true
+```
+
+### Health Checks
+
+Lynx includes health checks for monitoring service health:
+
+```yaml
+health:
+  enabled: true
+  endpoint: "/health"
+  checks:
+    - name: "database"
+      timeout: 5s
+    - name: "redis"
+      timeout: 2s
+```
+
+## 🚀 Production-Ready Features
+
+Lynx includes several production-ready features:
+
+### Graceful Shutdown
+
+Lynx supports graceful shutdown to ensure all requests are processed before shutting down:
+
+```yaml
+graceful_shutdown:
+  timeout: 30s
+  wait_for_ongoing_requests: true
+  max_wait_time: 60s
+```
+
+### Rate Limiting
+
+Lynx includes rate limiting to prevent abuse:
+
+```yaml
+rate_limit:
+  enabled: true
+  rate_per_second: 100
+  burst_limit: 200
+```
+
+### Retry Policies
+
+Lynx supports retry policies for handling transient failures:
+
+```yaml
+retry:
+  enabled: true
+  max_attempts: 3
+  initial_interval: 100ms
+  max_interval: 1s
+  multiplier: 2.0
+```
+
+### Dead Letter Queues
+
+Lynx supports dead letter queues for handling failed messages:
+
+```yaml
+dead_letter_queue:
+  enabled: true
+  max_retries: 3
+  destination: "dlq-topic"
+```
+
 ---
 
 Translations: [English](README.md) | [简体中文](README_zh.md)
@@ -41,24 +185,44 @@ Translations: [English](README.md) | [简体中文](README_zh.md)
 ## 🏗️ Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Lynx Framework                          │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │
-│  │   HTTP      │  │   gRPC      │  │   Database  │       │
-│  │  Plugin     │  │  Plugin     │  │   Plugin    │       │
-│  └─────────────┘  └─────────────┘  └─────────────┘       │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │
-│  │  Service    │  │   Rate      │  │ Distributed │       │
-│  │ Discovery   │  │  Limiting   │  │ Transactions│       │
-│  └─────────────┘  └─────────────┘  └─────────────┘       │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │
-│  │   Polaris   │  │   Seata     │  │   Kratos    │       │
-│  │ (Discovery) │  │(Transactions)│  │ (Framework) │       │
-│  └─────────────┘  └─────────────┘  └─────────────┘       │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    Lynx Application Layer                      │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
+│  │ LynxApp     │  │ Boot        │  │ Control     │           │
+│  │             │  │             │  │ Plane       │           │
+│  └─────────────┘  └─────────────┘  └─────────────┘           │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  Plugin Management Layer                       │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
+│  │ Plugin      │  │ TypedPlugin │  │ Plugin      │           │
+│  │ Manager     │  │ Manager     │  │ Factory     │           │
+│  └─────────────┘  └─────────────┘  └─────────────┘           │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Runtime Layer                               │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
+│  │ Runtime     │  │ TypedRuntime│  │ Simple      │           │
+│  │ Interface   │  │ Impl        │  │ Runtime     │           │
+│  └─────────────┘  └─────────────┘  └─────────────┘           │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                Resource Management Layer                       │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
+│  │ Private     │  │ Shared      │  │ Resource    │           │
+│  │ Resources   │  │ Resources   │  │ Info        │           │
+│  └─────────────┘  └─────────────┘  └─────────────┘           │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -151,6 +315,92 @@ lynx:
   grpc:
     addr: ":9090"
     timeout: "5s"
+```
+
+## 🔐 Security
+
+Lynx provides comprehensive security features to protect your microservices:
+
+### TLS Configuration
+
+Lynx supports TLS for secure communication between services:
+
+```yaml
+tls:
+  source_type: local_file  # Options: local_file, memory, etc.
+  auth_type: mutual        # Options: no_client_cert, request_client_cert, require_any_client_cert, etc.
+  min_version: TLS1.2      # Minimum TLS version
+  cert_file: /path/to/cert.pem
+  key_file: /path/to/key.pem
+  ca_file: /path/to/ca.pem
+```
+
+### Authentication
+
+Lynx supports various authentication mechanisms:
+
+- **TLS Mutual Authentication**: Client and server authenticate each other using certificates
+- **OAuth2**: Support for OAuth2 authentication flows
+- **API Keys**: Simple API key authentication
+- **JWT**: JSON Web Token authentication
+
+### Authorization
+
+Lynx provides flexible authorization mechanisms:
+
+- **Role-Based Access Control (RBAC)**: Control access based on roles
+- **Attribute-Based Access Control (ABAC)**: Fine-grained access control based on attributes
+- **Policy Enforcement**: Enforce access policies at the service level
+
+## ⚠️ Error Handling
+
+Lynx provides a comprehensive error handling framework:
+
+### Error Types
+
+Lynx defines common error types for consistent error handling:
+
+```go
+// Common errors
+var (
+    ErrCacheMiss  = errors.New("cache: key not found")
+    ErrCacheSet   = errors.New("cache: failed to set value")
+    ErrInvalidTTL = errors.New("cache: invalid TTL")
+)
+```
+
+### Error Recovery
+
+Lynx includes an error recovery manager for handling and recovering from errors:
+
+```go
+// ErrorRecoveryManager provides centralized error handling and recovery
+type ErrorRecoveryManager struct {
+    // Error tracking
+    errorCounts     map[string]int64
+    errorHistory    []ErrorRecord
+    recoveryHistory []RecoveryRecord
+
+    // Circuit breakers for different error types
+    circuitBreakers map[string]*CircuitBreaker
+
+    // Recovery strategies
+    recoveryStrategies map[string]RecoveryStrategy
+    
+    // ... other fields
+}
+```
+
+### Circuit Breakers
+
+Lynx includes circuit breakers to prevent cascading failures:
+
+```yaml
+circuit_breaker:
+  enabled: true
+  threshold: 5        # Number of errors before opening the circuit
+  timeout: 30s        # Time to keep the circuit open
+  half_open_timeout: 5s  # Time to wait in half-open state
 ```
 
 ---
@@ -425,7 +675,36 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 
 ---
 
-## 🌟 Star History
+## 🤝 Contributing
+
+We welcome contributions to Lynx! Here's how you can help:
+
+1. **Report Issues**: Report bugs or suggest features by opening an issue.
+2. **Submit Pull Requests**: Submit PRs for bug fixes or new features.
+3. **Improve Documentation**: Help improve documentation or add examples.
+4. **Spread the Word**: Star the repository and share it with others.
+
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests
+5. Submit a pull request
+
+## 📚 Documentation
+
+For more detailed documentation, please visit:
+
+- [Lynx Documentation](https://lynx.go-lynx.com)
+- [API Reference](https://pkg.go.dev/github.com/go-lynx/lynx)
+- [Examples](https://github.com/go-lynx/lynx/tree/main/examples)
+
+## 📜 License
+
+Lynx is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for the full license text.
+
+## ⭐ Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=go-lynx/lynx&type=Date)](https://star-history.com/#go-lynx/lynx&Date)
 

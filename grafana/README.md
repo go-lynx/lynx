@@ -1,189 +1,230 @@
-# Lynx Grafana Dashboards
+# Lynx Framework Grafana Dashboards
 
-## Overview
+This directory contains Grafana dashboard templates for monitoring the Lynx framework and its plugins.
 
-This is a set of modern Grafana dashboards specifically designed for the Lynx microservices framework, featuring stunning visual effects and intuitive data presentation.
+## Dashboard Overview
 
-## Key Features
+### 1. Lynx Framework Overview Dashboard
+- **File**: `lynx-overview-dashboard.json`
+- **Purpose**: High-level overview of all Lynx framework components
+- **Metrics**: Service request rates, message queue throughput, error rates, connection pools, response times
 
-### Modern Design
-- **Dark Theme**: Dark background to reduce eye strain
-- **Gradient Colors**: Gradient color schemes to enhance visual appeal
-- **Emoji Icons**: Intuitive emoji icons for quick panel type recognition
-- **Responsive Layout**: Adapts to different screen sizes
+### 2. Plugin-Specific Dashboards
 
-### Rich Chart Types
-- **Stat Cards**: KPI metrics with gradient dashboards
-- **Time Series**: Smooth curves with multiple display modes
-- **Heatmaps**: Performance distribution visualization
-- **Bar Charts**: Error rates and categorical statistics
+#### Redis Plugin Dashboard
+- **File**: `lynx-redis-dashboard.json`
+- **Metrics**:
+  - Connection pool statistics (hits, misses, timeouts)
+  - Connection pool status (total, idle, stale connections)
+  - Command latency percentiles
+  - Command error rates
+  - Cluster state and master status
+  - Connected slaves count
+  - Ping latency
 
-### Smart Thresholds
-- **Dynamic Thresholds**: Reasonable alert thresholds based on business scenarios
-- **Color Coding**: Green (normal) → Yellow (warning) → Red (abnormal)
-- **Unit Optimization**: Automatic selection of appropriate unit display
+#### Kafka Plugin Dashboard
+- **File**: `lynx-kafka-dashboard.json`
+- **Metrics**:
+  - Producer/Consumer throughput (messages/sec, bytes/sec)
+  - Error rates (producer/consumer errors)
+  - Latency metrics
+  - Offset management (commits, commit errors)
+  - Connection health (errors, reconnections)
 
-## Dashboard List
+#### gRPC Plugin Dashboard
+- **File**: `lynx-grpc-dashboard.json`
+- **Metrics**:
+  - Request rate by method and status
+  - Request duration percentiles
+  - Active connections
+  - Server error rates
+  - Server status and start time
+  - Request status distribution
 
-### 1. System Overview Dashboard
-**File**: [overview.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/overview.json)
-**Function**: System-wide overview
-- Total service count statistics
-- Healthy service monitoring
-- Failed service alerts
-- System availability
-- HTTP request rate
-- System latency monitoring
-- Error rate trends
-- Performance heatmap
+#### HTTP Plugin Dashboard
+- **File**: `lynx-http-dashboard.json`
+- **Metrics**:
+  - Request rate by method, path, and status
+  - Request/Response duration percentiles
+  - Request/Response size percentiles
+  - Error rates by type
+  - Health check rates
+  - Request status distribution
 
-### 2. HTTP Service Dashboard
-**File**: [http/dashboard.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/http/dashboard.json)
-**Function**: HTTP service monitoring
-- Request rate statistics
-- Response time monitoring
-- Error rate analysis
-- Active connections
-- Request method distribution
-- Error path analysis
-- Latency percentiles
-- Response size distribution
-- In-flight requests
-- Request size distribution
-- Request heatmap
+#### SQL Plugin Dashboard
+- **File**: `lynx-sql-dashboard.json`
+- **Metrics**:
+  - Connection pool status (max, open, in-use, idle connections)
+  - Connection pool activity (waits, closes, retries)
+  - Query/Transaction duration percentiles
+  - Error rates by type
+  - Health check status
+  - Connection activity (attempts, success, failures)
+  - Slow query rates
 
-### 3. Redis Service Dashboard
-**File**: [redis/dashboard.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/redis/dashboard.json)
-**Function**: Redis cache monitoring
-- Client startup statistics
-- Startup failure monitoring
-- PING latency
-- Connection pool status
-- Connection pool performance
-- Pool hit rate analysis
-- Command error analysis
-- Redis performance heatmap
+#### Polaris Plugin Dashboard
+- **File**: `lynx-polaris-dashboard.json`
+- **Metrics**:
+  - SDK operations and duration
+  - Service discovery operations
+  - Service instances count
+  - Service registration and heartbeat
+  - Configuration operations
+  - Routing operations
+  - Rate limiting (requests, rejected)
+  - Health checks
 
-### 4. Kafka Service Dashboard
-**File**: [kafka/dashboard.json](file:///Users/claire/GolandProjects/lynx/lynx/grafana/kafka/dashboard.json)
-**Function**: Kafka message queue monitoring
-- Message production rate
-- Message consumption rate
-- Producer errors
-- Producer latency
-- Topic production distribution
-- Topic consumption distribution
-- Latency percentiles
-- Error type analysis
-- Kafka performance heatmap
+#### Redis Lock Plugin Dashboard
+- **File**: `lynx-redis-lock-dashboard.json`
+- **Metrics**:
+  - Lock acquire/unlock/renew operations
+  - Active locks count
+  - Script latency percentiles
+  - Skipped renewals
+  - Operations by type
 
-## Design Features
+## Installation
 
-### Color Scheme
-- **Primary Tone**: Dark background (#1e1e1e)
-- **Success Color**: Green gradient
-- **Warning Color**: Yellow gradient
-- **Error Color**: Red gradient
-- **Info Color**: Blue gradient
+### 1. Using Grafana Provisioning
 
-### Layout Design
-- **Grid System**: 24-column responsive grid
-- **Card Layout**: Unified card design
-- **Spacing Standards**: Consistent margins and padding
-- **Hierarchy**: Clear information hierarchy
+1. Copy the dashboard files to your Grafana dashboards directory:
+   ```bash
+   cp grafana/dashboards/*.json /var/lib/grafana/dashboards/
+   cp grafana/provisioning/dashboards/dashboards.yml /etc/grafana/provisioning/dashboards/
+   ```
 
-### Interactive Experience
-- **Hover Effects**: Rich hover tooltips
-- **Zoom Functionality**: Time range zoom support
-- **Refresh Intervals**: Multiple auto-refresh options
-- **Template Variables**: Flexible data source selection
+2. Restart Grafana:
+   ```bash
+   systemctl restart grafana-server
+   ```
 
-## Configuration Guide
+### 2. Manual Import
 
-### Data Source Configuration
-```json
-{
-  "name": "DS_PROM",
-  "type": "datasource",
-  "query": "prometheus"
-}
-```
+1. Open Grafana in your browser
+2. Go to "Dashboards" → "Import"
+3. Copy and paste the JSON content from each dashboard file
+4. Click "Load" and configure the data source
 
+## Configuration
 
-### Template Variables
-- `rate_interval`: Rate calculation interval (1m, 5m, 15m)
-- `job`: Service job name
-- [instance](file:///Users/claire/GolandProjects/lynx/lynx/plugins/base.go#L37-L37): Service instance
-- `topic`: Kafka topic (Kafka dashboard only)
+### Data Source Setup
 
-### Time Configuration
-- **Default Time Range**: Last 1 hour
-- **Refresh Intervals**: 5s, 10s, 30s, 1m, 5m, 15m, 30m, 1h, 2h, 1d
+Ensure your Prometheus data source is configured in Grafana:
 
-## Metrics Guide
+1. Go to "Configuration" → "Data Sources"
+2. Add Prometheus data source
+3. Set URL to your Prometheus server (e.g., `http://localhost:9090`)
+4. Test the connection
 
-### HTTP Metrics
-- `lynx_http_requests_total`: Total requests
-- `lynx_http_errors_total`: Error requests
-- `lynx_http_request_duration_seconds`: Request latency
-- `lynx_http_response_size_bytes`: Response size
-- `lynx_http_request_size_bytes`: Request size
-- `lynx_http_inflight_requests`: In-flight requests
+### Dashboard Variables
 
-### Redis Metrics
-- `lynx_redis_client_startup_total`: Client startups
-- `lynx_redis_client_startup_failed_total`: Startup failures
-- `lynx_redis_client_ping_latency_seconds`: PING latency
-- `lynx_redis_client_pool_*`: Connection pool related metrics
-- `lynx_redis_client_cmd_errors_total`: Command errors
+Some dashboards may include variables for filtering. Configure them as needed:
 
-### Kafka Metrics
-- `lynx_kafka_messages_produced_total`: Produced messages
-- `lynx_kafka_messages_consumed_total`: Consumed messages
-- `lynx_kafka_producer_errors_total`: Producer errors
-- `lynx_kafka_producer_latency_seconds`: Producer latency
+- **Instance**: Filter by specific service instances
+- **Namespace**: Filter by namespace (for Polaris)
+- **Service**: Filter by service name
 
-## Quick Start
+## Metric Naming Convention
 
-1. **Import Dashboard**:
-   - Click "Import" in Grafana
-   - Select the corresponding JSON file
-   - Configure data source
+All Lynx framework metrics follow this naming convention:
 
-2. **Configure Data Source**:
-   - Ensure Prometheus data source is configured
-   - Verify metric data availability
+- **Namespace**: `lynx` (for Lynx-specific metrics)
+- **Subsystem**: Plugin name (e.g., `redis_client`, `grpc`, `http`)
+- **Metric Name**: Descriptive name (e.g., `requests_total`, `duration_seconds`)
 
-3. **Customize Configuration**:
-   - Adjust time range
-   - Set refresh interval
-   - Configure alert rules
+### Examples:
+- `lynx_redis_client_pool_hits_total`
+- `grpc_requests_total`
+- `lynx_http_request_duration_seconds`
+- `polaris_service_instances_total`
 
-## Best Practices
+## Alerting
 
-### Monitoring Strategy
-- **Real-time Monitoring**: Use 5s refresh interval for real-time monitoring
-- **Trend Analysis**: Use 1h refresh interval for trend analysis
-- **Capacity Planning**: Use 24h time range for capacity planning
+### Recommended Alerts
+
+1. **High Error Rate**
+   - Alert when error rate exceeds 5% for any component
+   - Expression: `rate(component_errors_total[5m]) / rate(component_requests_total[5m]) > 0.05`
+
+2. **High Response Time**
+   - Alert when 95th percentile response time exceeds threshold
+   - Expression: `histogram_quantile(0.95, component_duration_seconds_bucket) > 1`
+
+3. **Connection Pool Exhaustion**
+   - Alert when connection pool usage exceeds 80%
+   - Expression: `component_in_use_connections / component_max_connections > 0.8`
+
+4. **Service Down**
+   - Alert when service health check fails
+   - Expression: `component_health_status == 0`
 
 ### Alert Configuration
-- **Response Time**: P95 > 500ms alert
-- **Error Rate**: > 1% alert
-- **Availability**: < 99% alert
 
-### Performance Optimization
-- **Query Optimization**: Use appropriate rate_interval
-- **Cache Strategy**: Reasonably set query cache
-- **Resource Monitoring**: Monitor Grafana's own resource usage
+1. Go to "Alerting" → "Alert Rules"
+2. Create new alert rule
+3. Use the expressions above as conditions
+4. Set appropriate evaluation interval and notification channels
 
-## Future Plans
+## Customization
 
-- [ ] Add dashboards for more service types
-- [ ] Support custom themes
-- [ ] Add more chart types
-- [ ] Optimize mobile experience
-- [ ] Add more alert templates
+### Adding New Metrics
 
----
+1. Update the plugin's metrics collection code
+2. Add new panels to the relevant dashboard JSON file
+3. Use Grafana's panel editor to create visualizations
+4. Export the updated dashboard JSON
 
-*These dashboards are designed based on best practices of modern monitoring systems, aiming to provide an intuitive, beautiful, and practical monitoring experience.*
+### Modifying Existing Panels
+
+1. Open the dashboard in Grafana
+2. Click "Edit" on any panel
+3. Modify queries, visualizations, or settings
+4. Save the dashboard
+5. Export the updated JSON for version control
+
+## Troubleshooting
+
+### Common Issues
+
+1. **No Data in Panels**
+   - Check if Prometheus is scraping metrics from your application
+   - Verify metric names match exactly (case-sensitive)
+   - Check time range settings
+
+2. **Missing Metrics**
+   - Ensure the plugin is enabled and configured
+   - Check if metrics collection is enabled in plugin configuration
+   - Verify metric names in the plugin source code
+
+3. **Dashboard Not Loading**
+   - Check JSON syntax for errors
+   - Verify data source configuration
+   - Check Grafana logs for errors
+
+### Debugging Steps
+
+1. Check Prometheus targets: `http://prometheus:9090/targets`
+2. Query metrics directly: `http://prometheus:9090/graph`
+3. Check Grafana logs: `journalctl -u grafana-server -f`
+4. Verify dashboard JSON syntax using online JSON validators
+
+## Contributing
+
+When adding new dashboards or modifying existing ones:
+
+1. Follow the established naming conventions
+2. Include comprehensive documentation
+3. Test with real data before submitting
+4. Update this README with new dashboard information
+5. Ensure JSON files are properly formatted
+
+## Support
+
+For issues related to:
+- **Dashboard functionality**: Check Grafana documentation
+- **Metric collection**: Check Lynx framework plugin documentation
+- **Prometheus integration**: Check Prometheus documentation
+
+## License
+
+These dashboard templates are provided under the same license as the Lynx framework.

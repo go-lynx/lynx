@@ -10,12 +10,12 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
-// LogLevel represents the logging level.
-type LogLevel int32
+// Level represents the logging level.
+type Level int32
 
 const (
 	// DebugLevel logs are typically voluminous, and are usually disabled in production.
-	DebugLevel LogLevel = iota
+	DebugLevel Level = iota
 	// InfoLevel is the default logging priority.
 	InfoLevel
 	// WarnLevel logs are more important than Info, but don't need individual human review.
@@ -41,8 +41,8 @@ var (
 )
 
 // SetLevel sets the global logging level.
-func SetLevel(level LogLevel) {
-	// map public LogLevel to Kratos level, apply, and rebuild logger
+func SetLevel(level Level) {
+	// map public Level to Kratos level, apply, and rebuild logger
 	var lvl log.Level
 	switch level {
 	case DebugLevel:
@@ -61,7 +61,7 @@ func SetLevel(level LogLevel) {
 }
 
 // GetLevel returns the current global logging level.
-func GetLevel() LogLevel {
+func GetLevel() Level {
 	// reflect current Kratos filter minimal level
 	switch kratosMinLevel {
 	case log.LevelDebug:
