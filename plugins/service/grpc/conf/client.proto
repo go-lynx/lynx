@@ -61,5 +61,71 @@ message grpc_client {
 
   // Compression type (gzip, deflate, etc.)
   string compression_type = 18;
+
+  // Service subscription configurations for service discovery
+  repeated subscribe_service subscribe_services = 19;
+
+  // Legacy static service configurations (deprecated, use subscribe_services instead)
+  repeated static_service services = 20 [deprecated = true];
+}
+
+// Configuration for subscribing to services via service discovery
+message subscribe_service {
+  // Service name for service discovery
+  string name = 1;
+
+  // Optional: Static endpoint override (only used when service discovery is unavailable)
+  // When using service discovery (like Polaris), this field should be empty
+  string endpoint = 2;
+
+  // Service-specific timeout override
+  google.protobuf.Duration timeout = 3;
+
+  // Enable TLS for this specific service
+  bool tls_enable = 4;
+
+  // TLS authentication type for this service
+  int32 tls_auth_type = 5;
+
+  // Maximum retries for this service
+  int32 max_retries = 6;
+
+  // Whether this service is required at startup
+  bool required = 7;
+
+  // Service-specific metadata
+  map<string, string> metadata = 8;
+
+  // Load balancing strategy (round_robin, random, weighted_round_robin, etc.)
+  string load_balancer = 9;
+
+  // Circuit breaker configuration
+  bool circuit_breaker_enabled = 10;
+
+  // Circuit breaker failure threshold
+  int32 circuit_breaker_threshold = 11;
+}
+
+// Legacy static service configuration (deprecated)
+message static_service {
+  option deprecated = true;
+  
+  // Service name
+  string name = 1;
+
+  // Static endpoint
+  string endpoint = 2;
+
+  // Service-specific timeout
+  google.protobuf.Duration timeout = 3;
+
+  // Enable TLS for this service
+  bool tls_enable = 4;
+
+  // TLS authentication type
+  int32 tls_auth_type = 5;
+
+  // Maximum retries for this service
+  int32 max_retries = 6;
 }
 

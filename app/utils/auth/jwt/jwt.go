@@ -41,10 +41,7 @@ type CustomClaims interface {
 	jwt.Claims
 }
 
-// ============================================================
-// Signing Options
-// ============================================================
-// Options for signing
+// SignOptions Options for signing
 type SignOptions struct {
 	// Optional: set JWT header "kid" for key rotation
 	Kid string

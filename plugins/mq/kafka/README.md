@@ -1,204 +1,405 @@
-# Kafka Plugin Refactoring Documentation
+# Kafka Plugin for Lynx Framework
 
-## Refactoring Goals
+The Kafka Plugin provides comprehensive Apache Kafka integration for the Lynx framework, supporting high-performance message production and consumption with advanced features like batch processing, retry mechanisms, and monitoring.
 
-This refactoring aims to optimize the Kafka plugin's code structure, improving maintainability and extensibility.
+## Features
 
-## File Structure Changes
+### Core Messaging Support
+- **Producer/Consumer Pattern**: Full support for Kafka's producer and consumer APIs
+- **Batch Processing**: Configurable message batching for high throughput
+- **Retry Mechanisms**: Intelligent retry logic with exponential backoff
+- **Connection Pooling**: Efficient connection and resource management
+- **Graceful Shutdown**: Proper cleanup and resource management
 
-### Before Refactoring
+### Advanced Features
+- **SASL Authentication**: Support for SASL/PLAIN, SASL/SCRAM, and SASL/GSSAPI
+- **TLS Encryption**: End-to-end encryption support
+- **Compression**: Support for gzip, snappy, lz4, and zstd compression
+- **Message Routing**: Configurable message routing strategies
+- **Dead Letter Queue**: Built-in dead letter queue support
+- **Schema Registry**: Integration with Confluent Schema Registry
+
+### Performance & Monitoring
+- **Prometheus Metrics**: Comprehensive monitoring and alerting
+- **Health Checks**: Real-time health monitoring
+- **Performance Analytics**: Throughput and latency measurements
+- **Error Tracking**: Detailed error categorization and reporting
+- **Connection Monitoring**: Real-time connection status tracking
+
+## Architecture
+
+The plugin follows the Lynx framework's layered architecture:
+
 ```
-kafka/
-├── client.go          # Main client structure
-├── producer.go        # Producer related
-├── consumer.go        # Consumer related
-├── config.go          # Configuration validation
-├── errors.go          # Error definitions
-├── monitoring.go      # Monitoring metrics and health checks
-├── utils.go           # Utility functions (containing multiple functions)
-├── constants.go       # Constant definitions
-└── plug.go           # Plugin entry point
-```
-
-
-### After Refactoring
-```
-kafka/
-├── client.go          # Main client structure
-├── producer.go        # Producer related
-├── consumer.go        # Consumer related
-├── config.go          # Configuration validation
-├── errors.go          # Error definitions
-├── metrics.go         # Monitoring metrics (separated from monitoring.go)
-├── health.go          # Health checks and connection management (separated from monitoring.go)
-├── batch.go           # Batch processing (separated from utils.go)
-├── retry.go           # Retry logic (separated from utils.go)
-├── pool.go            # Goroutine pool (separated from utils.go)
-├── interfaces.go      # Interface definitions (new)
-├── utils.go           # General utility functions
-├── constants.go       # Constant definitions
-└── plug.go           # Plugin entry point
-```
-
-
-## Major Improvements
-
-### 1. File Responsibility Separation
-
-- **metrics.go**: Focuses on monitoring metrics collection and management
-- **health.go**: Focuses on health checks and connection management
-- **batch.go**: Focuses on batch processing logic
-- **retry.go**: Focuses on retry mechanisms
-- **pool.go**: Focuses on goroutine pool management
-- **interfaces.go**: Defines clear interface contracts
-
-### 2. Interface Design
-
-Added complete interface definitions:
-
-```go
-// KafkaProducer producer interface
-type KafkaProducer interface {
-    Produce(ctx context.Context, topic string, key, value []byte) error
-    ProduceBatch(ctx context.Context, topic string, records []*kgo.Record) error
-    GetProducer() *kgo.Client
-    IsProducerReady() bool
-}
-
-// KafkaConsumer consumer interface
-type KafkaConsumer interface {
-    Subscribe(ctx context.Context, topics []string, handler MessageHandler) error
-    GetConsumer() *kgo.Client
-    IsConsumerReady() bool
-}
-
-// KafkaClientInterface complete client interface
-type KafkaClientInterface interface {
-    KafkaProducer
-    KafkaConsumer
-    InitializeResources(rt plugins.Runtime) error
-    StartupTasks() error
-    ShutdownTasks() error
-    GetMetrics() *Metrics
-}
+┌─────────────────────────────────────────────────────────────┐
+│                    Application Layer                        │
+├─────────────────────────────────────────────────────────────┤
+│                    Kafka Plugin Layer                       │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │   Client    │  │   Metrics   │  │   Configuration    │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+├─────────────────────────────────────────────────────────────┤
+│                    Core Kafka Layer                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │  Producer   │  │  Consumer   │  │   Connection       │ │
+│  │  Manager    │  │  Manager    │  │   Manager          │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+├─────────────────────────────────────────────────────────────┤
+│                    Kafka Client Layer                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │   Kafka     │  │   Schema    │  │   Authentication   │ │
+│  │   Client    │  │   Registry  │  │     System         │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
 ```
 
+## Configuration
 
-### 3. Enhanced Error Handling
+### Basic Configuration
 
-- Added parameter validation (such as [validateTopic](file:///Users/claire/GolandProjects/lynx/lynx/plugins/mq/kafka/utils.go#L7-L25))
-- Enhanced error wrapping and context information
-- Provided more detailed error type definitions
+```yaml
+lynx:
+  kafka:
+    brokers:
+      - "localhost:9092"
+      - "localhost:9093"
+    client_id: "lynx-kafka-client"
+    group_id: "lynx-consumer-group"
+    
+    producers:
+      - name: "default-producer"
+        enabled: true
+        topic: "default-topic"
+        max_retries: 3
+        retry_backoff: "100ms"
+        batch_size: 16384
+        batch_timeout: "10ms"
+        compression: "gzip"
+    
+    consumers:
+      - name: "default-consumer"
+        enabled: true
+        topics:
+          - "default-topic"
+        group_id: "lynx-consumer-group"
+        auto_offset_reset: "earliest"
+        enable_auto_commit: true
+        max_poll_records: 500
+```
 
-### 4. Configuration Optimization
+### Advanced Configuration
 
-- Added default configuration functions
-- Provided more flexible configuration options
-- Enhanced configuration validation logic
+```yaml
+lynx:
+  kafka:
+    brokers:
+      - "kafka1:9092"
+      - "kafka2:9092"
+      - "kafka3:9092"
+    
+    # Security configuration
+    security:
+      sasl:
+        enabled: true
+        mechanism: "PLAIN"
+        username: "kafka-user"
+        password: "kafka-password"
+      tls:
+        enabled: true
+        ca_file: "/path/to/ca-cert.pem"
+        cert_file: "/path/to/client-cert.pem"
+        key_file: "/path/to/client-key.pem"
+        insecure_skip_verify: false
+    
+    # Connection configuration
+    connection:
+      timeout: 30s
+      keep_alive: 30s
+      max_connections: 100
+    
+    # Producer configuration
+    producers:
+      - name: "high-throughput-producer"
+        enabled: true
+        topic: "high-throughput-topic"
+        options:
+          batch_size: 65536
+          batch_timeout: "5ms"
+          compression: "lz4"
+          max_retries: 5
+          retry_backoff: "200ms"
+          acks: "all"
+          idempotent: true
+    
+    # Consumer configuration
+    consumers:
+      - name: "batch-consumer"
+        enabled: true
+        topics:
+          - "batch-topic"
+        group_id: "batch-consumer-group"
+        options:
+          auto_offset_reset: "earliest"
+          enable_auto_commit: false
+          max_poll_records: 1000
+          session_timeout: 30s
+          heartbeat_interval: 3s
+          fetch_min_bytes: 1
+          fetch_max_wait: "500ms"
+```
 
-### 5. Monitoring Metrics Improvement
-
-- Separated metrics collection and health checks
-- Provided richer metric types
-- Supported metric reset and statistics
-
-## Usage Examples
+## Usage
 
 ### Basic Usage
 
 ```go
-// Create client
-client := NewKafkaClient()
+package main
 
-// Initialize
-err := client.InitializeResources(runtime)
-if err != nil {
-    log.Fatal(err)
+import (
+    "context"
+    "github.com/go-lynx/lynx/plugins/mq/kafka"
+)
+
+func main() {
+    // Get Kafka client from plugin manager
+    client := pluginManager.GetPlugin("kafka").(kafka.ClientInterface)
+    
+    // Send message
+    err := client.Produce(ctx, "test-topic", []byte("key"), []byte("Hello Kafka"))
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Subscribe to messages
+    err = client.Subscribe(ctx, []string{"test-topic"}, func(ctx context.Context, msg *kgo.Record) error {
+        log.Printf("Received message: %s", string(msg.Value))
+        return nil
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
 }
-
-// Start
-err = client.StartupTasks()
-if err != nil {
-    log.Fatal(err)
-}
-
-// Send message
-err = client.Produce(ctx, "test-topic", []byte("key"), []byte("value"))
-if err != nil {
-    log.Error(err)
-}
-
-// Subscribe to messages
-err = client.Subscribe(ctx, []string{"test-topic"}, func(ctx context.Context, topic string, partition int32, offset int64, key, value []byte) error {
-    log.Infof("Received message: %s", string(value))
-    return nil
-})
 ```
 
-
-### Batch Processing
+### Advanced Usage
 
 ```go
-// Create batch processor
-batchProcessor := NewBatchProcessor(1000, 100*time.Millisecond, func(ctx context.Context, records []*kgo.Record) error {
-    // Process batch records
-    return nil
-})
+// Send message with specific producer
+err := client.ProduceWith(ctx, "high-throughput-producer", "test-topic", []byte("key"), []byte("value"))
 
-// Add record
-record := &kgo.Record{
-    Topic: "test-topic",
-    Key:   []byte("key"),
-    Value: []byte("value"),
+// Send batch messages
+records := []*kgo.Record{
+    {Topic: "test-topic", Key: []byte("key1"), Value: []byte("value1")},
+    {Topic: "test-topic", Key: []byte("key2"), Value: []byte("value2")},
 }
-batchProcessor.AddRecord(ctx, record)
+err = client.ProduceBatch(ctx, "test-topic", records)
+
+// Subscribe with specific consumer
+err = client.SubscribeWith(ctx, "batch-consumer", []string{"test-topic"}, messageHandler)
+
+// Get producer/consumer instances
+producer := client.GetProducer("default-producer")
+consumer := client.GetConsumer("default-consumer")
 ```
 
-
-### Retry Mechanism
+### Message Handlers
 
 ```go
-// Create retry handler
-retryHandler := NewRetryHandler(RetryConfig{
-    MaxRetries:  3,
-    BackoffTime: time.Second,
-    MaxBackoff:  30 * time.Second,
-})
-
-// Execute operation with retry
-err := retryHandler.DoWithRetry(ctx, func() error {
-    // Execute operation that may fail
+// Define message handler
+messageHandler := func(ctx context.Context, msg *kgo.Record) error {
+    log.Printf("Received message from topic %s: %s", msg.Topic, string(msg.Value))
+    
+    // Process message
+    err := processMessage(msg)
+    if err != nil {
+        log.Printf("Failed to process message: %v", err)
+        return err
+    }
+    
     return nil
-})
+}
+
+// Subscribe with handler
+err := client.Subscribe(ctx, []string{"test-topic"}, messageHandler)
 ```
 
+## API Reference
 
-## Backward Compatibility
+### KafkaClientInterface
 
-The refactored code maintains backward compatibility:
+The main client interface providing access to all Kafka functionality.
 
-1. All public APIs remain unchanged
-2. Configuration format remains unchanged
-3. Plugin registration method remains unchanged
+#### Core Methods
 
-## Performance Optimization
+- `Produce(ctx context.Context, topic string, key, value []byte) error` - Send a message
+- `ProduceWith(ctx context.Context, producerName, topic string, key, value []byte) error` - Send with specific producer
+- `ProduceBatch(ctx context.Context, topic string, records []*kgo.Record) error` - Send batch messages
+- `Subscribe(ctx context.Context, topics []string, handler MessageHandler) error` - Subscribe to topics
+- `SubscribeWith(ctx context.Context, consumerName string, topics []string, handler MessageHandler) error` - Subscribe with specific consumer
 
-1. **Batch Processing**: Supports message batch sending to improve throughput
-2. **Goroutine Pool**: Limits concurrent processing to avoid resource exhaustion
-3. **Retry Mechanism**: Intelligent retry to avoid ineffective retries
-4. **Connection Management**: Automatic reconnection and health checks
+#### Management Methods
 
-## Monitoring and Observability
+- `GetProducer(name string) *kgo.Client` - Get producer instance
+- `GetConsumer(name string) *kgo.Client` - Get consumer instance
+- `IsProducerReady(name string) bool` - Check producer status
+- `IsConsumerReady(name string) bool` - Check consumer status
+- `Close(name string) error` - Close producer/consumer
 
-1. **Detailed Metrics**: Production/consumption message count, byte count, error count, latency, etc.
-2. **Health Checks**: Regular connection status checks
-3. **Error Statistics**: Categorized statistics of various error types
-4. **Performance Monitoring**: Latency, throughput, and other performance metrics
+#### Monitoring Methods
 
-## Future Plans
+- `GetMetrics() *Metrics` - Get performance metrics
+- `CheckHealth() error` - Perform health check
+- `GetHealthStatus() *HealthStatus` - Get health status
 
-1. **Complete SASL Authentication**: Implement complete SASL authentication mechanism
-2. **Add More Compression Algorithms**: Support more compression types
-3. **Enhance Error Handling**: Add more error types and handling strategies
-4. **Performance Optimization**: Further optimize batch processing and concurrent performance
-5. **Test Coverage**: Add complete unit tests and integration tests
+## Monitoring and Metrics
+
+### Health Checks
+
+```go
+// Check overall health
+err := client.CheckHealth()
+if err != nil {
+    log.Printf("Health check failed: %v", err)
+}
+
+// Get detailed health status
+health := client.GetHealthStatus()
+if health.Healthy {
+    log.Printf("All components healthy")
+} else {
+    log.Printf("Health issues detected: %v", health.LastError)
+}
+```
+
+### Prometheus Metrics
+
+The plugin exposes comprehensive Prometheus metrics:
+
+#### Producer Metrics
+- `lynx_kafka_producer_messages_total` - Total messages sent
+- `lynx_kafka_producer_bytes_total` - Total bytes sent
+- `lynx_kafka_producer_errors_total` - Total producer errors
+- `lynx_kafka_producer_duration_seconds` - Message send duration
+
+#### Consumer Metrics
+- `lynx_kafka_consumer_messages_total` - Total messages received
+- `lynx_kafka_consumer_bytes_total` - Total bytes received
+- `lynx_kafka_consumer_errors_total` - Total consumer errors
+- `lynx_kafka_consumer_lag` - Consumer lag
+
+#### Connection Metrics
+- `lynx_kafka_connections_active` - Active connections
+- `lynx_kafka_connections_total` - Total connections
+- `lynx_kafka_connection_errors_total` - Connection errors
+
+## Performance Tuning
+
+### Producer Optimization
+
+```yaml
+producers:
+  - name: "optimized-producer"
+    options:
+      batch_size: 65536          # Increase batch size
+      batch_timeout: "5ms"       # Reduce batch timeout
+      compression: "lz4"         # Use efficient compression
+      acks: "1"                  # Reduce acknowledgment overhead
+      retries: 3                 # Configure retries
+      retry_backoff: "100ms"     # Retry backoff
+```
+
+### Consumer Optimization
+
+```yaml
+consumers:
+  - name: "optimized-consumer"
+    options:
+      max_poll_records: 1000     # Increase poll size
+      fetch_min_bytes: 1024      # Minimum fetch size
+      fetch_max_wait: "500ms"    # Maximum fetch wait
+      session_timeout: "30s"     # Session timeout
+      heartbeat_interval: "3s"   # Heartbeat interval
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Connection Failed**
+   - Check broker addresses and ports
+   - Verify network connectivity
+   - Check firewall settings
+
+2. **Authentication Errors**
+   - Verify SASL credentials
+   - Check TLS certificates
+   - Validate security configuration
+
+3. **Performance Issues**
+   - Monitor batch processing settings
+   - Check compression configuration
+   - Review retry settings
+
+4. **Consumer Lag**
+   - Increase consumer instances
+   - Optimize processing logic
+   - Check consumer group configuration
+
+### Debug Mode
+
+Enable debug logging for detailed troubleshooting:
+
+```yaml
+lynx:
+  kafka:
+    logging:
+      level: "DEBUG"
+      enable_sarama_logger: true
+```
+
+## Best Practices
+
+### Message Design
+- Use appropriate message sizes
+- Implement message versioning
+- Design for idempotency
+- Use meaningful message keys
+
+### Error Handling
+- Implement proper retry logic
+- Handle dead letter queues
+- Monitor error rates
+- Implement circuit breakers
+
+### Performance
+- Use batch processing effectively
+- Configure appropriate timeouts
+- Monitor resource usage
+- Implement backpressure handling
+
+### Monitoring
+- Set up comprehensive monitoring
+- Monitor consumer lag
+- Track error rates
+- Use metrics for capacity planning
+
+## Dependencies
+
+- `github.com/twmb/franz-go` - High-performance Kafka client
+- `github.com/go-lynx/lynx` - Lynx framework core
+- `github.com/prometheus/client_golang` - Prometheus metrics
+
+## License
+
+This plugin is part of the Lynx framework and follows the same license terms.
+
+## Contributing
+
+Contributions are welcome! Please see the main Lynx framework contribution guidelines.
+
+## Support
+
+For support and questions:
+- GitHub Issues: [Lynx Framework Issues](https://github.com/go-lynx/lynx/issues)
+- Documentation: [Lynx Documentation](https://lynx.go-lynx.com)
+- Community: [Lynx Community](https://community.go-lynx.com)

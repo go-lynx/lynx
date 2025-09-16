@@ -1,36 +1,36 @@
-# Polaris 配置文件说明
+# Polaris Configuration Files
 
-## 概述
+## Overview
 
-Polaris 是腾讯开源的云原生服务发现和治理中心。本插件支持通过配置文件来配置 Polaris SDK 的连接参数。
+Polaris is Tencent's open-source cloud-native service discovery and governance center. This plugin supports configuring Polaris SDK connection parameters through configuration files.
 
-## 配置文件结构
+## Configuration File Structure
 
-### 1. Lynx 应用配置文件
+### 1. Lynx Application Configuration File
 
-在你的应用配置文件中添加 Polaris 插件配置：
+Add Polaris plugin configuration to your application configuration file:
 
 ```yaml
 lynx:
   polaris:
-    namespace: "default"                    # 命名空间
-    token: "your-polaris-token"            # 认证令牌（可选）
-    weight: 100                            # 服务权重
-    ttl: 30                                # 服务生存时间（秒）
-    timeout: "10s"                         # 操作超时时间
-    config_path: "./conf/polaris.yaml"     # SDK 配置文件路径（可选）
+    namespace: "default"                    # Namespace
+    token: "your-polaris-token"            # Authentication token (optional)
+    weight: 100                            # Service weight
+    ttl: 30                                # Service TTL (seconds)
+    timeout: "10s"                         # Operation timeout
+    config_path: "./conf/polaris.yaml"     # SDK configuration file path (optional)
 ```
 
-### 2. Polaris SDK 配置文件 (polaris.yaml)
+### 2. Polaris SDK Configuration File (polaris.yaml)
 
-这是 Polaris SDK 的标准配置文件，用于配置 SDK 的连接参数：
+This is the standard Polaris SDK configuration file for configuring SDK connection parameters:
 
 ```yaml
 global:
   serverConnector:
     protocol: grpc
     addresses:
-      - 127.0.0.1:8091  # Polaris 服务地址
+      - 127.0.0.1:8091  # Polaris service address
   statReporter:
     enable: true
     chain:
@@ -44,41 +44,41 @@ global:
 config:
   configConnector:
     addresses:
-      - 127.0.0.1:8093  # Polaris 配置中心地址
+      - 127.0.0.1:8093  # Polaris config center address
 ```
 
-## 配置项说明
+## Configuration Items Description
 
-### Lynx 配置项
+### Lynx Configuration Items
 
-- `namespace`: Polaris 命名空间，用于隔离不同环境或业务的资源
-- `token`: 访问 Polaris 服务的认证令牌（可选）
-- `weight`: 服务实例的权重，用于负载均衡
-- `ttl`: 服务实例的存活时间，用于心跳检测
-- `timeout`: 请求 Polaris 服务的超时时间
-- `config_path`: Polaris SDK 配置文件的路径（可选）
+- `namespace`: Polaris namespace for isolating resources from different environments or businesses
+- `token`: Authentication token for accessing Polaris services (optional)
+- `weight`: Service instance weight for load balancing
+- `ttl`: Service instance TTL for heartbeat detection
+- `timeout`: Timeout for Polaris service requests
+- `config_path`: Path to Polaris SDK configuration file (optional)
 
-### Polaris SDK 配置项
+### Polaris SDK Configuration Items
 
-#### global 全局配置
-- `serverConnector`: 服务连接器配置
-  - `protocol`: 连接协议（grpc/http）
-  - `addresses`: Polaris 服务地址列表
-- `statReporter`: 统计报告器配置
-  - `enable`: 是否启用统计报告
-  - `chain`: 统计报告链
-  - `plugin`: 统计报告插件配置
+#### global Global Configuration
+- `serverConnector`: Service connector configuration
+  - `protocol`: Connection protocol (grpc/http)
+  - `addresses`: List of Polaris service addresses
+- `statReporter`: Statistics reporter configuration
+  - `enable`: Whether to enable statistics reporting
+  - `chain`: Statistics reporting chain
+  - `plugin`: Statistics reporting plugin configuration
 
-#### config 配置中心
-- `configConnector`: 配置中心连接器
-  - `addresses`: 配置中心地址列表
+#### config Config Center
+- `configConnector`: Config center connector
+  - `addresses`: List of config center addresses
 
-## 使用示例
+## Usage Examples
 
-### 1. 基本配置
+### 1. Basic Configuration
 
 ```yaml
-# 应用配置文件 (config.yaml)
+# Application configuration file (config.yaml)
 lynx:
   polaris:
     namespace: "default"
@@ -86,7 +86,7 @@ lynx:
 ```
 
 ```yaml
-# Polaris SDK 配置文件 (conf/polaris.yaml)
+# Polaris SDK configuration file (conf/polaris.yaml)
 global:
   serverConnector:
     protocol: grpc
@@ -108,10 +108,10 @@ config:
       - 127.0.0.1:8093
 ```
 
-### 2. 生产环境配置
+### 2. Production Environment Configuration
 
 ```yaml
-# 应用配置文件
+# Application configuration file
 lynx:
   polaris:
     namespace: "production"
@@ -123,7 +123,7 @@ lynx:
 ```
 
 ```yaml
-# 生产环境 Polaris 配置
+# Production environment Polaris configuration
 global:
   serverConnector:
     protocol: grpc
@@ -148,39 +148,39 @@ config:
       - polaris-config-2:8093
 ```
 
-## 注意事项
+## Important Notes
 
-1. **配置文件路径**: 确保 `config_path` 指向的配置文件存在且可读
-2. **服务地址**: 根据你的 Polaris 部署情况修改服务地址
-3. **命名空间**: 确保使用正确的命名空间
-4. **认证令牌**: 在生产环境中建议使用认证令牌
-5. **网络连接**: 确保应用能够访问 Polaris 服务
+1. **Configuration File Path**: Ensure the file path specified by `config_path` exists and is readable
+2. **Service Addresses**: Modify service addresses according to your Polaris deployment
+3. **Namespace**: Ensure you use the correct namespace
+4. **Authentication Token**: It's recommended to use authentication tokens in production environments
+5. **Network Connection**: Ensure the application can access Polaris services
 
-## 参考文档
+## Reference Documentation
 
-- [腾讯北极星官方文档](https://polarismesh.cn/docs)
-- [Polaris SDK 配置说明](https://polarismesh.cn/docs/使用指南/服务发现/服务发现SDK/Go-SDK/)
-- [Polaris 部署指南](https://polarismesh.cn/docs/使用指南/服务发现/服务发现SDK/Go-SDK/)
+- [Tencent Polaris Official Documentation](https://polarismesh.cn/docs)
+- [Polaris SDK Configuration Guide](https://polarismesh.cn/docs/使用指南/服务发现/服务发现SDK/Go-SDK/)
+- [Polaris Deployment Guide](https://polarismesh.cn/docs/使用指南/服务发现/服务发现SDK/Go-SDK/)
 
-## 故障排除
+## Troubleshooting
 
-### 常见问题
+### Common Issues
 
-1. **配置文件未找到**
-   - 检查 `config_path` 路径是否正确
-   - 确保文件存在且有读取权限
+1. **Configuration File Not Found**
+   - Check if the `config_path` is correct
+   - Ensure the file exists and has read permissions
 
-2. **连接失败**
-   - 检查 Polaris 服务地址是否正确
-   - 确认网络连接是否正常
-   - 验证认证令牌是否有效
+2. **Connection Failed**
+   - Check if Polaris service addresses are correct
+   - Verify network connectivity
+   - Validate authentication token
 
-3. **配置解析错误**
-   - 检查 YAML 格式是否正确
-   - 确认配置项名称是否正确
+3. **Configuration Parsing Error**
+   - Check if YAML format is correct
+   - Verify configuration item names
 
-### 调试方法
+### Debugging Methods
 
-1. 查看应用日志，了解连接状态
-2. 使用 Polaris 控制台检查服务注册状态
-3. 验证配置文件格式和内容
+1. Check application logs to understand connection status
+2. Use Polaris console to check service registration status
+3. Validate configuration file format and content

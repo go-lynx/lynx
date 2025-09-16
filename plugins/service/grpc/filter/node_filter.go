@@ -6,28 +6,25 @@ import (
 	"strings"
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
-	"github.com/go-kratos/kratos/v2/selector/node"
 )
 
 // Version creates a node filter that filters nodes by version
 func Version(version string) selector.NodeFilter {
-	return func(ctx context.Context, nodes []node.Node) []node.Node {
+	return func(ctx context.Context, nodes []selector.Node) []selector.Node {
 		if version == "" {
 			return nodes
 		}
 		
-		var filteredNodes []node.Node
-		for _, n := range nodes {
+		var filteredNodes []selector.Node
+		for _, node := range nodes {
 			// Try to get version from node metadata
-			if registryNode, ok := n.(*RegistryNode); ok {
-				if nodeVersion, exists := registryNode.instance.Metadata["version"]; exists {
-					if nodeVersion == version {
-						filteredNodes = append(filteredNodes, n)
-					}
+			if nodeVersion, exists := node.Metadata()["version"]; exists {
+				if nodeVersion == version {
+					filteredNodes = append(filteredNodes, node)
 				}
 			} else {
-				// Fallback: include all nodes if we can't determine version
-				filteredNodes = append(filteredNodes, n)
+				// Fallback: include node if we can't determine version
+				filteredNodes = append(filteredNodes, node)
 			}
 		}
 		
@@ -42,23 +39,21 @@ func Version(version string) selector.NodeFilter {
 
 // Group creates a node filter that filters nodes by group
 func Group(group string) selector.NodeFilter {
-	return func(ctx context.Context, nodes []node.Node) []node.Node {
+	return func(ctx context.Context, nodes []selector.Node) []selector.Node {
 		if group == "" {
 			return nodes
 		}
 		
-		var filteredNodes []node.Node
-		for _, n := range nodes {
+		var filteredNodes []selector.Node
+		for _, node := range nodes {
 			// Try to get group from node metadata
-			if registryNode, ok := n.(*RegistryNode); ok {
-				if nodeGroup, exists := registryNode.instance.Metadata["group"]; exists {
-					if nodeGroup == group {
-						filteredNodes = append(filteredNodes, n)
-					}
+			if nodeGroup, exists := node.Metadata()["group"]; exists {
+				if nodeGroup == group {
+					filteredNodes = append(filteredNodes, node)
 				}
 			} else {
-				// Fallback: include all nodes if we can't determine group
-				filteredNodes = append(filteredNodes, n)
+				// Fallback: include node if we can't determine group
+				filteredNodes = append(filteredNodes, node)
 			}
 		}
 		
@@ -73,22 +68,17 @@ func Group(group string) selector.NodeFilter {
 
 // Healthy creates a node filter that filters out unhealthy nodes
 func Healthy() selector.NodeFilter {
-	return func(ctx context.Context, nodes []node.Node) []node.Node {
-		var healthyNodes []node.Node
-		for _, n := range nodes {
+	return func(ctx context.Context, nodes []selector.Node) []selector.Node {
+		var healthyNodes []selector.Node
+		for _, node := range nodes {
 			// Try to get health status from node metadata
-			if registryNode, ok := n.(*RegistryNode); ok {
-				if healthStatus, exists := registryNode.instance.Metadata["health"]; exists {
-					if healthStatus == "healthy" || healthStatus == "up" {
-						healthyNodes = append(healthyNodes, n)
-					}
-				} else {
-					// If no health metadata, assume healthy
-					healthyNodes = append(healthyNodes, n)
+			if healthStatus, exists := node.Metadata()["health"]; exists {
+				if healthStatus == "healthy" || healthStatus == "up" {
+					healthyNodes = append(healthyNodes, node)
 				}
 			} else {
-				// Fallback: assume healthy if we can't determine health status
-				healthyNodes = append(healthyNodes, n)
+				// If no health metadata, assume healthy
+				healthyNodes = append(healthyNodes, node)
 			}
 		}
 		
@@ -103,23 +93,21 @@ func Healthy() selector.NodeFilter {
 
 // Region creates a node filter that filters nodes by region
 func Region(region string) selector.NodeFilter {
-	return func(ctx context.Context, nodes []node.Node) []node.Node {
+	return func(ctx context.Context, nodes []selector.Node) []selector.Node {
 		if region == "" {
 			return nodes
 		}
 		
-		var filteredNodes []node.Node
-		for _, n := range nodes {
+		var filteredNodes []selector.Node
+		for _, node := range nodes {
 			// Try to get region from node metadata
-			if registryNode, ok := n.(*RegistryNode); ok {
-				if nodeRegion, exists := registryNode.instance.Metadata["region"]; exists {
-					if nodeRegion == region {
-						filteredNodes = append(filteredNodes, n)
-					}
+			if nodeRegion, exists := node.Metadata()["region"]; exists {
+				if nodeRegion == region {
+					filteredNodes = append(filteredNodes, node)
 				}
 			} else {
-				// Fallback: include all nodes if we can't determine region
-				filteredNodes = append(filteredNodes, n)
+				// Fallback: include node if we can't determine region
+				filteredNodes = append(filteredNodes, node)
 			}
 		}
 		
@@ -132,7 +120,7 @@ func Region(region string) selector.NodeFilter {
 	}
 }
 
-// RegistryNode wraps a registry service instance to implement node.Node interface
+// RegistryNode wraps a registry service instance
 type RegistryNode struct {
 	instance *registry.ServiceInstance
 }

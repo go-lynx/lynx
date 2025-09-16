@@ -54,19 +54,43 @@ lynx:
       # Connection pool size
       pool_size: 5
       
-      # Service-specific configurations
-      services:
+      # Service subscription configurations (recommended)
+      # Use this for services discovered via service registry (like Polaris)
+      subscribe_services:
         - name: "user-service"
-          endpoint: "localhost:9091"
+          # endpoint is optional when using service discovery
+          # endpoint: "localhost:9091"  # Only use if service discovery is unavailable
           timeout: "5s"
           tls_enable: true
           tls_auth_type: 2
+          required: true  # Check availability at startup
+          load_balancer: "round_robin"
+          circuit_breaker_enabled: true
+          circuit_breaker_threshold: 5
+          metadata:
+            version: "v1.0"
+            region: "us-west"
           
         - name: "order-service"
-          endpoint: "localhost:9092"
           timeout: "15s"
           tls_enable: false
           max_retries: 5
+          required: false
+          load_balancer: "random"
+          
+        - name: "payment-service"
+          # This service has fallback endpoint when service discovery fails
+          endpoint: "payment.internal:9093"
+          timeout: "8s"
+          required: true
+          
+      # Legacy static service configurations (deprecated)
+      # Only use this if you cannot use service discovery
+      services:
+        - name: "legacy-service"
+          endpoint: "legacy.internal:9094"
+          timeout: "10s"
+          tls_enable: false
 
 # Example with TLS enabled for both service and client
 # lynx:

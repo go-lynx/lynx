@@ -9,6 +9,7 @@ require (
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/go-lynx/lynx/plugins/nosql/redis v0.0.0-00010101000000-000000000000
 	github.com/go-lynx/lynx/plugins/polaris v0.0.0-00010101000000-000000000000
+	github.com/go-lynx/lynx/plugins/service/grpc v0.0.0-00010101000000-000000000000
 	github.com/go-lynx/lynx/plugins/sql/mysql v0.0.0-00010101000000-000000000000
 	github.com/go-lynx/lynx/plugins/swagger v0.0.0-00010101000000-000000000000
 	github.com/go-sql-driver/mysql v1.9.3
@@ -30,6 +31,7 @@ require (
 replace (
 	github.com/go-lynx/lynx/plugins/nosql/redis => ./plugins/nosql/redis
 	github.com/go-lynx/lynx/plugins/polaris => ./plugins/polaris
+	github.com/go-lynx/lynx/plugins/service/grpc => ./plugins/service/grpc
 	github.com/go-lynx/lynx/plugins/sql/base => ./plugins/sql/base
 	github.com/go-lynx/lynx/plugins/sql/interfaces => ./plugins/sql/interfaces
 	github.com/go-lynx/lynx/plugins/sql/mysql => ./plugins/sql/mysql

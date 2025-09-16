@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"./conf"
+	"github.com/go-lynx/lynx/plugins/service/grpc/conf"
 )
 
 // ValidationError represents a configuration validation error
@@ -67,7 +67,7 @@ func NewConfigValidator(strictMode bool) *ConfigValidator {
 }
 
 // ValidateClientConfig validates the entire client configuration
-func (cv *ConfigValidator) ValidateClientConfig(config *conf.Client) *ValidationResult {
+func (cv *ConfigValidator) ValidateClientConfig(config *conf.GrpcClient) *ValidationResult {
 	result := &ValidationResult{Valid: true}
 
 	if config == nil {
@@ -97,7 +97,7 @@ func (cv *ConfigValidator) ValidateClientConfig(config *conf.Client) *Validation
 }
 
 // validateTimeouts validates timeout configurations
-func (cv *ConfigValidator) validateTimeouts(config *conf.Client, result *ValidationResult) {
+func (cv *ConfigValidator) validateTimeouts(config *conf.GrpcClient, result *ValidationResult) {
 	if config.DefaultTimeout != nil {
 		timeout := config.DefaultTimeout.AsDuration()
 		if timeout <= 0 {
@@ -118,33 +118,31 @@ func (cv *ConfigValidator) validateTimeouts(config *conf.Client, result *Validat
 }
 
 // validateConnectionPooling validates connection pooling configuration
-func (cv *ConfigValidator) validateConnectionPooling(config *conf.Client, result *ValidationResult) {
-	poolConfig := config.GetConnectionPooling()
-	if poolConfig == nil {
+func (cv *ConfigValidator) validateConnectionPooling(config *conf.GrpcClient, result *ValidationResult) {
+	poolEnabled := config.GetConnectionPooling()
+	if !poolEnabled {
 		return
 	}
 
-	if poolConfig.GetEnabled() {
-		poolSize := poolConfig.GetPoolSize()
-		if poolSize <= 0 {
-			result.AddError("connection_pooling.pool_size", poolSize, "pool size must be positive when pooling is enabled")
-		} else if poolSize > 1000 {
-			result.AddWarning("connection_pooling.pool_size is very large (>1000), this may consume excessive resources")
-		}
+	poolSize := config.GetPoolSize()
+	if poolSize <= 0 {
+		result.AddError("connection_pooling.pool_size", poolSize, "pool size must be positive when pooling is enabled")
+	} else if poolSize > 1000 {
+		result.AddWarning("connection_pooling.pool_size is very large (>1000), this may consume excessive resources")
+	}
 
-		if poolConfig.GetIdleTimeout() != nil {
-			idleTimeout := poolConfig.GetIdleTimeout().AsDuration()
-			if idleTimeout <= 0 {
-				result.AddError("connection_pooling.idle_timeout", idleTimeout, "idle timeout must be positive")
-			} else if idleTimeout < time.Minute {
-				result.AddWarning("connection_pooling.idle_timeout is very short (<1 minute), connections may be recycled too frequently")
-			}
+	if config.GetIdleTimeout() != nil {
+		idleTimeout := config.GetIdleTimeout().AsDuration()
+		if idleTimeout <= 0 {
+			result.AddError("connection_pooling.idle_timeout", idleTimeout, "idle timeout must be positive")
+		} else if idleTimeout < time.Minute {
+			result.AddWarning("connection_pooling.idle_timeout is very short (<1 minute), connections may be recycled too frequently")
 		}
 	}
 }
 
 // validateRetryConfig validates retry configuration
-func (cv *ConfigValidator) validateRetryConfig(config *conf.Client, result *ValidationResult) {
+func (cv *ConfigValidator) validateRetryConfig(config *conf.GrpcClient, result *ValidationResult) {
 	if config.MaxRetries < 0 {
 		result.AddError("max_retries", config.MaxRetries, "max retries cannot be negative")
 	} else if config.MaxRetries > 10 {
@@ -162,7 +160,7 @@ func (cv *ConfigValidator) validateRetryConfig(config *conf.Client, result *Vali
 }
 
 // validateSubscribeServices validates subscribe services configuration
-func (cv *ConfigValidator) validateSubscribeServices(config *conf.Client, result *ValidationResult) {
+func (cv *ConfigValidator) validateSubscribeServices(config *conf.GrpcClient, result *ValidationResult) {
 	subscribeServices := config.GetSubscribeServices()
 	if subscribeServices == nil {
 		return
@@ -170,17 +168,18 @@ func (cv *ConfigValidator) validateSubscribeServices(config *conf.Client, result
 
 	serviceNames := make(map[string]bool)
 	
-	for serviceName, serviceConfig := range subscribeServices {
+	for i, serviceConfig := range subscribeServices {
+		serviceName := serviceConfig.GetName()
 		// Check for duplicate service names
 		if serviceNames[serviceName] {
-			result.AddError("subscribe_services."+serviceName, serviceName, "duplicate service name")
+			result.AddError(fmt.Sprintf("subscribe_services[%d]", i), serviceName, "duplicate service name")
 			continue
 		}
 		serviceNames[serviceName] = true
 
 		// Validate service name
 		if err := cv.validateServiceName(serviceName); err != nil {
-			result.AddError("subscribe_services."+serviceName+".name", serviceName, err.Error())
+			result.AddError(fmt.Sprintf("subscribe_services[%d].name", i), serviceName, err.Error())
 		}
 
 		// Validate endpoint (if provided)
@@ -206,7 +205,7 @@ func (cv *ConfigValidator) validateSubscribeServices(config *conf.Client, result
 }
 
 // validateLegacyServices validates legacy services configuration
-func (cv *ConfigValidator) validateLegacyServices(config *conf.Client, result *ValidationResult) {
+func (cv *ConfigValidator) validateLegacyServices(config *conf.GrpcClient, result *ValidationResult) {
 	services := config.GetServices()
 	if len(services) == 0 {
 		return
@@ -229,7 +228,7 @@ func (cv *ConfigValidator) validateLegacyServices(config *conf.Client, result *V
 }
 
 // validateTLSConfig validates TLS configuration
-func (cv *ConfigValidator) validateTLSConfig(config *conf.Client, result *ValidationResult) {
+func (cv *ConfigValidator) validateTLSConfig(config *conf.GrpcClient, result *ValidationResult) {
 	if !config.GetTlsEnable() {
 		return
 	}

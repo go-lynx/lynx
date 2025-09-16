@@ -75,9 +75,9 @@ func UseSaga() {
 ```
 
 
-### TCC Transaction（推荐：Helper 或 Global Transaction API）
+### TCC Transaction (Recommended: Helper or Global Transaction API)
 
-使用 Helper 封装（推荐）：
+Using Helper wrapper (Recommended):
 
 ```go
 func UseTCCWithHelper(ctx context.Context) {
@@ -86,7 +86,7 @@ func UseTCCWithHelper(ctx context.Context) {
     gid := helper.MustGenGid()
 
     branches := []dtm.TCCBranch{
-        { // 示例分支1
+        { // Example branch 1
             Try:     "http://localhost:8081/api/inventory/try",
             Confirm: "http://localhost:8081/api/inventory/confirm",
             Cancel:  "http://localhost:8081/api/inventory/cancel",
@@ -100,7 +100,7 @@ func UseTCCWithHelper(ctx context.Context) {
 }
 ```
 
-使用 Global Transaction API（原生用法）：
+Using Global Transaction API (Native usage):
 
 ```go
 func UseTCCWithNative(ctx context.Context) {
@@ -155,9 +155,9 @@ func UseMsg() {
 ```
 
 
-### XA Transaction（推荐：Helper 或 Global Transaction API）
+### XA Transaction (Recommended: Helper or Global Transaction API)
 
-使用 Helper 封装（推荐）：
+Using Helper wrapper (Recommended):
 
 ```go
 func UseXAWithHelper(ctx context.Context) {
@@ -166,7 +166,7 @@ func UseXAWithHelper(ctx context.Context) {
     gid := helper.MustGenGid()
 
     branches := []dtm.XABranch{
-        { // XABranch.Data 使用字符串（例如 JSON）
+        { // XABranch.Data uses string (e.g., JSON)
             Action: "http://localhost:8080/api/TransOut",
             Data:   `{"amount": 100}`,
         },
@@ -178,7 +178,7 @@ func UseXAWithHelper(ctx context.Context) {
 }
 ```
 
-使用 Global Transaction API（原生用法）：
+Using Global Transaction API (Native usage):
 
 ```go
 func UseXAWithNative(ctx context.Context) {
@@ -215,4 +215,4 @@ tar -xzvf dtm_1.17.0_linux_amd64.tar.gz
 
 ## Notes
 
-- `NewTcc()` 与 `NewXa()` 在当前版本中不提供直接返回实例的实现，请使用上文所示的 Helper 或 DTM 原生的 Global Transaction API。
+- `NewTcc()` and `NewXa()` do not provide direct instance return implementations in the current version. Please use the Helper wrapper or DTM's native Global Transaction API as shown above.

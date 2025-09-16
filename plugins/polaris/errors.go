@@ -10,57 +10,57 @@ type ErrorCode string
 
 // Error code constants
 const (
-	// Configuration related errors
+	// ErrCodeConfigInvalid Configuration related errors
 	ErrCodeConfigInvalid    ErrorCode = "CONFIG_INVALID"
 	ErrCodeConfigMissing    ErrorCode = "CONFIG_MISSING"
 	ErrCodeConfigValidation ErrorCode = "CONFIG_VALIDATION"
 
-	// Initialization related errors
+	// ErrCodeInitFailed Initialization related errors
 	ErrCodeInitFailed         ErrorCode = "INIT_FAILED"
 	ErrCodeAlreadyInitialized ErrorCode = "ALREADY_INITIALIZED"
 	ErrCodeNotInitialized     ErrorCode = "NOT_INITIALIZED"
 
-	// SDK related errors
+	// ErrCodeSDKContextFailed SDK related errors
 	ErrCodeSDKContextFailed ErrorCode = "SDK_CONTEXT_FAILED"
 	ErrCodeAPIInitFailed    ErrorCode = "API_INIT_FAILED"
 	ErrCodeSDKDestroyed     ErrorCode = "SDK_DESTROYED"
 
-	// Service related errors
+	// ErrCodeServiceNotFound Service related errors
 	ErrCodeServiceNotFound       ErrorCode = "SERVICE_NOT_FOUND"
 	ErrCodeServiceUnavailable    ErrorCode = "SERVICE_UNAVAILABLE"
 	ErrCodeServiceRegistration   ErrorCode = "SERVICE_REGISTRATION"
 	ErrCodeServiceDeregistration ErrorCode = "SERVICE_DEREGISTRATION"
 
-	// Configuration management related errors
+	// ErrCodeConfigNotFound Configuration management related errors
 	ErrCodeConfigNotFound    ErrorCode = "CONFIG_NOT_FOUND"
 	ErrCodeConfigGetFailed   ErrorCode = "CONFIG_GET_FAILED"
 	ErrCodeConfigWatchFailed ErrorCode = "CONFIG_WATCH_FAILED"
 
-	// Rate limiting related errors
+	// ErrCodeRateLimitExceeded Rate limiting related errors
 	ErrCodeRateLimitExceeded ErrorCode = "RATE_LIMIT_EXCEEDED"
 	ErrCodeRateLimitFailed   ErrorCode = "RATE_LIMIT_FAILED"
 
-	// Health check related errors
+	// ErrCodeHealthCheckFailed Health check related errors
 	ErrCodeHealthCheckFailed  ErrorCode = "HEALTH_CHECK_FAILED"
 	ErrCodeHealthCheckTimeout ErrorCode = "HEALTH_CHECK_TIMEOUT"
 
-	// Network related errors
+	// ErrCodeNetworkError Network related errors
 	ErrCodeNetworkError     ErrorCode = "NETWORK_ERROR"
 	ErrCodeTimeout          ErrorCode = "TIMEOUT"
 	ErrCodeConnectionFailed ErrorCode = "CONNECTION_FAILED"
 
-	// Retry related errors
+	// ErrCodeRetryExhausted Retry related errors
 	ErrCodeRetryExhausted     ErrorCode = "RETRY_EXHAUSTED"
 	ErrCodeCircuitBreakerOpen ErrorCode = "CIRCUIT_BREAKER_OPEN"
 
-	// Watcher related errors
+	// ErrCodeWatcherFailed Watcher related errors
 	ErrCodeWatcherFailed  ErrorCode = "WATCHER_FAILED"
 	ErrCodeWatcherTimeout ErrorCode = "WATCHER_TIMEOUT"
 
-	// Metrics related errors
+	// ErrCodeMetricsFailed Metrics related errors
 	ErrCodeMetricsFailed ErrorCode = "METRICS_FAILED"
 
-	// Graceful shutdown related errors
+	// ErrCodeShutdownFailed Graceful shutdown related errors
 	ErrCodeShutdownFailed  ErrorCode = "SHUTDOWN_FAILED"
 	ErrCodeShutdownTimeout ErrorCode = "SHUTDOWN_TIMEOUT"
 )

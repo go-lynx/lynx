@@ -15,11 +15,38 @@ func init() {
 	})
 }
 
-// GetGrpcClientPlugin gets the gRPC client plugin instance from the plugin manager
+// GetGrpcClientPlugin retrieves the gRPC client plugin from the plugin manager
 func GetGrpcClientPlugin(pluginManager interface{}) (*ClientPlugin, error) {
-	// Note: In real implementation, type assertion would be needed here
-	// For now, return an error to indicate this needs to be implemented
-	return nil, fmt.Errorf("GetGrpcClientPlugin needs to be implemented with proper plugin manager interface")
+	if pluginManager == nil {
+		return nil, fmt.Errorf("plugin manager cannot be nil")
+	}
+
+	// Try to create plugin from factory
+	plugin, err := factory.GlobalTypedFactory().CreatePlugin("grpc.client")
+	if err != nil {
+		return nil, fmt.Errorf("gRPC client plugin not found in factory: %w", err)
+	}
+
+	// Type assertion to ClientPlugin
+	clientPlugin, ok := plugin.(*ClientPlugin)
+	if !ok {
+		return nil, fmt.Errorf("plugin is not a ClientPlugin instance")
+	}
+
+	return clientPlugin, nil
+}
+
+// GetOrCreateGrpcClientPlugin gets existing plugin or creates a new one
+func GetOrCreateGrpcClientPlugin() *ClientPlugin {
+	plugin, err := factory.GlobalTypedFactory().CreatePlugin("grpc.client")
+	if err == nil {
+		if clientPlugin, ok := plugin.(*ClientPlugin); ok {
+			return clientPlugin
+		}
+	}
+	
+	// Create new plugin if not found
+	return NewGrpcClientPlugin()
 }
 
 // GetGrpcClientConnection gets a gRPC client connection for the specified service
@@ -49,7 +76,7 @@ func CloseGrpcClientConnection(serviceName string, pluginManager interface{}) er
 		return err
 	}
 
-	return plugin.CloseConnection(serviceName)
+	return plugin.connectionPool.CloseConnection(serviceName)
 }
 
 // GetGrpcClientConnectionStatus returns the status of all gRPC client connections
