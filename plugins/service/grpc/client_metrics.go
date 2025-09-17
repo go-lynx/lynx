@@ -304,24 +304,88 @@ func (m *ClientMetrics) GetConnectionCount() float64 {
 
 // GetActiveConnectionCount returns the current active connection count
 func (m *ClientMetrics) GetActiveConnectionCount() float64 {
-	// Get active connection count using a different approach
-	// Since prometheus.Gauge doesn't have Get() method in newer versions
-	return 0 // Placeholder implementation
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	if !m.initialized {
+		return 0
+	}
+	
+	// Use DTO to get the current gauge value
+	metric := &dto.Metric{}
+	if err := m.connectionsActive.Write(metric); err != nil {
+		return 0
+	}
+	return metric.GetGauge().GetValue()
 }
 
 // GetRequestCount returns the total request count
 func (m *ClientMetrics) GetRequestCount() float64 {
-	// Get request count using a different approach
-	// Since GetMetricWithLabelValues signature has changed
-	return 0 // Placeholder implementation
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	if !m.initialized {
+		return 0
+	}
+	
+	// Gather all metrics from the counter vector and sum them
+	metricFamilies, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		return 0
+	}
+	
+	var total float64
+	for _, mf := range metricFamilies {
+		if mf.GetName() == "grpc_client_requests_total" {
+			for _, metric := range mf.GetMetric() {
+				total += metric.GetCounter().GetValue()
+			}
+			break
+		}
+	}
+	return total
 }
 
 // GetErrorCount returns the total error count
 func (m *ClientMetrics) GetErrorCount() float64 {
-	// For counter vectors, we need to use a different approach
-	// Since we can't get total across all label combinations easily,
-	// we'll return 0 for now or implement a proper aggregation if needed
-	return 0
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	if !m.initialized {
+		return 0
+	}
+	
+	var total float64
+	
+	// Aggregate from request errors counter vector
+	if m.requestErrors != nil {
+		if gatherer, ok := prometheus.DefaultGatherer.(prometheus.Gatherer); ok {
+			metricFamilies, err := gatherer.Gather()
+			if err == nil {
+				for _, mf := range metricFamilies {
+					if mf.GetName() == "grpc_client_request_errors_total" {
+						for _, metric := range mf.GetMetric() {
+							if metric.GetCounter() != nil {
+								total += metric.GetCounter().GetValue()
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// Add connection failures
+	if m.connectionsFailed != nil {
+		metric := &dto.Metric{}
+		if err := m.connectionsFailed.Write(metric); err == nil {
+			if metric.GetCounter() != nil {
+				total += metric.GetCounter().GetValue()
+			}
+		}
+	}
+	
+	return total
 }
 
 // IsInitialized returns whether metrics are initialized
