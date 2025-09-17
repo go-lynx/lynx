@@ -403,15 +403,8 @@ func (m *PluginManager) generateConfigTemplate(plugin *PluginMetadata, configFil
 		return nil // Config already exists
 	}
 
-	// Generate basic config template
-	config := map[string]interface{}{
-		plugin.Name: map[string]interface{}{
-			"enabled": true,
-			"config": map[string]interface{}{
-				"// TODO": "Add your plugin configuration here",
-			},
-		},
-	}
+	// Generate plugin-specific config template
+	config := m.generatePluginConfig(plugin)
 
 	data, err := yaml.Marshal(config)
 	if err != nil {
@@ -419,6 +412,276 @@ func (m *PluginManager) generateConfigTemplate(plugin *PluginMetadata, configFil
 	}
 
 	return os.WriteFile(configPath, data, 0644)
+}
+
+// generatePluginConfig creates plugin-specific configuration templates
+func (m *PluginManager) generatePluginConfig(plugin *PluginMetadata) map[string]interface{} {
+	baseConfig := map[string]interface{}{
+		"lynx": map[string]interface{}{
+			plugin.Name: m.getPluginSpecificConfig(plugin),
+		},
+	}
+	return baseConfig
+}
+
+// getPluginSpecificConfig returns plugin-specific configuration based on plugin type and name
+func (m *PluginManager) getPluginSpecificConfig(plugin *PluginMetadata) map[string]interface{} {
+	switch plugin.Type {
+	case TypeService:
+		return m.getServicePluginConfig(plugin.Name)
+	case TypeMQ:
+		return m.getMQPluginConfig(plugin.Name)
+	case TypeSQL:
+		return m.getSQLPluginConfig(plugin.Name)
+	case TypeNoSQL:
+		return m.getNoSQLPluginConfig(plugin.Name)
+	case TypeTracer:
+		return m.getTracerPluginConfig(plugin.Name)
+	case TypeDTX:
+		return m.getDTXPluginConfig(plugin.Name)
+	default:
+		return m.getGenericPluginConfig(plugin.Name)
+	}
+}
+
+// getServicePluginConfig returns service plugin configuration templates
+func (m *PluginManager) getServicePluginConfig(name string) map[string]interface{} {
+	switch name {
+	case "http":
+		return map[string]interface{}{
+			"network": "tcp",
+			"addr":    ":8080",
+			"timeout": "30s",
+			"monitoring": map[string]interface{}{
+				"enable_metrics":         true,
+				"metrics_path":           "/metrics",
+				"health_path":            "/health",
+				"enable_request_logging": true,
+			},
+			"security": map[string]interface{}{
+				"max_request_size": 10485760,
+				"rate_limit": map[string]interface{}{
+					"enabled":         true,
+					"rate_per_second": 100,
+					"burst_limit":     200,
+				},
+			},
+		}
+	case "grpc":
+		return map[string]interface{}{
+			"network": "tcp",
+			"addr":    ":9090",
+			"timeout": "30s",
+			"client": map[string]interface{}{
+				"default_timeout":    "10s",
+				"default_keep_alive": "30s",
+				"max_retries":        3,
+				"connection_pooling": true,
+				"subscribe_services": []map[string]interface{}{
+					{
+						"name":     "example-service",
+						"timeout":  "5s",
+						"required": false,
+					},
+				},
+			},
+		}
+	default:
+		return map[string]interface{}{
+			"addr":    ":8080",
+			"timeout": "30s",
+			"# Note": "Configure service-specific settings here",
+		}
+	}
+}
+
+// getMQPluginConfig returns message queue plugin configuration templates
+func (m *PluginManager) getMQPluginConfig(name string) map[string]interface{} {
+	switch name {
+	case "kafka":
+		return map[string]interface{}{
+			"brokers": []string{"localhost:9092"},
+			"consumer": map[string]interface{}{
+				"group_id":           "lynx-consumer-group",
+				"auto_offset_reset":  "earliest",
+				"enable_auto_commit": true,
+			},
+			"producer": map[string]interface{}{
+				"acks":       "all",
+				"retries":    3,
+				"batch_size": 16384,
+				"linger_ms":  1,
+			},
+		}
+	case "rabbitmq":
+		return map[string]interface{}{
+			"url":           "amqp://guest:guest@localhost:5672/",
+			"exchange":      "lynx-exchange",
+			"exchange_type": "topic",
+			"queue":         "lynx-queue",
+			"routing_key":   "lynx.#",
+			"durable":       true,
+			"auto_delete":   false,
+		}
+	default:
+		return map[string]interface{}{
+			"brokers": []string{"localhost:9092"},
+			"# Note":  "Configure message queue specific settings here",
+		}
+	}
+}
+
+// getSQLPluginConfig returns SQL database plugin configuration templates
+func (m *PluginManager) getSQLPluginConfig(name string) map[string]interface{} {
+	switch name {
+	case "mysql":
+		return map[string]interface{}{
+			"dsn":               "user:password@tcp(localhost:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local",
+			"max_open_conns":    25,
+			"max_idle_conns":    10,
+			"conn_max_lifetime": "5m",
+			"enable_metrics":    true,
+		}
+	case "postgresql":
+		return map[string]interface{}{
+			"dsn":               "host=localhost user=username password=password dbname=mydb port=5432 sslmode=disable TimeZone=Asia/Shanghai",
+			"max_open_conns":    25,
+			"max_idle_conns":    10,
+			"conn_max_lifetime": "5m",
+			"enable_metrics":    true,
+		}
+	default:
+		return map[string]interface{}{
+			"dsn":            "user:password@tcp(localhost:3306)/dbname",
+			"max_open_conns": 25,
+			"max_idle_conns": 10,
+			"# Note":         "Configure database specific connection settings here",
+		}
+	}
+}
+
+// getNoSQLPluginConfig returns NoSQL database plugin configuration templates
+func (m *PluginManager) getNoSQLPluginConfig(name string) map[string]interface{} {
+	switch name {
+	case "redis":
+		return map[string]interface{}{
+			"addr":                "localhost:6379",
+			"password":            "",
+			"db":                  0,
+			"pool_size":           10,
+			"min_idle_conns":      5,
+			"max_retries":         3,
+			"enable_metrics":      true,
+			"enable_health_check": true,
+		}
+	case "mongodb":
+		return map[string]interface{}{
+			"uri":            "mongodb://localhost:27017",
+			"database":       "lynx_db",
+			"max_pool_size":  100,
+			"min_pool_size":  5,
+			"max_idle_time":  "30s",
+			"enable_metrics": true,
+		}
+	case "elasticsearch":
+		return map[string]interface{}{
+			"addresses":       []string{"http://localhost:9200"},
+			"username":        "",
+			"password":        "",
+			"index_prefix":    "lynx",
+			"enable_sniffing": false,
+			"enable_metrics":  true,
+		}
+	default:
+		return map[string]interface{}{
+			"addr":     "localhost:6379",
+			"database": "lynx_db",
+			"# Note":   "Configure NoSQL database specific settings here",
+		}
+	}
+}
+
+// getTracerPluginConfig returns tracer plugin configuration templates
+func (m *PluginManager) getTracerPluginConfig(name string) map[string]interface{} {
+	return map[string]interface{}{
+		"service_name":    "lynx-service",
+		"service_version": "v1.0.0",
+		"endpoint":        "http://localhost:14268/api/traces",
+		"sampler": map[string]interface{}{
+			"type":  "const",
+			"param": 1,
+		},
+		"reporter": map[string]interface{}{
+			"log_spans":             true,
+			"buffer_flush_interval": "1s",
+		},
+	}
+}
+
+// getDTXPluginConfig returns distributed transaction plugin configuration templates
+func (m *PluginManager) getDTXPluginConfig(name string) map[string]interface{} {
+	switch name {
+	case "seata":
+		return map[string]interface{}{
+			"application_id":                "lynx-app",
+			"tx_service_group":              "lynx_tx_group",
+			"enable_auto_data_source_proxy": true,
+			"data_source_proxy_mode":        "AT",
+			"registry": map[string]interface{}{
+				"type": "nacos",
+				"nacos": map[string]interface{}{
+					"application": "seata-server",
+					"server_addr": "127.0.0.1:8848",
+					"group":       "SEATA_GROUP",
+					"namespace":   "",
+					"cluster":     "default",
+				},
+			},
+		}
+	case "dtm":
+		return map[string]interface{}{
+			"server":         "http://localhost:36789/api/dtmsvr",
+			"timeout":        "30s",
+			"retry_interval": "15s",
+			"max_retry":      3,
+		}
+	default:
+		return map[string]interface{}{
+			"server":  "http://localhost:8080",
+			"timeout": "30s",
+			"# Note":  "Configure distributed transaction specific settings here",
+		}
+	}
+}
+
+// getGenericPluginConfig returns generic plugin configuration template
+func (m *PluginManager) getGenericPluginConfig(name string) map[string]interface{} {
+	switch name {
+	case "polaris":
+		return map[string]interface{}{
+			"namespace":              "default",
+			"server_addresses":       []string{"127.0.0.1:8091"},
+			"enable_retry":           true,
+			"max_retry_times":        3,
+			"retry_interval":         "2s",
+			"health_check_interval":  "5s",
+		}
+	case "swagger":
+		return map[string]interface{}{
+			"title":       "Lynx API Documentation",
+			"description": "API documentation for Lynx service",
+			"version":     "1.0.0",
+			"host":        "localhost:8080",
+			"base_path":   "/api/v1",
+			"schemes":     []string{"http", "https"},
+		}
+	default:
+		return map[string]interface{}{
+			"enabled": true,
+			"# Note":  fmt.Sprintf("Configure %s plugin specific settings here", name),
+			"# Docs":  fmt.Sprintf("Refer to the plugin documentation for available configuration options"),
+		}
+	}
 }
 
 func (m *PluginManager) addInstalledPlugin(name, version, configPath string) {

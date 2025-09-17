@@ -41,7 +41,128 @@ func (b *BaseCheck) CanAutoFix() bool {
 }
 
 func (b *BaseCheck) Fix() error {
-	return fmt.Errorf("auto-fix not implemented for %s", b.name)
+	// Provide intelligent auto-fix based on check category and name
+	switch b.category {
+	case "environment":
+		return b.fixEnvironmentIssues()
+	case "tools":
+		return b.fixToolIssues()
+	case "project":
+		return b.fixProjectIssues()
+	case "config":
+		return b.fixConfigIssues()
+	default:
+		return fmt.Errorf("auto-fix not available for %s", b.name)
+	}
+}
+
+// fixEnvironmentIssues provides auto-fix for environment-related issues
+func (b *BaseCheck) fixEnvironmentIssues() error {
+	switch b.name {
+	case "Go Version":
+		return fmt.Errorf("Go version upgrade requires manual intervention - please visit https://golang.org/dl/")
+	case "Go Environment":
+		// Set recommended Go environment variables
+		cmd := exec.Command("go", "env", "-w", "GO111MODULE=on")
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to set GO111MODULE: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("auto-fix not available for environment check: %s", b.name)
+	}
+}
+
+// fixToolIssues provides auto-fix for tool-related issues
+func (b *BaseCheck) fixToolIssues() error {
+	switch b.name {
+	case "Protocol Buffers Compiler":
+		// Try multiple installation methods
+		if runtime.GOOS == "windows" {
+			return fmt.Errorf("protoc installation on Windows requires manual setup - please visit https://github.com/protocolbuffers/protobuf/releases")
+		}
+		// Try using make init first
+		cmd := exec.Command("make", "init")
+		if err := cmd.Run(); err == nil {
+			return nil
+		}
+		// Fallback to package manager suggestions
+		return fmt.Errorf("protoc installation failed - try: brew install protobuf (macOS) or apt-get install protobuf-compiler (Ubuntu)")
+	case "Wire Dependency Injection":
+		cmd := exec.Command("go", "install", "github.com/google/wire/cmd/wire@latest")
+		return cmd.Run()
+	default:
+		return fmt.Errorf("auto-fix not available for tool check: %s", b.name)
+	}
+}
+
+// fixProjectIssues provides auto-fix for project-related issues
+func (b *BaseCheck) fixProjectIssues() error {
+	switch b.name {
+	case "Project Structure":
+		// Create missing essential directories
+		essentialDirs := []string{"app", "boot", "plugins", "cmd"}
+		for _, dir := range essentialDirs {
+			if _, err := os.Stat(dir); os.IsNotExist(err) {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					return fmt.Errorf("failed to create directory %s: %w", dir, err)
+				}
+			}
+		}
+		return nil
+	case "Go Modules":
+		// Initialize go.mod if it doesn't exist
+		if _, err := os.Stat("go.mod"); os.IsNotExist(err) {
+			cmd := exec.Command("go", "mod", "init", "github.com/go-lynx/lynx")
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to initialize go.mod: %w", err)
+			}
+		}
+		// Run go mod tidy to clean up dependencies
+		cmd := exec.Command("go", "mod", "tidy")
+		return cmd.Run()
+	default:
+		return fmt.Errorf("auto-fix not available for project check: %s", b.name)
+	}
+}
+
+// fixConfigIssues provides auto-fix for configuration-related issues
+func (b *BaseCheck) fixConfigIssues() error {
+	switch b.name {
+	case "Configuration Files":
+		// Create basic config directory structure if missing
+		configDirs := []string{"app/conf", "examples"}
+		for _, dir := range configDirs {
+			if _, err := os.Stat(dir); os.IsNotExist(err) {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					return fmt.Errorf("failed to create config directory %s: %w", dir, err)
+				}
+			}
+		}
+		
+		// Create a basic boot config example if none exists
+		bootConfigPath := "app/conf/boot-example.yml"
+		if _, err := os.Stat(bootConfigPath); os.IsNotExist(err) {
+			basicConfig := `# Lynx Framework Configuration Example
+lynx:
+  app:
+    name: "lynx-app"
+    version: "1.0.0"
+  server:
+    port: 8080
+    host: "0.0.0.0"
+  logging:
+    level: "info"
+    format: "json"
+`
+			if err := os.WriteFile(bootConfigPath, []byte(basicConfig), 0644); err != nil {
+				return fmt.Errorf("failed to create boot config example: %w", err)
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("auto-fix not available for config check: %s", b.name)
+	}
 }
 
 // Environment Checks

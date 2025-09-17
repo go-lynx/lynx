@@ -4,11 +4,14 @@ package grpc
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	"google.golang.org/grpc/credentials"
+	"gopkg.in/yaml.v3"
 )
 
 // TLSConfig represents enhanced TLS configuration
@@ -262,27 +265,83 @@ func (tm *TLSManager) Close() {
 
 // LoadConfigFromFile loads TLS configuration from a file
 func (tm *TLSManager) LoadConfigFromFile(serviceName, configFile string) error {
-	// This is a placeholder for loading TLS config from external files
-	// In a real implementation, you might load from JSON, YAML, or other formats
-	config := DefaultTLSConfig()
-	config.Enabled = true
-	
-	// Try to detect certificate files in the same directory
-	configDir := filepath.Dir(configFile)
-	certFile := filepath.Join(configDir, serviceName+".crt")
-	keyFile := filepath.Join(configDir, serviceName+".key")
-	caFile := filepath.Join(configDir, "ca.crt")
-	
-	if tm.fileExists(certFile) && tm.fileExists(keyFile) {
-		config.CertFile = certFile
-		config.KeyFile = keyFile
+	// Read the configuration file
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		return fmt.Errorf("failed to read TLS config file %s: %w", configFile, err)
 	}
 	
-	if tm.fileExists(caFile) {
-		config.CAFile = caFile
+	var config TLSConfig
+	
+	// Determine file format by extension
+	ext := filepath.Ext(configFile)
+	switch ext {
+	case ".json":
+		if err := json.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("failed to parse JSON TLS config: %w", err)
+		}
+	case ".yaml", ".yml":
+		if err := yaml.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("failed to parse YAML TLS config: %w", err)
+		}
+	default:
+		// Try YAML first, then JSON as fallback
+		if err := yaml.Unmarshal(data, &config); err != nil {
+			if jsonErr := json.Unmarshal(data, &config); jsonErr != nil {
+				return fmt.Errorf("failed to parse config file (tried YAML and JSON): %w", err)
+			}
+		}
 	}
 	
-	return tm.SetServiceConfig(serviceName, config)
+	// Validate and resolve relative paths
+	if err := tm.validateAndResolvePaths(&config, filepath.Dir(configFile)); err != nil {
+		return fmt.Errorf("TLS config validation failed: %w", err)
+	}
+	
+	// Store the configuration
+	return tm.SetServiceConfig(serviceName, &config)
+}
+
+// validateAndResolvePaths validates TLS configuration and resolves relative paths
+func (tm *TLSManager) validateAndResolvePaths(config *TLSConfig, baseDir string) error {
+	if !config.Enabled {
+		return nil
+	}
+	
+	// Resolve relative paths to absolute paths
+	if config.CertFile != "" {
+		if !filepath.IsAbs(config.CertFile) {
+			config.CertFile = filepath.Join(baseDir, config.CertFile)
+		}
+		if !tm.fileExists(config.CertFile) {
+			return fmt.Errorf("certificate file not found: %s", config.CertFile)
+		}
+	}
+	
+	if config.KeyFile != "" {
+		if !filepath.IsAbs(config.KeyFile) {
+			config.KeyFile = filepath.Join(baseDir, config.KeyFile)
+		}
+		if !tm.fileExists(config.KeyFile) {
+			return fmt.Errorf("private key file not found: %s", config.KeyFile)
+		}
+	}
+	
+	if config.CAFile != "" {
+		if !filepath.IsAbs(config.CAFile) {
+			config.CAFile = filepath.Join(baseDir, config.CAFile)
+		}
+		if !tm.fileExists(config.CAFile) {
+			return fmt.Errorf("CA certificate file not found: %s", config.CAFile)
+		}
+	}
+	
+	// Validate that cert and key files are both provided or both empty
+	if (config.CertFile != "" && config.KeyFile == "") || (config.CertFile == "" && config.KeyFile != "") {
+		return fmt.Errorf("both certificate and private key files must be provided together")
+	}
+	
+	return nil
 }
 
 // RefreshCredentials refreshes TLS credentials for all services

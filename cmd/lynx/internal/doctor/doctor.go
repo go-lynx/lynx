@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -157,11 +160,88 @@ func getSystemInfo() SystemInfo {
 	}
 }
 
-// getLynxVersion gets the Lynx CLI version
+// getLynxVersion gets the Lynx CLI version dynamically
 func getLynxVersion() string {
-	// This should be set during build or from version file
-	// For now, return a placeholder
-	return "v2.0.0"
+	// Try to get version from build info first
+	if info, ok := debug.ReadBuildInfo(); ok {
+		// Check if this is the main module
+		if info.Main.Version != "" && info.Main.Version != "(devel)" {
+			return info.Main.Version
+		}
+		
+		// Look for version in build settings
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.revision" && len(setting.Value) >= 7 {
+				return "dev-" + setting.Value[:7] // Short commit hash
+			}
+		}
+	}
+	
+	// Try to get version from git if available
+	if version := getVersionFromGit(); version != "" {
+		return version
+	}
+	
+	// Try to read version from version file
+	if version := getVersionFromFile(); version != "" {
+		return version
+	}
+	
+	// Fallback to default version
+	return "v2.0.0-unknown"
+}
+
+// getVersionFromGit attempts to get version from git
+func getVersionFromGit() string {
+	// Try to get the latest git tag
+	if cmd := exec.Command("git", "describe", "--tags", "--abbrev=0"); cmd != nil {
+		if output, err := cmd.Output(); err == nil {
+			return strings.TrimSpace(string(output))
+		}
+	}
+	
+	// Try to get current commit hash
+	if cmd := exec.Command("git", "rev-parse", "--short", "HEAD"); cmd != nil {
+		if output, err := cmd.Output(); err == nil {
+			return "dev-" + strings.TrimSpace(string(output))
+		}
+	}
+	
+	return ""
+}
+
+// getVersionFromFile attempts to read version from a version file
+func getVersionFromFile() string {
+	// Look for version files in common locations
+	versionFiles := []string{
+		"VERSION",
+		"version.txt", 
+		".version",
+		"cmd/lynx/VERSION",
+	}
+	
+	for _, versionFile := range versionFiles {
+		if data, err := os.ReadFile(versionFile); err == nil {
+			version := strings.TrimSpace(string(data))
+			if version != "" {
+				return version
+			}
+		}
+		
+		// Try relative to executable path
+		if execPath, err := os.Executable(); err == nil {
+			execDir := filepath.Dir(execPath)
+			fullPath := filepath.Join(execDir, versionFile)
+			if data, err := os.ReadFile(fullPath); err == nil {
+				version := strings.TrimSpace(string(data))
+				if version != "" {
+					return version
+				}
+			}
+		}
+	}
+	
+	return ""
 }
 
 // calculateSummary calculates the diagnostic summary
