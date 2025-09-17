@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -226,7 +225,7 @@ func (p *AnnotationParser) ParseFile(filename string) error {
 		return fmt.Errorf("file type not allowed: %s", filename)
 	}
 
-	content, err := ioutil.ReadFile(filename)
+	content, err := os.ReadFile(filename)
 	if err != nil {
 		p.recordError(filename, 0, err.Error(), "file_read")
 		p.mu.Lock()

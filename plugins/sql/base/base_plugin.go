@@ -232,7 +232,7 @@ func (p *BaseSQLPlugin) CheckHealth() error {
 		query = p.config.HealthCheckQuery
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer cancel()
 
 	var result int

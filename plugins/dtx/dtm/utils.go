@@ -313,9 +313,20 @@ func ExtractGrpcTransInfo(ctx context.Context) (*dtmcli.BranchBarrier, error) {
 func (h *TransactionHelper) MustGenGid() string {
 	gid := h.client.GenerateGid()
 	if gid == "" {
-		panic("failed to generate transaction gid")
+		log.Errorf("Failed to generate transaction gid")
+		// Return a fallback GID or empty string to let caller handle
+		return ""
 	}
 	return gid
+}
+
+// GenGid generates a transaction GID with error handling
+func (h *TransactionHelper) GenGid() (string, error) {
+	gid := h.client.GenerateGid()
+	if gid == "" {
+		return "", fmt.Errorf("failed to generate transaction gid")
+	}
+	return gid, nil
 }
 
 // CheckTransactionStatus check transaction status
