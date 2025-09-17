@@ -236,7 +236,8 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 	// Check health status after ready
 	err := plugin.CheckHealth()
 	if err != nil {
-		panic(err)
+		log.Errorf("Plugin %s health check failed: %v", plugin.Name(), err)
+		return fmt.Errorf("plugin %s health check failed: %w", plugin.Name(), err)
 	}
 	return nil
 }

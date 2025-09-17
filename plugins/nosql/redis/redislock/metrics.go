@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/go-lynx/lynx/app/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -80,37 +81,43 @@ func InitMetrics(reg prometheus.Registerer) {
 	if err := reg.Register(lockAcquireTotal); err != nil {
 		var alreadyRegisteredError prometheus.AlreadyRegisteredError
 		if !errors.As(err, &alreadyRegisteredError) {
-			panic(err)
+			log.Errorf("Failed to register lockAcquireTotal metric: %v", err)
+			return
 		}
 	}
 	if err := reg.Register(lockUnlockTotal); err != nil {
 		var alreadyRegisteredError prometheus.AlreadyRegisteredError
 		if !errors.As(err, &alreadyRegisteredError) {
-			panic(err)
+			log.Errorf("Failed to register lockUnlockTotal metric: %v", err)
+			return
 		}
 	}
 	if err := reg.Register(lockRenewTotal); err != nil {
 		var alreadyRegisteredError prometheus.AlreadyRegisteredError
 		if !errors.As(err, &alreadyRegisteredError) {
-			panic(err)
+			log.Errorf("Failed to register lockRenewTotal metric: %v", err)
+			return
 		}
 	}
 	if err := reg.Register(skippedRenewalsTotal); err != nil {
 		var alreadyRegisteredError prometheus.AlreadyRegisteredError
 		if !errors.As(err, &alreadyRegisteredError) {
-			panic(err)
+			log.Errorf("Failed to register skippedRenewalsTotal metric: %v", err)
+			return
 		}
 	}
 	if err := reg.Register(activeLocks); err != nil {
 		var alreadyRegisteredError prometheus.AlreadyRegisteredError
 		if !errors.As(err, &alreadyRegisteredError) {
-			panic(err)
+			log.Errorf("Failed to register activeLocks metric: %v", err)
+			return
 		}
 	}
 	if err := reg.Register(scriptLatency); err != nil {
 		var alreadyRegisteredError prometheus.AlreadyRegisteredError
 		if !errors.As(err, &alreadyRegisteredError) {
-			panic(err)
+			log.Errorf("Failed to register scriptLatency metric: %v", err)
+			return
 		}
 	}
 }

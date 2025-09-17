@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -43,11 +42,11 @@ type TLSConfig struct {
 // DefaultTLSConfig returns a default TLS configuration
 func DefaultTLSConfig() *TLSConfig {
 	return &TLSConfig{
-		Enabled:            false,
-		InsecureSkipVerify: false,
-		ClientAuth:         tls.NoClientCert,
-		MinVersion:         tls.VersionTLS12,
-		MaxVersion:         tls.VersionTLS13,
+		Enabled:                  false,
+		InsecureSkipVerify:       false,
+		ClientAuth:               tls.NoClientCert,
+		MinVersion:               tls.VersionTLS12,
+		MaxVersion:               tls.VersionTLS13,
 		PreferServerCipherSuites: true,
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -131,11 +130,11 @@ func (tm *TLSManager) validateConfig(config *TLSConfig) error {
 		if config.KeyFile == "" {
 			return fmt.Errorf("key file must be specified when cert file is provided")
 		}
-		
+
 		if !tm.fileExists(config.CertFile) {
 			return fmt.Errorf("certificate file does not exist: %s", config.CertFile)
 		}
-		
+
 		if !tm.fileExists(config.KeyFile) {
 			return fmt.Errorf("key file does not exist: %s", config.KeyFile)
 		}
@@ -148,7 +147,7 @@ func (tm *TLSManager) validateConfig(config *TLSConfig) error {
 
 	// Validate TLS version range
 	if config.MinVersion > config.MaxVersion {
-		return fmt.Errorf("min TLS version (%d) cannot be greater than max version (%d)", 
+		return fmt.Errorf("min TLS version (%d) cannot be greater than max version (%d)",
 			config.MinVersion, config.MaxVersion)
 	}
 
@@ -163,11 +162,11 @@ func (tm *TLSManager) buildCredentials(config *TLSConfig) (credentials.Transport
 
 	tlsConfig := &tls.Config{
 		ServerName:               config.ServerName,
-		InsecureSkipVerify:      config.InsecureSkipVerify,
-		ClientAuth:              config.ClientAuth,
-		MinVersion:              config.MinVersion,
-		MaxVersion:              config.MaxVersion,
-		CipherSuites:            config.CipherSuites,
+		InsecureSkipVerify:       config.InsecureSkipVerify,
+		ClientAuth:               config.ClientAuth,
+		MinVersion:               config.MinVersion,
+		MaxVersion:               config.MaxVersion,
+		CipherSuites:             config.CipherSuites,
 		PreferServerCipherSuites: config.PreferServerCipherSuites,
 	}
 
@@ -182,7 +181,7 @@ func (tm *TLSManager) buildCredentials(config *TLSConfig) (credentials.Transport
 
 	// Load CA certificate if specified
 	if config.CAFile != "" {
-		caCert, err := ioutil.ReadFile(config.CAFile)
+		caCert, err := os.ReadFile(config.CAFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read CA certificate: %w", err)
 		}
@@ -202,15 +201,15 @@ func (tm *TLSManager) fileExists(filename string) bool {
 	if filename == "" {
 		return false
 	}
-	
+
 	// Convert to absolute path
 	absPath, err := filepath.Abs(filename)
 	if err != nil {
 		return false
 	}
-	
+
 	// Check if file exists and is readable
-	_, err = ioutil.ReadFile(absPath)
+	_, err = os.ReadFile(absPath)
 	return err == nil
 }
 
@@ -224,15 +223,15 @@ func (tm *TLSManager) GetStats() map[string]interface{} {
 	services := make(map[string]interface{})
 	for serviceName, config := range tm.configs {
 		services[serviceName] = map[string]interface{}{
-			"enabled":                    config.Enabled,
-			"insecure_skip_verify":      config.InsecureSkipVerify,
-			"server_name":               config.ServerName,
-			"has_client_cert":           config.CertFile != "",
-			"has_ca_cert":               config.CAFile != "",
-			"client_auth":               config.ClientAuth.String(),
-			"min_version":               tm.tlsVersionString(config.MinVersion),
-			"max_version":               tm.tlsVersionString(config.MaxVersion),
-			"cipher_suites_count":       len(config.CipherSuites),
+			"enabled":                     config.Enabled,
+			"insecure_skip_verify":        config.InsecureSkipVerify,
+			"server_name":                 config.ServerName,
+			"has_client_cert":             config.CertFile != "",
+			"has_ca_cert":                 config.CAFile != "",
+			"client_auth":                 config.ClientAuth.String(),
+			"min_version":                 tm.tlsVersionString(config.MinVersion),
+			"max_version":                 tm.tlsVersionString(config.MaxVersion),
+			"cipher_suites_count":         len(config.CipherSuites),
 			"prefer_server_cipher_suites": config.PreferServerCipherSuites,
 		}
 	}
@@ -270,9 +269,9 @@ func (tm *TLSManager) LoadConfigFromFile(serviceName, configFile string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read TLS config file %s: %w", configFile, err)
 	}
-	
+
 	var config TLSConfig
-	
+
 	// Determine file format by extension
 	ext := filepath.Ext(configFile)
 	switch ext {
@@ -292,12 +291,12 @@ func (tm *TLSManager) LoadConfigFromFile(serviceName, configFile string) error {
 			}
 		}
 	}
-	
+
 	// Validate and resolve relative paths
 	if err := tm.validateAndResolvePaths(&config, filepath.Dir(configFile)); err != nil {
 		return fmt.Errorf("TLS config validation failed: %w", err)
 	}
-	
+
 	// Store the configuration
 	return tm.SetServiceConfig(serviceName, &config)
 }
@@ -307,7 +306,7 @@ func (tm *TLSManager) validateAndResolvePaths(config *TLSConfig, baseDir string)
 	if !config.Enabled {
 		return nil
 	}
-	
+
 	// Resolve relative paths to absolute paths
 	if config.CertFile != "" {
 		if !filepath.IsAbs(config.CertFile) {
@@ -317,7 +316,7 @@ func (tm *TLSManager) validateAndResolvePaths(config *TLSConfig, baseDir string)
 			return fmt.Errorf("certificate file not found: %s", config.CertFile)
 		}
 	}
-	
+
 	if config.KeyFile != "" {
 		if !filepath.IsAbs(config.KeyFile) {
 			config.KeyFile = filepath.Join(baseDir, config.KeyFile)
@@ -326,7 +325,7 @@ func (tm *TLSManager) validateAndResolvePaths(config *TLSConfig, baseDir string)
 			return fmt.Errorf("private key file not found: %s", config.KeyFile)
 		}
 	}
-	
+
 	if config.CAFile != "" {
 		if !filepath.IsAbs(config.CAFile) {
 			config.CAFile = filepath.Join(baseDir, config.CAFile)
@@ -335,19 +334,19 @@ func (tm *TLSManager) validateAndResolvePaths(config *TLSConfig, baseDir string)
 			return fmt.Errorf("CA certificate file not found: %s", config.CAFile)
 		}
 	}
-	
+
 	// Validate that cert and key files are both provided or both empty
 	if (config.CertFile != "" && config.KeyFile == "") || (config.CertFile == "" && config.KeyFile != "") {
 		return fmt.Errorf("both certificate and private key files must be provided together")
 	}
-	
+
 	return nil
 }
 
 // RefreshCredentials refreshes TLS credentials for all services
 func (tm *TLSManager) RefreshCredentials() error {
 	var lastErr error
-	
+
 	for serviceName, config := range tm.configs {
 		creds, err := tm.buildCredentials(config)
 		if err != nil {
@@ -356,6 +355,6 @@ func (tm *TLSManager) RefreshCredentials() error {
 		}
 		tm.creds[serviceName] = creds
 	}
-	
+
 	return lastErr
 }

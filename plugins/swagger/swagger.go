@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -155,11 +155,11 @@ type Route struct {
 // Parameter parameter information
 type Parameter struct {
 	Name        string
-	In          string // path, query, header, body
+	In          string
 	Type        string
 	Required    bool
 	Description string
-	Example     interface{}
+	Example     string
 }
 
 // Response response information
@@ -760,7 +760,7 @@ func (p *PlugSwagger) saveSwaggerJSON() error {
 	}
 
 	// Write to file
-	if err := ioutil.WriteFile(p.config.Gen.OutputPath, data, 0644); err != nil {
+	if err := os.WriteFile(p.config.Gen.OutputPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write swagger file: %w", err)
 	}
 
