@@ -5,9 +5,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 
 	"google.golang.org/grpc/credentials"
 	"gopkg.in/yaml.v3"
@@ -39,7 +42,7 @@ type TLSConfig struct {
 	PreferServerCipherSuites bool `json:"prefer_server_cipher_suites"`
 }
 
-// DefaultTLSConfig returns a default TLS configuration
+// DefaultTLSConfig returns a secure default TLS configuration
 func DefaultTLSConfig() *TLSConfig {
 	return &TLSConfig{
 		Enabled:                  false,
@@ -48,18 +51,21 @@ func DefaultTLSConfig() *TLSConfig {
 		MinVersion:               tls.VersionTLS12,
 		MaxVersion:               tls.VersionTLS13,
 		PreferServerCipherSuites: true,
+		// Only use secure cipher suites with forward secrecy
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		},
 	}
 }
 
-// TLSManager manages TLS configurations and credentials
+// TLSManager manages TLS configurations and credentials with thread safety
 type TLSManager struct {
+	mu      sync.RWMutex
 	configs map[string]*TLSConfig
 	creds   map[string]credentials.TransportCredentials
 }
@@ -74,6 +80,10 @@ func NewTLSManager() *TLSManager {
 
 // SetServiceConfig sets TLS configuration for a specific service
 func (tm *TLSManager) SetServiceConfig(serviceName string, config *TLSConfig) error {
+	if strings.TrimSpace(serviceName) == "" {
+		return errors.New("service name cannot be empty")
+	}
+
 	if config == nil {
 		config = DefaultTLSConfig()
 	}
@@ -83,30 +93,37 @@ func (tm *TLSManager) SetServiceConfig(serviceName string, config *TLSConfig) er
 		return fmt.Errorf("invalid TLS config for service %s: %w", serviceName, err)
 	}
 
-	tm.configs[serviceName] = config
-
 	// Build and cache credentials
 	creds, err := tm.buildCredentials(config)
 	if err != nil {
 		return fmt.Errorf("failed to build TLS credentials for service %s: %w", serviceName, err)
 	}
 
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	tm.configs[serviceName] = config
 	tm.creds[serviceName] = creds
 	return nil
 }
 
 // GetCredentials returns TLS credentials for a service
 func (tm *TLSManager) GetCredentials(serviceName string) (credentials.TransportCredentials, error) {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
 	if creds, exists := tm.creds[serviceName]; exists {
 		return creds, nil
 	}
 
-	// Use default insecure credentials if no TLS config
-	return credentials.NewTLS(&tls.Config{InsecureSkipVerify: true}), nil
+	// Return error instead of insecure credentials for security
+	return nil, fmt.Errorf("no TLS configuration found for service %s", serviceName)
 }
 
 // GetConfig returns TLS configuration for a service
 func (tm *TLSManager) GetConfig(serviceName string) *TLSConfig {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
 	if config, exists := tm.configs[serviceName]; exists {
 		return config
 	}
@@ -115,14 +132,27 @@ func (tm *TLSManager) GetConfig(serviceName string) *TLSConfig {
 
 // RemoveService removes TLS configuration for a service
 func (tm *TLSManager) RemoveService(serviceName string) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 	delete(tm.configs, serviceName)
 	delete(tm.creds, serviceName)
 }
 
-// validateConfig validates TLS configuration
+// validateConfig validates TLS configuration with enhanced security checks
 func (tm *TLSManager) validateConfig(config *TLSConfig) error {
 	if !config.Enabled {
 		return nil
+	}
+
+	// Validate TLS version security
+	if config.MinVersion < tls.VersionTLS12 {
+		return fmt.Errorf("minimum TLS version must be at least TLS 1.2 for security")
+	}
+
+	// Validate TLS version range
+	if config.MinVersion > config.MaxVersion {
+		return fmt.Errorf("min TLS version (%d) cannot be greater than max version (%d)",
+			config.MinVersion, config.MaxVersion)
 	}
 
 	// Validate certificate files if specified
@@ -138,17 +168,62 @@ func (tm *TLSManager) validateConfig(config *TLSConfig) error {
 		if !tm.fileExists(config.KeyFile) {
 			return fmt.Errorf("key file does not exist: %s", config.KeyFile)
 		}
+
+		// Validate certificate can be loaded
+		if _, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile); err != nil {
+			return fmt.Errorf("invalid certificate/key pair: %w", err)
+		}
 	}
 
 	// Validate CA file if specified
-	if config.CAFile != "" && !tm.fileExists(config.CAFile) {
-		return fmt.Errorf("CA file does not exist: %s", config.CAFile)
+	if config.CAFile != "" {
+		if !tm.fileExists(config.CAFile) {
+			return fmt.Errorf("CA file does not exist: %s", config.CAFile)
+		}
+
+		// Validate CA certificate can be loaded
+		caCert, err := os.ReadFile(config.CAFile)
+		if err != nil {
+			return fmt.Errorf("failed to read CA certificate: %w", err)
+		}
+
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return fmt.Errorf("failed to parse CA certificate")
+		}
 	}
 
-	// Validate TLS version range
-	if config.MinVersion > config.MaxVersion {
-		return fmt.Errorf("min TLS version (%d) cannot be greater than max version (%d)",
-			config.MinVersion, config.MaxVersion)
+	// Validate cipher suites for security
+	if err := tm.validateCipherSuites(config.CipherSuites); err != nil {
+		return fmt.Errorf("cipher suite validation failed: %w", err)
+	}
+
+	return nil
+}
+
+// validateCipherSuites validates that cipher suites are secure
+func (tm *TLSManager) validateCipherSuites(cipherSuites []uint16) error {
+	if len(cipherSuites) == 0 {
+		return nil // Use default secure cipher suites
+	}
+
+	// Insecure cipher suites to reject
+	insecureCipherSuites := map[uint16]string{
+		tls.TLS_RSA_WITH_AES_256_GCM_SHA384: "RSA key exchange without forward secrecy",
+		tls.TLS_RSA_WITH_AES_128_GCM_SHA256: "RSA key exchange without forward secrecy",
+		tls.TLS_RSA_WITH_RC4_128_SHA:        "RC4 cipher is cryptographically broken",
+		tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA:   "3DES cipher is weak",
+	}
+
+	var insecureFound []string
+	for _, suite := range cipherSuites {
+		if reason, isInsecure := insecureCipherSuites[suite]; isInsecure {
+			insecureFound = append(insecureFound, fmt.Sprintf("0x%04X (%s)", suite, reason))
+		}
+	}
+
+	if len(insecureFound) > 0 {
+		return fmt.Errorf("insecure cipher suites detected: %s", strings.Join(insecureFound, ", "))
 	}
 
 	return nil
@@ -157,7 +232,7 @@ func (tm *TLSManager) validateConfig(config *TLSConfig) error {
 // buildCredentials builds gRPC transport credentials from TLS configuration
 func (tm *TLSManager) buildCredentials(config *TLSConfig) (credentials.TransportCredentials, error) {
 	if !config.Enabled {
-		return credentials.NewTLS(&tls.Config{InsecureSkipVerify: true}), nil
+		return nil, errors.New("TLS is disabled, cannot create secure credentials")
 	}
 
 	tlsConfig := &tls.Config{
@@ -196,7 +271,7 @@ func (tm *TLSManager) buildCredentials(config *TLSConfig) (credentials.Transport
 	return credentials.NewTLS(tlsConfig), nil
 }
 
-// fileExists checks if a file exists
+// fileExists checks if a file exists efficiently
 func (tm *TLSManager) fileExists(filename string) bool {
 	if filename == "" {
 		return false
@@ -208,8 +283,8 @@ func (tm *TLSManager) fileExists(filename string) bool {
 		return false
 	}
 
-	// Check if file exists and is readable
-	_, err = os.ReadFile(absPath)
+	// Use Stat instead of ReadFile for better performance
+	_, err = os.Stat(absPath)
 	return err == nil
 }
 
@@ -258,6 +333,8 @@ func (tm *TLSManager) tlsVersionString(version uint16) string {
 
 // Close cleans up TLS manager resources
 func (tm *TLSManager) Close() {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 	tm.configs = make(map[string]*TLSConfig)
 	tm.creds = make(map[string]credentials.TransportCredentials)
 }
@@ -345,16 +422,25 @@ func (tm *TLSManager) validateAndResolvePaths(config *TLSConfig, baseDir string)
 
 // RefreshCredentials refreshes TLS credentials for all services
 func (tm *TLSManager) RefreshCredentials() error {
-	var lastErr error
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	var errors []string
+	successCount := 0
 
 	for serviceName, config := range tm.configs {
 		creds, err := tm.buildCredentials(config)
 		if err != nil {
-			lastErr = fmt.Errorf("failed to refresh credentials for service %s: %w", serviceName, err)
+			errors = append(errors, fmt.Sprintf("service %s: %v", serviceName, err))
 			continue
 		}
 		tm.creds[serviceName] = creds
+		successCount++
 	}
 
-	return lastErr
+	if len(errors) > 0 {
+		return fmt.Errorf("failed to refresh %d/%d services: %s", len(errors), len(tm.configs), strings.Join(errors, "; "))
+	}
+
+	return nil
 }
