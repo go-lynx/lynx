@@ -310,7 +310,7 @@ func (t *PlugTracer) ShutdownTasks() error {
 	if tp != nil {
 		// Check if it's SDK TracerProvider
 		if sdkTp, ok := tp.(*trace.TracerProvider); ok {
-			// Create context with timeout
+			// Create context with timeout for graceful shutdown
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 

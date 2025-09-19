@@ -1,0 +1,60 @@
+// Specify the syntax version used by this Protocol Buffers file
+syntax = "proto3";
+
+// Package name used for generated code
+package lynx.protobuf.plugin.snowflake;
+
+// Set go_package for generated Go code
+option go_package = "github.com/go-lynx/lynx/plugins/snowflake/conf;conf";
+
+// Import Duration type from google/protobuf/duration.proto
+import "google/protobuf/duration.proto";
+
+// Define Snowflake configuration message type
+message snowflake {
+  // —— Basic Configuration ——
+  // Data center ID (0-31)
+  int32 datacenter_id = 1;
+  // Worker ID (0-1023), if not set, will auto-register via Redis
+  int32 worker_id = 2;
+  // Enable auto worker ID registration via Redis
+  bool auto_register_worker_id = 3;
+  // Redis key prefix for worker ID registration
+  string redis_key_prefix = 4;
+  // Worker ID registration TTL (default: 30s)
+  google.protobuf.Duration worker_id_ttl = 5;
+  // Worker ID heartbeat interval (default: 10s)
+  google.protobuf.Duration heartbeat_interval = 6;
+  
+  // —— Clock Drift Protection ——
+  // Enable clock drift protection
+  bool enable_clock_drift_protection = 7;
+  // Maximum allowed clock drift backward (default: 5s)
+  google.protobuf.Duration max_clock_drift = 8;
+  // Clock drift check interval (default: 1s)
+  google.protobuf.Duration clock_check_interval = 9;
+  // Action when clock drift detected: "wait", "error", "ignore"
+  string clock_drift_action = 10;
+  
+  // —— Performance Configuration ——
+  // Enable sequence cache for better performance
+  bool enable_sequence_cache = 11;
+  // Sequence cache size (default: 1000)
+  int32 sequence_cache_size = 12;
+  // Enable metrics collection
+  bool enable_metrics = 13;
+  
+  // —— Redis Integration ——
+  // Redis plugin name to use for worker ID registration
+  string redis_plugin_name = 14;
+  // Redis database to use for worker ID registration
+  int32 redis_db = 15;
+  
+  // —— Advanced Configuration ——
+  // Custom epoch timestamp (default: 2023-01-01 00:00:00 UTC)
+  int64 custom_epoch = 16;
+  // Worker ID bits (default: 10, range: 1-20)
+  int32 worker_id_bits = 17;
+  // Sequence bits (default: 12, range: 1-20)
+  int32 sequence_bits = 18;
+}

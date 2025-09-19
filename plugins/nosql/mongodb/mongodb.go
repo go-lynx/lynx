@@ -95,6 +95,52 @@ func (p *PlugMongoDB) Stop(plugin plugins.Plugin) error {
 	return nil
 }
 
+// CleanupTasks implements the plugin cleanup interface
+func (p *PlugMongoDB) CleanupTasks() error {
+    return p.CleanupTasksContext(context.Background())
+}
+
+// CleanupTasksContext implements context-aware cleanup with proper timeout handling
+func (p *PlugMongoDB) CleanupTasksContext(parentCtx context.Context) error {
+    log.Info("cleaning up mongodb plugin")
+
+    // Stop metrics collection
+    if p.metricsCancel != nil {
+        p.metricsCancel()
+        p.metricsCancel = nil
+    }
+
+    // Stop health check
+    if p.healthCancel != nil {
+        p.healthCancel()
+        p.healthCancel = nil
+    }
+
+    // Close client connection with context-aware timeout
+    if p.client != nil {
+        ctx, cancel := p.createTimeoutContext(parentCtx, 5*time.Second)
+        defer cancel()
+        if err := p.client.Disconnect(ctx); err != nil {
+            log.Errorf("failed to disconnect mongodb client: %v", err)
+            return err
+        }
+    }
+
+    log.Info("mongodb plugin cleaned up successfully")
+    return nil
+}
+
+// createTimeoutContext creates a context with timeout, respecting parent context deadline
+func (p *PlugMongoDB) createTimeoutContext(parentCtx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+    if deadline, ok := parentCtx.Deadline(); ok {
+        // Parent context has deadline, check if it's sooner than our timeout
+        if time.Until(deadline) < timeout {
+            return parentCtx, func() {} // Use parent context, no-op cancel
+        }
+    }
+    return context.WithTimeout(parentCtx, timeout)
+}
+
 // parseConfig parses configuration
 func (p *PlugMongoDB) parseConfig(cfg config.Config) error {
 	// Read mongodb configuration from config
@@ -266,20 +312,34 @@ func (p *PlugMongoDB) testConnection() error {
 
 // startMetricsCollection starts metrics collection
 func (p *PlugMongoDB) startMetricsCollection() {
+	// Use health check interval for metrics collection or default to 30 seconds
+	var interval time.Duration
+	if p.conf.HealthCheckInterval != nil {
+		interval = p.conf.HealthCheckInterval.AsDuration()
+	} else {
+		interval = 30 * time.Second
+	}
+
+	// Ensure quit channel exists
 	if p.statsQuit == nil {
 		p.statsQuit = make(chan struct{})
 	}
-	p.statsWG.Add(1)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	p.metricsCancel = cancel
+
+	p.statsWG.Add(1)
 	go func() {
 		defer p.statsWG.Done()
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ticker.C:
 				p.collectMetrics()
+			case <-ctx.Done():
+				return
 			case <-p.statsQuit:
 				return
 			}
@@ -299,7 +359,7 @@ func (p *PlugMongoDB) stopMetricsCollection() {
 func (p *PlugMongoDB) collectMetrics() {
 	// Here you can collect MongoDB metrics
 	// For example: connection pool status, operation statistics, performance metrics, etc.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := p.createTimeoutContext(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Get database statistics
@@ -324,6 +384,9 @@ func (p *PlugMongoDB) startHealthCheck() {
 		p.statsQuit = make(chan struct{})
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	p.healthCancel = cancel
+
 	p.statsWG.Add(1)
 	go func() {
 		defer p.statsWG.Done()
@@ -336,6 +399,8 @@ func (p *PlugMongoDB) startHealthCheck() {
 				if err := p.checkHealth(); err != nil {
 					log.Errorf("mongodb health check failed: %v", err)
 				}
+			case <-ctx.Done():
+				return
 			case <-p.statsQuit:
 				return
 			}
@@ -374,7 +439,7 @@ func (p *PlugMongoDB) closeStatsQuitOnce() {
 
 // checkHealth executes health check
 func (p *PlugMongoDB) checkHealth() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := p.createTimeoutContext(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Send ping request
