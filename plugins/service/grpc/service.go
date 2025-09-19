@@ -235,13 +235,36 @@ func (g *GrpcService) StartupTasks() error {
 // It gracefully stops the gRPC server and performs necessary cleanup operations.
 // If the server is nil or already stopped, it will return nil.
 func (g *GrpcService) CleanupTasks() error {
+	// Use a timeout context for cleanup to prevent hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return g.CleanupTasksContext(ctx)
+}
+
+// CleanupTasksContext implements context-aware cleanup with proper timeout handling.
+func (g *GrpcService) CleanupTasksContext(parentCtx context.Context) error {
 	if g.server == nil {
 		return nil
 	}
-	// Gracefully stop the gRPC server
-	// Use timeout to avoid indefinite blocking on shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), g.conf.GetTimeout().AsDuration())
+	
+	// Use parent context if it has a deadline, otherwise create timeout context
+	var ctx context.Context
+	var cancel context.CancelFunc
+	
+	if _, ok := parentCtx.Deadline(); ok {
+		// Parent context has deadline, use it directly
+		ctx = parentCtx
+		cancel = func() {} // No-op cancel
+	} else {
+		// Create timeout context with configured timeout
+		timeout := g.conf.GetTimeout().AsDuration()
+		if timeout <= 0 {
+			timeout = 30 * time.Second // Default timeout
+		}
+		ctx, cancel = context.WithTimeout(parentCtx, timeout)
+	}
 	defer cancel()
+	
 	if err := g.server.Stop(ctx); err != nil {
 		// If stopping fails, return plugin error with error information
 		return plugins.NewPluginError(g.ID(), "Stop", "Failed to stop gRPC server", err)

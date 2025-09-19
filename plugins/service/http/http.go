@@ -354,10 +354,10 @@ func (h *ServiceHttp) initPerformanceDefaults() {
 	}
 	
 	// Store in instance variables for easy access
-	h.maxConnections = h.conf.Performance.MaxConnections
-	h.maxConcurrentRequests = h.conf.Performance.MaxConcurrentRequests
-	h.readBufferSize = h.conf.Performance.ReadBufferSize
-	h.writeBufferSize = h.conf.Performance.WriteBufferSize
+	h.maxConnections = int(h.conf.Performance.MaxConnections)
+	h.maxConcurrentRequests = int(h.conf.Performance.MaxConcurrentRequests)
+	h.readBufferSize = int(h.conf.Performance.ReadBufferSize)
+	h.writeBufferSize = int(h.conf.Performance.WriteBufferSize)
 }
 
 // initGracefulShutdownDefaults initializes graceful shutdown defaults.
@@ -593,13 +593,9 @@ func (h *ServiceHttp) CleanupTasks() error {
 	h.isShuttingDown = true
 	close(h.shutdownChan)
 
-	// Configure shutdown timeout
-	ctx := context.Background()
-	if h.shutdownTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, h.shutdownTimeout)
-		defer cancel()
-	}
+	// Configure shutdown timeout with proper context handling
+	ctx, cancel := h.createShutdownContext()
+	defer cancel()
 
 	// Gracefully stop the server
 	if err := h.server.Stop(ctx); err != nil {
@@ -609,6 +605,17 @@ func (h *ServiceHttp) CleanupTasks() error {
 
 	log.Infof("HTTP service gracefully stopped")
 	return nil
+}
+
+// createShutdownContext creates a context for graceful shutdown with appropriate timeout
+func (h *ServiceHttp) createShutdownContext() (context.Context, context.CancelFunc) {
+	// Use a parent context that can be cancelled if needed
+	parentCtx := context.Background()
+	if h.shutdownTimeout > 0 {
+		return context.WithTimeout(parentCtx, h.shutdownTimeout)
+	}
+	// Default timeout if not configured
+	return context.WithTimeout(parentCtx, 30*time.Second)
 }
 
 // Configure updates the HTTP server configuration.
