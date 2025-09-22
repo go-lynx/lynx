@@ -12,17 +12,17 @@ import (
 func main() {
 	// Create custom configuration with error callback
 	configs := events.DefaultBusConfigs()
-	
+
 	// Add error callback to plugin bus
 	configs.Plugin.ErrorCallback = func(event events.LynxEvent, reason string, err error) {
 		fmt.Printf("Plugin bus error: event=%s, reason=%s, error=%v\n", event.PluginID, reason, err)
 	}
-	
+
 	// Enable throttling for business bus
 	configs.Business.EnableThrottling = true
-	configs.Business.ThrottleRate = 100  // 100 events per second
-	configs.Business.ThrottleBurst = 10  // 10 events burst
-	
+	configs.Business.ThrottleRate = 100 // 100 events per second
+	configs.Business.ThrottleBurst = 10 // 10 events burst
+
 	// Initialize the unified event bus system
 	err := events.Init(configs)
 	if err != nil {

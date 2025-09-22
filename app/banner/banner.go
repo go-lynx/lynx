@@ -11,6 +11,7 @@ import (
 )
 
 // Embedded banner file for application startup
+//
 //go:embed banner.txt
 var bannerFS embed.FS
 

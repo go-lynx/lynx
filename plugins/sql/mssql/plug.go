@@ -31,7 +31,11 @@ func init() {
 func GetMssqlClient() *DBMssqlClient {
 	// Get the plugin with the specified name from the application's plugin manager,
 	// convert it to *DBMssqlClient type, and return it
-	return app.Lynx().GetPluginManager().GetPlugin(pluginName).(*DBMssqlClient)
+	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
+	if client, ok := plugin.(*DBMssqlClient); ok {
+		return client
+	}
+	panic("failed to get MSSQL client: plugin type assertion failed")
 }
 
 // GetMssqlDB gets the underlying database connection from the Microsoft SQL Server plugin.

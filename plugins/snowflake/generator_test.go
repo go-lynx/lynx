@@ -166,7 +166,7 @@ func TestSnowflakeGeneratorSequenceOverflow(t *testing.T) {
 	// Simulate sequence overflow
 	// This is difficult to test directly, so we just ensure the generator handles it gracefully
 	for i := 0; i < 5000; i++ {
-		_, err := gen.GenerateID()
+		_, err = gen.GenerateID()
 		require.NoError(t, err)
 	}
 

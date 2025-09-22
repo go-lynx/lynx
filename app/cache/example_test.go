@@ -87,7 +87,7 @@ func ExampleCache_batch() {
 	// Get multiple values at once
 	keys := []interface{}{"key1", "key2", "key3", "key4"}
 	values := c.GetMulti(keys)
-	
+
 	for _, key := range keys {
 		if val, ok := values[key]; ok {
 			fmt.Printf("%v: %v\n", key, val)
@@ -106,9 +106,9 @@ func ExampleCache_batch() {
 func ExampleBuilder() {
 	// Build a custom cache with specific settings
 	c, err := cache.NewBuilder("custom").
-		WithMaxItems(1000).              // Maximum 1000 items
-		WithMaxMemory(1 << 26).          // 64MB memory limit
-		WithMetrics(true).               // Enable metrics
+		WithMaxItems(1000).     // Maximum 1000 items
+		WithMaxMemory(1 << 26). // 64MB memory limit
+		WithMetrics(true).      // Enable metrics
 		WithEvictionCallback(func(item *ristretto.Item) {
 			fmt.Printf("Evicted key: %v\n", item.Key)
 		}).

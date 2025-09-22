@@ -97,4 +97,3 @@ func GetGrpcClientPlugin(pluginManager interface{}) (interface{}, error) {
 	log.Warnf("GetGrpcClientPlugin temporarily disabled due to circular dependency refactoring")
 	return nil, fmt.Errorf("GetGrpcClientPlugin needs to be implemented with proper dependency injection")
 }
-

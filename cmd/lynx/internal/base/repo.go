@@ -164,9 +164,9 @@ func (r *Repo) Clone(ctx context.Context) error {
 		return nil
 	}
 	// Prioritize as remote branch
-	if _, err := RunCMD(ctx, r.Path(), "git", []string{"show-ref", "--verify", fmt.Sprintf("refs/remotes/origin/%s", ref)}, 0); err == nil {
-		if _, err := RunCMD(ctx, r.Path(), "git", []string{"checkout", "-B", ref, fmt.Sprintf("origin/%s", ref)}, 0); err != nil {
-			return fmt.Errorf("git checkout branch %s failed: %w", ref, err)
+	if _, showRefErr := RunCMD(ctx, r.Path(), "git", []string{"show-ref", "--verify", fmt.Sprintf("refs/remotes/origin/%s", ref)}, 0); showRefErr == nil {
+		if _, checkoutErr := RunCMD(ctx, r.Path(), "git", []string{"checkout", "-B", ref, fmt.Sprintf("origin/%s", ref)}, 0); checkoutErr != nil {
+			return fmt.Errorf("git checkout branch %s failed: %w", ref, checkoutErr)
 		}
 		return nil
 	}

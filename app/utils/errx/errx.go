@@ -42,7 +42,8 @@ func Wrap(err error, msg string) error {
 
 // DeferRecover is used in defer to catch panics and pass them to handler.
 // Example:
-//   defer util.DeferRecover(func(e any){ logger.Error().Any("panic", e).Msg("recovered") })
+//
+//	defer util.DeferRecover(func(e any){ logger.Error().Any("panic", e).Msg("recovered") })
 func DeferRecover(handler func(any)) {
 	if r := recover(); r != nil {
 		if handler != nil {

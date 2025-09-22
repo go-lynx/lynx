@@ -362,9 +362,9 @@ func (tm *TLSManager) LoadConfigFromFile(serviceName, configFile string) error {
 		}
 	default:
 		// Try YAML first, then JSON as fallback
-		if err := yaml.Unmarshal(data, &config); err != nil {
+		if yamlErr := yaml.Unmarshal(data, &config); yamlErr != nil {
 			if jsonErr := json.Unmarshal(data, &config); jsonErr != nil {
-				return fmt.Errorf("failed to parse config file (tried YAML and JSON): %w", err)
+				return fmt.Errorf("failed to parse config file (tried YAML and JSON): %w", yamlErr)
 			}
 		}
 	}

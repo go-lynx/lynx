@@ -102,8 +102,8 @@ func (b *Builder) BuildAndRegister() (*Cache, error) {
 // SmallCacheBuilder creates a builder for small caches
 func SmallCacheBuilder(name string) *Builder {
 	return NewBuilder(name).
-		WithNumCounters(1e4).    // 10K
-		WithMaxCost(1 << 24).     // 16MB
+		WithNumCounters(1e4). // 10K
+		WithMaxCost(1 << 24). // 16MB
 		WithBufferItems(64).
 		WithMetrics(false)
 }
@@ -111,8 +111,8 @@ func SmallCacheBuilder(name string) *Builder {
 // MediumCacheBuilder creates a builder for medium caches
 func MediumCacheBuilder(name string) *Builder {
 	return NewBuilder(name).
-		WithNumCounters(1e6).    // 1M
-		WithMaxCost(1 << 28).     // 256MB
+		WithNumCounters(1e6). // 1M
+		WithMaxCost(1 << 28). // 256MB
 		WithBufferItems(64).
 		WithMetrics(false)
 }
@@ -120,8 +120,8 @@ func MediumCacheBuilder(name string) *Builder {
 // LargeCacheBuilder creates a builder for large caches
 func LargeCacheBuilder(name string) *Builder {
 	return NewBuilder(name).
-		WithNumCounters(1e8).    // 100M
-		WithMaxCost(1 << 32).     // 4GB
+		WithNumCounters(1e8). // 100M
+		WithMaxCost(1 << 32). // 4GB
 		WithBufferItems(64).
 		WithMetrics(true)
 }
@@ -129,8 +129,8 @@ func LargeCacheBuilder(name string) *Builder {
 // SessionCacheBuilder creates a builder for session caches
 func SessionCacheBuilder(name string, sessionTTL time.Duration) *Builder {
 	return NewBuilder(name).
-		WithNumCounters(1e5).    // 100K sessions
-		WithMaxCost(1 << 26).     // 64MB
+		WithNumCounters(1e5). // 100K sessions
+		WithMaxCost(1 << 26). // 64MB
 		WithBufferItems(64).
 		WithMetrics(false).
 		WithEvictionCallback(func(item *ristretto.Item) {
@@ -141,17 +141,17 @@ func SessionCacheBuilder(name string, sessionTTL time.Duration) *Builder {
 // APICacheBuilder creates a builder for API response caches
 func APICacheBuilder(name string) *Builder {
 	return NewBuilder(name).
-		WithNumCounters(1e6).    // 1M API calls
-		WithMaxCost(1 << 29).     // 512MB
-		WithBufferItems(128).    // Higher buffer for concurrent API calls
+		WithNumCounters(1e6). // 1M API calls
+		WithMaxCost(1 << 29). // 512MB
+		WithBufferItems(128). // Higher buffer for concurrent API calls
 		WithMetrics(true)
 }
 
 // ObjectCacheBuilder creates a builder for object caches with custom cost calculation
 func ObjectCacheBuilder(name string) *Builder {
 	return NewBuilder(name).
-		WithNumCounters(1e6).    // 1M objects
-		WithMaxCost(1 << 30).     // 1GB
+		WithNumCounters(1e6). // 1M objects
+		WithMaxCost(1 << 30). // 1GB
 		WithBufferItems(64).
 		WithMetrics(true).
 		WithCostFunction(func(value interface{}) int64 {

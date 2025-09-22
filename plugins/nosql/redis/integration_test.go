@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/nosql/redis/conf"
 	"github.com/redis/go-redis/v9"
@@ -59,6 +61,125 @@ func (m *mockRuntime) PublishEvent(event interface{}) error {
 
 func (m *mockRuntime) SubscribeEvent(eventType string, handler func(interface{})) error {
 	return nil
+}
+
+func (m *mockRuntime) AddListener(listener plugins.EventListener, filter *plugins.EventFilter) {
+	// Mock implementation - do nothing
+}
+
+func (m *mockRuntime) RemoveListener(listener plugins.EventListener) {
+	// Mock implementation - do nothing
+}
+
+func (m *mockRuntime) EmitEvent(event plugins.PluginEvent) {
+	// Mock implementation - do nothing
+}
+
+func (m *mockRuntime) GetEventHistory(filter plugins.EventFilter) []plugins.PluginEvent {
+	// Mock implementation - return empty slice
+	return []plugins.PluginEvent{}
+}
+
+func (m *mockRuntime) GetPrivateResource(name string) (any, error) {
+	return m.GetResource(name)
+}
+
+func (m *mockRuntime) RegisterPrivateResource(name string, resource any) error {
+	return m.RegisterResource(name, resource)
+}
+
+func (m *mockRuntime) GetSharedResource(name string) (any, error) {
+	return m.GetResource(name)
+}
+
+func (m *mockRuntime) RegisterSharedResource(name string, resource any) error {
+	return m.RegisterResource(name, resource)
+}
+
+func (m *mockRuntime) EmitPluginEvent(pluginName string, eventType string, data map[string]any) {
+	// Mock implementation - do nothing
+}
+
+func (m *mockRuntime) AddPluginListener(pluginName string, listener plugins.EventListener, filter *plugins.EventFilter) {
+	// Mock implementation - do nothing
+}
+
+func (m *mockRuntime) GetPluginEventHistory(pluginName string, filter plugins.EventFilter) []plugins.PluginEvent {
+	// Mock implementation - return empty slice
+	return []plugins.PluginEvent{}
+}
+
+func (m *mockRuntime) SetEventDispatchMode(mode string) error {
+	// Mock implementation - do nothing
+	return nil
+}
+
+func (m *mockRuntime) SetEventWorkerPoolSize(size int) {
+	// Mock implementation - do nothing
+}
+
+func (m *mockRuntime) SetEventTimeout(timeout time.Duration) {
+	// Mock implementation - do nothing
+}
+
+func (m *mockRuntime) GetEventStats() map[string]any {
+	// Mock implementation - return empty map
+	return make(map[string]any)
+}
+
+func (m *mockRuntime) WithPluginContext(pluginName string) plugins.Runtime {
+	// Mock implementation - return self
+	return m
+}
+
+func (m *mockRuntime) GetCurrentPluginContext() string {
+	// Mock implementation - return empty string
+	return ""
+}
+
+func (m *mockRuntime) SetConfig(conf config.Config) {
+	// Mock implementation - do nothing
+}
+
+func (m *mockRuntime) GetConfig() config.Config {
+	// Mock implementation - return nil
+	return nil
+}
+
+func (m *mockRuntime) GetLogger() log.Logger {
+	// Mock implementation - return nil
+	return nil
+}
+
+// CleanupResources implements the missing method from plugins.Runtime interface
+func (m *mockRuntime) CleanupResources(resourceType string) error {
+	// Mock implementation - clear all resources
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.resources = make(map[string]interface{})
+	return nil
+}
+
+// GetTypedResource implements the TypedResourceManager interface
+func (m *mockRuntime) GetTypedResource(name string, resourceType string) (any, error) {
+	return m.GetResource(name)
+}
+
+// RegisterTypedResource implements the TypedResourceManager interface
+func (m *mockRuntime) RegisterTypedResource(name string, resource any, resourceType string) error {
+	return m.RegisterResource(name, resource)
+}
+
+func (m *mockRuntime) GetResourceInfo(resourceType string) (*plugins.ResourceInfo, error) {
+	return nil, nil
+}
+
+func (m *mockRuntime) GetResourceStats() map[string]any {
+	return make(map[string]any)
+}
+
+func (m *mockRuntime) ListResources() []*plugins.ResourceInfo {
+	return []*plugins.ResourceInfo{}
 }
 
 // SetupSuite 设置测试套件
@@ -258,16 +379,16 @@ func (suite *RedisIntegrationTestSuite) TestTransactions() {
 
 	// 执行事务
 	err := client.Watch(ctx, func(tx *redis.Tx) error {
-		n, err := tx.Get(ctx, key).Int()
-		if err != nil && err != redis.Nil {
-			return err
+		n, getErr := tx.Get(ctx, key).Int()
+		if getErr != nil && getErr != redis.Nil {
+			return getErr
 		}
 
-		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		_, txErr := tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 			pipe.Set(ctx, key, n+1, 0)
 			return nil
 		})
-		return err
+		return txErr
 	}, key)
 
 	assert.NoError(suite.T(), err)

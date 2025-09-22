@@ -766,21 +766,33 @@ func (dg *DependencyGraph) GetDependencyStats() map[string]interface{} {
 
 	for _, deps := range dg.dependencies {
 		if len(deps) > 0 {
-			stats["plugins_with_deps"] = stats["plugins_with_deps"].(int) + 1
-			stats["total_dependencies"] = stats["total_dependencies"].(int) + len(deps)
+			if count, ok := stats["plugins_with_deps"].(int); ok {
+				stats["plugins_with_deps"] = count + 1
+			}
+			if total, ok := stats["total_dependencies"].(int); ok {
+				stats["total_dependencies"] = total + len(deps)
+			}
 
 			for _, dep := range deps {
 				switch dep.Type {
 				case DependencyTypeRequired:
-					stats["required_deps"] = stats["required_deps"].(int) + 1
+					if count, ok := stats["required_deps"].(int); ok {
+						stats["required_deps"] = count + 1
+					}
 				case DependencyTypeOptional:
-					stats["optional_deps"] = stats["optional_deps"].(int) + 1
+					if count, ok := stats["optional_deps"].(int); ok {
+						stats["optional_deps"] = count + 1
+					}
 				case DependencyTypeConflicts:
-					stats["conflict_deps"] = stats["conflict_deps"].(int) + 1
+					if count, ok := stats["conflict_deps"].(int); ok {
+						stats["conflict_deps"] = count + 1
+					}
 				}
 			}
 		} else {
-			stats["plugins_without_deps"] = stats["plugins_without_deps"].(int) + 1
+			if count, ok := stats["plugins_without_deps"].(int); ok {
+				stats["plugins_without_deps"] = count + 1
+			}
 		}
 	}
 

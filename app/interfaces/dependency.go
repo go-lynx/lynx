@@ -4,31 +4,31 @@ package interfaces
 type DependencyInjector interface {
 	// RegisterGrpcServiceProvider registers a gRPC service provider
 	RegisterGrpcServiceProvider(provider GrpcServiceProvider)
-	
+
 	// RegisterGrpcClientProvider registers a gRPC client provider
 	RegisterGrpcClientProvider(provider GrpcClientProvider)
-	
+
 	// RegisterGrpcSubscribeProvider registers a gRPC subscribe provider
 	RegisterGrpcSubscribeProvider(provider GrpcSubscribeProvider)
-	
+
 	// RegisterTLSConfigProvider registers a TLS config provider
 	RegisterTLSConfigProvider(provider TLSConfigProvider)
-	
+
 	// RegisterLoggerProvider registers a logger provider
 	RegisterLoggerProvider(provider LoggerProvider)
-	
+
 	// GetGrpcServiceProvider returns the registered gRPC service provider
 	GetGrpcServiceProvider() GrpcServiceProvider
-	
+
 	// GetGrpcClientProvider returns the registered gRPC client provider
 	GetGrpcClientProvider() GrpcClientProvider
-	
+
 	// GetGrpcSubscribeProvider returns the registered gRPC subscribe provider
 	GetGrpcSubscribeProvider() GrpcSubscribeProvider
-	
+
 	// GetTLSConfigProvider returns the registered TLS config provider
 	GetTLSConfigProvider() TLSConfigProvider
-	
+
 	// GetLoggerProvider returns the registered logger provider
 	GetLoggerProvider() LoggerProvider
 }

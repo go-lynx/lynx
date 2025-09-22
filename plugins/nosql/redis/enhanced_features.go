@@ -15,7 +15,6 @@ import (
 type CacheManager struct {
 	client redis.UniversalClient
 	logger zerolog.Logger
-	mu     sync.RWMutex
 	stats  *CacheStats
 }
 
@@ -53,7 +52,7 @@ func (cm *CacheManager) GetWithLoader(ctx context.Context, key string, loader fu
 		cm.recordHit()
 		
 		var result interface{}
-		if err := json.Unmarshal([]byte(val), &result); err == nil {
+		if unmarshalErr := json.Unmarshal([]byte(val), &result); unmarshalErr == nil {
 			return result, nil
 		}
 	} else if err != redis.Nil {
@@ -143,7 +142,17 @@ func (cm *CacheManager) DeletePattern(ctx context.Context, pattern string) error
 func (cm *CacheManager) GetStats() CacheStats {
 	cm.stats.mu.RLock()
 	defer cm.stats.mu.RUnlock()
-	return *cm.stats
+	// 创建一个不包含锁的副本来避免锁值拷贝警告
+	return CacheStats{
+		Hits:       cm.stats.Hits,
+		Misses:     cm.stats.Misses,
+		Sets:       cm.stats.Sets,
+		Deletes:    cm.stats.Deletes,
+		Errors:     cm.stats.Errors,
+		AvgLatency: cm.stats.AvgLatency,
+		lastReset:  cm.stats.lastReset,
+		// 不拷贝 mu 字段
+	}
 }
 
 // ResetStats 重置统计

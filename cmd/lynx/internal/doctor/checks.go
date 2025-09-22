@@ -103,9 +103,9 @@ func (b *BaseCheck) fixProjectIssues() error {
 		// Create missing essential directories
 		essentialDirs := []string{"app", "boot", "plugins", "cmd"}
 		for _, dir := range essentialDirs {
-			if _, err := os.Stat(dir); os.IsNotExist(err) {
-				if err := os.MkdirAll(dir, 0755); err != nil {
-					return fmt.Errorf("failed to create directory %s: %w", dir, err)
+			if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+				if mkdirErr := os.MkdirAll(dir, 0755); mkdirErr != nil {
+					return fmt.Errorf("failed to create directory %s: %w", dir, mkdirErr)
 				}
 			}
 		}
@@ -133,9 +133,9 @@ func (b *BaseCheck) fixConfigIssues() error {
 		// Create basic config directory structure if missing
 		configDirs := []string{"app/conf", "examples"}
 		for _, dir := range configDirs {
-			if _, err := os.Stat(dir); os.IsNotExist(err) {
-				if err := os.MkdirAll(dir, 0755); err != nil {
-					return fmt.Errorf("failed to create config directory %s: %w", dir, err)
+			if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+				if mkdirErr := os.MkdirAll(dir, 0755); mkdirErr != nil {
+					return fmt.Errorf("failed to create config directory %s: %w", dir, mkdirErr)
 				}
 			}
 		}

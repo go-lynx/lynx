@@ -70,9 +70,13 @@ func (p *PlugPolaris) notifyServiceChange(serviceName string, instances []model.
 	// Count health status
 	for _, instance := range instances {
 		if instance.IsHealthy() {
-			notification["healthy_count"] = notification["healthy_count"].(int) + 1
+			if count, ok := notification["healthy_count"].(int); ok {
+				notification["healthy_count"] = count + 1
+			}
 		} else {
-			notification["unhealthy_count"] = notification["unhealthy_count"].(int) + 1
+			if count, ok := notification["unhealthy_count"].(int); ok {
+				notification["unhealthy_count"] = count + 1
+			}
 		}
 	}
 

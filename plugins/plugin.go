@@ -1067,7 +1067,10 @@ func (r *simpleRuntime) CleanupResources(pluginID string) error {
 	}
 
 	// Phase 1: collect and detach resources under short lock
-	type resItem struct{ name string; res any }
+	type resItem struct {
+		name string
+		res  any
+	}
 	var privItems []resItem
 	var sharedItems []resItem
 
@@ -1296,11 +1299,17 @@ func (r *simpleRuntime) GetResourceStats() map[string]any {
 
 	for _, info := range r.resourceInfo {
 		if info.IsPrivate {
-			stats["private_resources"] = stats["private_resources"].(int) + 1
+			if count, ok := stats["private_resources"].(int); ok {
+				stats["private_resources"] = count + 1
+			}
 		} else {
-			stats["shared_resources"] = stats["shared_resources"].(int) + 1
+			if count, ok := stats["shared_resources"].(int); ok {
+				stats["shared_resources"] = count + 1
+			}
 		}
-		stats["total_size_bytes"] = stats["total_size_bytes"].(int64) + info.Size
+		if totalSize, ok := stats["total_size_bytes"].(int64); ok {
+			stats["total_size_bytes"] = totalSize + info.Size
+		}
 		pluginSet[info.PluginID] = true
 	}
 

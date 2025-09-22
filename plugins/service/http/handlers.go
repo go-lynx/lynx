@@ -25,14 +25,14 @@ func (h *ServiceHttp) notFoundHandler() http.Handler {
 
 		// Serialize and write the response
 		if data, err := json.Marshal(response); err == nil {
-			_, err := w.Write(data)
-			if err != nil {
+			_, writeErr := w.Write(data)
+			if writeErr != nil {
 				return
 			}
 		} else {
 			log.Errorf("Failed to marshal 404 response: %v", err)
-			_, err := w.Write([]byte(`{"error": "Failed to serialize response"}`))
-			if err != nil {
+			_, writeErr := w.Write([]byte(`{"error": "Failed to serialize response"}`))
+			if writeErr != nil {
 				return
 			}
 		}
@@ -62,14 +62,14 @@ func (h *ServiceHttp) methodNotAllowedHandler() http.Handler {
 
 		// Serialize and write the response
 		if data, err := json.Marshal(response); err == nil {
-			_, err := w.Write(data)
-			if err != nil {
+			_, writeErr := w.Write(data)
+			if writeErr != nil {
 				return
 			}
 		} else {
 			log.Errorf("Failed to marshal 405 response: %v", err)
-			_, err := w.Write([]byte(`{"error": "Failed to serialize response"}`))
-			if err != nil {
+			_, writeErr := w.Write([]byte(`{"error": "Failed to serialize response"}`))
+			if writeErr != nil {
 				return
 			}
 		}
@@ -100,14 +100,14 @@ func (h *ServiceHttp) enhancedErrorEncoder(w http.ResponseWriter, r *http.Reques
 		"timestamp": time.Now().Format(time.RFC3339),
 	}
 	if data, err := json.Marshal(response); err == nil {
-		_, err := w.Write(data)
-		if err != nil {
+		_, writeErr := w.Write(data)
+		if writeErr != nil {
 			return
 		}
 	} else {
 		log.Errorf("Failed to encode error response: %v", err)
-		_, err := w.Write([]byte(`{"error": "Failed to serialize response"}`))
-		if err != nil {
+		_, writeErr := w.Write([]byte(`{"error": "Failed to serialize response"}`))
+		if writeErr != nil {
 			return
 		}
 	}

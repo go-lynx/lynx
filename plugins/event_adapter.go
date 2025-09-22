@@ -41,7 +41,7 @@ func EnsureGlobalEventBusAdapter() EventBusAdapter {
 	if adapter != nil {
 		return adapter
 	}
-	
+
 	// Return a fallback adapter that safely handles operations
 	return &FallbackEventBusAdapter{}
 }
@@ -65,12 +65,12 @@ type FallbackEventBusAdapter struct{}
 func (f *FallbackEventBusAdapter) PublishEvent(event PluginEvent) error {
 	// Log the event attempt but don't fail
 	// This allows the system to continue functioning even if event bus is not initialized
-	fmt.Printf("[FALLBACK] Would publish event: type=%s, plugin=%s, source=%s\n", 
+	fmt.Printf("[FALLBACK] Would publish event: type=%s, plugin=%s, source=%s\n",
 		event.Type, event.PluginID, event.Source)
 	return nil
 }
 
-// Subscribe handles event subscription when no adapter is available  
+// Subscribe handles event subscription when no adapter is available
 func (f *FallbackEventBusAdapter) Subscribe(eventType EventType, handler func(PluginEvent)) error {
 	// Log the subscription attempt but don't fail
 	fmt.Printf("[FALLBACK] Would subscribe to event type: %s\n", eventType)

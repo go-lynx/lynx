@@ -1,12 +1,13 @@
 package swagger_test
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 	
+	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/swagger"
 	"github.com/stretchr/testify/assert"
@@ -18,12 +19,128 @@ type MockRuntime struct {
 	config map[string]interface{}
 }
 
-func (m *MockRuntime) GetConfig() plugins.Config {
+func (m *MockRuntime) GetConfig() config.Config {
 	return &MockConfig{data: m.config}
 }
 
-func (m *MockRuntime) GetLogger() interface{} {
+func (m *MockRuntime) GetLogger() log.Logger {
 	return nil
+}
+
+func (m *MockRuntime) AddListener(listener plugins.EventListener, filter *plugins.EventFilter) {
+	// Mock implementation - no-op
+}
+
+func (m *MockRuntime) RemoveListener(listener plugins.EventListener) {
+	// Mock implementation - no-op
+}
+
+func (m *MockRuntime) EmitEvent(event plugins.PluginEvent) {
+	// Mock implementation - no-op
+}
+
+func (m *MockRuntime) GetEventHistory(filter plugins.EventFilter) []plugins.PluginEvent {
+	return []plugins.PluginEvent{}
+}
+
+func (m *MockRuntime) GetResource(id string) (interface{}, error) {
+	return nil, nil
+}
+
+func (m *MockRuntime) RegisterResource(id string, resource interface{}) error {
+	return nil
+}
+
+func (m *MockRuntime) GetPlugin(name string) plugins.Plugin {
+	return nil
+}
+
+func (m *MockRuntime) PublishEvent(event interface{}) error {
+	return nil
+}
+
+func (m *MockRuntime) SubscribeEvent(eventType string, handler func(interface{})) error {
+	return nil
+}
+
+func (m *MockRuntime) GetPrivateResource(name string) (any, error) {
+	return nil, nil
+}
+
+func (m *MockRuntime) RegisterPrivateResource(name string, resource any) error {
+	return nil
+}
+
+func (m *MockRuntime) GetSharedResource(name string) (any, error) {
+	return nil, nil
+}
+
+func (m *MockRuntime) RegisterSharedResource(name string, resource any) error {
+	return nil
+}
+
+func (m *MockRuntime) EmitPluginEvent(pluginName string, eventType string, data map[string]any) {
+	// Mock implementation - no-op
+}
+
+func (m *MockRuntime) AddPluginListener(pluginName string, listener plugins.EventListener, filter *plugins.EventFilter) {
+	// Mock implementation - no-op
+}
+
+func (m *MockRuntime) GetPluginEventHistory(pluginName string, filter plugins.EventFilter) []plugins.PluginEvent {
+	return []plugins.PluginEvent{}
+}
+
+func (m *MockRuntime) SetEventDispatchMode(mode string) error {
+	return nil
+}
+
+func (m *MockRuntime) SetEventWorkerPoolSize(size int) {
+	// Mock implementation - no-op
+}
+
+func (m *MockRuntime) SetEventTimeout(timeout time.Duration) {
+	// Mock implementation - no-op
+}
+
+func (m *MockRuntime) GetEventStats() map[string]any {
+	return make(map[string]any)
+}
+
+func (m *MockRuntime) WithPluginContext(pluginName string) plugins.Runtime {
+	return m
+}
+
+func (m *MockRuntime) GetCurrentPluginContext() string {
+	return ""
+}
+
+func (m *MockRuntime) SetConfig(conf config.Config) {
+	// Mock implementation - no-op
+}
+
+func (m *MockRuntime) CleanupResources(pluginID string) error {
+	return nil
+}
+
+func (m *MockRuntime) GetTypedResource(name string, resourceType string) (any, error) {
+	return nil, nil
+}
+
+func (m *MockRuntime) RegisterTypedResource(name string, resource any, resourceType string) error {
+	return nil
+}
+
+func (m *MockRuntime) GetResourceInfo(name string) (*plugins.ResourceInfo, error) {
+	return nil, nil
+}
+
+func (m *MockRuntime) ListResources() []*plugins.ResourceInfo {
+	return []*plugins.ResourceInfo{}
+}
+
+func (m *MockRuntime) GetResourceStats() map[string]any {
+	return make(map[string]any)
 }
 
 // MockConfig mock configuration
@@ -31,9 +148,14 @@ type MockConfig struct {
 	data map[string]interface{}
 }
 
-func (m *MockConfig) Value(key string) plugins.Value {
+func (m *MockConfig) Value(key string) config.Value {
 	return &MockValue{data: m.data}
 }
+
+func (m *MockConfig) Load() error { return nil }
+func (m *MockConfig) Watch(key string, o config.Observer) error { return nil }
+func (m *MockConfig) Close() error { return nil }
+func (m *MockConfig) Scan(dest interface{}) error { return nil }
 
 // MockValue mock value
 type MockValue struct {
@@ -45,9 +167,19 @@ func (m *MockValue) Scan(dest interface{}) error {
 	return nil
 }
 
+func (m *MockValue) Bool() (bool, error) { return false, nil }
+func (m *MockValue) Int() (int64, error) { return 0, nil }
+func (m *MockValue) Float() (float64, error) { return 0.0, nil }
+func (m *MockValue) String() (string, error) { return "", nil }
+func (m *MockValue) Duration() (time.Duration, error) { return 0, nil }
+func (m *MockValue) Slice() ([]config.Value, error) { return nil, nil }
+func (m *MockValue) Map() (map[string]config.Value, error) { return nil, nil }
+func (m *MockValue) Load() any { return m.data }
+func (m *MockValue) Store(any) {}
+
 func TestSwaggerPluginIntegration(t *testing.T) {
 	// Create temporary directory
-	tempDir, err := ioutil.TempDir("", "swagger-test-*")
+	tempDir, err := os.MkdirTemp("", "swagger-test-*")
 	require.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 	
@@ -75,7 +207,7 @@ type User struct {
 	Name string ` + "`json:\"name\"`" + `
 }
 `
-	err = ioutil.WriteFile(testFile, []byte(testCode), 0644)
+	err = os.WriteFile(testFile, []byte(testCode), 0644)
 	require.NoError(t, err)
 	
 	// Create plugin
@@ -108,10 +240,10 @@ type User struct {
 	
 	// Check generated file
 	swaggerFile := filepath.Join(tempDir, "swagger.json")
-	if _, err := os.Stat(swaggerFile); err == nil {
+	if _, statErr := os.Stat(swaggerFile); statErr == nil {
 		// File exists, read and validate
-		data, err := ioutil.ReadFile(swaggerFile)
-		assert.NoError(t, err)
+		data, readErr := os.ReadFile(swaggerFile)
+		assert.NoError(t, readErr)
 		assert.Contains(t, string(data), "swagger")
 		assert.Contains(t, string(data), "2.0")
 	}

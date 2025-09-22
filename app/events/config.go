@@ -9,12 +9,12 @@ import (
 type DropPolicy string
 
 const (
-    // DropNewest indicates dropping the incoming event when the queue is full
-    DropNewest DropPolicy = "drop_newest"
-    // DropOldest indicates dropping one oldest event in queue to make room
-    DropOldest DropPolicy = "drop_oldest"
-    // Block indicates blocking for a short time to wait for capacity, then drop if still full
-    DropBlock  DropPolicy = "block"
+	// DropNewest indicates dropping the incoming event when the queue is full
+	DropNewest DropPolicy = "drop_newest"
+	// DropOldest indicates dropping one oldest event in queue to make room
+	DropOldest DropPolicy = "drop_oldest"
+	// Block indicates blocking for a short time to wait for capacity, then drop if still full
+	DropBlock DropPolicy = "block"
 )
 
 // ErrorCallback is called when events are dropped or failed
@@ -30,17 +30,17 @@ type BusConfig struct {
 	// MaxRetries controls panic-based retry attempts in handlers
 	MaxRetries int `yaml:"max_retries" json:"max_retries"`
 	// HistorySize controls the capacity of in-memory history when enabled
-	HistorySize          int `yaml:"history_size" json:"history_size"`
+	HistorySize int `yaml:"history_size" json:"history_size"`
 	// BatchSize controls how many events are aggregated per dispatch cycle
-	BatchSize            int `yaml:"batch_size" json:"batch_size"`
+	BatchSize int `yaml:"batch_size" json:"batch_size"`
 	// WorkerCount controls number of consumer workers (reserved for future)
-	WorkerCount          int `yaml:"worker_count" json:"worker_count"`
+	WorkerCount int `yaml:"worker_count" json:"worker_count"`
 
 	// Degradation settings
-	EnableDegradation            bool            `yaml:"enable_degradation" json:"enable_degradation"`
-	DegradationThreshold         int             `yaml:"degradation_threshold" json:"degradation_threshold"` // trigger threshold (percent)
-	DegradationRecoverThreshold  int             `yaml:"degradation_recover_threshold" json:"degradation_recover_threshold"` // recover threshold (percent). If 0, uses a derived default
-	DegradationMode              DegradationMode `yaml:"degradation_mode" json:"degradation_mode"`
+	EnableDegradation           bool            `yaml:"enable_degradation" json:"enable_degradation"`
+	DegradationThreshold        int             `yaml:"degradation_threshold" json:"degradation_threshold"`                 // trigger threshold (percent)
+	DegradationRecoverThreshold int             `yaml:"degradation_recover_threshold" json:"degradation_recover_threshold"` // recover threshold (percent). If 0, uses a derived default
+	DegradationMode             DegradationMode `yaml:"degradation_mode" json:"degradation_mode"`
 
 	// Throttling settings
 	EnableThrottling bool `yaml:"enable_throttling" json:"enable_throttling"`
@@ -53,10 +53,10 @@ type BusConfig struct {
 	// Retry bounding to avoid timer/goroutine storms
 	MaxConcurrentRetries int `yaml:"max_concurrent_retries" json:"max_concurrent_retries"`
 
-    // Drop policy and critical event protection
-    DropPolicy          DropPolicy    `yaml:"drop_policy" json:"drop_policy"`
-    ReserveForCritical  int           `yaml:"reserve_for_critical" json:"reserve_for_critical"`
-    EnqueueBlockTimeout time.Duration `yaml:"enqueue_block_timeout" json:"enqueue_block_timeout"`
+	// Drop policy and critical event protection
+	DropPolicy          DropPolicy    `yaml:"drop_policy" json:"drop_policy"`
+	ReserveForCritical  int           `yaml:"reserve_for_critical" json:"reserve_for_critical"`
+	EnqueueBlockTimeout time.Duration `yaml:"enqueue_block_timeout" json:"enqueue_block_timeout"`
 }
 
 // DegradationMode represents the degradation strategy
@@ -71,26 +71,26 @@ const (
 // DefaultBusConfig returns default configuration for a bus
 func DefaultBusConfig() BusConfig {
 	return BusConfig{
-		MaxQueue:             10000,
-		FlushInterval:        100 * time.Microsecond,
-		Priority:             PriorityNormal,
-		EnableHistory:        true,
-		EnableMetrics:        true,
-		MaxRetries:           0,
-		HistorySize:          1000,
-		BatchSize:            32,
-		WorkerCount:          1,
-		EnableDegradation:    true,
-		DegradationThreshold: 90, // 90% queue usage
+		MaxQueue:                    10000,
+		FlushInterval:               100 * time.Microsecond,
+		Priority:                    PriorityNormal,
+		EnableHistory:               true,
+		EnableMetrics:               true,
+		MaxRetries:                  0,
+		HistorySize:                 1000,
+		BatchSize:                   32,
+		WorkerCount:                 1,
+		EnableDegradation:           true,
+		DegradationThreshold:        90, // 90% queue usage
 		DegradationRecoverThreshold: 70, // 70% recover threshold (hysteresis)
-		DegradationMode:      DegradationModeDrop,
-		EnableThrottling:     false,
-		ThrottleRate:         1000, // 1000 events per second
-		ThrottleBurst:        100,  // 100 events burst
-		MaxConcurrentRetries: 256,
-        DropPolicy:           DropNewest,
-        ReserveForCritical:   0,
-        EnqueueBlockTimeout:  5 * time.Millisecond,
+		DegradationMode:             DegradationModeDrop,
+		EnableThrottling:            false,
+		ThrottleRate:                1000, // 1000 events per second
+		ThrottleBurst:               100,  // 100 events burst
+		MaxConcurrentRetries:        256,
+		DropPolicy:                  DropNewest,
+		ReserveForCritical:          0,
+		EnqueueBlockTimeout:         5 * time.Millisecond,
 	}
 }
 
@@ -110,180 +110,180 @@ type BusConfigs struct {
 func DefaultBusConfigs() BusConfigs {
 	return BusConfigs{
 		Plugin: BusConfig{
-			MaxQueue:             10000,
-			FlushInterval:        100 * time.Microsecond,
-			Priority:             PriorityHigh,
-			EnableHistory:        true,
-			EnableMetrics:        true,
-			MaxRetries:           1,
-			HistorySize:          2000,
-			BatchSize:            32,
-			WorkerCount:          1,
-			EnableDegradation:    true,
-			DegradationThreshold: 90, // 90% queue usage
+			MaxQueue:                    10000,
+			FlushInterval:               100 * time.Microsecond,
+			Priority:                    PriorityHigh,
+			EnableHistory:               true,
+			EnableMetrics:               true,
+			MaxRetries:                  1,
+			HistorySize:                 2000,
+			BatchSize:                   32,
+			WorkerCount:                 1,
+			EnableDegradation:           true,
+			DegradationThreshold:        90, // 90% queue usage
 			DegradationRecoverThreshold: 70, // 70% recover threshold (hysteresis)
-			DegradationMode:      DegradationModeDrop,
-			EnableThrottling:     false,
-			ThrottleRate:         1000, // 1000 events per second
-			ThrottleBurst:        100,  // 100 events burst
-			MaxConcurrentRetries: 256,
-            DropPolicy:           DropNewest,
-            ReserveForCritical:   0,
-            EnqueueBlockTimeout:  5 * time.Millisecond,
+			DegradationMode:             DegradationModeDrop,
+			EnableThrottling:            false,
+			ThrottleRate:                1000, // 1000 events per second
+			ThrottleBurst:               100,  // 100 events burst
+			MaxConcurrentRetries:        256,
+			DropPolicy:                  DropNewest,
+			ReserveForCritical:          0,
+			EnqueueBlockTimeout:         5 * time.Millisecond,
 		},
 		System: BusConfig{
-			MaxQueue:             5000,
-			FlushInterval:        200 * time.Microsecond,
-			Priority:             PriorityHigh,
-			EnableHistory:        false,
-			EnableMetrics:        true,
-			MaxRetries:           1,
-			HistorySize:          500,
-			BatchSize:            16,
-			WorkerCount:          1,
-			EnableDegradation:    true,
-			DegradationThreshold: 90, // 90% queue usage
+			MaxQueue:                    5000,
+			FlushInterval:               200 * time.Microsecond,
+			Priority:                    PriorityHigh,
+			EnableHistory:               false,
+			EnableMetrics:               true,
+			MaxRetries:                  1,
+			HistorySize:                 500,
+			BatchSize:                   16,
+			WorkerCount:                 1,
+			EnableDegradation:           true,
+			DegradationThreshold:        90, // 90% queue usage
 			DegradationRecoverThreshold: 70, // 70% recover threshold (hysteresis)
-			DegradationMode:      DegradationModeDrop,
-			EnableThrottling:     false,
-			ThrottleRate:         1000, // 1000 events per second
-			ThrottleBurst:        100,  // 100 events burst
-			MaxConcurrentRetries: 256,
-            DropPolicy:           DropNewest,
-            ReserveForCritical:   0,
-            EnqueueBlockTimeout:  5 * time.Millisecond,
+			DegradationMode:             DegradationModeDrop,
+			EnableThrottling:            false,
+			ThrottleRate:                1000, // 1000 events per second
+			ThrottleBurst:               100,  // 100 events burst
+			MaxConcurrentRetries:        256,
+			DropPolicy:                  DropNewest,
+			ReserveForCritical:          0,
+			EnqueueBlockTimeout:         5 * time.Millisecond,
 		},
 		Business: BusConfig{
-			MaxQueue:             20000,
-			FlushInterval:        50 * time.Microsecond,
-			Priority:             PriorityNormal,
-			EnableHistory:        true,
-			EnableMetrics:        true,
-			MaxRetries:           0,
-			HistorySize:          2000,
-			BatchSize:            64,
-			WorkerCount:          1,
-			EnableDegradation:    true,
-			DegradationThreshold: 90, // 90% queue usage
+			MaxQueue:                    20000,
+			FlushInterval:               50 * time.Microsecond,
+			Priority:                    PriorityNormal,
+			EnableHistory:               true,
+			EnableMetrics:               true,
+			MaxRetries:                  0,
+			HistorySize:                 2000,
+			BatchSize:                   64,
+			WorkerCount:                 1,
+			EnableDegradation:           true,
+			DegradationThreshold:        90, // 90% queue usage
 			DegradationRecoverThreshold: 70, // 70% recover threshold (hysteresis)
-			DegradationMode:      DegradationModeDrop,
-			EnableThrottling:     false,
-			ThrottleRate:         1000, // 1000 events per second
-			ThrottleBurst:        100,  // 100 events burst
-			MaxConcurrentRetries: 256,
-            DropPolicy:           DropNewest,
-            ReserveForCritical:   0,
-            EnqueueBlockTimeout:  5 * time.Millisecond,
+			DegradationMode:             DegradationModeDrop,
+			EnableThrottling:            false,
+			ThrottleRate:                1000, // 1000 events per second
+			ThrottleBurst:               100,  // 100 events burst
+			MaxConcurrentRetries:        256,
+			DropPolicy:                  DropNewest,
+			ReserveForCritical:          0,
+			EnqueueBlockTimeout:         5 * time.Millisecond,
 		},
 		Health: BusConfig{
-			MaxQueue:             1000,
-			FlushInterval:        500 * time.Microsecond,
-			Priority:             PriorityCritical,
-			EnableHistory:        true,
-			EnableMetrics:        true,
-			MaxRetries:           0,
-			HistorySize:          200,
-			BatchSize:            8,
-			WorkerCount:          1,
-			EnableDegradation:    true,
-			DegradationThreshold: 90, // 90% queue usage
+			MaxQueue:                    1000,
+			FlushInterval:               500 * time.Microsecond,
+			Priority:                    PriorityCritical,
+			EnableHistory:               true,
+			EnableMetrics:               true,
+			MaxRetries:                  0,
+			HistorySize:                 200,
+			BatchSize:                   8,
+			WorkerCount:                 1,
+			EnableDegradation:           true,
+			DegradationThreshold:        90, // 90% queue usage
 			DegradationRecoverThreshold: 70, // 70% recover threshold (hysteresis)
-			DegradationMode:      DegradationModeDrop,
-			EnableThrottling:     false,
-			ThrottleRate:         1000, // 1000 events per second
-			ThrottleBurst:        100,  // 100 events burst
-			MaxConcurrentRetries: 256,
-            DropPolicy:           DropNewest,
-            ReserveForCritical:   0,
-            EnqueueBlockTimeout:  5 * time.Millisecond,
+			DegradationMode:             DegradationModeDrop,
+			EnableThrottling:            false,
+			ThrottleRate:                1000, // 1000 events per second
+			ThrottleBurst:               100,  // 100 events burst
+			MaxConcurrentRetries:        256,
+			DropPolicy:                  DropNewest,
+			ReserveForCritical:          0,
+			EnqueueBlockTimeout:         5 * time.Millisecond,
 		},
 		Config: BusConfig{
-			MaxQueue:             2000,
-			FlushInterval:        300 * time.Microsecond,
-			Priority:             PriorityHigh,
-			EnableHistory:        true,
-			EnableMetrics:        true,
-			MaxRetries:           0,
-			HistorySize:          500,
-			BatchSize:            16,
-			WorkerCount:          1,
-			EnableDegradation:    true,
-			DegradationThreshold: 90, // 90% queue usage
+			MaxQueue:                    2000,
+			FlushInterval:               300 * time.Microsecond,
+			Priority:                    PriorityHigh,
+			EnableHistory:               true,
+			EnableMetrics:               true,
+			MaxRetries:                  0,
+			HistorySize:                 500,
+			BatchSize:                   16,
+			WorkerCount:                 1,
+			EnableDegradation:           true,
+			DegradationThreshold:        90, // 90% queue usage
 			DegradationRecoverThreshold: 70, // 70% recover threshold (hysteresis)
-			DegradationMode:      DegradationModeDrop,
-			EnableThrottling:     false,
-			ThrottleRate:         1000, // 1000 events per second
-			ThrottleBurst:        100,  // 100 events burst
-			MaxConcurrentRetries: 256,
-            DropPolicy:           DropNewest,
-            ReserveForCritical:   0,
-            EnqueueBlockTimeout:  5 * time.Millisecond,
+			DegradationMode:             DegradationModeDrop,
+			EnableThrottling:            false,
+			ThrottleRate:                1000, // 1000 events per second
+			ThrottleBurst:               100,  // 100 events burst
+			MaxConcurrentRetries:        256,
+			DropPolicy:                  DropNewest,
+			ReserveForCritical:          0,
+			EnqueueBlockTimeout:         5 * time.Millisecond,
 		},
 		Resource: BusConfig{
-			MaxQueue:             3000,
-			FlushInterval:        250 * time.Microsecond,
-			Priority:             PriorityHigh,
-			EnableHistory:        true,
-			EnableMetrics:        true,
-			MaxRetries:           0,
-			HistorySize:          500,
-			BatchSize:            16,
-			WorkerCount:          1,
-			EnableDegradation:    true,
-			DegradationThreshold: 90, // 90% queue usage
+			MaxQueue:                    3000,
+			FlushInterval:               250 * time.Microsecond,
+			Priority:                    PriorityHigh,
+			EnableHistory:               true,
+			EnableMetrics:               true,
+			MaxRetries:                  0,
+			HistorySize:                 500,
+			BatchSize:                   16,
+			WorkerCount:                 1,
+			EnableDegradation:           true,
+			DegradationThreshold:        90, // 90% queue usage
 			DegradationRecoverThreshold: 70, // 70% recover threshold (hysteresis)
-			DegradationMode:      DegradationModeDrop,
-			EnableThrottling:     false,
-			ThrottleRate:         1000, // 1000 events per second
-			ThrottleBurst:        100,  // 100 events burst
-			MaxConcurrentRetries: 256,
-            DropPolicy:           DropNewest,
-            ReserveForCritical:   0,
-            EnqueueBlockTimeout:  5 * time.Millisecond,
+			DegradationMode:             DegradationModeDrop,
+			EnableThrottling:            false,
+			ThrottleRate:                1000, // 1000 events per second
+			ThrottleBurst:               100,  // 100 events burst
+			MaxConcurrentRetries:        256,
+			DropPolicy:                  DropNewest,
+			ReserveForCritical:          0,
+			EnqueueBlockTimeout:         5 * time.Millisecond,
 		},
 		Security: BusConfig{
-			MaxQueue:             1000,
-			FlushInterval:        100 * time.Microsecond,
-			Priority:             PriorityCritical,
-			EnableHistory:        true,
-			EnableMetrics:        true,
-			MaxRetries:           1,
-			HistorySize:          500,
-			BatchSize:            8,
-			WorkerCount:          1,
-			EnableDegradation:    true,
-			DegradationThreshold: 90, // 90% queue usage
+			MaxQueue:                    1000,
+			FlushInterval:               100 * time.Microsecond,
+			Priority:                    PriorityCritical,
+			EnableHistory:               true,
+			EnableMetrics:               true,
+			MaxRetries:                  1,
+			HistorySize:                 500,
+			BatchSize:                   8,
+			WorkerCount:                 1,
+			EnableDegradation:           true,
+			DegradationThreshold:        90, // 90% queue usage
 			DegradationRecoverThreshold: 70, // 70% recover threshold (hysteresis)
-			DegradationMode:      DegradationModeDrop,
-			EnableThrottling:     false,
-			ThrottleRate:         1000, // 1000 events per second
-			ThrottleBurst:        100,  // 100 events burst
-			MaxConcurrentRetries: 256,
-            DropPolicy:           DropNewest,
-            ReserveForCritical:   0,
-            EnqueueBlockTimeout:  5 * time.Millisecond,
+			DegradationMode:             DegradationModeDrop,
+			EnableThrottling:            false,
+			ThrottleRate:                1000, // 1000 events per second
+			ThrottleBurst:               100,  // 100 events burst
+			MaxConcurrentRetries:        256,
+			DropPolicy:                  DropNewest,
+			ReserveForCritical:          0,
+			EnqueueBlockTimeout:         5 * time.Millisecond,
 		},
 		Metrics: BusConfig{
-			MaxQueue:             5000,
-			FlushInterval:        1 * time.Millisecond,
-			Priority:             PriorityLow,
-			EnableHistory:        false,
-			EnableMetrics:        true,
-			MaxRetries:           0,
-			HistorySize:          200,
-			BatchSize:            16,
-			WorkerCount:          1,
-			EnableDegradation:    true,
-			DegradationThreshold: 90, // 90% queue usage
+			MaxQueue:                    5000,
+			FlushInterval:               1 * time.Millisecond,
+			Priority:                    PriorityLow,
+			EnableHistory:               false,
+			EnableMetrics:               true,
+			MaxRetries:                  0,
+			HistorySize:                 200,
+			BatchSize:                   16,
+			WorkerCount:                 1,
+			EnableDegradation:           true,
+			DegradationThreshold:        90, // 90% queue usage
 			DegradationRecoverThreshold: 70, // 70% recover threshold (hysteresis)
-			DegradationMode:      DegradationModeDrop,
-			EnableThrottling:     false,
-			ThrottleRate:         1000, // 1000 events per second
-			ThrottleBurst:        100,  // 100 events burst
-			MaxConcurrentRetries: 256,
-            DropPolicy:           DropNewest,
-            ReserveForCritical:   0,
-            EnqueueBlockTimeout:  5 * time.Millisecond,
+			DegradationMode:             DegradationModeDrop,
+			EnableThrottling:            false,
+			ThrottleRate:                1000, // 1000 events per second
+			ThrottleBurst:               100,  // 100 events burst
+			MaxConcurrentRetries:        256,
+			DropPolicy:                  DropNewest,
+			ReserveForCritical:          0,
+			EnqueueBlockTimeout:         5 * time.Millisecond,
 		},
 	}
 }
@@ -379,18 +379,18 @@ func (c *BusConfigs) validateBusConfig(name string, config BusConfig) error {
 	if config.MaxConcurrentRetries < 0 {
 		return fmt.Errorf("bus %s: max_concurrent_retries must be >= 0", name)
 	}
-    // Drop policy
-    switch config.DropPolicy {
-    case "", DropNewest, DropOldest, DropBlock:
-        // ok, empty means defaulting elsewhere
-    default:
-        return fmt.Errorf("bus %s: invalid drop_policy: %s", name, config.DropPolicy)
-    }
-    if config.ReserveForCritical < 0 || config.ReserveForCritical >= config.MaxQueue {
-        return fmt.Errorf("bus %s: reserve_for_critical must be in [0, max_queue)", name)
-    }
-    if config.EnqueueBlockTimeout < 0 {
-        return fmt.Errorf("bus %s: enqueue_block_timeout must be >= 0", name)
-    }
+	// Drop policy
+	switch config.DropPolicy {
+	case "", DropNewest, DropOldest, DropBlock:
+		// ok, empty means defaulting elsewhere
+	default:
+		return fmt.Errorf("bus %s: invalid drop_policy: %s", name, config.DropPolicy)
+	}
+	if config.ReserveForCritical < 0 || config.ReserveForCritical >= config.MaxQueue {
+		return fmt.Errorf("bus %s: reserve_for_critical must be in [0, max_queue)", name)
+	}
+	if config.EnqueueBlockTimeout < 0 {
+		return fmt.Errorf("bus %s: enqueue_block_timeout must be >= 0", name)
+	}
 	return nil
 }
