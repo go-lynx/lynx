@@ -1,0 +1,193 @@
+# Sentinel Plugin Configuration
+sentinel:
+  # Enable or disable the Sentinel plugin
+  enabled: true
+  
+  # Application name for Sentinel
+  app_name: "lynx-app"
+  
+  # Log configuration
+  log:
+    # Log level: debug, info, warn, error
+    level: "info"
+    # Log output: console, file, both
+    output: "console"
+    # Log file path (when output is file or both)
+    file_path: "./logs/sentinel.log"
+    # Enable metric logs
+    metric_log_enabled: true
+    # Metric log file path
+    metric_log_path: "./logs/sentinel-metrics.log"
+  
+  # Flow control rules
+  flow_rules:
+    # Default flow rules
+    - resource: "default"
+      threshold: 100.0
+      token_calculate_strategy: "direct"  # direct, warm_up, warm_up_rate_limiter
+      control_behavior: "reject"          # reject, throttling
+      warm_up_period_sec: 10
+      max_queueing_time_ms: 500
+    
+    # Example API flow rules
+    - resource: "/api/users"
+      threshold: 50.0
+      token_calculate_strategy: "direct"
+      control_behavior: "reject"
+    
+    - resource: "/api/orders"
+      threshold: 30.0
+      token_calculate_strategy: "warm_up"
+      control_behavior: "throttling"
+      warm_up_period_sec: 30
+      max_queueing_time_ms: 1000
+  
+  # Circuit breaker rules
+  circuit_breaker_rules:
+    # Default circuit breaker rule
+    - resource: "default"
+      strategy: "slow_request_ratio"      # slow_request_ratio, error_ratio, error_count
+      threshold: 0.5
+      retry_timeout_ms: 10000
+      min_request_amount: 5
+      stat_interval_ms: 1000
+      max_allowed_rt_ms: 1000
+    
+    # Example service circuit breaker rules
+    - resource: "user-service"
+      strategy: "error_ratio"
+      threshold: 0.3
+      retry_timeout_ms: 30000
+      min_request_amount: 10
+      stat_interval_ms: 1000
+    
+    - resource: "payment-service"
+      strategy: "slow_request_ratio"
+      threshold: 0.6
+      retry_timeout_ms: 60000
+      min_request_amount: 20
+      stat_interval_ms: 1000
+      max_allowed_rt_ms: 2000
+  
+  # System protection rules
+  system_rules:
+    # Enable system protection
+    enabled: true
+    
+    # System load threshold (Linux only)
+    high_cpu_usage_threshold: 0.7
+    
+    # Average RT threshold (ms)
+    avg_rt_threshold: 1000
+    
+    # Max thread count
+    max_thread_threshold: 100
+    
+    # BBR (Bottleneck Bandwidth and Round-trip propagation time) enabled
+    bbr_enabled: false
+  
+  # Metrics collection configuration
+  metrics:
+    # Enable metrics collection
+    enabled: true
+    
+    # Collection interval
+    interval_sec: 10
+    
+    # Metrics retention period (in seconds)
+    retention_sec: 3600
+    
+    # Export metrics to external systems
+    export:
+      # Enable Prometheus metrics export
+      prometheus:
+        enabled: false
+        endpoint: "/metrics"
+        port: 9090
+      
+      # Enable custom metrics export
+      custom:
+        enabled: false
+        endpoint: "http://localhost:8080/metrics"
+        interval_sec: 30
+  
+  # Dashboard configuration
+  dashboard:
+    # Enable dashboard
+    enabled: true
+    
+    # Dashboard server port
+    port: 8719
+    
+    # Dashboard server host
+    host: "0.0.0.0"
+    
+    # Enable authentication
+    auth:
+      enabled: false
+      username: "admin"
+      password: "sentinel"
+    
+    # CORS configuration
+    cors:
+      enabled: true
+      allowed_origins: ["*"]
+      allowed_methods: ["GET", "POST", "PUT", "DELETE"]
+      allowed_headers: ["*"]
+  
+  # Data source configuration for dynamic rule management
+  data_source:
+    # File data source
+    file:
+      enabled: true
+      # Rule files directory
+      rules_dir: "./conf/sentinel/rules"
+      # Auto reload when files change
+      auto_reload: true
+    
+    # Nacos data source (if using Nacos for configuration management)
+    nacos:
+      enabled: false
+      server_addr: "localhost:8848"
+      namespace: "sentinel"
+      group: "DEFAULT_GROUP"
+      data_id: "sentinel-rules"
+    
+    # Apollo data source (if using Apollo for configuration management)
+    apollo:
+      enabled: false
+      app_id: "lynx-app"
+      cluster: "default"
+      namespace: "application"
+      meta_server: "http://localhost:8080"
+  
+  # Warm-up configuration
+  warm_up:
+    # Enable warm-up mode
+    enabled: false
+    
+    # Warm-up duration (seconds)
+    duration_sec: 60
+    
+    # Initial QPS during warm-up
+    initial_qps: 10
+  
+  # Advanced configuration
+  advanced:
+    # Enable detailed logging
+    debug_mode: false
+    
+    # Custom resource name extractor for HTTP requests
+    http_resource_extractor: "default"  # default, uri, method_uri
+    
+    # Custom resource name extractor for gRPC requests
+    grpc_resource_extractor: "default"  # default, method, service_method
+    
+    # Enable automatic resource registration
+    auto_resource_registration: true
+    
+    # Resource cleanup interval (seconds)
+    resource_cleanup_interval_sec: 300
+    
+    # Maximum number of resources to track
+    max_resources: 1000

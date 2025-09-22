@@ -1,0 +1,47 @@
+[
+  {
+    "resource": "user-service",
+    "strategy": 0,
+    "threshold": 0.5,
+    "retryTimeoutMs": 30000,
+    "minRequestAmount": 10,
+    "statIntervalMs": 1000,
+    "maxAllowedRtMs": 1000
+  },
+  {
+    "resource": "order-service",
+    "strategy": 1,
+    "threshold": 0.3,
+    "retryTimeoutMs": 60000,
+    "minRequestAmount": 20,
+    "statIntervalMs": 1000,
+    "maxAllowedRtMs": 2000
+  },
+  {
+    "resource": "payment-service",
+    "strategy": 0,
+    "threshold": 0.6,
+    "retryTimeoutMs": 45000,
+    "minRequestAmount": 15,
+    "statIntervalMs": 1000,
+    "maxAllowedRtMs": 1500
+  },
+  {
+    "resource": "/api/external",
+    "strategy": 2,
+    "threshold": 10,
+    "retryTimeoutMs": 120000,
+    "minRequestAmount": 5,
+    "statIntervalMs": 1000,
+    "maxAllowedRtMs": 3000
+  },
+  {
+    "resource": "database-connection",
+    "strategy": 1,
+    "threshold": 0.2,
+    "retryTimeoutMs": 30000,
+    "minRequestAmount": 30,
+    "statIntervalMs": 1000,
+    "maxAllowedRtMs": 500
+  }
+]

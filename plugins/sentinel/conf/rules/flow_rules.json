@@ -1,0 +1,42 @@
+[
+  {
+    "resource": "/api/users",
+    "threshold": 100.0,
+    "tokenCalculateStrategy": 0,
+    "controlBehavior": 0,
+    "warmUpPeriodSec": 10,
+    "maxQueueingTimeMs": 500
+  },
+  {
+    "resource": "/api/orders",
+    "threshold": 50.0,
+    "tokenCalculateStrategy": 1,
+    "controlBehavior": 1,
+    "warmUpPeriodSec": 30,
+    "maxQueueingTimeMs": 1000
+  },
+  {
+    "resource": "/api/payments",
+    "threshold": 20.0,
+    "tokenCalculateStrategy": 0,
+    "controlBehavior": 0,
+    "warmUpPeriodSec": 0,
+    "maxQueueingTimeMs": 0
+  },
+  {
+    "resource": "user-service",
+    "threshold": 200.0,
+    "tokenCalculateStrategy": 0,
+    "controlBehavior": 0,
+    "warmUpPeriodSec": 0,
+    "maxQueueingTimeMs": 0
+  },
+  {
+    "resource": "order-service",
+    "threshold": 150.0,
+    "tokenCalculateStrategy": 1,
+    "controlBehavior": 1,
+    "warmUpPeriodSec": 60,
+    "maxQueueingTimeMs": 2000
+  }
+]

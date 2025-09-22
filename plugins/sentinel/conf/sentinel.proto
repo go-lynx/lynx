@@ -1,0 +1,126 @@
+// Specify the syntax version used by this Protocol Buffers file
+syntax = "proto3";
+
+// Package name used for generated code
+package lynx.protobuf.plugin.sentinel;
+
+// Set go_package for generated Go code
+option go_package = "github.com/go-lynx/lynx/plugins/sentinel/conf;conf";
+
+// Import Duration type from google/protobuf/duration.proto
+import "google/protobuf/duration.proto";
+
+// Define Sentinel configuration message type
+message Sentinel {
+  // —— Basic Configuration ——
+  // Enable Sentinel plugin
+  bool enabled = 1;
+  // Application name for Sentinel
+  string app_name = 2;
+  // Log directory for Sentinel
+  string log_dir = 3;
+  // Log level (debug, info, warn, error)
+  string log_level = 4;
+
+  // —— Flow Control Configuration ——
+  // Flow control rules
+  repeated FlowRule flow_rules = 5;
+  // Default QPS limit for unspecified resources
+  double default_qps_limit = 6;
+  // Enable warm-up mode
+  bool enable_warm_up = 7;
+  // Warm-up duration
+  google.protobuf.Duration warm_up_duration = 8;
+
+  // —— Circuit Breaker Configuration ——
+  // Circuit breaker rules
+  repeated CircuitBreakerRule circuit_breaker_rules = 9;
+  // Default circuit breaker configuration
+  DefaultCircuitBreakerConfig default_circuit_breaker = 10;
+
+  // —— System Protection Configuration ——
+  // System protection rules
+  repeated SystemRule system_rules = 11;
+  // Enable system protection
+  bool enable_system_protection = 12;
+
+  // —— Monitoring Configuration ——
+  // Enable metrics collection
+  bool enable_metrics = 13;
+  // Metrics collection interval
+  google.protobuf.Duration metrics_interval = 14;
+  // Enable dashboard
+  bool enable_dashboard = 15;
+  // Dashboard port
+  int32 dashboard_port = 16;
+
+  // —— Advanced Configuration ——
+  // Maximum allowed concurrent requests
+  int32 max_concurrent_requests = 17;
+  // Request timeout
+  google.protobuf.Duration request_timeout = 18;
+  // Enable request logging
+  bool enable_request_logging = 19;
+}
+
+// Flow control rule configuration
+message FlowRule {
+  // Resource name (e.g., API endpoint, method name)
+  string resource = 1;
+  // QPS limit
+  double qps_limit = 2;
+  // Flow control behavior (reject, warm_up, rate_limiter)
+  string control_behavior = 3;
+  // Warm-up period (for warm_up behavior)
+  google.protobuf.Duration warm_up_period = 4;
+  // Max queueing time (for rate_limiter behavior)
+  google.protobuf.Duration max_queueing_time = 5;
+  // Threshold type (qps, thread_count)
+  string threshold_type = 6;
+  // Enable rule
+  bool enabled = 7;
+}
+
+// Circuit breaker rule configuration
+message CircuitBreakerRule {
+  // Resource name
+  string resource = 1;
+  // Circuit breaker strategy (slow_request_ratio, error_ratio, error_count)
+  string strategy = 2;
+  // Threshold value
+  double threshold = 3;
+  // Minimum request amount
+  int32 min_request_amount = 4;
+  // Statistical time window (seconds)
+  google.protobuf.Duration stat_interval = 5;
+  // Recovery timeout (seconds)
+  google.protobuf.Duration recovery_timeout = 6;
+  // Max allowed RT for slow request ratio strategy (milliseconds)
+  google.protobuf.Duration max_allowed_rt = 7;
+  // Enable rule
+  bool enabled = 8;
+}
+
+// Default circuit breaker configuration
+message DefaultCircuitBreakerConfig {
+  // Default error ratio threshold
+  double error_ratio_threshold = 1;
+  // Default minimum request amount
+  int32 min_request_amount = 2;
+  // Default statistical time window
+  google.protobuf.Duration stat_interval = 3;
+  // Default recovery timeout
+  google.protobuf.Duration recovery_timeout = 4;
+  // Default max allowed RT
+  google.protobuf.Duration max_allowed_rt = 5;
+}
+
+// System protection rule configuration
+message SystemRule {
+  // Metric type (load, cpu_usage, memory_usage, inbound_qps, concurrency)
+  string metric_type = 1;
+  // Threshold value
+  double threshold = 2;
+  // Enable rule
+  bool enabled = 3;
+}
