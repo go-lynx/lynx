@@ -359,15 +359,13 @@ func (m *ClientMetrics) GetErrorCount() float64 {
 	
 	// Aggregate from request errors counter vector
 	if m.requestErrors != nil {
-		if gatherer, ok := prometheus.DefaultGatherer.(prometheus.Gatherer); ok {
-			metricFamilies, err := gatherer.Gather()
-			if err == nil {
-				for _, mf := range metricFamilies {
-					if mf.GetName() == "grpc_client_request_errors_total" {
-						for _, metric := range mf.GetMetric() {
-							if metric.GetCounter() != nil {
-								total += metric.GetCounter().GetValue()
-							}
+		metricFamilies, err := prometheus.DefaultGatherer.Gather()
+		if err == nil {
+			for _, mf := range metricFamilies {
+				if mf.GetName() == "grpc_client_request_errors_total" {
+					for _, metric := range mf.GetMetric() {
+						if metric.GetCounter() != nil {
+							total += metric.GetCounter().GetValue()
 						}
 					}
 				}

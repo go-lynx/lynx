@@ -228,7 +228,7 @@ func (s *PlugSentinel) validateAndSetDefaults() error {
 	}
 
 	// Set default dashboard configuration
-	if s.conf.Dashboard.Port <= 0 {
+	if s.conf.Dashboard.Port == 0 {
 		s.conf.Dashboard.Port = 8719
 	}
 
@@ -241,7 +241,7 @@ func (s *PlugSentinel) validateConfiguration(conf *SentinelConfig) error {
 		return fmt.Errorf("app_name cannot be empty")
 	}
 
-	if conf.Dashboard.Port < 1024 || conf.Dashboard.Port > 65535 {
+	if conf.Dashboard.Port != 0 && (conf.Dashboard.Port < 1024 || conf.Dashboard.Port > 65535) {
 		return fmt.Errorf("dashboard_port must be between 1024 and 65535")
 	}
 

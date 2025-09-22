@@ -17,7 +17,7 @@ func TestCache_BasicOperations(t *testing.T) {
 	// Test Set and Get
 	key := "test-key"
 	value := "test-value"
-	
+
 	err = c.Set(key, value, 0)
 	if err != nil {
 		t.Errorf("Failed to set value: %v", err)
@@ -27,7 +27,7 @@ func TestCache_BasicOperations(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to get value: %v", err)
 	}
-	
+
 	if got != value {
 		t.Errorf("Expected %v, got %v", value, got)
 	}
@@ -59,7 +59,7 @@ func TestCache_TTL(t *testing.T) {
 
 	key := "ttl-key"
 	value := "ttl-value"
-	
+
 	// Set with 1 second TTL
 	err = c.Set(key, value, 1*time.Second)
 	if err != nil {
@@ -106,7 +106,7 @@ func TestCache_BatchOperations(t *testing.T) {
 		"key2": "value2",
 		"key3": "value3",
 	}
-	
+
 	err = c.SetMulti(items, 0)
 	if err != nil {
 		t.Errorf("Failed to set multiple values: %v", err)
@@ -115,17 +115,17 @@ func TestCache_BatchOperations(t *testing.T) {
 	// Test GetMulti
 	keys := []interface{}{"key1", "key2", "key3", "key4"}
 	results := c.GetMulti(keys)
-	
+
 	if len(results) != 3 {
 		t.Errorf("Expected 3 results, got %d", len(results))
 	}
-	
+
 	for k, v := range items {
 		if results[k] != v {
 			t.Errorf("Expected %v for key %v, got %v", v, k, results[k])
 		}
 	}
-	
+
 	// key4 should not be in results
 	if _, ok := results["key4"]; ok {
 		t.Error("key4 should not be in results")
@@ -133,11 +133,11 @@ func TestCache_BatchOperations(t *testing.T) {
 
 	// Test DeleteMulti
 	c.DeleteMulti([]interface{}{"key1", "key2"})
-	
+
 	if c.Has("key1") || c.Has("key2") {
 		t.Error("key1 and key2 should be deleted")
 	}
-	
+
 	if !c.Has("key3") {
 		t.Error("key3 should still exist")
 	}
@@ -153,21 +153,21 @@ func TestCache_GetOrSet(t *testing.T) {
 	key := "lazy-key"
 	expectedValue := "computed-value"
 	callCount := 0
-	
+
 	// First call should compute the value
 	value, err := c.GetOrSet(key, func() (interface{}, error) {
 		callCount++
 		return expectedValue, nil
 	}, 0)
-	
+
 	if err != nil {
 		t.Errorf("GetOrSet failed: %v", err)
 	}
-	
+
 	if value != expectedValue {
 		t.Errorf("Expected %v, got %v", expectedValue, value)
 	}
-	
+
 	if callCount != 1 {
 		t.Errorf("Expected function to be called once, called %d times", callCount)
 	}
@@ -177,15 +177,15 @@ func TestCache_GetOrSet(t *testing.T) {
 		callCount++
 		return "should-not-be-called", nil
 	}, 0)
-	
+
 	if err != nil {
 		t.Errorf("GetOrSet failed: %v", err)
 	}
-	
+
 	if value != expectedValue {
 		t.Errorf("Expected %v, got %v", expectedValue, value)
 	}
-	
+
 	if callCount != 1 {
 		t.Errorf("Expected function to be called once total, called %d times", callCount)
 	}
@@ -201,11 +201,11 @@ func TestCache_GetOrSetContext(t *testing.T) {
 	// Test with cancelled context
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
-	
+
 	_, err = c.GetOrSetContext(ctx, "key", func(ctx context.Context) (interface{}, error) {
 		return "value", nil
 	}, 0)
-	
+
 	if err != context.Canceled {
 		t.Errorf("Expected context.Canceled, got %v", err)
 	}
@@ -215,11 +215,11 @@ func TestCache_GetOrSetContext(t *testing.T) {
 	value, err := c.GetOrSetContext(ctx, "key2", func(ctx context.Context) (interface{}, error) {
 		return "value2", nil
 	}, 0)
-	
+
 	if err != nil {
 		t.Errorf("GetOrSetContext failed: %v", err)
 	}
-	
+
 	if value != "value2" {
 		t.Errorf("Expected value2, got %v", value)
 	}
@@ -255,7 +255,7 @@ func TestCache_Concurrent(t *testing.T) {
 
 	var wg sync.WaitGroup
 	numGoroutines := 100
-	
+
 	// Concurrent writes
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
@@ -266,7 +266,7 @@ func TestCache_Concurrent(t *testing.T) {
 			c.Set(key, value, 0)
 		}(i)
 	}
-	
+
 	// Concurrent reads
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
@@ -275,9 +275,9 @@ func TestCache_Concurrent(t *testing.T) {
 			c.Get(id)
 		}(i)
 	}
-	
+
 	wg.Wait()
-	
+
 	// Verify some values
 	for i := 0; i < 10; i++ {
 		if val, err := c.Get(i); err == nil {
@@ -309,7 +309,7 @@ func TestCache_SetWithCost(t *testing.T) {
 
 	// Wait for processing
 	time.Sleep(50 * time.Millisecond)
-	
+
 	if !c.Has("small") {
 		t.Error("Small item should exist after setting")
 	}
@@ -383,7 +383,7 @@ func TestManager_Operations(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to delete cache1: %v", err)
 	}
-	
+
 	_, exists = manager.Get("cache1")
 	if exists {
 		t.Error("cache1 should not exist after deletion")
@@ -403,7 +403,7 @@ func TestBuilder(t *testing.T) {
 		WithMaxMemory(1 << 20). // 1MB
 		WithMetrics(true).
 		Build()
-	
+
 	if err != nil {
 		t.Fatalf("Failed to build cache: %v", err)
 	}

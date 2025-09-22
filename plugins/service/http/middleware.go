@@ -280,7 +280,7 @@ func (h *ServiceHttp) metricsMiddleware() middleware.Middleware {
 			if h.responseSize != nil && reply != nil {
 				// Try to get response size
 				if msg, ok := reply.(proto.Message); ok {
-					if data, err := proto.Marshal(msg); err == nil {
+					if data, marshalErr := proto.Marshal(msg); marshalErr == nil {
 						h.responseSize.WithLabelValues(method, path).Observe(float64(len(data)))
 					}
 				}

@@ -36,8 +36,8 @@ type EventMonitor struct {
 	errorCount int64
 
 	// Enhanced observability
-	droppedByReason      map[string]int64
-	publishedByPriority  map[Priority]int64
+	droppedByReason     map[string]int64
+	publishedByPriority map[Priority]int64
 
 	// Mutex for thread safety
 	mu sync.RWMutex
@@ -70,11 +70,11 @@ func copyPriorityBuckets(in map[Priority]int64) map[Priority]int64 {
 // NewEventMonitor creates a new event monitor
 func NewEventMonitor() *EventMonitor {
 	return &EventMonitor{
-		healthy:    true,
-		lastCheck:  time.Now(),
-		minLatency: time.Hour, // Start with a high value
-		sampleCap:  512,       // default window size
-		latSamples: make([]int64, 512),
+		healthy:             true,
+		lastCheck:           time.Now(),
+		minLatency:          time.Hour, // Start with a high value
+		sampleCap:           512,       // default window size
+		latSamples:          make([]int64, 512),
 		droppedByReason:     make(map[string]int64),
 		publishedByPriority: make(map[Priority]int64),
 	}

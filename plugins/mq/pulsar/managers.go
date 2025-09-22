@@ -232,10 +232,11 @@ func (r *RetryManager) RecordRetry(operation string, attempt int, err error) {
 	if r.stats[operation] == nil {
 		r.stats[operation] = make(map[string]interface{})
 	}
-	opStats := r.stats[operation].(map[string]interface{})
-	opStats["attempts"] = attempt
-	opStats["last_error"] = err.Error()
-	opStats["last_retry"] = time.Now()
+	if opStats, ok := r.stats[operation].(map[string]interface{}); ok {
+		opStats["attempts"] = attempt
+		opStats["last_error"] = err.Error()
+		opStats["last_retry"] = time.Now()
+	}
 }
 
 // GetRetryStats gets retry statistics

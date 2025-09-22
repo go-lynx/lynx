@@ -164,8 +164,8 @@ func (app *Application) Run() error {
 		return err
 	}
 
-    // Initialize Kratos application with proxy logger (hot-swappable inner)
-    kratosApp, err := app.wire(log.GetProxyLogger())
+	// Initialize Kratos application with proxy logger (hot-swappable inner)
+	kratosApp, err := app.wire(log.GetProxyLogger())
 	if err != nil {
 		log.Error(err)
 		return fmt.Errorf("failed to initialize Kratos application: %w", err)
@@ -296,17 +296,17 @@ func (app *Application) runWithGracefulShutdown(kratosApp *kratos.App) error {
 	select {
 	case <-app.shutdownChan:
 		log.Info("Shutdown signal received, stopping Kratos application...")
-		
+
 		// Create context with shutdown timeout only after receiving shutdown signal
 		ctx, cancel := context.WithTimeout(context.Background(), app.shutdownTimeout)
 		defer cancel()
-		
+
 		// Stop Kratos application gracefully with timeout
 		stopChan := make(chan error, 1)
 		go func() {
 			stopChan <- kratosApp.Stop()
 		}()
-		
+
 		select {
 		case err := <-stopChan:
 			if err != nil {
@@ -317,7 +317,7 @@ func (app *Application) runWithGracefulShutdown(kratosApp *kratos.App) error {
 			log.Error("Shutdown timeout exceeded during graceful shutdown")
 			return fmt.Errorf("shutdown timeout exceeded during graceful shutdown")
 		}
-		
+
 	case err := <-errChan:
 		log.Error(err)
 		return fmt.Errorf("failed to run Kratos application: %w", err)

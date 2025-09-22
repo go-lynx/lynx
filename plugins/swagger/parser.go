@@ -473,6 +473,12 @@ func (p *AnnotationParser) parseFuncDoc(fn *ast.FuncDecl) error {
 	return nil
 }
 
+// ParseParam parses parameter annotations (public method for testing)
+// Format: @Param name in type format required "description" default(value) example(value)
+func (p *AnnotationParser) ParseParam(line string) *ParamInfo {
+	return p.parseParam(line)
+}
+
 // parseParam parses parameter annotations
 // Format: @Param name in type format required "description" default(value) example(value)
 func (p *AnnotationParser) parseParam(line string) *ParamInfo {
@@ -574,6 +580,12 @@ func (p *AnnotationParser) extractValue(s, prefix string) string {
 	}
 
 	return strings.TrimSpace(s[start:end])
+}
+
+// ParseResponse parses response annotations (public method for testing)
+// Format: @Success 200 {object} model.Response "description"
+func (p *AnnotationParser) ParseResponse(line string) (int, *ResponseInfo) {
+	return p.parseResponse(line)
 }
 
 // parseResponse parses response annotations

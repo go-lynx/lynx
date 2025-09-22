@@ -88,10 +88,10 @@ func TracerLogPack() middleware.Middleware {
 			// Log the request
 			var reqBody string
 			if msg, ok := req.(proto.Message); ok {
-				if body, err := safeProtoToJSON(msg); err == nil {
+				if body, jsonErr := safeProtoToJSON(msg); jsonErr == nil {
 					reqBody = body
 				} else {
-					reqBody = fmt.Sprintf("<failed to marshal request: %v>", err)
+					reqBody = fmt.Sprintf("<failed to marshal request: %v>", jsonErr)
 				}
 			} else {
 				reqBody = fmt.Sprintf("%#v", req)
@@ -113,10 +113,10 @@ func TracerLogPack() middleware.Middleware {
 			// Log the response
 			var respBody string
 			if msg, ok := reply.(proto.Message); ok {
-				if body, err := safeProtoToJSON(msg); err == nil {
+				if body, jsonErr := safeProtoToJSON(msg); jsonErr == nil {
 					respBody = body
 				} else {
-					respBody = fmt.Sprintf("<failed to marshal response: %v>", err)
+					respBody = fmt.Sprintf("<failed to marshal response: %v>", jsonErr)
 				}
 			} else {
 				respBody = fmt.Sprintf("%#v", reply)
@@ -187,10 +187,10 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 			// Log the request
 			var reqBody string
 			if msg, ok := req.(proto.Message); ok {
-				if body, err := safeProtoToJSON(msg); err == nil {
+				if body, jsonErr := safeProtoToJSON(msg); jsonErr == nil {
 					reqBody = body
 				} else {
-					reqBody = fmt.Sprintf("<failed to marshal request: %v>", err)
+					reqBody = fmt.Sprintf("<failed to marshal request: %v>", jsonErr)
 				}
 			} else {
 				reqBody = fmt.Sprintf("%#v", req)
@@ -226,10 +226,10 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 			// Log the response
 			var respBody string
 			if msg, ok := reply.(proto.Message); ok {
-				if body, err := safeProtoToJSON(msg); err == nil {
+				if body, jsonErr := safeProtoToJSON(msg); jsonErr == nil {
 					respBody = body
 				} else {
-					respBody = fmt.Sprintf("<failed to marshal response: %v>", err)
+					respBody = fmt.Sprintf("<failed to marshal response: %v>", jsonErr)
 				}
 			} else {
 				respBody = fmt.Sprintf("%#v", reply)
@@ -271,7 +271,7 @@ func TracerLogPackWithMetrics(service *ServiceHttp) middleware.Middleware {
 				// Record response size
 				if service.responseSize != nil && reply != nil {
 					if msg, ok := reply.(proto.Message); ok {
-						if data, err := proto.Marshal(msg); err == nil {
+						if data, marshalErr := proto.Marshal(msg); marshalErr == nil {
 							service.responseSize.WithLabelValues("POST", api).Observe(float64(len(data)))
 						}
 					}

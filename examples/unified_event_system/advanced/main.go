@@ -147,7 +147,7 @@ func main() {
 	fmt.Printf("\nActive Listeners (%d):\n", len(listeners))
 	for _, listener := range listeners {
 		busName := getBusTypeName(listener.BusType)
-		fmt.Printf("  %s (Bus: %s, Active: %v)\n", listener.ID, busName, listener.Active)
+		fmt.Printf("  %s (Bus: %s, Active: %v)\n", listener.ID, busName, listener.Active.Load())
 	}
 
 	// Test event filtering
@@ -185,7 +185,7 @@ func main() {
 	fmt.Printf("Remaining Listeners (%d):\n", len(listeners))
 	for _, listener := range listeners {
 		busName := getBusTypeName(listener.BusType)
-		fmt.Printf("  %s (Bus: %s, Active: %v)\n", listener.ID, busName, listener.Active)
+		fmt.Printf("  %s (Bus: %s, Active: %v)\n", listener.ID, busName, listener.Active.Load())
 	}
 
 	// Close the event bus

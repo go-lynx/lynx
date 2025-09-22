@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-	
+
 	"github.com/dgraph-io/ristretto"
 )
 
@@ -30,15 +30,15 @@ type User struct {
 func NewUserService() (*UserService, error) {
 	// Create a cache optimized for user data
 	cache, err := NewBuilder("user-service").
-		WithMaxItems(10000).      // Support 10k users
-		WithMaxMemory(1 << 28).   // 256MB memory
-		WithMetrics(true).        // Enable metrics for monitoring
+		WithMaxItems(10000).    // Support 10k users
+		WithMaxMemory(1 << 28). // 256MB memory
+		WithMetrics(true).      // Enable metrics for monitoring
 		WithEvictionCallback(func(item *ristretto.Item) {
 			// Log eviction for debugging
 			fmt.Printf("User cache evicted: %v\n", item.Key)
 		}).
 		Build()
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -49,23 +49,23 @@ func NewUserService() (*UserService, error) {
 // GetUser retrieves a user with caching
 func (s *UserService) GetUser(ctx context.Context, userID string) (*User, error) {
 	cacheKey := fmt.Sprintf("user:%s", userID)
-	
+
 	// Try to get from cache first
-	value, err := s.cache.GetOrSetContext(ctx, cacheKey, 
+	value, err := s.cache.GetOrSetContext(ctx, cacheKey,
 		func(ctx context.Context) (interface{}, error) {
 			// Simulate database fetch
 			return s.fetchUserFromDB(ctx, userID)
 		}, 5*time.Minute) // Cache for 5 minutes
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	user, ok := value.(*User)
 	if !ok {
 		return nil, fmt.Errorf("invalid cache data type")
 	}
-	
+
 	return user, nil
 }
 
@@ -75,36 +75,36 @@ func (s *UserService) UpdateUser(ctx context.Context, user *User) error {
 	if err := s.updateUserInDB(ctx, user); err != nil {
 		return err
 	}
-	
+
 	// Invalidate cache
 	cacheKey := fmt.Sprintf("user:%s", user.ID)
 	s.cache.Delete(cacheKey)
-	
+
 	// Optionally, pre-warm the cache with updated data
 	s.cache.Set(cacheKey, user, 5*time.Minute)
-	
+
 	return nil
 }
 
 // GetUsersByRole demonstrates batch caching
 func (s *UserService) GetUsersByRole(ctx context.Context, role string) ([]*User, error) {
 	cacheKey := fmt.Sprintf("users:role:%s", role)
-	
+
 	value, err := s.cache.GetOrSetContext(ctx, cacheKey,
 		func(ctx context.Context) (interface{}, error) {
 			// Simulate fetching multiple users from DB
 			return s.fetchUsersByRoleFromDB(ctx, role)
 		}, 3*time.Minute) // Shorter TTL for list queries
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	users, ok := value.([]*User)
 	if !ok {
 		return nil, fmt.Errorf("invalid cache data type")
 	}
-	
+
 	return users, nil
 }
 
@@ -118,12 +118,12 @@ func (s *UserService) GetMultipleUsers(ctx context.Context, userIDs []string) (m
 		keys[i] = key
 		keyMap[key] = id
 	}
-	
+
 	// Batch get from cache
 	cached := s.cache.GetMulti(keys)
 	result := make(map[string]*User)
 	missingIDs := []string{}
-	
+
 	// Process cached results
 	for key, userID := range keyMap {
 		if value, ok := cached[key]; ok {
@@ -134,14 +134,14 @@ func (s *UserService) GetMultipleUsers(ctx context.Context, userIDs []string) (m
 			missingIDs = append(missingIDs, userID)
 		}
 	}
-	
+
 	// Fetch missing users from DB
 	if len(missingIDs) > 0 {
 		missing, err := s.fetchMultipleUsersFromDB(ctx, missingIDs)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Cache the fetched users
 		toCache := make(map[interface{}]interface{})
 		for id, user := range missing {
@@ -149,12 +149,12 @@ func (s *UserService) GetMultipleUsers(ctx context.Context, userIDs []string) (m
 			toCache[key] = user
 			result[id] = user
 		}
-		
+
 		if len(toCache) > 0 {
 			s.cache.SetMulti(toCache, 5*time.Minute)
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -167,19 +167,19 @@ func (s *UserService) InvalidateUserCache() {
 func (s *UserService) GetCacheStats() string {
 	if metrics := s.cache.Metrics(); metrics != nil {
 		stats := map[string]interface{}{
-			"hits":       metrics.Hits(),
-			"misses":     metrics.Misses(),
-			"keys_added": metrics.KeysAdded(),
+			"hits":         metrics.Hits(),
+			"misses":       metrics.Misses(),
+			"keys_added":   metrics.KeysAdded(),
 			"keys_evicted": metrics.KeysEvicted(),
-			"cost_added": metrics.CostAdded(),
+			"cost_added":   metrics.CostAdded(),
 			"cost_evicted": metrics.CostEvicted(),
 		}
-		
+
 		if metrics.Hits() > 0 || metrics.Misses() > 0 {
 			hitRatio := float64(metrics.Hits()) / float64(metrics.Hits()+metrics.Misses()) * 100
 			stats["hit_ratio"] = fmt.Sprintf("%.2f%%", hitRatio)
 		}
-		
+
 		data, _ := json.MarshalIndent(stats, "", "  ")
 		return string(data)
 	}
@@ -282,12 +282,12 @@ func (a *APICache) GetCachedResponse(endpoint string, result interface{}) error 
 	if err != nil {
 		return err
 	}
-	
+
 	bytes, ok := data.([]byte)
 	if !ok {
 		return fmt.Errorf("invalid cache data type")
 	}
-	
+
 	return json.Unmarshal(bytes, result)
 }
 
@@ -321,12 +321,12 @@ func (s *SessionCache) CreateSession(userID string, ttl time.Duration) (*Session
 		Data:      make(map[string]interface{}),
 		ExpiresAt: time.Now().Add(ttl),
 	}
-	
+
 	err := s.cache.Set(session.ID, session, ttl)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return session, nil
 }
 
@@ -336,18 +336,18 @@ func (s *SessionCache) GetSession(sessionID string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	session, ok := value.(*Session)
 	if !ok {
 		return nil, fmt.Errorf("invalid session data")
 	}
-	
+
 	// Check if session is expired
 	if time.Now().After(session.ExpiresAt) {
 		s.cache.Delete(sessionID)
 		return nil, fmt.Errorf("session expired")
 	}
-	
+
 	return session, nil
 }
 

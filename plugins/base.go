@@ -43,94 +43,94 @@ type TypedBasePlugin[T any] struct {
 // StartContext provides a context-aware Start with timeout monitoring
 // Plugins can override for true context awareness
 func (p *TypedBasePlugin[T]) StartContext(ctx context.Context, plugin Plugin) error {
-    // Check if context is already canceled
-    if err := ctx.Err(); err != nil {
-        return fmt.Errorf("context canceled before start: %w", err)
-    }
+	// Check if context is already canceled
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("context canceled before start: %w", err)
+	}
 
-    // Create a done channel to signal completion
-    done := make(chan error, 1)
-    go func() {
-        defer func() {
-            if r := recover(); r != nil {
-                done <- fmt.Errorf("panic in Start: %v", r)
-            }
-        }()
-        done <- p.Start(plugin)
-    }()
+	// Create a done channel to signal completion
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("panic in Start: %v", r)
+			}
+		}()
+		done <- p.Start(plugin)
+	}()
 
-    // Wait for either completion or context cancellation
-    select {
-    case err := <-done:
-        return err
-    case <-ctx.Done():
-        // Context was canceled, but we can't stop the running Start method
-        return fmt.Errorf("start canceled by context: %w", ctx.Err())
-    }
+	// Wait for either completion or context cancellation
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		// Context was canceled, but we can't stop the running Start method
+		return fmt.Errorf("start canceled by context: %w", ctx.Err())
+	}
 }
 
 // StopContext provides a context-aware Stop with timeout monitoring
 // Plugins can override for true context awareness
 func (p *TypedBasePlugin[T]) StopContext(ctx context.Context, plugin Plugin) error {
-    // Check if context is already canceled
-    if err := ctx.Err(); err != nil {
-        return fmt.Errorf("context canceled before stop: %w", err)
-    }
+	// Check if context is already canceled
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("context canceled before stop: %w", err)
+	}
 
-    // Create a done channel to signal completion
-    done := make(chan error, 1)
-    go func() {
-        defer func() {
-            if r := recover(); r != nil {
-                done <- fmt.Errorf("panic in Stop: %v", r)
-            }
-        }()
-        done <- p.Stop(plugin)
-    }()
+	// Create a done channel to signal completion
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("panic in Stop: %v", r)
+			}
+		}()
+		done <- p.Stop(plugin)
+	}()
 
-    // Wait for either completion or context cancellation
-    select {
-    case err := <-done:
-        return err
-    case <-ctx.Done():
-        // Context was canceled, but we can't stop the running Stop method
-        return fmt.Errorf("stop canceled by context: %w", ctx.Err())
-    }
+	// Wait for either completion or context cancellation
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		// Context was canceled, but we can't stop the running Stop method
+		return fmt.Errorf("stop canceled by context: %w", ctx.Err())
+	}
 }
 
 // InitializeContext provides a context-aware Initialize with timeout monitoring
 // Plugins can override for true context awareness
 func (p *TypedBasePlugin[T]) InitializeContext(ctx context.Context, plugin Plugin, rt Runtime) error {
-    // Check if context is already canceled
-    if err := ctx.Err(); err != nil {
-        return fmt.Errorf("context canceled before initialize: %w", err)
-    }
+	// Check if context is already canceled
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("context canceled before initialize: %w", err)
+	}
 
-    // Create a done channel to signal completion
-    done := make(chan error, 1)
-    go func() {
-        defer func() {
-            if r := recover(); r != nil {
-                done <- fmt.Errorf("panic in Initialize: %v", r)
-            }
-        }()
-        done <- p.Initialize(plugin, rt)
-    }()
+	// Create a done channel to signal completion
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("panic in Initialize: %v", r)
+			}
+		}()
+		done <- p.Initialize(plugin, rt)
+	}()
 
-    // Wait for either completion or context cancellation
-    select {
-    case err := <-done:
-        return err
-    case <-ctx.Done():
-        // Context was canceled, but we can't stop the running Initialize method
-        return fmt.Errorf("initialize canceled by context: %w", ctx.Err())
-    }
+	// Wait for either completion or context cancellation
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		// Context was canceled, but we can't stop the running Initialize method
+		return fmt.Errorf("initialize canceled by context: %w", ctx.Err())
+	}
 }
 
 // IsContextAware returns false by default for base plugin
 // Subclasses should override this if they truly respect context cancellation
 func (p *TypedBasePlugin[T]) IsContextAware() bool {
-    return false // Base implementation is not truly context-aware
+	return false // Base implementation is not truly context-aware
 }
 
 // NewTypedBasePlugin creates a new instance of TypedBasePlugin with the provided metadata.

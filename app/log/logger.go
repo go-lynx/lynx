@@ -278,9 +278,9 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		}
 		fileWriter := &lumberjack.Logger{
 			Filename:   logConfig.GetFilePath(),
-			MaxSize:    ms,              // MB
-			MaxBackups: mb,              // files
-			MaxAge:     ma,              // days
+			MaxSize:    ms, // MB
+			MaxBackups: mb, // files
+			MaxAge:     ma, // days
 			Compress:   logConfig.GetCompress(),
 		}
 		writers = append(writers, fileWriter)

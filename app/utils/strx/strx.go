@@ -39,9 +39,9 @@ func Truncate(s string, max int, ellipsis string) string {
 		return string(runes[:max])
 	}
 	if max < len([]rune(ellipsis)) {
-        // Ellipsis length exceeds max; return direct truncation
-        return string(runes[:max])
-    }
+		// Ellipsis length exceeds max; return direct truncation
+		return string(runes[:max])
+	}
 	cut := max - len([]rune(ellipsis))
 	if cut < 0 {
 		cut = 0

@@ -13,16 +13,16 @@ import (
 type GrpcServiceProvider interface {
 	// GetServer returns the gRPC server instance
 	GetServer() (*kratosgrpc.Server, error)
-	
+
 	// GetApplicationName returns the application name
 	GetApplicationName() string
-	
+
 	// GetLogger returns the logger instance
 	GetLogger() interface{}
-	
+
 	// GetCertificateProvider returns the certificate provider
 	GetCertificateProvider() CertificateProvider
-	
+
 	// GetControlPlane returns the control plane interface
 	GetControlPlane() ControlPlane
 }
@@ -31,10 +31,10 @@ type GrpcServiceProvider interface {
 type GrpcClientProvider interface {
 	// GetClientPlugin returns the gRPC client plugin
 	GetClientPlugin() (GrpcClientPlugin, error)
-	
+
 	// GetClientConnection returns a gRPC client connection for a service
 	GetClientConnection(serviceName string) (*grpc.ClientConn, error)
-	
+
 	// CreateClientConnection creates a new gRPC client connection with custom config
 	CreateClientConnection(config GrpcClientConfig) (*grpc.ClientConn, error)
 }
@@ -43,7 +43,7 @@ type GrpcClientProvider interface {
 type GrpcClientPlugin interface {
 	// GetConnection returns a gRPC client connection for the specified service
 	GetConnection(serviceName string) (*grpc.ClientConn, error)
-	
+
 	// CreateConnection creates a new gRPC client connection
 	CreateConnection(config GrpcClientConfig) (*grpc.ClientConn, error)
 }
@@ -68,10 +68,10 @@ type GrpcClientConfig struct {
 type CertificateProvider interface {
 	// GetCertificate returns the server certificate
 	GetCertificate() []byte
-	
+
 	// GetPrivateKey returns the server private key
 	GetPrivateKey() []byte
-	
+
 	// GetRootCA returns the root CA certificate
 	GetRootCA() []byte
 }
@@ -80,7 +80,7 @@ type CertificateProvider interface {
 type ControlPlane interface {
 	// Discovery returns the service discovery instance
 	Discovery() interface{}
-	
+
 	// GRPCRateLimit returns the gRPC rate limit middleware
 	GRPCRateLimit() interface{}
 }
@@ -89,10 +89,10 @@ type ControlPlane interface {
 type GrpcSubscribeProvider interface {
 	// BuildGrpcSubscriptions builds gRPC subscription connections
 	BuildGrpcSubscriptions(cfg interface{}, discovery registry.Discovery, routerFactory func(string) selector.NodeFilter) (map[string]*grpc.ClientConn, error)
-	
+
 	// GetGrpcConnection gets a gRPC connection for a specific service
 	GetGrpcConnection(serviceName string) (*grpc.ClientConn, error)
-	
+
 	// CloseGrpcConnection closes a gRPC connection for a specific service
 	CloseGrpcConnection(serviceName string) error
 }
@@ -107,13 +107,13 @@ type TLSConfigProvider interface {
 type LoggerProvider interface {
 	// GetLogger returns the logger instance
 	GetLogger() interface{}
-	
+
 	// LogInfo logs an info message
 	LogInfo(msg string, args ...interface{})
-	
+
 	// LogError logs an error message
 	LogError(err error, msg string, args ...interface{})
-	
+
 	// LogWarn logs a warning message
 	LogWarn(msg string, args ...interface{})
 }

@@ -134,7 +134,7 @@ func TestSessionCache_Integration(t *testing.T) {
 	// Add data to session
 	session.Data["username"] = "testuser"
 	session.Data["role"] = "admin"
-	
+
 	// Update session
 	err = sessionCache.UpdateSession(session)
 	if err != nil {
@@ -179,7 +179,7 @@ func TestConcurrentIntegration(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			defer func() { done <- true }()
-			
+
 			userID := fmt.Sprintf("user%d", id%5)
 			_, err := service.GetUser(ctx, userID)
 			if err != nil {
@@ -192,7 +192,7 @@ func TestConcurrentIntegration(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		go func(id int) {
 			defer func() { done <- true }()
-			
+
 			user := &User{
 				ID:    fmt.Sprintf("user%d", id),
 				Name:  fmt.Sprintf("User %d", id),
@@ -219,7 +219,7 @@ func BenchmarkUserService_GetUser(b *testing.B) {
 	defer service.Close()
 
 	ctx := context.Background()
-	
+
 	// Pre-warm cache
 	service.GetUser(ctx, "bench-user")
 

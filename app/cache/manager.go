@@ -183,7 +183,7 @@ func Stats() map[string]*ristretto.Metrics {
 // QuickCache creates a simple cache with default settings
 func QuickCache(name string) (*Cache, error) {
 	return GetOrCreate(name, &Options{
-		NumCounters: 1e6,    // 1 million
+		NumCounters: 1e6,     // 1 million
 		MaxCost:     1 << 28, // 256MB
 		BufferItems: 64,
 		Metrics:     false,
@@ -193,7 +193,7 @@ func QuickCache(name string) (*Cache, error) {
 // SmallCache creates a small cache suitable for limited data
 func SmallCache(name string) (*Cache, error) {
 	return GetOrCreate(name, &Options{
-		NumCounters: 1e4,    // 10 thousand
+		NumCounters: 1e4,     // 10 thousand
 		MaxCost:     1 << 24, // 16MB
 		BufferItems: 64,
 		Metrics:     false,
@@ -203,7 +203,7 @@ func SmallCache(name string) (*Cache, error) {
 // LargeCache creates a large cache suitable for big data
 func LargeCache(name string) (*Cache, error) {
 	return GetOrCreate(name, &Options{
-		NumCounters: 1e8,    // 100 million
+		NumCounters: 1e8,     // 100 million
 		MaxCost:     1 << 32, // 4GB
 		BufferItems: 64,
 		Metrics:     true,
@@ -213,7 +213,7 @@ func LargeCache(name string) (*Cache, error) {
 // TTLCache creates a cache optimized for TTL-based eviction
 func TTLCache(name string, defaultTTL time.Duration) (*Cache, error) {
 	return GetOrCreate(name, &Options{
-		NumCounters: 1e6,    // 1 million
+		NumCounters: 1e6,     // 1 million
 		MaxCost:     1 << 28, // 256MB
 		BufferItems: 64,
 		Metrics:     false,

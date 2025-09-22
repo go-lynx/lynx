@@ -333,15 +333,15 @@ func (h *ServiceHttp) healthCheckHandler() nhttp.Handler {
 		// Serialize and write the response
 		w.WriteHeader(statusCode)
 		if data, err := json.Marshal(response); err == nil {
-			_, err := w.Write(data)
-			if err != nil {
+			_, writeErr := w.Write(data)
+			if writeErr != nil {
 				return
 			}
 		} else {
 			log.Errorf("Failed to marshal health check response: %v", err)
 			w.WriteHeader(nhttp.StatusInternalServerError)
-			_, err := w.Write([]byte(`{"error": "Failed to serialize response"}`))
-			if err != nil {
+			_, writeErr := w.Write([]byte(`{"error": "Failed to serialize response"}`))
+			if writeErr != nil {
 				return
 			}
 		}

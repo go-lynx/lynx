@@ -29,7 +29,11 @@ func init() {
 func GetPulsarClient() *PulsarClient {
 	// Get the plugin with the specified name from the application's plugin manager,
 	// convert it to *PulsarClient type, and return it
-	return app.Lynx().GetPluginManager().GetPlugin(pluginName).(*PulsarClient)
+	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
+	if client, ok := plugin.(*PulsarClient); ok {
+		return client
+	}
+	panic("failed to get Pulsar client: plugin type assertion failed")
 }
 
 // GetPulsarClientByName gets a specific Pulsar client by name if multiple instances are configured.

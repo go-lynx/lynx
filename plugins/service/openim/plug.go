@@ -26,7 +26,7 @@ func init() {
 
 // GetOpenIMService gets the OpenIM service instance from the plugin manager.
 // This function provides access to the underlying OpenIM service for other parts of the application
-// that may need to use IM functionality.
+// that may need to use OpenIM functionality.
 //
 // Returns:
 //   - *ServiceOpenIM: Configured OpenIM service instance
@@ -35,5 +35,9 @@ func init() {
 func GetOpenIMService() *ServiceOpenIM {
 	// Get the plugin with the specified name from the application's plugin manager,
 	// convert it to *ServiceOpenIM type, and return it
-	return app.Lynx().GetPluginManager().GetPlugin(pluginName).(*ServiceOpenIM)
+	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
+	if service, ok := plugin.(*ServiceOpenIM); ok {
+		return service
+	}
+	panic("failed to get OpenIM service: plugin type assertion failed")
 }

@@ -21,44 +21,44 @@ type TypedFactory struct {
 // RegisterPlugin registers a plugin (backward-compatible signature for TypedFactory).
 // Recommended usage in plugins: factory.GlobalTypedFactory().RegisterPlugin(...)
 func (f *TypedFactory) RegisterPlugin(name string, configPrefix string, creator func() plugins.Plugin) {
-    f.mu.Lock()
-    defer f.mu.Unlock()
+	f.mu.Lock()
+	defer f.mu.Unlock()
 
-    // Check if already registered
-    if _, exists := f.creators[name]; exists {
-        panic(fmt.Errorf("plugin already registered: %s", name))
-    }
+	// Check if already registered
+	if _, exists := f.creators[name]; exists {
+		panic(fmt.Errorf("plugin already registered: %s", name))
+	}
 
-    // Cross-prefix duplicate name detection (defensive)
-    for prefix, names := range f.configMapping {
-        if prefix == configPrefix {
-            continue
-        }
-        for _, n := range names {
-            if n == name {
-                log.Warnf("plugin name '%s' registered under multiple prefixes: existing='%s', new='%s'", name, prefix, configPrefix)
-            }
-        }
-    }
+	// Cross-prefix duplicate name detection (defensive)
+	for prefix, names := range f.configMapping {
+		if prefix == configPrefix {
+			continue
+		}
+		for _, n := range names {
+			if n == name {
+				log.Warnf("plugin name '%s' registered under multiple prefixes: existing='%s', new='%s'", name, prefix, configPrefix)
+			}
+		}
+	}
 
-    // Store creation function
-    f.creators[name] = creator
+	// Store creation function
+	f.creators[name] = creator
 
-    // Configuration mapping
-    if f.configMapping[configPrefix] == nil {
-        f.configMapping[configPrefix] = make([]string, 0)
-    }
-    // Deduplicate within prefix
-    exists := false
-    for _, n := range f.configMapping[configPrefix] {
-        if n == name {
-            exists = true
-            break
-        }
-    }
-    if !exists {
-        f.configMapping[configPrefix] = append(f.configMapping[configPrefix], name)
-    }
+	// Configuration mapping
+	if f.configMapping[configPrefix] == nil {
+		f.configMapping[configPrefix] = make([]string, 0)
+	}
+	// Deduplicate within prefix
+	exists := false
+	for _, n := range f.configMapping[configPrefix] {
+		if n == name {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		f.configMapping[configPrefix] = append(f.configMapping[configPrefix], name)
+	}
 }
 
 // NewTypedFactory creates a type-safe plugin factory
