@@ -173,7 +173,7 @@ func TestPlugSnowflake_GetHealth_WithConfiguration(t *testing.T) {
 		EnableSequenceCache:        true,
 		SequenceCacheSize:          1000,
 		RedisDb:                    0,
-		WorkerIdBits:               10,
+		WorkerIdBits:               5,
 		SequenceBits:               12,
 	}
 	plugin.conf = config
@@ -197,7 +197,7 @@ func TestPlugSnowflake_GetHealth_WithConfiguration(t *testing.T) {
 	assert.Equal(t, true, configDetails["sequence_cache"])
 	assert.Equal(t, int32(1000), configDetails["sequence_cache_size"])
 	assert.Equal(t, int32(0), configDetails["redis_db"])
-	assert.Equal(t, int32(10), configDetails["worker_id_bits"])
+	assert.Equal(t, int32(5), configDetails["worker_id_bits"])
 	assert.Equal(t, int32(12), configDetails["sequence_bits"])
 }
 

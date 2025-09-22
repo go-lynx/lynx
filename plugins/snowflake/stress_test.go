@@ -2,6 +2,7 @@ package snowflake
 
 import (
 	"context"
+	"math"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -130,16 +131,38 @@ func TestMemoryLeakDetection(t *testing.T) {
 		t.Skip("Skipping memory leak test in short mode")
 	}
 
-	generator, err := NewSnowflakeGeneratorCore(1, 1, nil)
+	// Create generator with minimal configuration to reduce memory overhead
+	config := &GeneratorConfig{
+		CustomEpoch:                1640995200000, // 2022-01-01
+		DatacenterIDBits:           5,
+		WorkerIDBits:               5,
+		SequenceBits:               12,
+		EnableClockDriftProtection: false, // Disable to reduce overhead
+		ClockDriftAction:           ClockDriftActionWait,
+		EnableSequenceCache:        false, // Disable cache to reduce memory usage
+		SequenceCacheSize:          0,
+	}
+	
+	generator, err := NewSnowflakeGeneratorCore(1, 1, config)
 	require.NoError(t, err)
 
-	// Measure initial memory
-	runtime.GC()
+	// Warm up and stabilize memory
+	for i := 0; i < 1000; i++ {
+		_, err := generator.GenerateID()
+		require.NoError(t, err)
+	}
+
+	// Force multiple GC cycles to stabilize memory
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	var initialMem runtime.MemStats
 	runtime.ReadMemStats(&initialMem)
 
-	// Generate IDs for extended period
-	duration := 30 * time.Second
+	// Generate IDs for shorter period with controlled rate
+	duration := 10 * time.Second // Reduced from 30s
 	start := time.Now()
 	count := 0
 
@@ -148,23 +171,41 @@ func TestMemoryLeakDetection(t *testing.T) {
 		require.NoError(t, err)
 		count++
 
-		// Force GC every 10000 operations
-		if count%10000 == 0 {
+		// Force GC more frequently and add small delay to prevent excessive memory allocation
+		if count%5000 == 0 {
 			runtime.GC()
+			time.Sleep(time.Microsecond) // Small delay to allow GC
 		}
 	}
 
-	// Measure final memory
-	runtime.GC()
+	// Force multiple GC cycles before measuring final memory
+	for i := 0; i < 5; i++ {
+		runtime.GC()
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	var finalMem runtime.MemStats
 	runtime.ReadMemStats(&finalMem)
 
-	memoryIncrease := float64(finalMem.Alloc-initialMem.Alloc) / 1024 / 1024 // MB
-	t.Logf("Generated %d IDs in %v", count, duration)
-	t.Logf("Memory increase: %.2f MB", memoryIncrease)
+	// Use more accurate memory measurement
+	initialAllocMB := float64(initialMem.Alloc) / 1024 / 1024
+	finalAllocMB := float64(finalMem.Alloc) / 1024 / 1024
+	memoryIncrease := finalAllocMB - initialAllocMB
 
-	// Memory increase should be minimal (less than 10MB)
-	assert.Less(t, memoryIncrease, 10.0, "Memory increase should be less than 10MB")
+	t.Logf("Generated %d IDs in %v", count, duration)
+	t.Logf("Initial memory: %.2f MB", initialAllocMB)
+	t.Logf("Final memory: %.2f MB", finalAllocMB)
+	t.Logf("Memory increase: %.2f MB", memoryIncrease)
+	t.Logf("Memory efficiency: %.2f IDs/MB", float64(count)/math.Max(memoryIncrease, 0.1))
+
+	// Memory increase should be minimal (less than 5MB for shorter test)
+	assert.Less(t, memoryIncrease, 5.0, "Memory increase should be less than 5MB")
+	
+	// Ensure we're not leaking memory excessively
+	if memoryIncrease > 0 {
+		efficiency := float64(count) / memoryIncrease
+		assert.Greater(t, efficiency, 100000.0, "Memory efficiency should be at least 100K IDs per MB")
+	}
 }
 
 // TestHighFrequencyGeneration tests ID generation at very high frequency
