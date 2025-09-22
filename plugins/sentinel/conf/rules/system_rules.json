@@ -1,0 +1,22 @@
+[
+  {
+    "metricType": 0,
+    "threshold": 0.7,
+    "strategy": 0
+  },
+  {
+    "metricType": 1,
+    "threshold": 1000,
+    "strategy": 0
+  },
+  {
+    "metricType": 2,
+    "threshold": 100,
+    "strategy": 0
+  },
+  {
+    "metricType": 3,
+    "threshold": 1000,
+    "strategy": 0
+  }
+]
