@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"math"
 	"math/rand"
 	"time"
@@ -13,9 +14,9 @@ import (
 
 // RetryHandler handles retry logic for gRPC client requests
 type RetryHandler struct {
-	maxRetries   int
-	retryBackoff time.Duration
-	maxBackoff   time.Duration
+	maxRetries        int
+	retryBackoff      time.Duration
+	maxBackoff        time.Duration
 	backoffMultiplier float64
 }
 
@@ -43,7 +44,7 @@ func (r *RetryHandler) ExecuteWithRetry(ctx context.Context, handler func(contex
 	for attempt := 0; attempt <= r.maxRetries; attempt++ {
 		// Execute the request
 		resp, err := handler(ctx, req)
-		
+
 		// If successful, return the response
 		if err == nil {
 			if attempt > 0 {
@@ -67,7 +68,7 @@ func (r *RetryHandler) ExecuteWithRetry(ctx context.Context, handler func(contex
 		}
 
 		// Log retry attempt
-		log.Warnf("Request failed (attempt %d/%d), retrying in %v: %v", 
+		log.Warnf("Request failed (attempt %d/%d), retrying in %v: %v",
 			attempt+1, r.maxRetries+1, backoff, err)
 
 		// Wait before retrying
@@ -113,7 +114,7 @@ func (r *RetryHandler) isRetryableError(err error) bool {
 	}
 
 	// Check for context errors
-	if err == context.DeadlineExceeded || err == context.Canceled {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return false
 	}
 
@@ -124,10 +125,10 @@ func (r *RetryHandler) isRetryableError(err error) bool {
 // GetRetryConfig returns the current retry configuration
 func (r *RetryHandler) GetRetryConfig() RetryConfig {
 	return RetryConfig{
-		MaxRetries:         r.maxRetries,
-		RetryBackoff:       r.retryBackoff,
-		MaxBackoff:         r.maxBackoff,
-		BackoffMultiplier:  r.backoffMultiplier,
+		MaxRetries:        r.maxRetries,
+		RetryBackoff:      r.retryBackoff,
+		MaxBackoff:        r.maxBackoff,
+		BackoffMultiplier: r.backoffMultiplier,
 	}
 }
 
@@ -171,7 +172,7 @@ func Jitter(delay time.Duration, jitterPercent float64) time.Duration {
 	if jitterPercent <= 0 || jitterPercent >= 1 {
 		return delay
 	}
-	
+
 	jitter := time.Duration(float64(delay) * jitterPercent * (2*rand.Float64() - 1))
 	return delay + jitter
 }

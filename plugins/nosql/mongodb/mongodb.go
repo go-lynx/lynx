@@ -18,7 +18,11 @@ import (
 
 // Initialize initializes the MongoDB plugin
 func (p *PlugMongoDB) Initialize(plugin plugins.Plugin, rt plugins.Runtime) error {
-	p.BasePlugin.Initialize(plugin, rt)
+	err := p.BasePlugin.Initialize(plugin, rt)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 
 	// Get configuration from runtime
 	cfg := rt.GetConfig()
@@ -52,7 +56,11 @@ func (p *PlugMongoDB) Initialize(plugin plugins.Plugin, rt plugins.Runtime) erro
 
 // Start starts the MongoDB plugin
 func (p *PlugMongoDB) Start(plugin plugins.Plugin) error {
-	p.BasePlugin.Start(plugin)
+	err := p.BasePlugin.Start(plugin)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 
 	// Test connection
 	if err := p.testConnection(); err != nil {
@@ -70,7 +78,11 @@ func (p *PlugMongoDB) Start(plugin plugins.Plugin) error {
 
 // Stop stops the MongoDB plugin
 func (p *PlugMongoDB) Stop(plugin plugins.Plugin) error {
-	p.BasePlugin.Stop(plugin)
+	err := p.BasePlugin.Stop(plugin)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 
 	// Stop metrics collection
 	if p.conf.EnableMetrics {
@@ -82,14 +94,14 @@ func (p *PlugMongoDB) Stop(plugin plugins.Plugin) error {
 		p.stopHealthCheck()
 	}
 
-    // Close client connection with timeout to avoid blocking shutdown
-    if p.client != nil {
-        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-        defer cancel()
-        if err := p.client.Disconnect(ctx); err != nil {
-            log.Errorf("failed to disconnect mongodb client: %v", err)
-        }
-    }
+	// Close client connection with timeout to avoid blocking shutdown
+	if p.client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := p.client.Disconnect(ctx); err != nil {
+			log.Errorf("failed to disconnect mongodb client: %v", err)
+		}
+	}
 
 	log.Info("mongodb plugin stopped successfully")
 	return nil
@@ -97,48 +109,48 @@ func (p *PlugMongoDB) Stop(plugin plugins.Plugin) error {
 
 // CleanupTasks implements the plugin cleanup interface
 func (p *PlugMongoDB) CleanupTasks() error {
-    return p.CleanupTasksContext(context.Background())
+	return p.CleanupTasksContext(context.Background())
 }
 
 // CleanupTasksContext implements context-aware cleanup with proper timeout handling
 func (p *PlugMongoDB) CleanupTasksContext(parentCtx context.Context) error {
-    log.Info("cleaning up mongodb plugin")
+	log.Info("cleaning up mongodb plugin")
 
-    // Stop metrics collection
-    if p.metricsCancel != nil {
-        p.metricsCancel()
-        p.metricsCancel = nil
-    }
+	// Stop metrics collection
+	if p.metricsCancel != nil {
+		p.metricsCancel()
+		p.metricsCancel = nil
+	}
 
-    // Stop health check
-    if p.healthCancel != nil {
-        p.healthCancel()
-        p.healthCancel = nil
-    }
+	// Stop health check
+	if p.healthCancel != nil {
+		p.healthCancel()
+		p.healthCancel = nil
+	}
 
-    // Close client connection with context-aware timeout
-    if p.client != nil {
-        ctx, cancel := p.createTimeoutContext(parentCtx, 5*time.Second)
-        defer cancel()
-        if err := p.client.Disconnect(ctx); err != nil {
-            log.Errorf("failed to disconnect mongodb client: %v", err)
-            return err
-        }
-    }
+	// Close client connection with context-aware timeout
+	if p.client != nil {
+		ctx, cancel := p.createTimeoutContext(parentCtx, 5*time.Second)
+		defer cancel()
+		if err := p.client.Disconnect(ctx); err != nil {
+			log.Errorf("failed to disconnect mongodb client: %v", err)
+			return err
+		}
+	}
 
-    log.Info("mongodb plugin cleaned up successfully")
-    return nil
+	log.Info("mongodb plugin cleaned up successfully")
+	return nil
 }
 
 // createTimeoutContext creates a context with timeout, respecting parent context deadline
 func (p *PlugMongoDB) createTimeoutContext(parentCtx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-    if deadline, ok := parentCtx.Deadline(); ok {
-        // Parent context has deadline, check if it's sooner than our timeout
-        if time.Until(deadline) < timeout {
-            return parentCtx, func() {} // Use parent context, no-op cancel
-        }
-    }
-    return context.WithTimeout(parentCtx, timeout)
+	if deadline, ok := parentCtx.Deadline(); ok {
+		// Parent context has deadline, check if it's sooner than our timeout
+		if time.Until(deadline) < timeout {
+			return parentCtx, func() {} // Use parent context, no-op cancel
+		}
+	}
+	return context.WithTimeout(parentCtx, timeout)
 }
 
 // parseConfig parses configuration
@@ -281,13 +293,13 @@ func (p *PlugMongoDB) createClient() error {
 		clientOptions.SetWriteConcern(wc)
 	}
 
-    // Create client with timeout to avoid startup hang
-    ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
-    defer cancel()
-    client, err := mongo.Connect(ctx, clientOptions)
-    if err != nil {
-        return err
-    }
+	// Create client with timeout to avoid startup hang
+	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+	defer cancel()
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		return err
+	}
 
 	p.client = client
 

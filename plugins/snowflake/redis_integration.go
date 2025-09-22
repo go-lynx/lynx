@@ -29,22 +29,22 @@ type RedisIntegrationConfig struct {
 func (c *RedisIntegrationConfig) Validate() error {
 	// Validate Redis plugin name
 	if c.RedisPluginName == "" {
-		return fmt.Errorf("Redis plugin name cannot be empty")
+		return fmt.Errorf("redis plugin name cannot be empty")
 	}
 
 	// Validate plugin name format
 	if len(c.RedisPluginName) > 100 {
-		return fmt.Errorf("Redis plugin name is too long (>100 chars): %s", c.RedisPluginName)
+		return fmt.Errorf("redis plugin name is too long (>100 chars): %s", c.RedisPluginName)
 	}
 
 	// Check for invalid characters in plugin name
 	if strings.ContainsAny(c.RedisPluginName, " \t\n\r/\\") {
-		return fmt.Errorf("Redis plugin name contains invalid characters: %s", c.RedisPluginName)
+		return fmt.Errorf("redis plugin name contains invalid characters: %s", c.RedisPluginName)
 	}
 
 	// Validate database number
 	if c.Database < 0 || c.Database > 15 {
-		return fmt.Errorf("Redis database number must be between 0 and 15, got %d", c.Database)
+		return fmt.Errorf("redis database number must be between 0 and 15, got %d", c.Database)
 	}
 
 	// Validate key prefix
@@ -137,7 +137,7 @@ func getRedisClientFromPlugin(pluginName string, database int) (redis.UniversalC
 		return client, nil
 	}
 
-	return nil, fmt.Errorf("Redis plugin '%s' not found or not initialized", pluginName)
+	return nil, fmt.Errorf("redis plugin '%s' not found or not initialized", pluginName)
 }
 
 // tryGetFromGlobalRegistry attempts to get Redis client from global plugin registry
@@ -178,7 +178,11 @@ func tryCreateFromConfig(pluginName string, database int) redis.UniversalClient 
 
 	if err := client.Ping(ctx).Err(); err != nil {
 		log.Errorf("Failed to connect to Redis: %v", err)
-		client.Close()
+		err := client.Close()
+		if err != nil {
+			log.Error(err)
+			return nil
+		}
 		return nil
 	}
 
@@ -192,14 +196,14 @@ func tryCreateClusterClient(pluginName string, database int) redis.UniversalClie
 	log.Info("Attempting to create Redis cluster client")
 
 	// Default cluster addresses - in production, these should come from configuration
-	clusterAddrs := []string{
+	clusterAddresses := []string{
 		"localhost:7000",
 		"localhost:7001",
 		"localhost:7002",
 	}
 
 	client := redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs:        clusterAddrs,
+		Addrs:        clusterAddresses,
 		Password:     "",
 		PoolSize:     10,
 		MinIdleConns: 5,
@@ -216,7 +220,11 @@ func tryCreateClusterClient(pluginName string, database int) redis.UniversalClie
 
 	if err := client.Ping(ctx).Err(); err != nil {
 		log.Warnf("Failed to connect to Redis cluster: %v", err)
-		client.Close()
+		err := client.Close()
+		if err != nil {
+			log.Error(err)
+			return nil
+		}
 		return nil
 	}
 
@@ -251,7 +259,7 @@ func NewRedisSnowflakePlugin(config *pb.Snowflake, redisConfig *RedisIntegration
 	// Test Redis connection
 	ctx := context.Background()
 	if err := redisIntegration.TestConnection(ctx); err != nil {
-		return nil, fmt.Errorf("Redis connection test failed: %w", err)
+		return nil, fmt.Errorf("redis connection test failed: %w", err)
 	}
 
 	// Create base snowflake plugin

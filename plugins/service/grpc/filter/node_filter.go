@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
 )
@@ -14,7 +15,7 @@ func Version(version string) selector.NodeFilter {
 		if version == "" {
 			return nodes
 		}
-		
+
 		var filteredNodes []selector.Node
 		for _, node := range nodes {
 			// Try to get version from node metadata
@@ -27,12 +28,12 @@ func Version(version string) selector.NodeFilter {
 				filteredNodes = append(filteredNodes, node)
 			}
 		}
-		
+
 		if len(filteredNodes) == 0 {
 			// If no nodes match the version filter, return all nodes to avoid service unavailability
 			return nodes
 		}
-		
+
 		return filteredNodes
 	}
 }
@@ -43,7 +44,7 @@ func Group(group string) selector.NodeFilter {
 		if group == "" {
 			return nodes
 		}
-		
+
 		var filteredNodes []selector.Node
 		for _, node := range nodes {
 			// Try to get group from node metadata
@@ -56,12 +57,12 @@ func Group(group string) selector.NodeFilter {
 				filteredNodes = append(filteredNodes, node)
 			}
 		}
-		
+
 		if len(filteredNodes) == 0 {
 			// If no nodes match the group filter, return all nodes to avoid service unavailability
 			return nodes
 		}
-		
+
 		return filteredNodes
 	}
 }
@@ -81,12 +82,12 @@ func Healthy() selector.NodeFilter {
 				healthyNodes = append(healthyNodes, node)
 			}
 		}
-		
+
 		if len(healthyNodes) == 0 {
 			// If no healthy nodes, return all nodes to avoid service unavailability
 			return nodes
 		}
-		
+
 		return healthyNodes
 	}
 }
@@ -97,7 +98,7 @@ func Region(region string) selector.NodeFilter {
 		if region == "" {
 			return nodes
 		}
-		
+
 		var filteredNodes []selector.Node
 		for _, node := range nodes {
 			// Try to get region from node metadata
@@ -110,12 +111,12 @@ func Region(region string) selector.NodeFilter {
 				filteredNodes = append(filteredNodes, node)
 			}
 		}
-		
+
 		if len(filteredNodes) == 0 {
 			// If no nodes match the region filter, return all nodes to avoid service unavailability
 			return nodes
 		}
-		
+
 		return filteredNodes
 	}
 }

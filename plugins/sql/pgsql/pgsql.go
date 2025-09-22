@@ -8,7 +8,7 @@ import (
 	"github.com/go-lynx/lynx/plugins/sql/base"
 	"github.com/go-lynx/lynx/plugins/sql/interfaces"
 	"github.com/go-lynx/lynx/plugins/sql/pgsql/conf"
-	
+
 	// PostgreSQL driver
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -22,9 +22,9 @@ const (
 
 // DBPgsqlClient represents PostgreSQL client plugin instance
 type DBPgsqlClient struct {
-	*base.BaseSQLPlugin
-	config    *interfaces.Config
-	pbConfig  *conf.Pgsql // protobuf configuration
+	*base.SQLPlugin
+	config   *interfaces.Config
+	pbConfig *conf.Pgsql // protobuf configuration
 }
 
 // NewPgsqlClient creates a new PostgreSQL client plugin instance
@@ -37,7 +37,7 @@ func NewPgsqlClient() *DBPgsqlClient {
 		ConnMaxLifetime: 3600, // 1 hour
 		ConnMaxIdleTime: 300,  // 5 minutes
 		// Default health check settings
-		HealthCheckInterval: 30,         // 30 seconds
+		HealthCheckInterval: 30, // 30 seconds
 		HealthCheckQuery:    "SELECT 1",
 	}
 
@@ -46,7 +46,7 @@ func NewPgsqlClient() *DBPgsqlClient {
 		pbConfig: &conf.Pgsql{},
 	}
 
-	c.BaseSQLPlugin = base.NewBaseSQLPlugin(
+	c.SQLPlugin = base.NewBaseSQLPlugin(
 		plugins.GeneratePluginID("", pluginName, pluginVersion),
 		pluginName,
 		pluginDescription,
@@ -55,7 +55,7 @@ func NewPgsqlClient() *DBPgsqlClient {
 		101,
 		config,
 	)
-	
+
 	return c
 }
 
@@ -77,17 +77,17 @@ func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
 	}
 
 	// Call parent initialization
-	return p.BaseSQLPlugin.InitializeResources(rt)
+	return p.SQLPlugin.InitializeResources(rt)
 }
 
 // StartupTasks initializes database connection
 func (p *DBPgsqlClient) StartupTasks() error {
 	log.Infof("initializing pgsql database connection")
-	
-	if err := p.BaseSQLPlugin.StartupTasks(); err != nil {
+
+	if err := p.SQLPlugin.StartupTasks(); err != nil {
 		return err
 	}
-	
+
 	log.Infof("pgsql database successfully initialized with connection pool: max_open=%d, max_idle=%d",
 		p.config.MaxOpenConns, p.config.MaxIdleConns)
 	return nil
@@ -96,5 +96,5 @@ func (p *DBPgsqlClient) StartupTasks() error {
 // CleanupTasks gracefully closes database connection
 func (p *DBPgsqlClient) CleanupTasks() error {
 	log.Infof("closing pgsql database connection")
-	return p.BaseSQLPlugin.CleanupTasks()
+	return p.SQLPlugin.CleanupTasks()
 }

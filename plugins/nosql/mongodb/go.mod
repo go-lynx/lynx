@@ -4,7 +4,7 @@ go 1.24.4
 
 require (
 	github.com/go-kratos/kratos/v2 v2.8.4
-	github.com/go-lynx/lynx v0.0.0
+	github.com/go-lynx/lynx v1.2.3
 	go.mongodb.org/mongo-driver v1.15.0
 	google.golang.org/protobuf v1.36.6
 )
@@ -52,5 +52,3 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/go-lynx/lynx => ../../../

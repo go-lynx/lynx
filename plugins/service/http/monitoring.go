@@ -268,7 +268,11 @@ func (h *ServiceHttp) CheckRuntimeHealth() error {
 		if err != nil {
 			return fmt.Errorf("HTTP server is not listening on %s: %w", h.conf.Addr, err)
 		}
-		conn.Close()
+		connErr := conn.Close()
+		if connErr != nil {
+			log.Error(connErr)
+			return err
+		}
 	}
 
 	// Record health check metrics
@@ -283,7 +287,7 @@ func (h *ServiceHttp) CheckRuntimeHealth() error {
 // updateConnectionPoolMetrics updates connection pool metrics with real values
 func (h *ServiceHttp) updateConnectionPoolMetrics() {
 	poolName := "http-server-pool"
-	
+
 	// Calculate real connection pool usage based on configuration
 	if h.maxConnections > 0 {
 		// In a real implementation, you would track actual active connections

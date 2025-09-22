@@ -3,40 +3,41 @@ package grpc
 import (
 	"sync"
 	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // ClientMetrics represents metrics for gRPC client
 type ClientMetrics struct {
 	// Connection metrics
-	connectionsTotal    prometheus.Gauge
-	connectionsActive   prometheus.Gauge
-	connectionsCreated  prometheus.Counter
-	connectionsClosed   prometheus.Counter
-	connectionsFailed   prometheus.Counter
+	connectionsTotal   prometheus.Gauge
+	connectionsActive  prometheus.Gauge
+	connectionsCreated prometheus.Counter
+	connectionsClosed  prometheus.Counter
+	connectionsFailed  prometheus.Counter
 
 	// Request metrics
-	requestsTotal       *prometheus.CounterVec
-	requestDuration     *prometheus.HistogramVec
-	requestErrors       *prometheus.CounterVec
+	requestsTotal   *prometheus.CounterVec
+	requestDuration *prometheus.HistogramVec
+	requestErrors   *prometheus.CounterVec
 
 	// Retry metrics
-	retriesTotal        *prometheus.CounterVec
-	retryDuration       *prometheus.HistogramVec
+	retriesTotal  *prometheus.CounterVec
+	retryDuration *prometheus.HistogramVec
 
 	// Health check metrics
 	healthChecksTotal   *prometheus.CounterVec
 	healthCheckDuration *prometheus.HistogramVec
 
 	// Connection pool metrics
-	poolSize            *prometheus.GaugeVec
-	poolActive          *prometheus.GaugeVec
-	poolIdle            *prometheus.GaugeVec
+	poolSize   *prometheus.GaugeVec
+	poolActive *prometheus.GaugeVec
+	poolIdle   *prometheus.GaugeVec
 
 	// Message size metrics
-	messageSize         *prometheus.HistogramVec
+	messageSize *prometheus.HistogramVec
 
 	// Circuit breaker metrics
 	circuitBreakerState *prometheus.GaugeVec
@@ -295,22 +296,22 @@ func (m *ClientMetrics) RecordLoadBalancerError(serviceName, errorType string) {
 
 // GetConnectionCount returns the current connection count
 func (m *ClientMetrics) GetConnectionCount() float64 {
-	dto := &dto.Metric{}
-	if err := m.connectionsTotal.Write(dto); err != nil {
+	d := &dto.Metric{}
+	if err := m.connectionsTotal.Write(d); err != nil {
 		return 0
 	}
-	return dto.GetGauge().GetValue()
+	return d.GetGauge().GetValue()
 }
 
 // GetActiveConnectionCount returns the current active connection count
 func (m *ClientMetrics) GetActiveConnectionCount() float64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if !m.initialized {
 		return 0
 	}
-	
+
 	// Use DTO to get the current gauge value
 	metric := &dto.Metric{}
 	if err := m.connectionsActive.Write(metric); err != nil {
@@ -323,17 +324,17 @@ func (m *ClientMetrics) GetActiveConnectionCount() float64 {
 func (m *ClientMetrics) GetRequestCount() float64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if !m.initialized {
 		return 0
 	}
-	
+
 	// Gather all metrics from the counter vector and sum them
 	metricFamilies, err := prometheus.DefaultGatherer.Gather()
 	if err != nil {
 		return 0
 	}
-	
+
 	var total float64
 	for _, mf := range metricFamilies {
 		if mf.GetName() == "grpc_client_requests_total" {
@@ -350,13 +351,13 @@ func (m *ClientMetrics) GetRequestCount() float64 {
 func (m *ClientMetrics) GetErrorCount() float64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if !m.initialized {
 		return 0
 	}
-	
+
 	var total float64
-	
+
 	// Aggregate from request errors counter vector
 	if m.requestErrors != nil {
 		metricFamilies, err := prometheus.DefaultGatherer.Gather()
@@ -372,7 +373,7 @@ func (m *ClientMetrics) GetErrorCount() float64 {
 			}
 		}
 	}
-	
+
 	// Add connection failures
 	if m.connectionsFailed != nil {
 		metric := &dto.Metric{}
@@ -382,7 +383,7 @@ func (m *ClientMetrics) GetErrorCount() float64 {
 			}
 		}
 	}
-	
+
 	return total
 }
 
@@ -392,4 +393,3 @@ func (m *ClientMetrics) IsInitialized() bool {
 	defer m.mu.RUnlock()
 	return m.initialized
 }
-

@@ -14,6 +14,7 @@ import (
 	"github.com/go-kratos/kratos/v2/selector/p2c"
 	"github.com/go-kratos/kratos/v2/selector/random"
 	"github.com/go-kratos/kratos/v2/selector/wrr"
+	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins/service/grpc/filter"
 )
 
@@ -76,7 +77,10 @@ func (lb *LoadBalancer) ConfigureService(serviceName string, config *LoadBalance
 	// Close existing selector if any
 	if existingSel, exists := lb.selectors[serviceName]; exists {
 		if closer, ok := existingSel.(interface{ Close() error }); ok {
-			closer.Close()
+			err := closer.Close()
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -149,7 +153,7 @@ func (lb *LoadBalancer) SelectNode(ctx context.Context, serviceName string) (sel
 func (lb *LoadBalancer) GetServiceConfig(serviceName string) *LoadBalancerConfig {
 	lb.mu.RLock()
 	defer lb.mu.RUnlock()
-	
+
 	if config, exists := lb.configs[serviceName]; exists {
 		// Return a copy to prevent external modification
 		configCopy := *config
@@ -171,7 +175,11 @@ func (lb *LoadBalancer) RemoveService(serviceName string) {
 
 	if sel, exists := lb.selectors[serviceName]; exists {
 		if closer, ok := sel.(interface{ Close() error }); ok {
-			closer.Close()
+			err := closer.Close()
+			if err != nil {
+				log.Error(err)
+				return
+			}
 		}
 		delete(lb.selectors, serviceName)
 	}
@@ -192,7 +200,7 @@ func (lb *LoadBalancer) Close() error {
 		}
 		delete(lb.selectors, serviceName)
 	}
-	
+
 	lb.configs = make(map[string]*LoadBalancerConfig)
 	return lastErr
 }
@@ -203,7 +211,7 @@ func (lb *LoadBalancer) GetStats() map[string]interface{} {
 	defer lb.mu.RUnlock()
 
 	stats := map[string]interface{}{
-		"services": make(map[string]interface{}),
+		"services":       make(map[string]interface{}),
 		"total_services": len(lb.configs),
 	}
 
@@ -228,7 +236,7 @@ func (lb *LoadBalancer) createSelector(config *LoadBalancerConfig) (selector.Sel
 	case LoadBalancerRandom:
 		builder = random.NewBuilder()
 	case LoadBalancerRoundRobin:
-		// Use weighted round robin with equal weights as round robin
+		// Use weighted round-robin with equal weights as round-robin
 		builder = wrr.NewBuilder()
 	case LoadBalancerWeightedRoundRobin:
 		builder = wrr.NewBuilder()

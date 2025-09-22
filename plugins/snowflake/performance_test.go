@@ -237,7 +237,7 @@ func TestSustainedLoad(t *testing.T) {
 }
 
 // runPerformanceTest executes a performance test with the given configuration
-func runPerformanceTest(t *testing.T, generator *SnowflakeGenerator, config *PerformanceTestConfig) *PerformanceMetrics {
+func runPerformanceTest(t *testing.T, generator *Generator, config *PerformanceTestConfig) *PerformanceMetrics {
 	var (
 		totalRequests  int64
 		successfulReqs int64
@@ -298,7 +298,7 @@ func runPerformanceTest(t *testing.T, generator *SnowflakeGenerator, config *Per
 }
 
 // runLoadPhase runs a load generation phase
-func runLoadPhase(ctx context.Context, generator *SnowflakeGenerator, numWorkers, targetRPS int,
+func runLoadPhase(ctx context.Context, generator *Generator, numWorkers, targetRPS int,
 	totalRequests, successfulReqs, failedReqs *int64) {
 
 	var wg sync.WaitGroup

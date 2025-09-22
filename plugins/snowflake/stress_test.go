@@ -142,7 +142,7 @@ func TestMemoryLeakDetection(t *testing.T) {
 		EnableSequenceCache:        false, // Disable cache to reduce memory usage
 		SequenceCacheSize:          0,
 	}
-	
+
 	generator, err := NewSnowflakeGeneratorCore(1, 1, config)
 	require.NoError(t, err)
 
@@ -200,7 +200,7 @@ func TestMemoryLeakDetection(t *testing.T) {
 
 	// Memory increase should be minimal (less than 5MB for shorter test)
 	assert.Less(t, memoryIncrease, 5.0, "Memory increase should be less than 5MB")
-	
+
 	// Ensure we're not leaking memory excessively
 	if memoryIncrease > 0 {
 		efficiency := float64(count) / memoryIncrease
@@ -238,7 +238,7 @@ func TestHighFrequencyGeneration(t *testing.T) {
 }
 
 // runStressTest executes a stress test with the given configuration
-func runStressTest(t *testing.T, generator *SnowflakeGenerator, config *StressTestConfig) *StressTestResult {
+func runStressTest(t *testing.T, generator *Generator, config *StressTestConfig) *StressTestResult {
 	var (
 		totalRequests  int64
 		successfulReqs int64

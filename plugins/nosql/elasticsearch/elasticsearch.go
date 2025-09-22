@@ -3,6 +3,7 @@ package elasticsearch
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
@@ -16,7 +17,11 @@ import (
 
 // Initialize Elasticsearch plugin
 func (p *PlugElasticsearch) Initialize(plugin plugins.Plugin, rt plugins.Runtime) error {
-	p.BasePlugin.Initialize(plugin, rt)
+	err := p.BasePlugin.Initialize(plugin, rt)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 
 	// Get configuration from runtime
 	cfg := rt.GetConfig()
@@ -50,7 +55,11 @@ func (p *PlugElasticsearch) Initialize(plugin plugins.Plugin, rt plugins.Runtime
 
 // Start Elasticsearch plugin
 func (p *PlugElasticsearch) Start(plugin plugins.Plugin) error {
-	p.BasePlugin.Start(plugin)
+	err := p.BasePlugin.Start(plugin)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 
 	// Test connection
 	if err := p.testConnection(); err != nil {
@@ -68,7 +77,11 @@ func (p *PlugElasticsearch) Start(plugin plugins.Plugin) error {
 
 // Stop Elasticsearch plugin
 func (p *PlugElasticsearch) Stop(plugin plugins.Plugin) error {
-	p.BasePlugin.Stop(plugin)
+	err := p.BasePlugin.Stop(plugin)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 
 	// Stop metrics collection
 	if p.conf.EnableMetrics {
@@ -157,7 +170,12 @@ func (p *PlugElasticsearch) testConnection() error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Error(err)
+		}
+	}(res.Body)
 
 	if res.IsError() {
 		return fmt.Errorf("elasticsearch ping failed with status: %d", res.StatusCode)
@@ -210,7 +228,12 @@ func (p *PlugElasticsearch) collectMetrics() {
 		log.Errorf("failed to get cluster health: %v", err)
 		return
 	}
-	defer healthRes.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Error(err)
+		}
+	}(healthRes.Body)
 
 	// Get cluster statistics
 	statsRes, err := p.client.Cluster.Stats(p.client.Cluster.Stats.WithContext(ctx))
@@ -218,7 +241,12 @@ func (p *PlugElasticsearch) collectMetrics() {
 		log.Errorf("failed to get cluster stats: %v", err)
 		return
 	}
-	defer statsRes.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Error(err)
+		}
+	}(statsRes.Body)
 
 	// Here you can send metrics to monitoring system
 	log.Debug("elasticsearch metrics collected")
@@ -283,24 +311,29 @@ func (p *PlugElasticsearch) closeStatsQuitOnce() {
 
 // checkHealth Perform health check
 func (p *PlugElasticsearch) checkHealth() error {
-    // 使用轻量 Ping 进行健康检查，避免 Cluster Health 的较高开销
-    ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-    defer cancel()
+	// 使用轻量 Ping 进行健康检查，避免 Cluster Health 的较高开销
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-    start := time.Now()
-    res, err := p.client.Ping(p.client.Ping.WithContext(ctx))
-    if err != nil {
-        return err
-    }
-    defer res.Body.Close()
-    latency := time.Since(start)
+	start := time.Now()
+	res, err := p.client.Ping(p.client.Ping.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Error(err)
+		}
+	}(res.Body)
+	latency := time.Since(start)
 
-    if res.IsError() {
-        return fmt.Errorf("ping health check failed: status=%d, latency=%s", res.StatusCode, latency)
-    }
+	if res.IsError() {
+		return fmt.Errorf("ping health check failed: status=%d, latency=%s", res.StatusCode, latency)
+	}
 
-    log.Debugf("elasticsearch ping ok: status=%d, latency=%s", res.StatusCode, latency)
-    return nil
+	log.Debugf("elasticsearch ping ok: status=%d, latency=%s", res.StatusCode, latency)
+	return nil
 }
 
 // GetClient Get Elasticsearch client

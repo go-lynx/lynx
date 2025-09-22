@@ -15,14 +15,14 @@ func (r *PlugRedis) detectMode() string {
 	if r.conf.Sentinel != nil && r.conf.Sentinel.MasterName != "" {
 		return "sentinel"
 	}
-	addrs := r.currentAddrs()
-	if len(addrs) > 1 {
+	addrList := r.currentAddrList()
+	if len(addrList) > 1 {
 		return "cluster"
 	}
 	return "single"
 }
 
-func (r *PlugRedis) currentAddrs() []string {
+func (r *PlugRedis) currentAddrList() []string {
 	if r.conf.Sentinel != nil && len(r.conf.Sentinel.Addrs) > 0 {
 		return append([]string{}, r.conf.Sentinel.Addrs...)
 	}
@@ -205,7 +205,11 @@ func (r *PlugRedis) GetPerformanceMetrics(ctx context.Context) (*PerformanceMetr
 		if idx := strings.Index(info, key+":"); idx >= 0 {
 			rest := info[idx+len(key)+1:]
 			var val int64
-			fmt.Sscanf(rest, "%d", &val)
+			_, err := fmt.Sscanf(rest, "%d", &val)
+			if err != nil {
+				log.Error(err)
+				return 0
+			}
 			return val
 		}
 		return 0

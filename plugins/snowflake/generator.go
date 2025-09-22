@@ -9,7 +9,7 @@ import (
 )
 
 // NewSnowflakeGeneratorWithConfig creates a new snowflake ID generator with protobuf config
-func NewSnowflakeGeneratorWithConfig(config *pb.Snowflake) (*SnowflakeGenerator, error) {
+func NewSnowflakeGeneratorWithConfig(config *pb.Snowflake) (*Generator, error) {
 	// Convert protobuf config to internal config
 	internalConfig := &GeneratorConfig{
 		CustomEpoch:                config.CustomEpoch,
@@ -26,8 +26,8 @@ func NewSnowflakeGeneratorWithConfig(config *pb.Snowflake) (*SnowflakeGenerator,
 	return NewSnowflakeGeneratorCore(int64(config.DatacenterId), int64(config.WorkerId), internalConfig)
 }
 
-// NewSnowflakeGenerator creates a new snowflake generator
-func NewSnowflakeGeneratorCore(datacenterID, workerID int64, config *GeneratorConfig) (*SnowflakeGenerator, error) {
+// NewSnowflakeGeneratorCore  creates a new snowflake generator
+func NewSnowflakeGeneratorCore(datacenterID, workerID int64, config *GeneratorConfig) (*Generator, error) {
 	if config == nil {
 		config = DefaultGeneratorConfig()
 	}
@@ -60,7 +60,7 @@ func NewSnowflakeGeneratorCore(datacenterID, workerID int64, config *GeneratorCo
 	datacenterShift := config.WorkerIDBits + config.SequenceBits
 	workerShift := config.SequenceBits
 
-	generator := &SnowflakeGenerator{
+	generator := &Generator{
 		datacenterID:               datacenterID,
 		workerID:                   workerID,
 		customEpoch:                config.CustomEpoch,
@@ -94,7 +94,7 @@ func NewSnowflakeGeneratorCore(datacenterID, workerID int64, config *GeneratorCo
 }
 
 // GenerateID generates a new snowflake ID
-func (g *SnowflakeGenerator) GenerateID() (int64, error) {
+func (g *Generator) GenerateID() (int64, error) {
 	startTime := time.Now()
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -160,7 +160,7 @@ func (g *SnowflakeGenerator) GenerateID() (int64, error) {
 }
 
 // GenerateIDWithMetadata generates a snowflake ID with metadata
-func (g *SnowflakeGenerator) GenerateIDWithMetadata() (int64, *SnowflakeID, error) {
+func (g *Generator) GenerateIDWithMetadata() (int64, *SID, error) {
 	id, err := g.GenerateID()
 	if err != nil {
 		return 0, nil, err
@@ -175,7 +175,7 @@ func (g *SnowflakeGenerator) GenerateIDWithMetadata() (int64, *SnowflakeID, erro
 }
 
 // GetStats returns statistics about the generator
-func (g *SnowflakeGenerator) GetStats() *GeneratorStats {
+func (g *Generator) GetStats() *GeneratorStats {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -189,7 +189,7 @@ func (g *SnowflakeGenerator) GetStats() *GeneratorStats {
 }
 
 // GetMetrics returns detailed metrics about the generator
-func (g *SnowflakeGenerator) GetMetrics() *SnowflakeMetrics {
+func (g *Generator) GetMetrics() *Metrics {
 	if g.metrics == nil {
 		return nil
 	}
@@ -197,7 +197,7 @@ func (g *SnowflakeGenerator) GetMetrics() *SnowflakeMetrics {
 }
 
 // IsHealthy returns whether the generator is healthy
-func (g *SnowflakeGenerator) IsHealthy() bool {
+func (g *Generator) IsHealthy() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -219,7 +219,7 @@ func (g *SnowflakeGenerator) IsHealthy() bool {
 }
 
 // Shutdown gracefully shuts down the generator
-func (g *SnowflakeGenerator) Shutdown(ctx context.Context) error {
+func (g *Generator) Shutdown(ctx context.Context) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -232,7 +232,7 @@ func (g *SnowflakeGenerator) Shutdown(ctx context.Context) error {
 }
 
 // ParseID parses a snowflake ID and returns its components
-func (g *SnowflakeGenerator) ParseID(id int64) (*SnowflakeID, error) {
+func (g *Generator) ParseID(id int64) (*SID, error) {
 	if id < 0 {
 		return nil, fmt.Errorf("invalid snowflake ID: %d", id)
 	}
@@ -243,7 +243,7 @@ func (g *SnowflakeGenerator) ParseID(id int64) (*SnowflakeID, error) {
 	datacenterID := (id >> g.datacenterShift) & g.maxDatacenterID
 	timestamp := (id >> g.timestampShift) + g.customEpoch
 
-	return &SnowflakeID{
+	return &SID{
 		ID:           id,
 		Timestamp:    time.Unix(timestamp/1000, (timestamp%1000)*1000000),
 		DatacenterID: datacenterID,
@@ -253,12 +253,12 @@ func (g *SnowflakeGenerator) ParseID(id int64) (*SnowflakeID, error) {
 }
 
 // getCurrentTimestamp returns current timestamp in milliseconds
-func (g *SnowflakeGenerator) getCurrentTimestamp() int64 {
+func (g *Generator) getCurrentTimestamp() int64 {
 	return time.Now().UnixNano() / 1000000
 }
 
 // checkClockDrift checks for clock drift and handles it according to configuration
-func (g *SnowflakeGenerator) checkClockDrift(currentTimestamp int64) error {
+func (g *Generator) checkClockDrift(currentTimestamp int64) error {
 	if g.lastTimestamp == -1 {
 		return nil // First call, no drift to check
 	}
@@ -295,7 +295,7 @@ func (g *SnowflakeGenerator) checkClockDrift(currentTimestamp int64) error {
 }
 
 // handleClockBackward handles the case when clock goes backward
-func (g *SnowflakeGenerator) handleClockBackward(currentTimestamp int64) error {
+func (g *Generator) handleClockBackward(currentTimestamp int64) error {
 	drift := time.Duration(g.lastTimestamp-currentTimestamp) * time.Millisecond
 
 	// Update statistics
@@ -323,7 +323,7 @@ func (g *SnowflakeGenerator) handleClockBackward(currentTimestamp int64) error {
 }
 
 // waitForNextMillisecond waits until the next millisecond
-func (g *SnowflakeGenerator) waitForNextMillisecond(lastTimestamp int64) int64 {
+func (g *Generator) waitForNextMillisecond(lastTimestamp int64) int64 {
 	timestamp := g.getCurrentTimestamp()
 	for timestamp <= lastTimestamp {
 		time.Sleep(time.Millisecond)
@@ -333,7 +333,7 @@ func (g *SnowflakeGenerator) waitForNextMillisecond(lastTimestamp int64) int64 {
 }
 
 // refillSequenceCache pre-generates sequence numbers for better performance
-func (g *SnowflakeGenerator) refillSequenceCache() {
+func (g *Generator) refillSequenceCache() {
 	if !g.enableSequenceCache || len(g.sequenceCache) == 0 {
 		return
 	}

@@ -25,9 +25,9 @@ type PlugSnowflake struct {
 	// Worker ID manager
 	workerManager *WorkerIDManager
 	// ID generator
-	generator *SnowflakeGenerator
+	generator *Generator
 	// Metrics collection
-	metrics *SnowflakeMetrics
+	metrics *Metrics
 	// Security manager
 	securityManager *SecurityManager
 	// Shutdown channel
@@ -54,8 +54,8 @@ type WorkerIDManager struct {
 	mu                sync.RWMutex
 }
 
-// SnowflakeGenerator generates snowflake IDs
-type SnowflakeGenerator struct {
+// Generator generates snowflake IDs
+type Generator struct {
 	// Configuration
 	datacenterID int64
 	workerID     int64
@@ -97,14 +97,14 @@ type SnowflakeGenerator struct {
 	isShuttingDown bool
 
 	// Metrics collection
-	metrics *SnowflakeMetrics
+	metrics *Metrics
 
 	// Mutex for thread safety
 	mu sync.Mutex
 }
 
-// SnowflakeMetrics collects detailed metrics for the snowflake generator
-type SnowflakeMetrics struct {
+// Metrics collects detailed metrics for the snowflake generator
+type Metrics struct {
 	// ID generation metrics
 	IDsGenerated      int64
 	ClockDriftEvents  int64
@@ -175,8 +175,8 @@ func (e *WorkerIDConflictError) Error() string {
 		e.WorkerID, e.DatacenterID, e.ConflictWith)
 }
 
-// SnowflakeID represents a generated snowflake ID with metadata
-type SnowflakeID struct {
+// SID represents a generated snowflake ID with metadata
+type SID struct {
 	ID           int64     `json:"id"`
 	Timestamp    time.Time `json:"timestamp"`
 	DatacenterID int64     `json:"datacenter_id"`
@@ -203,7 +203,6 @@ type GeneratorStats struct {
 
 // Constants for default configuration
 const (
-	// Default configuration values
 	DefaultDatacenterID     = 1
 	DefaultWorkerID         = 1
 	DefaultTimestampBits    = 41
@@ -213,28 +212,27 @@ const (
 	DefaultEpoch            = 1609459200000 // 2021-01-01 00:00:00 UTC in milliseconds
 	DefaultMaxClockBackward = 5000          // 5 seconds in milliseconds
 
-	// Redis integration constants
 	DefaultRedisKeyPrefix    = "snowflake"
 	DefaultWorkerIDTTL       = 30 * time.Second
 	DefaultHeartbeatInterval = 10 * time.Second
 )
 
 const (
-	// Default bit allocation
+	// DefaultWorkerIDBits Default A bit of allocation
 	DefaultWorkerIDBits = 5
 
-	// Default timing
+	// DefaultMaxClockDrift Default timing
 	DefaultMaxClockDrift      = 5 * time.Second
 	DefaultClockCheckInterval = 1 * time.Second
 
-	// Default cache size
+	// DefaultSequenceCacheSize Default cache size
 	DefaultSequenceCacheSize = 1000
 
-	// Redis key patterns
+	// WorkerIDLockKey Redis key patterns
 	WorkerIDLockKey     = "lynx:snowflake:lock:worker_id"
 	WorkerIDRegistryKey = "lynx:snowflake:registry"
 
-	// Clock drift actions
+	// ClockDriftActionWait Clock drift actions
 	ClockDriftActionWait   = "wait"
 	ClockDriftActionError  = "error"
 	ClockDriftActionIgnore = "ignore"
@@ -400,7 +398,7 @@ func (p *PlugSnowflake) Initialize(plugin plugins.Plugin, runtime plugins.Runtim
 	}
 
 	// Initialize metrics
-	p.metrics = &SnowflakeMetrics{
+	p.metrics = &Metrics{
 		StartTime: time.Now(),
 	}
 
@@ -638,7 +636,7 @@ func (p *PlugSnowflake) GenerateID() (int64, error) {
 }
 
 // GenerateIDWithMetadata generates a new snowflake ID with metadata
-func (p *PlugSnowflake) GenerateIDWithMetadata() (int64, *SnowflakeID, error) {
+func (p *PlugSnowflake) GenerateIDWithMetadata() (int64, *SID, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -650,7 +648,7 @@ func (p *PlugSnowflake) GenerateIDWithMetadata() (int64, *SnowflakeID, error) {
 }
 
 // ParseID parses a snowflake ID into its components
-func (p *PlugSnowflake) ParseID(id int64) (*SnowflakeID, error) {
+func (p *PlugSnowflake) ParseID(id int64) (*SID, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -662,7 +660,7 @@ func (p *PlugSnowflake) ParseID(id int64) (*SnowflakeID, error) {
 }
 
 // GetGenerator returns the snowflake generator instance
-func (p *PlugSnowflake) GetGenerator() *SnowflakeGenerator {
+func (p *PlugSnowflake) GetGenerator() *Generator {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 

@@ -37,10 +37,10 @@ const (
 	confPrefix = "lynx.grpc.service"
 )
 
-// GrpcService represents the gRPC service plugin implementation.
+// Service represents the gRPC service plugin implementation.
 // It embeds the BasePlugin for common plugin functionality and maintains
 // the gRPC server instance along with its configuration.
-type GrpcService struct {
+type Service struct {
 	// Embed Lynx framework's base plugin, inheriting common plugin functionality
 	*plugins.BasePlugin
 	// gRPC server instance
@@ -48,17 +48,17 @@ type GrpcService struct {
 	// gRPC service configuration information
 	conf *conf.Service
 	// Dependency injection providers
-	appNameProvider    func() string
-	loggerProvider     func() interface{}
-	certProvider       func() interface{}
+	appNameProvider      func() string
+	loggerProvider       func() interface{}
+	certProvider         func() interface{}
 	controlPlaneProvider func() interface{}
 }
 
 // NewGrpcService creates and initializes a new instance of the gRPC service plugin.
 // It sets up the base plugin with the appropriate metadata and returns a pointer
-// to the GrpcService structure.
-func NewGrpcService() *GrpcService {
-	return &GrpcService{
+// to the Service structure.
+func NewGrpcService() *Service {
+	return &Service{
 		BasePlugin: plugins.NewBasePlugin(
 			// Generate unique plugin ID
 			plugins.GeneratePluginID("", pluginName, pluginVersion),
@@ -77,7 +77,7 @@ func NewGrpcService() *GrpcService {
 }
 
 // SetDependencies sets the dependency injection providers for the gRPC service
-func (g *GrpcService) SetDependencies(
+func (g *Service) SetDependencies(
 	appNameProvider func() string,
 	loggerProvider func() interface{},
 	certProvider func() interface{},
@@ -92,7 +92,7 @@ func (g *GrpcService) SetDependencies(
 // InitializeResources implements the plugin initialization interface.
 // It loads and validates the gRPC server configuration from the runtime environment.
 // If no configuration is provided, it sets up default values for the server.
-func (g *GrpcService) InitializeResources(rt plugins.Runtime) error {
+func (g *Service) InitializeResources(rt plugins.Runtime) error {
 	// Initialize an empty configuration structure
 	g.conf = &conf.Service{}
 
@@ -138,7 +138,7 @@ func (g *GrpcService) InitializeResources(rt plugins.Runtime) error {
 // StartupTasks implements the plugin startup interface.
 // It configures and starts the gRPC server with all necessary middleware and options,
 // including tracing, logging, rate limiting, validation, and recovery handlers.
-func (g *GrpcService) StartupTasks() error {
+func (g *Service) StartupTasks() error {
 	// Log gRPC service startup
 	log.Info("starting grpc service")
 
@@ -234,7 +234,7 @@ func (g *GrpcService) StartupTasks() error {
 // CleanupTasks implements the plugin cleanup interface.
 // It gracefully stops the gRPC server and performs necessary cleanup operations.
 // If the server is nil or already stopped, it will return nil.
-func (g *GrpcService) CleanupTasks() error {
+func (g *Service) CleanupTasks() error {
 	// Use a timeout context for cleanup to prevent hanging
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -242,15 +242,15 @@ func (g *GrpcService) CleanupTasks() error {
 }
 
 // CleanupTasksContext implements context-aware cleanup with proper timeout handling.
-func (g *GrpcService) CleanupTasksContext(parentCtx context.Context) error {
+func (g *Service) CleanupTasksContext(parentCtx context.Context) error {
 	if g.server == nil {
 		return nil
 	}
-	
+
 	// Use parent context if it has a deadline, otherwise create timeout context
 	var ctx context.Context
 	var cancel context.CancelFunc
-	
+
 	if _, ok := parentCtx.Deadline(); ok {
 		// Parent context has deadline, use it directly
 		ctx = parentCtx
@@ -264,7 +264,7 @@ func (g *GrpcService) CleanupTasksContext(parentCtx context.Context) error {
 		ctx, cancel = context.WithTimeout(parentCtx, timeout)
 	}
 	defer cancel()
-	
+
 	if err := g.server.Stop(ctx); err != nil {
 		// If stopping fails, return plugin error with error information
 		return plugins.NewPluginError(g.ID(), "Stop", "Failed to stop gRPC server", err)
@@ -275,7 +275,7 @@ func (g *GrpcService) CleanupTasksContext(parentCtx context.Context) error {
 // Configure allows runtime configuration updates for the gRPC server.
 // It accepts an interface{} parameter that should contain the new configuration
 // and updates the server settings accordingly.
-func (g *GrpcService) Configure(c any) error {
+func (g *Service) Configure(c any) error {
 	if c == nil {
 		return nil
 	}
@@ -287,7 +287,7 @@ func (g *GrpcService) Configure(c any) error {
 // CheckHealth implements the health check interface for the gRPC server.
 // It performs necessary health checks and updates the provided health report
 // with the current status of the server.
-func (g *GrpcService) CheckHealth() error {
+func (g *Service) CheckHealth() error {
 	if g.server == nil {
 		return fmt.Errorf("gRPC server is not initialized")
 	}
@@ -316,7 +316,7 @@ func (g *GrpcService) CheckHealth() error {
 }
 
 // checkPortAvailability checks if the configured port is available for binding
-func (g *GrpcService) checkPortAvailability() error {
+func (g *Service) checkPortAvailability() error {
 	if g.conf == nil || g.conf.Addr == "" {
 		return fmt.Errorf("server address not configured")
 	}
@@ -332,13 +332,18 @@ func (g *GrpcService) checkPortAvailability() error {
 	if err != nil {
 		return fmt.Errorf("port %s is not available: %v", addr, err)
 	}
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+			log.Errorf("failed to close listener: %v", err)
+		}
+	}(listener)
 
 	return nil
 }
 
 // validateTLSConfig validates TLS configuration
-func (g *GrpcService) validateTLSConfig() error {
+func (g *Service) validateTLSConfig() error {
 	if !g.conf.GetTlsEnable() {
 		return nil
 	}
@@ -369,7 +374,7 @@ func (g *GrpcService) validateTLSConfig() error {
 }
 
 // validateConfig validates the gRPC server configuration
-func (g *GrpcService) validateConfig() error {
+func (g *Service) validateConfig() error {
 	if g.conf == nil {
 		return fmt.Errorf("configuration is nil")
 	}
@@ -400,7 +405,7 @@ func (g *GrpcService) validateConfig() error {
 }
 
 // validateAddress validates the server address format
-func (g *GrpcService) validateAddress(addr string) error {
+func (g *Service) validateAddress(addr string) error {
 	if addr == "" {
 		return fmt.Errorf("address cannot be empty")
 	}
@@ -435,7 +440,7 @@ func (g *GrpcService) validateAddress(addr string) error {
 }
 
 // getAppName returns the application name using dependency injection
-func (g *GrpcService) getAppName() string {
+func (g *Service) getAppName() string {
 	if g.appNameProvider != nil {
 		return g.appNameProvider()
 	}
@@ -443,7 +448,7 @@ func (g *GrpcService) getAppName() string {
 }
 
 // getLogger returns the logger using dependency injection
-func (g *GrpcService) getLogger() interface{} {
+func (g *Service) getLogger() interface{} {
 	if g.loggerProvider != nil {
 		return g.loggerProvider()
 	}
@@ -451,7 +456,7 @@ func (g *GrpcService) getLogger() interface{} {
 }
 
 // getCertProvider returns the certificate provider using dependency injection
-func (g *GrpcService) getCertProvider() interface{} {
+func (g *Service) getCertProvider() interface{} {
 	if g.certProvider != nil {
 		return g.certProvider()
 	}
@@ -459,7 +464,7 @@ func (g *GrpcService) getCertProvider() interface{} {
 }
 
 // getControlPlane returns the control plane using dependency injection
-func (g *GrpcService) getControlPlane() interface{} {
+func (g *Service) getControlPlane() interface{} {
 	if g.controlPlaneProvider != nil {
 		return g.controlPlaneProvider()
 	}
@@ -467,7 +472,7 @@ func (g *GrpcService) getControlPlane() interface{} {
 }
 
 // getGRPCRateLimit returns the gRPC rate limit middleware using dependency injection
-func (g *GrpcService) getGRPCRateLimit() interface{} {
+func (g *Service) getGRPCRateLimit() interface{} {
 	controlPlane := g.getControlPlane()
 	if controlPlane == nil {
 		return nil

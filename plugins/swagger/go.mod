@@ -15,7 +15,6 @@ require (
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
-
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect

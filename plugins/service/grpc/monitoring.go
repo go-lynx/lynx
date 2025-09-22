@@ -68,7 +68,7 @@ var (
 )
 
 // recordHealthCheckMetricsInternal records health check metrics (internal method)
-func (g *GrpcService) recordHealthCheckMetricsInternal(healthy bool) {
+func (g *Service) recordHealthCheckMetricsInternal(healthy bool) {
 	if g.conf == nil {
 		return
 	}
@@ -81,28 +81,28 @@ func (g *GrpcService) recordHealthCheckMetricsInternal(healthy bool) {
 }
 
 // recordRequestMetrics records request metrics
-func (g *GrpcService) recordRequestMetrics(method string, duration time.Duration, status string) {
+func (g *Service) recordRequestMetrics(method string, duration time.Duration, status string) {
 	grpcRequestsTotal.WithLabelValues(method, status).Inc()
 	grpcRequestDuration.WithLabelValues(method).Observe(duration.Seconds())
 }
 
 // updateConnectionMetrics updates connection metrics
-func (g *GrpcService) updateConnectionMetrics(active int) {
+func (g *Service) updateConnectionMetrics(active int) {
 	grpcActiveConnections.WithLabelValues(g.getAppName()).Set(float64(active))
 }
 
 // recordServerStartTime records server start time
-func (g *GrpcService) recordServerStartTime() {
+func (g *Service) recordServerStartTime() {
 	grpcServerStartTime.WithLabelValues(g.getAppName()).Set(float64(time.Now().Unix()))
 }
 
 // recordServerError records server errors
-func (g *GrpcService) recordServerError(errorType string) {
+func (g *Service) recordServerError(errorType string) {
 	grpcServerErrors.WithLabelValues(errorType).Inc()
 }
 
 // getMetricsHandler returns Prometheus metrics handler
-func (g *GrpcService) getMetricsHandler() func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func (g *Service) getMetricsHandler() func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		start := time.Now()
 
