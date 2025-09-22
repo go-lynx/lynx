@@ -1,0 +1,154 @@
+# Snowflake ID Generator Plugin Configuration Example
+# This file demonstrates all available configuration options for the Lynx Snowflake plugin
+
+lynx:
+  # Snowflake ID Generator Plugin Configuration
+  snowflake:
+    # —— Basic Configuration ——
+    # Data center ID (0-31)
+    datacenter_id: 1
+    
+    # Worker ID (0-1023), if not set, will auto-register via Redis
+    # worker_id: 100
+    
+    # Enable auto worker ID registration via Redis
+    auto_register_worker_id: true
+    
+    # Redis key prefix for worker ID registration
+    redis_key_prefix: "lynx:snowflake:worker"
+    
+    # Worker ID registration TTL (default: 30s)
+    worker_id_ttl: "30s"
+    
+    # Worker ID heartbeat interval (default: 10s)
+    heartbeat_interval: "10s"
+    
+    # —— Clock Drift Protection ——
+    # Enable clock drift protection
+    enable_clock_drift_protection: true
+    
+    # Maximum allowed clock drift backward (default: 5s)
+    max_clock_drift: "5s"
+    
+    # Clock drift check interval (default: 1s)
+    clock_check_interval: "1s"
+    
+    # Action when clock drift detected: "wait", "error", "ignore"
+    # - wait: Wait for clock to catch up
+    # - error: Throw error
+    # - ignore: Ignore drift and continue generating
+    clock_drift_action: "wait"
+    
+    # —— Performance Configuration ——
+    # Enable sequence cache for better performance
+    enable_sequence_cache: true
+    
+    # Sequence cache size (default: 1000)
+    sequence_cache_size: 1000
+    
+    # Enable metrics collection
+    enable_metrics: true
+    
+    # —— Redis Integration Configuration ——
+    # Redis plugin name for worker ID registration
+    redis_plugin_name: "default"
+    
+    # Redis database for worker ID registration
+    redis_db: 0
+    
+    # —— Advanced Configuration ——
+    # Custom epoch timestamp (default: 2023-01-01 00:00:00 UTC)
+    # 1672531200000 = 2023-01-01 00:00:00 UTC
+    custom_epoch: 1672531200000
+    
+    # Worker ID bits (default: 10, range: 1-20)
+    worker_id_bits: 10
+    
+    # Sequence bits (default: 12, range: 1-20)
+    sequence_bits: 12
+
+# —— Production Environment Configuration Example ——
+# lynx:
+#   snowflake:
+#     # Recommended production configuration
+#     datacenter_id: 1
+#     auto_register_worker_id: true
+#     redis_key_prefix: "prod:lynx:snowflake:worker"
+#     worker_id_ttl: "60s"
+#     heartbeat_interval: "20s"
+#     
+#     # Strict clock drift protection
+#     enable_clock_drift_protection: true
+#     max_clock_drift: "1s"
+#     clock_check_interval: "500ms"
+#     clock_drift_action: "error"
+#     
+#     # High performance configuration
+#     enable_sequence_cache: true
+#     sequence_cache_size: 5000
+#     enable_metrics: true
+#     
+#     # Redis configuration
+#     redis_plugin_name: "cluster"
+#     redis_db: 1
+
+# —— Development Environment Configuration Example ——
+# lynx:
+#   snowflake:
+#     # Simplified development configuration
+#     datacenter_id: 0
+#     worker_id: 1
+#     auto_register_worker_id: false
+#     
+#     # Relaxed clock drift protection
+#     enable_clock_drift_protection: false
+#     
+#     # Basic performance configuration
+#     enable_sequence_cache: false
+#     enable_metrics: false
+
+# —— High Concurrency Scenario Configuration Example ——
+# lynx:
+#   snowflake:
+#     # High concurrency optimization configuration
+#     datacenter_id: 2
+#     auto_register_worker_id: true
+#     redis_key_prefix: "hc:lynx:snowflake:worker"
+#     worker_id_ttl: "120s"
+#     heartbeat_interval: "30s"
+#     
+#     # Clock protection but non-blocking
+#     enable_clock_drift_protection: true
+#     max_clock_drift: "10s"
+#     clock_check_interval: "2s"
+#     clock_drift_action: "ignore"
+#     
+#     # Maximize performance
+#     enable_sequence_cache: true
+#     sequence_cache_size: 10000
+#     enable_metrics: true
+#     
+#     # Custom bit allocation (more sequence bits)
+#     worker_id_bits: 8
+#     sequence_bits: 14
+
+# —— Multi-Data Center Configuration Guide ——
+# When deploying across multiple data centers, each data center should use different datacenter_id:
+# - Data Center A: datacenter_id: 0
+# - Data Center B: datacenter_id: 1  
+# - Data Center C: datacenter_id: 2
+# This ensures that IDs generated from different data centers will not conflict
+
+# —— Redis Dependency Configuration Example ——
+# If auto_register_worker_id is enabled, Redis plugin must also be configured:
+# lynx:
+#   redis:
+#     addr: "localhost:6379"
+#     password: ""
+#     db: 0
+#     pool_size: 10
+#     min_idle_conns: 5
+#   
+#   snowflake:
+#     redis_plugin_name: "default"  # Corresponds to the Redis configuration above
+#     auto_register_worker_id: true

@@ -4,68 +4,144 @@ import (
 	"time"
 
 	pb "github.com/go-lynx/lynx/plugins/snowflake/conf"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
-// 测试配置常量
-const (
-	TestRedisAddr     = "localhost:6379"
-	TestRedisDB       = 15 // 使用专门的测试数据库
-	TestKeyPrefix     = "test:snowflake"
-	TestMaxWorkers    = 1024
-	TestHeartbeatTTL  = 30 * time.Second
-	TestHeartbeatInterval = 10 * time.Second
-)
+// TestConfig provides test configuration utilities
+type TestConfig struct {
+	DatacenterID int64
+	WorkerID     int64
+	Config       *pb.Snowflake
+}
 
-// GetTestConfig 获取测试配置
-func GetTestConfig(workerID, datacenterID int32) *pb.Snowflake {
-	return &pb.Snowflake{
-		WorkerId:                       workerID,
-		DatacenterId:                   datacenterID,
-		AutoRegisterWorkerId:           false,
-		RedisKeyPrefix:                 TestKeyPrefix,
-		RedisPluginName:                "redis",
-		WorkerIdTtl:                    durationpb.New(TestHeartbeatTTL),
-		HeartbeatInterval:              durationpb.New(TestHeartbeatInterval),
-		EnableClockDriftProtection:     true,
+// NewTestConfig creates a new test configuration
+func NewTestConfig(datacenterID, workerID int64) *TestConfig {
+	return &TestConfig{
+		DatacenterID: datacenterID,
+		WorkerID:     workerID,
+		Config:       createDefaultTestConfig(datacenterID, workerID),
 	}
 }
 
-// GetTestConfigWithAutoWorkerID 获取自动分配WorkerID的测试配置
-func GetTestConfigWithAutoWorkerID(datacenterID int32) *pb.Snowflake {
-	config := GetTestConfig(0, datacenterID)
+// createDefaultTestConfig creates a default test configuration
+func createDefaultTestConfig(datacenterID, workerID int64) *pb.Snowflake {
+	return &pb.Snowflake{
+		DatacenterId:               int32(datacenterID),
+		WorkerId:                   int32(workerID),
+		CustomEpoch:                1640995200000, // 2022-01-01 00:00:00 UTC
+		WorkerIdBits:               5,             // 5位工作节点ID (0-31)
+		SequenceBits:               12,            // 12位序列号 (0-4095)
+		EnableClockDriftProtection: false,         // 禁用时钟漂移保护以简化测试
+		ClockDriftAction:           ClockDriftActionWait,
+		EnableSequenceCache:        false,
+		SequenceCacheSize:          0,
+		AutoRegisterWorkerId:       false, // 禁用自动注册以简化测试
+		RedisKeyPrefix:             "test_worker:",
+		RedisPluginName:            "default",
+		RedisDb:                    0,
+	}
+}
+
+// WithRedisConfig sets Redis configuration for testing
+func (tc *TestConfig) WithRedisConfig(pluginName string, db int32) *TestConfig {
+	tc.Config.RedisPluginName = pluginName
+	tc.Config.RedisDb = db
+	return tc
+}
+
+// WithCustomEpoch sets custom epoch for testing
+func (tc *TestConfig) WithCustomEpoch(epoch int64) *TestConfig {
+	tc.Config.CustomEpoch = epoch
+	return tc
+}
+
+// WithClockDriftProtection enables/disables clock drift protection
+func (tc *TestConfig) WithClockDriftProtection(enabled bool, maxDrift time.Duration, action string) *TestConfig {
+	tc.Config.EnableClockDriftProtection = enabled
+	tc.Config.ClockDriftAction = action
+	return tc
+}
+
+// WithSequenceCache enables/disables sequence cache
+func (tc *TestConfig) WithSequenceCache(enabled bool, cacheSize int32) *TestConfig {
+	tc.Config.EnableSequenceCache = enabled
+	tc.Config.SequenceCacheSize = cacheSize
+	return tc
+}
+
+// WithWorkerConfig sets worker configuration
+func (tc *TestConfig) WithWorkerConfig(autoRegister bool) *TestConfig {
+	tc.Config.AutoRegisterWorkerId = autoRegister
+	return tc
+}
+
+// WithKeyPrefixes sets key prefixes for Redis
+func (tc *TestConfig) WithKeyPrefixes(redisKeyPrefix string) *TestConfig {
+	tc.Config.RedisKeyPrefix = redisKeyPrefix
+	return tc
+}
+
+// Build returns the final configuration
+func (tc *TestConfig) Build() *pb.Snowflake {
+	return tc.Config
+}
+
+// CreateTestGenerator creates a generator for testing
+func (tc *TestConfig) CreateTestGenerator() (*SnowflakeGenerator, error) {
+	genConfig := &GeneratorConfig{
+		CustomEpoch:                tc.Config.CustomEpoch,
+		DatacenterIDBits:           5, // 固定为5位数据中心ID (0-31)
+		WorkerIDBits:               int(tc.Config.WorkerIdBits),
+		SequenceBits:               int(tc.Config.SequenceBits),
+		EnableClockDriftProtection: tc.Config.EnableClockDriftProtection,
+		ClockDriftAction:           tc.Config.ClockDriftAction,
+		EnableSequenceCache:        tc.Config.EnableSequenceCache,
+		SequenceCacheSize:          int(tc.Config.SequenceCacheSize),
+	}
+
+	return NewSnowflakeGeneratorCore(tc.DatacenterID, tc.WorkerID, genConfig)
+}
+
+// CreateTestPlugin creates a plugin for testing
+func (tc *TestConfig) CreateTestPlugin() *PlugSnowflake {
+	return NewSnowflakePlugin()
+}
+
+// MinimalConfig creates a minimal configuration for testing
+func MinimalConfig(datacenterID, workerID int64) *pb.Snowflake {
+	return &pb.Snowflake{
+		DatacenterId: int32(datacenterID),
+		WorkerId:     int32(workerID),
+		CustomEpoch:  1640995200000, // 2022-01-01 00:00:00 UTC
+		WorkerIdBits: 10,
+		SequenceBits: 12,
+	}
+}
+
+// RedisTestConfig creates a configuration with Redis for testing
+func RedisTestConfig(datacenterID, workerID int64, redisPluginName string) *pb.Snowflake {
+	config := MinimalConfig(datacenterID, workerID)
 	config.AutoRegisterWorkerId = true
+	config.RedisPluginName = redisPluginName
+	config.RedisDb = 0
+	config.RedisKeyPrefix = "test_worker:"
+
 	return config
 }
 
-// GetTestConfigWithoutRedis 获取不使用Redis的测试配置
-func GetTestConfigWithoutRedis(workerID, datacenterID int32) *pb.Snowflake {
-	return &pb.Snowflake{
-		WorkerId:                       workerID,
-		DatacenterId:                   datacenterID,
-		AutoRegisterWorkerId:           false,
-		RedisPluginName:                "",
-		EnableClockDriftProtection:     true,
-	}
+// ClockDriftTestConfig creates a configuration with clock drift protection
+func ClockDriftTestConfig(datacenterID, workerID int64) *pb.Snowflake {
+	config := MinimalConfig(datacenterID, workerID)
+	config.EnableClockDriftProtection = true
+	config.ClockDriftAction = ClockDriftActionWait
+
+	return config
 }
 
-// GetTestGeneratorConfig 获取生成器测试配置
-func GetTestGeneratorConfig(workerID, datacenterID int64) *GeneratorConfig {
-	return &GeneratorConfig{
-		CustomEpoch:                DefaultEpoch,
-		DatacenterIDBits:          5,
-		WorkerIDBits:              5,
-		SequenceBits:              12,
-		EnableClockDriftProtection: true,
-		ClockDriftAction:          ClockDriftActionWait,
-	}
-}
+// SequenceCacheTestConfig creates a configuration with sequence cache
+func SequenceCacheTestConfig(datacenterID, workerID int64, cacheSize int32) *pb.Snowflake {
+	config := MinimalConfig(datacenterID, workerID)
+	config.EnableSequenceCache = true
+	config.SequenceCacheSize = cacheSize
 
-// GetTestWorkerManagerConfig 获取WorkerID管理器测试配置
-func GetTestWorkerManagerConfig() *WorkerManagerConfig {
-	return &WorkerManagerConfig{
-		KeyPrefix:         TestKeyPrefix,
-		TTL:               TestHeartbeatTTL,
-		HeartbeatInterval: TestHeartbeatInterval,
-	}
+	return config
 }
