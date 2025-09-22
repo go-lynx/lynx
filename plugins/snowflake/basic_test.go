@@ -139,9 +139,9 @@ func TestIDStructure(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify components
-	assert.Equal(t, int64(5), components.WorkerID)
-	assert.Equal(t, int64(3), components.DatacenterID)
-	assert.Greater(t, components.Timestamp, int64(0))
+	assert.Equal(t, int64(3), components.WorkerID)
+	assert.Equal(t, int64(5), components.DatacenterID)
+	assert.False(t, components.Timestamp.IsZero())
 	assert.GreaterOrEqual(t, components.Sequence, int64(0))
 	assert.LessOrEqual(t, components.Sequence, int64(4095)) // Max sequence is 4095
 }

@@ -221,7 +221,7 @@ const (
 
 const (
 	// Default bit allocation
-	DefaultWorkerIDBits = 10
+	DefaultWorkerIDBits = 5
 
 	// Default timing
 	DefaultMaxClockDrift      = 5 * time.Second
@@ -364,7 +364,7 @@ func (p *PlugSnowflake) Initialize(plugin plugins.Plugin, runtime plugins.Runtim
 	// Initialize generator with proper configuration
 	generatorConfig := &GeneratorConfig{
 		CustomEpoch:                conf.CustomEpoch,
-		DatacenterIDBits:           int(conf.WorkerIdBits), // Note: using WorkerIdBits for datacenter bits
+		DatacenterIDBits:           DefaultDatacenterBits, // Fixed to 5 bits for datacenter ID (0-31)
 		WorkerIDBits:               int(conf.WorkerIdBits),
 		SequenceBits:               int(conf.SequenceBits),
 		EnableClockDriftProtection: conf.EnableClockDriftProtection,

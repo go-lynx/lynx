@@ -28,7 +28,7 @@ func createDefaultTestConfig(datacenterID, workerID int64) *pb.Snowflake {
 		DatacenterId:               int32(datacenterID),
 		WorkerId:                   int32(workerID),
 		CustomEpoch:                1640995200000, // 2022-01-01 00:00:00 UTC
-		WorkerIdBits:               5,             // 5位工作节点ID (0-31)
+		WorkerIdBits:               5,             // 5位工作节点ID (0-31) - 配合5位数据中心ID
 		SequenceBits:               12,            // 12位序列号 (0-4095)
 		EnableClockDriftProtection: false,         // 禁用时钟漂移保护以简化测试
 		ClockDriftAction:           ClockDriftActionWait,
@@ -112,7 +112,7 @@ func MinimalConfig(datacenterID, workerID int64) *pb.Snowflake {
 		DatacenterId: int32(datacenterID),
 		WorkerId:     int32(workerID),
 		CustomEpoch:  1640995200000, // 2022-01-01 00:00:00 UTC
-		WorkerIdBits: 10,
+		WorkerIdBits: 5,
 		SequenceBits: 12,
 	}
 }
