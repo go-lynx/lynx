@@ -82,7 +82,7 @@ func file_annotations_proto_init() {
 	if File_annotations_proto != nil {
 		return
 	}
-	file_google_api_http_proto_init()
+	file_http_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

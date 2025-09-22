@@ -1,14 +1,16 @@
 package snowflake
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/redis/go-redis/v9"
-	
+
 	pb "github.com/go-lynx/lynx/plugins/snowflake/conf"
 )
 
@@ -26,6 +28,8 @@ type PlugSnowflake struct {
 	generator *SnowflakeGenerator
 	// Metrics collection
 	metrics *SnowflakeMetrics
+	// Security manager
+	securityManager *SecurityManager
 	// Shutdown channel
 	shutdownCh chan struct{}
 	// Wait group for goroutines
@@ -40,78 +44,110 @@ type PlugSnowflake struct {
 
 // WorkerIDManager manages worker ID registration and heartbeat
 type WorkerIDManager struct {
-	redisClient     redis.UniversalClient
-	workerID        int64
-	datacenterID    int64
-	keyPrefix       string
-	ttl             time.Duration
+	redisClient       redis.UniversalClient
+	workerID          int64
+	datacenterID      int64
+	keyPrefix         string
+	ttl               time.Duration
 	heartbeatInterval time.Duration
-	shutdownCh      chan struct{}
-	mu              sync.RWMutex
+	shutdownCh        chan struct{}
+	mu                sync.RWMutex
 }
 
 // SnowflakeGenerator generates snowflake IDs
 type SnowflakeGenerator struct {
 	// Configuration
-	datacenterID    int64
-	workerID        int64
-	customEpoch     int64
-	workerIDBits    int64
-	sequenceBits    int64
-	
+	datacenterID int64
+	workerID     int64
+	customEpoch  int64
+	workerIDBits int64
+	sequenceBits int64
+
 	// Bit shifts
 	timestampShift  int64
 	datacenterShift int64
 	workerShift     int64
-	
+
 	// Bit masks
 	maxDatacenterID int64
 	maxWorkerID     int64
 	maxSequence     int64
-	
+
 	// State
-	lastTimestamp   int64
-	sequence        int64
-	
+	lastTimestamp int64
+	sequence      int64
+
 	// Statistics
 	generatedCount     int64
 	clockBackwardCount int64
-	
+
 	// Clock drift protection
 	enableClockDriftProtection bool
-	maxClockDrift             time.Duration
-	clockDriftAction          string
-	lastClockCheck            time.Time
-	
+	maxClockDrift              time.Duration
+	clockDriftAction           string
+	lastClockCheck             time.Time
+
 	// Sequence cache for performance
 	enableSequenceCache bool
 	sequenceCache       []int64
 	cacheIndex          int
 	cacheSize           int
-	
+
 	// Shutdown state
 	isShuttingDown bool
-	
+
+	// Metrics collection
+	metrics *SnowflakeMetrics
+
 	// Mutex for thread safety
 	mu sync.Mutex
 }
 
-// SnowflakeMetrics collects metrics for the snowflake generator
+// SnowflakeMetrics collects detailed metrics for the snowflake generator
 type SnowflakeMetrics struct {
 	// ID generation metrics
 	IDsGenerated      int64
 	ClockDriftEvents  int64
 	WorkerIDConflicts int64
 	SequenceOverflows int64
-	
+
 	// Performance metrics
 	GenerationLatency time.Duration
-	CacheHitRate      float64
-	
+	AverageLatency    time.Duration
+	P95Latency        time.Duration
+	P99Latency        time.Duration
+	MaxLatency        time.Duration
+	MinLatency        time.Duration
+
+	// Cache metrics
+	CacheHitRate float64
+	CacheHits    int64
+	CacheMisses  int64
+	CacheRefills int64
+
+	// Throughput metrics
+	IDGenerationRate   float64 // IDs per second
+	PeakGenerationRate float64 // Peak IDs per second
+
 	// Error metrics
 	GenerationErrors int64
 	RedisErrors      int64
-	
+	TimeoutErrors    int64
+	ValidationErrors int64
+
+	// Connection metrics
+	RedisConnectionPool int
+	ActiveConnections   int
+	IdleConnections     int
+
+	// Timing metrics
+	StartTime          time.Time
+	LastGenerationTime time.Time
+	UptimeDuration     time.Duration
+
+	// Latency histogram for detailed analysis
+	LatencyHistogram map[string]int64 // e.g., "0-1ms": count, "1-5ms": count
+
 	mu sync.RWMutex
 }
 
@@ -123,7 +159,7 @@ type ClockDriftError struct {
 }
 
 func (e *ClockDriftError) Error() string {
-	return fmt.Sprintf("clock drift detected: current=%v, last=%v, drift=%v", 
+	return fmt.Sprintf("clock drift detected: current=%v, last=%v, drift=%v",
 		e.CurrentTime, e.LastTimestamp, e.Drift)
 }
 
@@ -135,7 +171,7 @@ type WorkerIDConflictError struct {
 }
 
 func (e *WorkerIDConflictError) Error() string {
-	return fmt.Sprintf("worker ID conflict: worker_id=%d, datacenter_id=%d, conflict_with=%s", 
+	return fmt.Sprintf("worker ID conflict: worker_id=%d, datacenter_id=%d, conflict_with=%s",
 		e.WorkerID, e.DatacenterID, e.ConflictWith)
 }
 
@@ -146,6 +182,14 @@ type SnowflakeID struct {
 	DatacenterID int64     `json:"datacenter_id"`
 	WorkerID     int64     `json:"worker_id"`
 	Sequence     int64     `json:"sequence"`
+}
+
+// IDComponents represents the components of a snowflake ID
+type IDComponents struct {
+	Timestamp    int64 `json:"timestamp"`
+	DatacenterID int64 `json:"datacenter_id"`
+	WorkerID     int64 `json:"worker_id"`
+	Sequence     int64 `json:"sequence"`
 }
 
 // GeneratorStats represents statistics about the generator
@@ -168,30 +212,459 @@ const (
 	DefaultSequenceBits     = 12
 	DefaultEpoch            = 1609459200000 // 2021-01-01 00:00:00 UTC in milliseconds
 	DefaultMaxClockBackward = 5000          // 5 seconds in milliseconds
-	
+
 	// Redis integration constants
-	DefaultRedisKeyPrefix      = "snowflake"
-	DefaultWorkerIDTTL         = 30 * time.Second
-	DefaultHeartbeatInterval   = 10 * time.Second
+	DefaultRedisKeyPrefix    = "snowflake"
+	DefaultWorkerIDTTL       = 30 * time.Second
+	DefaultHeartbeatInterval = 10 * time.Second
 )
 
 const (
 	// Default bit allocation
 	DefaultWorkerIDBits = 10
-	
+
 	// Default timing
 	DefaultMaxClockDrift      = 5 * time.Second
 	DefaultClockCheckInterval = 1 * time.Second
-	
+
 	// Default cache size
 	DefaultSequenceCacheSize = 1000
-	
+
 	// Redis key patterns
-	WorkerIDLockKey       = "lynx:snowflake:lock:worker_id"
-	WorkerIDRegistryKey   = "lynx:snowflake:registry"
-	
+	WorkerIDLockKey     = "lynx:snowflake:lock:worker_id"
+	WorkerIDRegistryKey = "lynx:snowflake:registry"
+
 	// Clock drift actions
 	ClockDriftActionWait   = "wait"
 	ClockDriftActionError  = "error"
 	ClockDriftActionIgnore = "ignore"
 )
+
+// NewSnowflakePlugin creates a new snowflake plugin instance
+func NewSnowflakePlugin() *PlugSnowflake {
+	return &PlugSnowflake{
+		shutdownCh: make(chan struct{}),
+	}
+}
+
+// Plugin interface implementation
+
+// ID returns the plugin ID
+func (p *PlugSnowflake) ID() string {
+	return "snowflake"
+}
+
+// Description returns the plugin description
+func (p *PlugSnowflake) Description() string {
+	return "Snowflake ID generator plugin for distributed unique ID generation"
+}
+
+// Weight returns the plugin weight for loading order
+func (p *PlugSnowflake) Weight() int {
+	return 100
+}
+
+// UpdateConfiguration updates the plugin configuration
+func (p *PlugSnowflake) UpdateConfiguration(config interface{}) error {
+	if conf, ok := config.(*pb.Snowflake); ok {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.conf = conf
+		return nil
+	}
+	return fmt.Errorf("invalid configuration type for snowflake plugin")
+}
+
+// Lifecycle interface implementation
+
+// Initialize initializes the plugin
+func (p *PlugSnowflake) Initialize(plugin plugins.Plugin, runtime plugins.Runtime) error {
+	p.runtime = runtime
+	p.logger = runtime.GetLogger()
+
+	// Get configuration
+	conf := &pb.Snowflake{}
+	config := runtime.GetConfig()
+	if config != nil {
+		// Load protobuf configuration using the config prefix
+		if err := config.Value(ConfPrefix).Scan(conf); err != nil {
+			// If config loading fails, use default values and log warning
+			log.NewHelper(p.logger).Warnf("failed to load snowflake configuration: %v, using defaults", err)
+			conf = &pb.Snowflake{
+				DatacenterId:               0,
+				WorkerId:                   0,
+				AutoRegisterWorkerId:       true,
+				RedisKeyPrefix:             DefaultRedisKeyPrefix,
+				EnableClockDriftProtection: true,
+				ClockDriftAction:           "wait",
+				EnableSequenceCache:        true,
+				SequenceCacheSize:          1000,
+				EnableMetrics:              true,
+				RedisPluginName:            "redis",
+				RedisDb:                    0,
+				CustomEpoch:                DefaultEpoch,
+				WorkerIdBits:               DefaultWorkerBits,
+				SequenceBits:               DefaultSequenceBits,
+			}
+		}
+	}
+	p.conf = conf
+
+	// Initialize Redis client if auto registration is enabled
+	if conf.AutoRegisterWorkerId {
+		redisPluginName := conf.RedisPluginName
+		if redisPluginName == "" {
+			redisPluginName = "redis"
+		}
+
+		// Try to get Redis client from shared resources
+		if redisResource, err := runtime.GetSharedResource(redisPluginName); err == nil {
+			if redisClient, ok := redisResource.(redis.UniversalClient); ok {
+				p.redisClient = redisClient
+				log.NewHelper(p.logger).Infof("successfully connected to Redis plugin: %s", redisPluginName)
+			} else {
+				log.NewHelper(p.logger).Warnf("Redis resource is not UniversalClient type, disabling auto worker ID registration")
+				conf.AutoRegisterWorkerId = false
+			}
+		} else {
+			log.NewHelper(p.logger).Warnf("failed to get Redis client from plugin %s: %v, disabling auto worker ID registration", redisPluginName, err)
+			conf.AutoRegisterWorkerId = false
+		}
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Initialize worker manager with proper configuration
+	keyPrefix := conf.RedisKeyPrefix
+	if keyPrefix == "" {
+		keyPrefix = DefaultRedisKeyPrefix
+	}
+
+	ttl := DefaultWorkerIDTTL
+	if conf.WorkerIdTtl != nil {
+		ttl = conf.WorkerIdTtl.AsDuration()
+	}
+
+	heartbeatInterval := DefaultHeartbeatInterval
+	if conf.HeartbeatInterval != nil {
+		heartbeatInterval = conf.HeartbeatInterval.AsDuration()
+	}
+
+	p.workerManager = &WorkerIDManager{
+		redisClient:       p.redisClient,
+		workerID:          int64(conf.WorkerId),
+		datacenterID:      int64(conf.DatacenterId),
+		keyPrefix:         keyPrefix,
+		ttl:               ttl,
+		heartbeatInterval: heartbeatInterval,
+		shutdownCh:        make(chan struct{}),
+	}
+
+	// Initialize generator with proper configuration
+	generatorConfig := &GeneratorConfig{
+		CustomEpoch:                conf.CustomEpoch,
+		DatacenterIDBits:           int(conf.WorkerIdBits), // Note: using WorkerIdBits for datacenter bits
+		WorkerIDBits:               int(conf.WorkerIdBits),
+		SequenceBits:               int(conf.SequenceBits),
+		EnableClockDriftProtection: conf.EnableClockDriftProtection,
+		MaxClockDrift:              time.Duration(5 * time.Second), // Default value
+		ClockDriftAction:           conf.ClockDriftAction,
+		EnableSequenceCache:        conf.EnableSequenceCache,
+		SequenceCacheSize:          int(conf.SequenceCacheSize),
+	}
+
+	// Set default values if not specified
+	if generatorConfig.CustomEpoch == 0 {
+		generatorConfig.CustomEpoch = DefaultEpoch
+	}
+	if generatorConfig.WorkerIDBits == 0 {
+		generatorConfig.WorkerIDBits = DefaultWorkerBits
+	}
+	if generatorConfig.SequenceBits == 0 {
+		generatorConfig.SequenceBits = DefaultSequenceBits
+	}
+	if generatorConfig.SequenceCacheSize == 0 {
+		generatorConfig.SequenceCacheSize = 1000
+	}
+
+	// Handle clock drift configuration
+	if conf.MaxClockDrift != nil {
+		generatorConfig.MaxClockDrift = conf.MaxClockDrift.AsDuration()
+	}
+
+	var err error
+	p.generator, err = NewSnowflakeGeneratorCore(int64(conf.DatacenterId), int64(conf.WorkerId), generatorConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create snowflake generator: %w", err)
+	}
+
+	// Initialize metrics
+	p.metrics = &SnowflakeMetrics{
+		StartTime: time.Now(),
+	}
+
+	return nil
+}
+
+// Start starts the plugin
+func (p *PlugSnowflake) Start(plugin plugins.Plugin) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Start worker manager heartbeat
+	if p.workerManager != nil {
+		p.wg.Add(1)
+		go func() {
+			defer p.wg.Done()
+			// Worker manager heartbeat logic would go here
+		}()
+	}
+
+	return nil
+}
+
+// Stop stops the plugin
+func (p *PlugSnowflake) Stop(plugin plugins.Plugin) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Signal shutdown
+	close(p.shutdownCh)
+
+	// Wait for goroutines to finish
+	p.wg.Wait()
+
+	return nil
+}
+
+// Status returns the plugin status
+func (p *PlugSnowflake) Status(plugin plugins.Plugin) plugins.PluginStatus {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.generator != nil {
+		return plugins.StatusActive
+	}
+	return plugins.StatusInactive
+}
+
+// LifecycleSteps interface implementation
+
+// InitializeResources initializes plugin resources
+func (p *PlugSnowflake) InitializeResources(rt plugins.Runtime) error {
+	// Initialize resources
+	return nil
+}
+
+// StartupTasks performs startup tasks
+func (p *PlugSnowflake) StartupTasks() error {
+	// Startup tasks logic
+	return nil
+}
+
+// CleanupTasks performs cleanup tasks
+func (p *PlugSnowflake) CleanupTasks() error {
+	// Cleanup tasks logic
+	return nil
+}
+
+// CheckHealth checks plugin health
+func (p *PlugSnowflake) CheckHealth() error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.generator == nil {
+		return fmt.Errorf("snowflake generator not initialized")
+	}
+
+	return nil
+}
+
+// GetHealth implements the HealthCheck interface
+func (p *PlugSnowflake) GetHealth() plugins.HealthReport {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	status := "healthy"
+	details := make(map[string]any)
+	message := "Snowflake ID generator is operating normally"
+
+	// Check generator status
+	if p.generator == nil {
+		status = "unhealthy"
+		message = "Snowflake generator not initialized"
+		details["generator_status"] = "not_initialized"
+	} else {
+		details["generator_status"] = "initialized"
+		details["worker_id"] = p.generator.workerID
+		details["datacenter_id"] = p.generator.datacenterID
+		details["custom_epoch"] = p.generator.customEpoch
+		details["generated_count"] = atomic.LoadInt64(&p.generator.generatedCount)
+		details["clock_backward_count"] = atomic.LoadInt64(&p.generator.clockBackwardCount)
+		details["is_shutting_down"] = p.generator.isShuttingDown
+
+		// Check for clock drift issues
+		if p.generator.clockBackwardCount > 0 {
+			status = "degraded"
+			message = "Clock backward events detected"
+		}
+	}
+
+	// Check Redis connection status
+	if p.redisClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		if err := p.redisClient.Ping(ctx).Err(); err != nil {
+			if status == "healthy" {
+				status = "degraded"
+			}
+			message = "Redis connection issues detected"
+			details["redis_status"] = "unhealthy"
+			details["redis_error"] = err.Error()
+		} else {
+			details["redis_status"] = "healthy"
+		}
+	} else {
+		details["redis_status"] = "not_configured"
+	}
+
+	// Check worker manager status
+	if p.workerManager != nil {
+		details["worker_manager_status"] = "active"
+		details["worker_manager_worker_id"] = p.workerManager.workerID
+		details["worker_manager_datacenter_id"] = p.workerManager.datacenterID
+		details["worker_manager_key_prefix"] = p.workerManager.keyPrefix
+		details["worker_manager_ttl"] = p.workerManager.ttl.String()
+		details["worker_manager_heartbeat_interval"] = p.workerManager.heartbeatInterval.String()
+	} else {
+		details["worker_manager_status"] = "not_configured"
+	}
+
+	// Add metrics information if available
+	if p.metrics != nil {
+		p.metrics.mu.RLock()
+		details["metrics"] = map[string]any{
+			"ids_generated":        p.metrics.IDsGenerated,
+			"clock_drift_events":   p.metrics.ClockDriftEvents,
+			"worker_id_conflicts":  p.metrics.WorkerIDConflicts,
+			"sequence_overflows":   p.metrics.SequenceOverflows,
+			"generation_errors":    p.metrics.GenerationErrors,
+			"redis_errors":         p.metrics.RedisErrors,
+			"timeout_errors":       p.metrics.TimeoutErrors,
+			"validation_errors":    p.metrics.ValidationErrors,
+			"id_generation_rate":   p.metrics.IDGenerationRate,
+			"peak_generation_rate": p.metrics.PeakGenerationRate,
+			"uptime_duration":      p.metrics.UptimeDuration.String(),
+			"last_generation_time": p.metrics.LastGenerationTime.Format(time.RFC3339),
+		}
+		p.metrics.mu.RUnlock()
+
+		// Check for high error rates
+		totalOperations := p.metrics.IDsGenerated + p.metrics.GenerationErrors
+		if totalOperations > 0 {
+			errorRate := float64(p.metrics.GenerationErrors) / float64(totalOperations)
+			details["error_rate"] = errorRate
+
+			if errorRate > 0.1 { // More than 10% error rate
+				status = "degraded"
+				message = "High error rate detected"
+			}
+		}
+	}
+
+	// Add configuration information
+	if p.conf != nil {
+		details["configuration"] = map[string]any{
+			"datacenter_id":           p.conf.DatacenterId,
+			"worker_id":               p.conf.WorkerId,
+			"custom_epoch":            p.conf.CustomEpoch,
+			"auto_register_worker_id": p.conf.AutoRegisterWorkerId,
+			"redis_plugin_name":       p.conf.RedisPluginName,
+			"redis_key_prefix":        p.conf.RedisKeyPrefix,
+			"worker_id_ttl":           p.conf.WorkerIdTtl,
+			"heartbeat_interval":      p.conf.HeartbeatInterval,
+			"enable_metrics":          p.conf.EnableMetrics,
+			"clock_drift_protection":  p.conf.EnableClockDriftProtection,
+			"sequence_cache":          p.conf.EnableSequenceCache,
+			"max_clock_drift":         p.conf.MaxClockDrift,
+			"clock_check_interval":    p.conf.ClockCheckInterval,
+			"clock_drift_action":      p.conf.ClockDriftAction,
+			"sequence_cache_size":     p.conf.SequenceCacheSize,
+			"redis_db":                p.conf.RedisDb,
+			"worker_id_bits":          p.conf.WorkerIdBits,
+			"sequence_bits":           p.conf.SequenceBits,
+		}
+	}
+
+	return plugins.HealthReport{
+		Status:    status,
+		Details:   details,
+		Timestamp: time.Now().Unix(),
+		Message:   message,
+	}
+}
+
+// DependencyAware interface implementation
+
+// GetDependencies returns plugin dependencies
+func (p *PlugSnowflake) GetDependencies() []plugins.Dependency {
+	var deps []plugins.Dependency
+	if p.conf.RedisPluginName != "" {
+		deps = append(deps, plugins.Dependency{
+			ID:          "redis",
+			Name:        "Redis",
+			Type:        plugins.DependencyTypeOptional,
+			Required:    false,
+			Description: "Redis client for worker ID management",
+		})
+	}
+	return deps
+}
+
+// Snowflake specific methods
+
+// GenerateID generates a new snowflake ID
+func (p *PlugSnowflake) GenerateID() (int64, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.generator == nil {
+		return 0, fmt.Errorf("snowflake generator not initialized")
+	}
+
+	return p.generator.GenerateID()
+}
+
+// GenerateIDWithMetadata generates a new snowflake ID with metadata
+func (p *PlugSnowflake) GenerateIDWithMetadata() (int64, *SnowflakeID, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.generator == nil {
+		return 0, nil, fmt.Errorf("snowflake generator not initialized")
+	}
+
+	return p.generator.GenerateIDWithMetadata()
+}
+
+// ParseID parses a snowflake ID into its components
+func (p *PlugSnowflake) ParseID(id int64) (*SnowflakeID, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.generator == nil {
+		return nil, fmt.Errorf("snowflake generator not initialized")
+	}
+
+	return p.generator.ParseID(id)
+}
+
+// GetGenerator returns the snowflake generator instance
+func (p *PlugSnowflake) GetGenerator() *SnowflakeGenerator {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	return p.generator
+}

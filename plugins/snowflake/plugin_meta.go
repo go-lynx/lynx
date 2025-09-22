@@ -1,7 +1,5 @@
 package snowflake
 
-
-
 // Plugin metadata
 const (
 	// Plugin metadata

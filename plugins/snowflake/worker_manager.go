@@ -78,7 +78,7 @@ func (w *WorkerIDManager) tryRegisterWorkerID(ctx context.Context, workerID int6
 
 	// Use distributed lock to prevent race conditions
 	lockValue := fmt.Sprintf("%d:%d:%d", w.datacenterID, workerID, time.Now().UnixNano())
-	
+
 	// Try to acquire lock
 	acquired, err := w.redisClient.SetNX(ctx, lockKey, lockValue, 10*time.Second).Result()
 	if err != nil {
@@ -104,11 +104,11 @@ func (w *WorkerIDManager) tryRegisterWorkerID(ctx context.Context, workerID int6
 
 	// Register worker ID
 	workerInfo := WorkerInfo{
-		WorkerID:     workerID,
-		DatacenterID: w.datacenterID,
-		RegisterTime: time.Now(),
+		WorkerID:      workerID,
+		DatacenterID:  w.datacenterID,
+		RegisterTime:  time.Now(),
 		LastHeartbeat: time.Now(),
-		InstanceID:   w.generateInstanceID(),
+		InstanceID:    w.generateInstanceID(),
 	}
 
 	// Set worker key with TTL
@@ -214,7 +214,7 @@ func (w *WorkerIDManager) GetWorkerID() int64 {
 // GetRegisteredWorkers returns all registered workers
 func (w *WorkerIDManager) GetRegisteredWorkers(ctx context.Context) ([]WorkerInfo, error) {
 	registryKey := w.getRegistryKey()
-	
+
 	members, err := w.redisClient.SMembers(ctx, registryKey).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get registry members: %w", err)
@@ -287,11 +287,11 @@ type WorkerInfo struct {
 
 // String returns a string representation of WorkerInfo
 func (w *WorkerInfo) String() string {
-	return fmt.Sprintf("%d:%d:%d:%d:%s", 
-		w.WorkerID, 
-		w.DatacenterID, 
-		w.RegisterTime.Unix(), 
-		w.LastHeartbeat.Unix(), 
+	return fmt.Sprintf("%d:%d:%d:%d:%s",
+		w.WorkerID,
+		w.DatacenterID,
+		w.RegisterTime.Unix(),
+		w.LastHeartbeat.Unix(),
 		w.InstanceID)
 }
 

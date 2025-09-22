@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
-	
+
 	pb "github.com/go-lynx/lynx/plugins/snowflake/conf"
 )
 
@@ -13,16 +13,16 @@ func NewSnowflakeGeneratorWithConfig(config *pb.Snowflake) (*SnowflakeGenerator,
 	// Convert protobuf config to internal config
 	internalConfig := &GeneratorConfig{
 		CustomEpoch:                config.CustomEpoch,
-		DatacenterIDBits:          5, // Fixed to 5 bits for datacenter ID (0-31)
-		WorkerIDBits:              int(config.WorkerIdBits),
-		SequenceBits:              int(config.SequenceBits),
+		DatacenterIDBits:           5, // Fixed to 5 bits for datacenter ID (0-31)
+		WorkerIDBits:               int(config.WorkerIdBits),
+		SequenceBits:               int(config.SequenceBits),
 		EnableClockDriftProtection: config.EnableClockDriftProtection,
-		MaxClockDrift:             config.MaxClockDrift.AsDuration(),
-		ClockDriftAction:          ClockDriftActionWait,
-		EnableSequenceCache:       config.EnableSequenceCache,
-		SequenceCacheSize:         int(config.SequenceCacheSize),
+		MaxClockDrift:              config.MaxClockDrift.AsDuration(),
+		ClockDriftAction:           ClockDriftActionWait,
+		EnableSequenceCache:        config.EnableSequenceCache,
+		SequenceCacheSize:          int(config.SequenceCacheSize),
 	}
-	
+
 	return NewSnowflakeGeneratorCore(int64(config.DatacenterId), int64(config.WorkerId), internalConfig)
 }
 
@@ -61,19 +61,19 @@ func NewSnowflakeGeneratorCore(datacenterID, workerID int64, config *GeneratorCo
 	workerShift := config.SequenceBits
 
 	generator := &SnowflakeGenerator{
-		datacenterID:    datacenterID,
-		workerID:        workerID,
-		customEpoch:     config.CustomEpoch,
-		workerIDBits:    int64(config.WorkerIDBits),
-		sequenceBits:    int64(config.SequenceBits),
-		timestampShift:  int64(timestampShift),
-		datacenterShift: int64(datacenterShift),
-		workerShift:     int64(workerShift),
-		maxDatacenterID: int64(maxDatacenterID),
-		maxWorkerID:     int64(maxWorkerID),
-		maxSequence:     (1 << config.SequenceBits) - 1,
-		lastTimestamp:   -1,
-		sequence:        0,
+		datacenterID:               datacenterID,
+		workerID:                   workerID,
+		customEpoch:                config.CustomEpoch,
+		workerIDBits:               int64(config.WorkerIDBits),
+		sequenceBits:               int64(config.SequenceBits),
+		timestampShift:             int64(timestampShift),
+		datacenterShift:            int64(datacenterShift),
+		workerShift:                int64(workerShift),
+		maxDatacenterID:            int64(maxDatacenterID),
+		maxWorkerID:                int64(maxWorkerID),
+		maxSequence:                (1 << config.SequenceBits) - 1,
+		lastTimestamp:              -1,
+		sequence:                   0,
 		enableClockDriftProtection: config.EnableClockDriftProtection,
 		maxClockDrift:              config.MaxClockDrift,
 		clockDriftAction:           config.ClockDriftAction,
@@ -87,16 +87,21 @@ func NewSnowflakeGeneratorCore(datacenterID, workerID int64, config *GeneratorCo
 		generator.cacheIndex = 0
 	}
 
+	// Initialize metrics
+	generator.metrics = NewSnowflakeMetrics()
+
 	return generator, nil
 }
 
 // GenerateID generates a new snowflake ID
 func (g *SnowflakeGenerator) GenerateID() (int64, error) {
+	startTime := time.Now()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	// Check if generator is shutting down
 	if g.isShuttingDown {
+		g.metrics.RecordError("generation")
 		return 0, fmt.Errorf("generator is shutting down")
 	}
 
@@ -116,14 +121,23 @@ func (g *SnowflakeGenerator) GenerateID() (int64, error) {
 
 	// If same millisecond, increment sequence
 	if timestamp == g.lastTimestamp {
-		g.sequence = (g.sequence + 1) & g.maxSequence
-		if g.sequence == 0 {
-			// Sequence overflow, wait for next millisecond
-			timestamp = g.waitForNextMillisecond(timestamp)
+		if g.enableSequenceCache && g.cacheIndex < len(g.sequenceCache) {
+			// Use cached sequence if available
+			g.sequence = g.sequenceCache[g.cacheIndex]
+			g.cacheIndex++
+		} else {
+			g.sequence = (g.sequence + 1) & g.maxSequence
+			if g.sequence == 0 {
+				// Sequence overflow, wait for next millisecond
+				timestamp = g.waitForNextMillisecond(timestamp)
+			}
 		}
 	} else {
-		// New millisecond, reset sequence
+		// New millisecond, reset sequence and refill cache if enabled
 		g.sequence = 0
+		if g.enableSequenceCache {
+			g.refillSequenceCache()
+		}
 	}
 
 	g.lastTimestamp = timestamp
@@ -136,6 +150,11 @@ func (g *SnowflakeGenerator) GenerateID() (int64, error) {
 
 	// Update statistics
 	g.generatedCount++
+
+	// Record metrics
+	latency := time.Since(startTime)
+	cacheHit := g.enableSequenceCache && g.cacheIndex > 0
+	g.metrics.RecordIDGeneration(latency, cacheHit)
 
 	return id, nil
 }
@@ -167,6 +186,14 @@ func (g *SnowflakeGenerator) GetStats() *GeneratorStats {
 		ClockBackwardCount: g.clockBackwardCount,
 		LastGeneratedTime:  g.lastTimestamp,
 	}
+}
+
+// GetMetrics returns detailed metrics about the generator
+func (g *SnowflakeGenerator) GetMetrics() *SnowflakeMetrics {
+	if g.metrics == nil {
+		return nil
+	}
+	return g.metrics.GetSnapshot()
 }
 
 // IsHealthy returns whether the generator is healthy
@@ -270,7 +297,7 @@ func (g *SnowflakeGenerator) checkClockDrift(currentTimestamp int64) error {
 // handleClockBackward handles the case when clock goes backward
 func (g *SnowflakeGenerator) handleClockBackward(currentTimestamp int64) error {
 	drift := time.Duration(g.lastTimestamp-currentTimestamp) * time.Millisecond
-	
+
 	// Update statistics
 	g.clockBackwardCount++
 
@@ -305,35 +332,61 @@ func (g *SnowflakeGenerator) waitForNextMillisecond(lastTimestamp int64) int64 {
 	return timestamp
 }
 
+// refillSequenceCache pre-generates sequence numbers for better performance
+func (g *SnowflakeGenerator) refillSequenceCache() {
+	if !g.enableSequenceCache || len(g.sequenceCache) == 0 {
+		return
+	}
+
+	// Fill cache with sequential numbers starting from current sequence
+	for i := 0; i < len(g.sequenceCache); i++ {
+		g.sequenceCache[i] = (g.sequence + int64(i) + 1) & g.maxSequence
+		// If we hit the max sequence, break to avoid overflow
+		if g.sequenceCache[i] == 0 {
+			// Resize cache to only include valid sequences
+			g.sequenceCache = g.sequenceCache[:i]
+			break
+		}
+	}
+
+	// Reset cache index
+	g.cacheIndex = 0
+
+	// Record cache refill metrics
+	if g.metrics != nil {
+		g.metrics.RecordCacheRefill()
+	}
+}
+
 // GeneratorConfig holds configuration for the snowflake generator
 type GeneratorConfig struct {
 	CustomEpoch                int64
-	DatacenterIDBits          int
-	WorkerIDBits              int
-	SequenceBits              int
+	DatacenterIDBits           int
+	WorkerIDBits               int
+	SequenceBits               int
 	EnableClockDriftProtection bool
-	MaxClockDrift             time.Duration
-	ClockDriftAction          string
-	EnableSequenceCache       bool
-	SequenceCacheSize         int
+	MaxClockDrift              time.Duration
+	ClockDriftAction           string
+	EnableSequenceCache        bool
+	SequenceCacheSize          int
 }
 
 // DefaultGeneratorConfig returns default generator configuration
 func DefaultGeneratorConfig() *GeneratorConfig {
 	return &GeneratorConfig{
 		CustomEpoch:                DefaultEpoch,
-		DatacenterIDBits:          5,  // 0-31
-		WorkerIDBits:              DefaultWorkerIDBits, // 0-1023
-		SequenceBits:              DefaultSequenceBits, // 0-4095
+		DatacenterIDBits:           5,  // 0-31
+		WorkerIDBits:               5,  // 0-31 (reduced from 10 to fit 22-bit limit)
+		SequenceBits:               12, // 0-4095
 		EnableClockDriftProtection: true,
-		MaxClockDrift:             DefaultMaxClockDrift,
-		ClockDriftAction:          ClockDriftActionWait,
-		EnableSequenceCache:       false,
-		SequenceCacheSize:         DefaultSequenceCacheSize,
+		MaxClockDrift:              DefaultMaxClockDrift,
+		ClockDriftAction:           ClockDriftActionWait,
+		EnableSequenceCache:        false,
+		SequenceCacheSize:          DefaultSequenceCacheSize,
 	}
 }
 
-// Validate validates the generator configuration
+// Validate validates the generator configuration with enhanced checks
 func (c *GeneratorConfig) Validate() error {
 	// Check bit allocation
 	totalBits := c.DatacenterIDBits + c.WorkerIDBits + c.SequenceBits
@@ -353,6 +406,58 @@ func (c *GeneratorConfig) Validate() error {
 		return fmt.Errorf("sequence bits must be between 1 and 20, got %d", c.SequenceBits)
 	}
 
+	// Enhanced epoch validation
+	if err := c.validateEpoch(); err != nil {
+		return err
+	}
+
+	// Enhanced clock drift validation
+	if err := c.validateClockDrift(); err != nil {
+		return err
+	}
+
+	// Enhanced cache validation
+	if err := c.validateCache(); err != nil {
+		return err
+	}
+
+	// Validate bit allocation efficiency
+	if err := c.validateBitAllocationEfficiency(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateEpoch validates the custom epoch configuration
+func (c *GeneratorConfig) validateEpoch() error {
+	// Check if epoch is not in the future
+	currentTimestamp := time.Now().UnixMilli()
+	if c.CustomEpoch > currentTimestamp {
+		return fmt.Errorf("custom epoch cannot be in the future: epoch=%d, current=%d",
+			c.CustomEpoch, currentTimestamp)
+	}
+
+	// Check if epoch is not too old (more than 50 years ago)
+	fiftyYearsAgo := time.Now().AddDate(-50, 0, 0).UnixMilli()
+	if c.CustomEpoch < fiftyYearsAgo {
+		return fmt.Errorf("custom epoch is too old (more than 50 years ago): epoch=%d, limit=%d",
+			c.CustomEpoch, fiftyYearsAgo)
+	}
+
+	// Check if epoch allows for reasonable future timestamps
+	// With 41 bits for timestamp, we can represent ~69 years from epoch
+	maxFutureTime := c.CustomEpoch + (1<<41 - 1)
+	if maxFutureTime < time.Now().AddDate(10, 0, 0).UnixMilli() {
+		return fmt.Errorf("custom epoch doesn't allow for sufficient future timestamps: max_future=%d",
+			maxFutureTime)
+	}
+
+	return nil
+}
+
+// validateClockDrift validates clock drift protection settings
+func (c *GeneratorConfig) validateClockDrift() error {
 	// Check clock drift action
 	switch c.ClockDriftAction {
 	case ClockDriftActionWait, ClockDriftActionError, ClockDriftActionIgnore:
@@ -361,9 +466,81 @@ func (c *GeneratorConfig) Validate() error {
 		return fmt.Errorf("invalid clock drift action: %s", c.ClockDriftAction)
 	}
 
-	// Check cache size
-	if c.EnableSequenceCache && c.SequenceCacheSize <= 0 {
-		return fmt.Errorf("sequence cache size must be positive when cache is enabled")
+	// Validate max clock drift duration
+	if c.EnableClockDriftProtection {
+		if c.MaxClockDrift <= 0 {
+			return fmt.Errorf("max clock drift must be positive when clock drift protection is enabled")
+		}
+
+		if c.MaxClockDrift > 1*time.Hour {
+			return fmt.Errorf("max clock drift is too large (>1 hour): %v", c.MaxClockDrift)
+		}
+
+		if c.MaxClockDrift < 100*time.Millisecond {
+			return fmt.Errorf("max clock drift is too small (<100ms): %v", c.MaxClockDrift)
+		}
+	}
+
+	return nil
+}
+
+// validateCache validates sequence cache settings
+func (c *GeneratorConfig) validateCache() error {
+	if c.EnableSequenceCache {
+		if c.SequenceCacheSize <= 0 {
+			return fmt.Errorf("sequence cache size must be positive when cache is enabled")
+		}
+
+		// Check cache size limits
+		maxSequence := 1 << c.SequenceBits
+		if c.SequenceCacheSize > maxSequence {
+			return fmt.Errorf("sequence cache size (%d) cannot exceed max sequence (%d)",
+				c.SequenceCacheSize, maxSequence)
+		}
+
+		// Warn if cache size is too large (more than 50% of sequence space)
+		if c.SequenceCacheSize > maxSequence/2 {
+			// This is a warning, not an error, but we could log it
+			// For now, we'll allow it but could add logging here
+		}
+
+		// Check minimum cache size for efficiency
+		if c.SequenceCacheSize < 10 {
+			return fmt.Errorf("sequence cache size is too small (<10): %d", c.SequenceCacheSize)
+		}
+	}
+
+	return nil
+}
+
+// validateBitAllocationEfficiency validates the efficiency of bit allocation
+func (c *GeneratorConfig) validateBitAllocationEfficiency() error {
+	// Calculate maximum values for each component
+	maxDatacenters := 1 << c.DatacenterIDBits
+	maxWorkers := 1 << c.WorkerIDBits
+	maxSequence := 1 << c.SequenceBits
+
+	// Check for reasonable bit allocation
+	if c.DatacenterIDBits > 0 && maxDatacenters > 1024 {
+		return fmt.Errorf("datacenter ID bits allocation is excessive (>1024 datacenters): %d bits = %d max",
+			c.DatacenterIDBits, maxDatacenters)
+	}
+
+	if maxWorkers > 65536 {
+		return fmt.Errorf("worker ID bits allocation is excessive (>65536 workers): %d bits = %d max",
+			c.WorkerIDBits, maxWorkers)
+	}
+
+	if maxSequence < 100 {
+		return fmt.Errorf("sequence bits allocation is too small (<100 sequences per ms): %d bits = %d max",
+			c.SequenceBits, maxSequence)
+	}
+
+	// Check for balanced allocation
+	totalBits := c.DatacenterIDBits + c.WorkerIDBits + c.SequenceBits
+	if c.SequenceBits < totalBits/3 {
+		return fmt.Errorf("sequence bits allocation is disproportionately small: %d/%d total bits",
+			c.SequenceBits, totalBits)
 	}
 
 	return nil
