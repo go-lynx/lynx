@@ -3,6 +3,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -66,16 +67,16 @@ func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
 
 // CircuitBreaker implements the circuit breaker pattern for gRPC clients
 type CircuitBreaker struct {
-	config   *CircuitBreakerConfig
-	state    CircuitBreakerState
-	failures int
-	successes int
-	lastFailureTime time.Time
-	lastStateChange time.Time
+	config             *CircuitBreakerConfig
+	state              CircuitBreakerState
+	failures           int
+	successes          int
+	lastFailureTime    time.Time
+	lastStateChange    time.Time
 	concurrentRequests int
-	mu       sync.RWMutex
-	metrics  *ClientMetrics
-	serviceName string
+	mu                 sync.RWMutex
+	metrics            *ClientMetrics
+	serviceName        string
 }
 
 // NewCircuitBreaker creates a new circuit breaker with the given configuration
@@ -194,6 +195,8 @@ func (cb *CircuitBreaker) recordResult(err error) {
 			if cb.metrics != nil {
 				cb.metrics.RecordCircuitBreakerState(cb.serviceName, cb.state.String())
 			}
+		default:
+
 		}
 	} else {
 		// Success
@@ -213,6 +216,8 @@ func (cb *CircuitBreaker) recordResult(err error) {
 					cb.metrics.RecordCircuitBreakerState(cb.serviceName, cb.state.String())
 				}
 			}
+		default:
+
 		}
 	}
 }
@@ -224,7 +229,7 @@ func (cb *CircuitBreaker) isFailure(err error) bool {
 	}
 
 	// Check for context cancellation or timeout - these are not service failures
-	if err == context.Canceled || err == context.DeadlineExceeded {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
 
@@ -274,18 +279,18 @@ func (cb *CircuitBreaker) GetStats() map[string]interface{} {
 	defer cb.mu.RUnlock()
 
 	return map[string]interface{}{
-		"enabled":              cb.config.Enabled,
-		"service_name":         cb.serviceName,
-		"state":                cb.state.String(),
-		"failures":             cb.failures,
-		"successes":            cb.successes,
-		"last_failure_time":    cb.lastFailureTime,
-		"last_state_change":    cb.lastStateChange,
-		"concurrent_requests":  cb.concurrentRequests,
-		"failure_threshold":    cb.config.FailureThreshold,
-		"recovery_timeout":     cb.config.RecoveryTimeout.String(),
-		"success_threshold":    cb.config.SuccessThreshold,
-		"timeout":              cb.config.Timeout.String(),
+		"enabled":                 cb.config.Enabled,
+		"service_name":            cb.serviceName,
+		"state":                   cb.state.String(),
+		"failures":                cb.failures,
+		"successes":               cb.successes,
+		"last_failure_time":       cb.lastFailureTime,
+		"last_state_change":       cb.lastStateChange,
+		"concurrent_requests":     cb.concurrentRequests,
+		"failure_threshold":       cb.config.FailureThreshold,
+		"recovery_timeout":        cb.config.RecoveryTimeout.String(),
+		"success_threshold":       cb.config.SuccessThreshold,
+		"timeout":                 cb.config.Timeout.String(),
 		"max_concurrent_requests": cb.config.MaxConcurrentRequests,
 	}
 }
@@ -312,7 +317,7 @@ func (cb *CircuitBreaker) UpdateConfig(config *CircuitBreakerConfig) {
 	defer cb.mu.Unlock()
 
 	cb.config = config
-	
+
 	// If circuit breaker is disabled, reset to closed state
 	if !config.Enabled && cb.state != CircuitBreakerClosed {
 		cb.state = CircuitBreakerClosed
@@ -320,7 +325,7 @@ func (cb *CircuitBreaker) UpdateConfig(config *CircuitBreakerConfig) {
 		cb.successes = 0
 		cb.concurrentRequests = 0
 		cb.lastStateChange = time.Now()
-		
+
 		if cb.metrics != nil {
 			cb.metrics.RecordCircuitBreakerState(cb.serviceName, cb.state.String())
 		}

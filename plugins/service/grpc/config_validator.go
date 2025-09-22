@@ -167,7 +167,7 @@ func (cv *ConfigValidator) validateSubscribeServices(config *conf.GrpcClient, re
 	}
 
 	serviceNames := make(map[string]bool)
-	
+
 	for i, serviceConfig := range subscribeServices {
 		serviceName := serviceConfig.GetName()
 		// Check for duplicate service names
@@ -206,7 +206,7 @@ func (cv *ConfigValidator) validateSubscribeServices(config *conf.GrpcClient, re
 
 // validateLegacyServices validates legacy services configuration
 func (cv *ConfigValidator) validateLegacyServices(config *conf.GrpcClient, result *ValidationResult) {
-	services := config.GetServices()
+	services := config.GetSubscribeServices()
 	if len(services) == 0 {
 		return
 	}
@@ -216,7 +216,7 @@ func (cv *ConfigValidator) validateLegacyServices(config *conf.GrpcClient, resul
 
 	for i, service := range services {
 		prefix := fmt.Sprintf("services[%d]", i)
-		
+
 		if service.GetEndpoint() == "" {
 			result.AddError(prefix+".endpoint", "", "endpoint is required for legacy services")
 		} else {
@@ -334,10 +334,10 @@ func (cv *ConfigValidator) validateCircuitBreakerConfig(serviceName string, serv
 
 	threshold := serviceConfig.GetCircuitBreakerThreshold()
 	if threshold <= 0 {
-		result.AddError("subscribe_services."+serviceName+".circuit_breaker_threshold", threshold, 
+		result.AddError("subscribe_services."+serviceName+".circuit_breaker_threshold", threshold,
 			"circuit breaker threshold must be positive when circuit breaker is enabled")
 	} else if threshold > 100 {
-		result.AddWarning("subscribe_services."+serviceName+".circuit_breaker_threshold is very high (>100), circuit breaker may not trigger effectively")
+		result.AddWarning("subscribe_services." + serviceName + ".circuit_breaker_threshold is very high (>100), circuit breaker may not trigger effectively")
 	}
 }
 
@@ -357,7 +357,7 @@ func (cv *ConfigValidator) validateMetadata(serviceName string, metadata map[str
 		}
 
 		if len(value) > 1024 {
-			result.AddWarning("subscribe_services."+serviceName+".metadata."+key+" value is very long (>1024 characters)")
+			result.AddWarning("subscribe_services." + serviceName + ".metadata." + key + " value is very long (>1024 characters)")
 		}
 	}
 }
@@ -402,7 +402,7 @@ func (cv *ConfigValidator) GetValidationSummary(result *ValidationResult) string
 	}
 
 	var summary strings.Builder
-	
+
 	if result.HasErrors() {
 		summary.WriteString(fmt.Sprintf("Configuration validation failed with %d error(s):\n", len(result.Errors)))
 		for i, err := range result.Errors {

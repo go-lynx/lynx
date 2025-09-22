@@ -45,7 +45,7 @@ func GenerateID() (int64, error) {
 }
 
 // GenerateIDWithMetadata generates a new snowflake ID with metadata using the global plugin instance
-func GenerateIDWithMetadata() (int64, *SnowflakeID, error) {
+func GenerateIDWithMetadata() (int64, *SID, error) {
 	plugin, err := GetSnowflakePlugin()
 	if err != nil {
 		return 0, nil, err
@@ -55,7 +55,7 @@ func GenerateIDWithMetadata() (int64, *SnowflakeID, error) {
 }
 
 // ParseID parses a snowflake ID and returns its metadata using the global plugin instance
-func ParseID(id int64) (*SnowflakeID, error) {
+func ParseID(id int64) (*SID, error) {
 	plugin, err := GetSnowflakePlugin()
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func ParseID(id int64) (*SnowflakeID, error) {
 }
 
 // GetGenerator returns the snowflake generator instance from the global plugin
-func GetGenerator() (*SnowflakeGenerator, error) {
+func GetGenerator() (*Generator, error) {
 	plugin, err := GetSnowflakePlugin()
 	if err != nil {
 		return nil, err

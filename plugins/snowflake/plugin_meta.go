@@ -2,7 +2,6 @@ package snowflake
 
 // Plugin metadata
 const (
-	// Plugin metadata
 	PluginName        = "snowflake"
 	PluginVersion     = "1.0.0"
 	PluginDescription = "Snowflake ID generator plugin with clock drift protection and Redis-based worker ID management"

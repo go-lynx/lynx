@@ -535,7 +535,7 @@ func simulateCPULoad(ctx context.Context, loadPercent int) {
 
 // MockErrorGenerator simulates a generator that can fail
 type MockErrorGenerator struct {
-	*SnowflakeGenerator
+	*Generator
 	failureRate float64 // 0.0 to 1.0
 	injector    *FaultInjector
 }
@@ -550,7 +550,7 @@ func (meg *MockErrorGenerator) GenerateID() (int64, error) {
 		}
 	}
 
-	return meg.SnowflakeGenerator.GenerateID()
+	return meg.Generator.GenerateID()
 }
 
 // TestErrorRecovery tests recovery from various error conditions
@@ -560,9 +560,9 @@ func TestErrorRecovery(t *testing.T) {
 
 	injector := NewFaultInjector()
 	mockGen := &MockErrorGenerator{
-		SnowflakeGenerator: baseGenerator,
-		failureRate:        0.1, // 10% failure rate
-		injector:           injector,
+		Generator:   baseGenerator,
+		failureRate: 0.1, // 10% failure rate
+		injector:    injector,
 	}
 
 	// Enable system overload fault

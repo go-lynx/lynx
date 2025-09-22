@@ -86,7 +86,7 @@ func (tc *TestConfig) Build() *pb.Snowflake {
 }
 
 // CreateTestGenerator creates a generator for testing
-func (tc *TestConfig) CreateTestGenerator() (*SnowflakeGenerator, error) {
+func (tc *TestConfig) CreateTestGenerator() (*Generator, error) {
 	genConfig := &GeneratorConfig{
 		CustomEpoch:                tc.Config.CustomEpoch,
 		DatacenterIDBits:           5, // 固定为5位数据中心ID (0-31)

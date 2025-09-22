@@ -236,13 +236,12 @@ func (tm *TLSManager) buildCredentials(config *TLSConfig) (credentials.Transport
 	}
 
 	tlsConfig := &tls.Config{
-		ServerName:               config.ServerName,
-		InsecureSkipVerify:       config.InsecureSkipVerify,
-		ClientAuth:               config.ClientAuth,
-		MinVersion:               config.MinVersion,
-		MaxVersion:               config.MaxVersion,
-		CipherSuites:             config.CipherSuites,
-		PreferServerCipherSuites: config.PreferServerCipherSuites,
+		ServerName:         config.ServerName,
+		InsecureSkipVerify: config.InsecureSkipVerify,
+		ClientAuth:         config.ClientAuth,
+		MinVersion:         config.MinVersion,
+		MaxVersion:         config.MaxVersion,
+		CipherSuites:       config.CipherSuites,
 	}
 
 	// Load client certificate if specified
@@ -425,21 +424,21 @@ func (tm *TLSManager) RefreshCredentials() error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	var errors []string
+	var tlsErrors []string
 	successCount := 0
 
 	for serviceName, config := range tm.configs {
-		creds, err := tm.buildCredentials(config)
+		credList, err := tm.buildCredentials(config)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("service %s: %v", serviceName, err))
+			tlsErrors = append(tlsErrors, fmt.Sprintf("service %s: %v", serviceName, err))
 			continue
 		}
-		tm.creds[serviceName] = creds
+		tm.creds[serviceName] = credList
 		successCount++
 	}
 
-	if len(errors) > 0 {
-		return fmt.Errorf("failed to refresh %d/%d services: %s", len(errors), len(tm.configs), strings.Join(errors, "; "))
+	if len(tlsErrors) > 0 {
+		return fmt.Errorf("failed to refresh %d/%d services: %s", len(tlsErrors), len(tm.configs), strings.Join(tlsErrors, "; "))
 	}
 
 	return nil

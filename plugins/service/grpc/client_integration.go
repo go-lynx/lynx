@@ -10,28 +10,28 @@ import (
 	"google.golang.org/grpc"
 )
 
-// GrpcClientIntegration provides integration with app/subscribe
-type GrpcClientIntegration struct {
-	clientPlugin *ClientPlugin
-	discovery    registry.Discovery
+// ClientIntegration provides integration with app/subscribe
+type ClientIntegration struct {
+	clientPlugin  *ClientPlugin
+	discovery     registry.Discovery
 	routerFactory func(string) selector.NodeFilter
 }
 
 // NewGrpcClientIntegration creates a new gRPC client integration
-func NewGrpcClientIntegration(discovery registry.Discovery, routerFactory func(string) selector.NodeFilter) *GrpcClientIntegration {
-	return &GrpcClientIntegration{
+func NewGrpcClientIntegration(discovery registry.Discovery, routerFactory func(string) selector.NodeFilter) *ClientIntegration {
+	return &ClientIntegration{
 		discovery:     discovery,
 		routerFactory: routerFactory,
 	}
 }
 
 // SetClientPlugin sets the gRPC client plugin
-func (g *GrpcClientIntegration) SetClientPlugin(plugin *ClientPlugin) {
+func (g *ClientIntegration) SetClientPlugin(plugin *ClientPlugin) {
 	g.clientPlugin = plugin
 }
 
 // BuildGrpcSubscriptions builds gRPC subscription connections using the client plugin
-func (g *GrpcClientIntegration) BuildGrpcSubscriptions(cfg *conf.Subscriptions) (map[string]*grpc.ClientConn, error) {
+func (g *ClientIntegration) BuildGrpcSubscriptions(cfg *conf.Subscriptions) (map[string]*grpc.ClientConn, error) {
 	if g.clientPlugin == nil {
 		return nil, fmt.Errorf("gRPC client plugin not initialized")
 	}
@@ -59,10 +59,10 @@ func (g *GrpcClientIntegration) BuildGrpcSubscriptions(cfg *conf.Subscriptions) 
 		clientConfig := ClientConfig{
 			ServiceName: name,
 			Discovery:   g.discovery,
-			TLS:        item.GetTls(),
-			Timeout:    g.clientPlugin.conf.GetDefaultTimeout().AsDuration(),
-			KeepAlive:  g.clientPlugin.conf.GetDefaultKeepAlive().AsDuration(),
-			Middleware: g.clientPlugin.getDefaultMiddleware(),
+			TLS:         item.GetTls(),
+			Timeout:     g.clientPlugin.conf.GetDefaultTimeout().AsDuration(),
+			KeepAlive:   g.clientPlugin.conf.GetDefaultKeepAlive().AsDuration(),
+			Middleware:  g.clientPlugin.getDefaultMiddleware(),
 		}
 
 		// Add node router factory if provided
@@ -108,7 +108,7 @@ func (g *GrpcClientIntegration) BuildGrpcSubscriptions(cfg *conf.Subscriptions) 
 }
 
 // GetConnection gets a connection for a specific service
-func (g *GrpcClientIntegration) GetConnection(serviceName string) (*grpc.ClientConn, error) {
+func (g *ClientIntegration) GetConnection(serviceName string) (*grpc.ClientConn, error) {
 	if g.clientPlugin == nil {
 		return nil, fmt.Errorf("gRPC client plugin not initialized")
 	}
@@ -117,7 +117,7 @@ func (g *GrpcClientIntegration) GetConnection(serviceName string) (*grpc.ClientC
 }
 
 // CloseConnection closes a connection for a specific service
-func (g *GrpcClientIntegration) CloseConnection(serviceName string) error {
+func (g *ClientIntegration) CloseConnection(serviceName string) error {
 	if g.clientPlugin == nil {
 		return fmt.Errorf("gRPC client plugin not initialized")
 	}
@@ -126,7 +126,7 @@ func (g *GrpcClientIntegration) CloseConnection(serviceName string) error {
 }
 
 // GetConnectionStatus returns the status of all connections
-func (g *GrpcClientIntegration) GetConnectionStatus() map[string]string {
+func (g *ClientIntegration) GetConnectionStatus() map[string]string {
 	if g.clientPlugin == nil {
 		return make(map[string]string)
 	}
@@ -135,7 +135,7 @@ func (g *GrpcClientIntegration) GetConnectionStatus() map[string]string {
 }
 
 // GetConnectionCount returns the number of active connections
-func (g *GrpcClientIntegration) GetConnectionCount() int {
+func (g *ClientIntegration) GetConnectionCount() int {
 	if g.clientPlugin == nil {
 		return 0
 	}
@@ -144,7 +144,7 @@ func (g *GrpcClientIntegration) GetConnectionCount() int {
 }
 
 // HealthCheck performs health check on all connections
-func (g *GrpcClientIntegration) HealthCheck() error {
+func (g *ClientIntegration) HealthCheck() error {
 	if g.clientPlugin == nil {
 		return fmt.Errorf("gRPC client plugin not initialized")
 	}
@@ -153,11 +153,10 @@ func (g *GrpcClientIntegration) HealthCheck() error {
 }
 
 // GetMetrics returns client metrics
-func (g *GrpcClientIntegration) GetMetrics() *ClientMetrics {
+func (g *ClientIntegration) GetMetrics() *ClientMetrics {
 	if g.clientPlugin == nil {
 		return nil
 	}
 
 	return g.clientPlugin.metrics
 }
-

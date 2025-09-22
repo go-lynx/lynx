@@ -325,14 +325,6 @@ func (tb *TokenBucket) consume() bool {
 	return false
 }
 
-// min returns the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // AuditEvent represents an audit log event
 type AuditEvent struct {
 	Timestamp time.Time `json:"timestamp"`

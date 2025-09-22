@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -31,36 +32,36 @@ import (
 // ClientPlugin represents the gRPC client plugin
 type ClientPlugin struct {
 	*plugins.BasePlugin
-	conf             *conf.GrpcClient
-	connections      map[string]*grpc.ClientConn
-	connectionPool   *ConnectionPool
-	loadBalancer     *LoadBalancer
-	circuitBreakers  *CircuitBreakerManager
-	discovery        registry.Discovery
-	tlsManager       *TLSManager
-	mu               sync.RWMutex
-	metrics          *ClientMetrics
+	conf            *conf.GrpcClient
+	connections     map[string]*grpc.ClientConn
+	connectionPool  *ConnectionPool
+	loadBalancer    *LoadBalancer
+	circuitBreakers *CircuitBreakerManager
+	discovery       registry.Discovery
+	tlsManager      *TLSManager
+	mu              sync.RWMutex
+	metrics         *ClientMetrics
 }
 
 // ClientConfig represents configuration for a specific gRPC client connection
 type ClientConfig struct {
-	ServiceName       string
-	Endpoint          string
-	Discovery         registry.Discovery
-	TLS               bool
-	TLSAuthType       int32
-	Timeout           time.Duration
-	KeepAlive         time.Duration
-	MaxRetries        int
-	RetryBackoff      time.Duration
-	MaxConnections    int
-	Middleware        []middleware.Middleware
-	NodeFilter        selector.NodeFilter
-	Required          bool
-	Metadata          map[string]string
-	LoadBalancer      string
-	CircuitBreaker    bool
-	CircuitThreshold  int
+	ServiceName      string
+	Endpoint         string
+	Discovery        registry.Discovery
+	TLS              bool
+	TLSAuthType      int32
+	Timeout          time.Duration
+	KeepAlive        time.Duration
+	MaxRetries       int
+	RetryBackoff     time.Duration
+	MaxConnections   int
+	Middleware       []middleware.Middleware
+	NodeFilter       selector.NodeFilter
+	Required         bool
+	Metadata         map[string]string
+	LoadBalancer     string
+	CircuitBreaker   bool
+	CircuitThreshold int
 }
 
 // NewGrpcClientPlugin creates a new gRPC client plugin instance
@@ -78,12 +79,12 @@ func NewGrpcClientPlugin() *ClientPlugin {
 
 	return &ClientPlugin{
 		BasePlugin:      plugins.NewBasePlugin("grpc.client", "grpc.client", "gRPC client plugin for Lynx framework", "v2.0.0", "lynx.grpc.client", 20),
-		conf:           &conf.GrpcClient{},
-		connections:    make(map[string]*grpc.ClientConn),
-		connectionPool: connectionPool,
-		loadBalancer:   loadBalancer,
+		conf:            &conf.GrpcClient{},
+		connections:     make(map[string]*grpc.ClientConn),
+		connectionPool:  connectionPool,
+		loadBalancer:    loadBalancer,
 		circuitBreakers: circuitBreakers,
-		metrics:        metrics,
+		metrics:         metrics,
 	}
 }
 
@@ -155,42 +156,42 @@ func (c *ClientPlugin) StartupTasks() error {
 }
 
 // Close closes all connections and cleans up resources
-func (p *ClientPlugin) Close() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+func (c *ClientPlugin) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	var lastErr error
 
 	// Close connection pool
-	if p.connectionPool != nil {
-		if err := p.connectionPool.CloseAll(); err != nil {
+	if c.connectionPool != nil {
+		if err := c.connectionPool.CloseAll(); err != nil {
 			lastErr = err
 		}
 	}
 
 	// Close load balancer
-	if p.loadBalancer != nil {
-		if err := p.loadBalancer.Close(); err != nil {
+	if c.loadBalancer != nil {
+		if err := c.loadBalancer.Close(); err != nil {
 			lastErr = err
 		}
 	}
 
 	// Close circuit breakers
-	if p.circuitBreakers != nil {
-		p.circuitBreakers.Close()
+	if c.circuitBreakers != nil {
+		c.circuitBreakers.Close()
 	}
 
 	// Close TLS manager
-	if p.tlsManager != nil {
-		p.tlsManager.Close()
+	if c.tlsManager != nil {
+		c.tlsManager.Close()
 	}
 
 	// Close legacy connections
-	for serviceName, conn := range p.connections {
+	for serviceName, conn := range c.connections {
 		if err := conn.Close(); err != nil {
 			lastErr = err
 		}
-		delete(p.connections, serviceName)
+		delete(c.connections, serviceName)
 	}
 
 	return lastErr
@@ -219,33 +220,33 @@ func (c *ClientPlugin) GetConnection(serviceName string) (*grpc.ClientConn, erro
 }
 
 // CreateConnection creates a new gRPC connection based on the provided configuration
-func (p *ClientPlugin) CreateConnection(config ClientConfig) (*grpc.ClientConn, error) {
+func (c *ClientPlugin) CreateConnection(config ClientConfig) (*grpc.ClientConn, error) {
 	// Configure load balancer for this service if needed
 	if config.Discovery != nil && config.LoadBalancer != "" {
 		lbConfig := &LoadBalancerConfig{
 			Strategy: LoadBalancerType(config.LoadBalancer),
 			Metadata: config.Metadata,
 		}
-		p.loadBalancer.discovery = config.Discovery
-		if err := p.loadBalancer.ConfigureService(config.ServiceName, lbConfig); err != nil {
+		c.loadBalancer.discovery = config.Discovery
+		if err := c.loadBalancer.ConfigureService(config.ServiceName, lbConfig); err != nil {
 			log.Errorf("Failed to configure load balancer for service %s: %v", config.ServiceName, err)
 		}
 	}
 
 	// Configure circuit breaker for this service
 	cbConfig := &CircuitBreakerConfig{
-		Enabled:          config.CircuitBreaker,
-		FailureThreshold: config.CircuitThreshold,
-		RecoveryTimeout:  30 * time.Second,
-		SuccessThreshold: 3,
-		Timeout:          config.Timeout,
+		Enabled:               config.CircuitBreaker,
+		FailureThreshold:      config.CircuitThreshold,
+		RecoveryTimeout:       30 * time.Second,
+		SuccessThreshold:      3,
+		Timeout:               config.Timeout,
 		MaxConcurrentRequests: 10,
 	}
-	circuitBreaker := p.circuitBreakers.GetCircuitBreaker(config.ServiceName, cbConfig)
+	circuitBreaker := c.circuitBreakers.GetCircuitBreaker(config.ServiceName, cbConfig)
 
 	// Use connection pool to get/create connection
-	conn, err := p.connectionPool.GetConnection(config.ServiceName, func() (*grpc.ClientConn, error) {
-		return p.buildConnection(config)
+	conn, err := c.connectionPool.GetConnection(config.ServiceName, func() (*grpc.ClientConn, error) {
+		return c.buildConnection(config)
 	})
 
 	if err != nil {
@@ -253,13 +254,13 @@ func (p *ClientPlugin) CreateConnection(config ClientConfig) (*grpc.ClientConn, 
 	}
 
 	// Store connection in legacy map for backward compatibility
-	p.mu.Lock()
-	p.connections[config.ServiceName] = conn
-	p.mu.Unlock()
+	c.mu.Lock()
+	c.connections[config.ServiceName] = conn
+	c.mu.Unlock()
 
 	// Record metrics
-	if p.metrics != nil {
-		p.metrics.RecordConnectionCreated(config.ServiceName)
+	if c.metrics != nil {
+		c.metrics.RecordConnectionCreated(config.ServiceName)
 	}
 
 	// Test circuit breaker functionality
@@ -285,12 +286,12 @@ func (p *ClientPlugin) CreateConnection(config ClientConfig) (*grpc.ClientConn, 
 // createConnection creates a connection using default configuration
 func (c *ClientPlugin) createConnection(serviceName string) (*grpc.ClientConn, error) {
 	config := ClientConfig{
-		ServiceName:    serviceName,
-		Discovery:      c.discovery,
-		TLS:            c.conf.GetTlsEnable(),
-		TLSAuthType:    c.conf.GetTlsAuthType(),
-		MaxRetries:     int(c.conf.MaxRetries),
-		Middleware:     c.getDefaultMiddleware(),
+		ServiceName: serviceName,
+		Discovery:   c.discovery,
+		TLS:         c.conf.GetTlsEnable(),
+		TLSAuthType: c.conf.GetTlsAuthType(),
+		MaxRetries:  int(c.conf.MaxRetries),
+		Middleware:  c.getDefaultMiddleware(),
 	}
 
 	// Set timeout with nil check
@@ -382,7 +383,7 @@ func (c *ClientPlugin) buildConnection(config ClientConfig) (*grpc.ClientConn, e
 	}
 
 	// Create connection
-	conn, err := grpc.Dial(target, opts...)
+	conn, err := grpc.NewClient(target, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -405,12 +406,12 @@ func (c *ClientPlugin) buildTLSConfig(config ClientConfig) (credentials.Transpor
 
 	// Build TLS configuration based on auth type
 	tlsConfig := &TLSConfig{
-		Enabled:            true,
-		InsecureSkipVerify: false,
-		ServerName:         config.ServiceName,
-		ClientAuth:         tls.ClientAuthType(config.TLSAuthType),
-		MinVersion:         tls.VersionTLS12,
-		MaxVersion:         tls.VersionTLS13,
+		Enabled:                  true,
+		InsecureSkipVerify:       false,
+		ServerName:               config.ServiceName,
+		ClientAuth:               tls.ClientAuthType(config.TLSAuthType),
+		MinVersion:               tls.VersionTLS12,
+		MaxVersion:               tls.VersionTLS13,
 		PreferServerCipherSuites: true,
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -426,12 +427,12 @@ func (c *ClientPlugin) buildTLSConfig(config ClientConfig) (credentials.Transpor
 	}
 
 	// Get credentials from TLS manager
-	creds, err := c.tlsManager.GetCredentials(config.ServiceName)
+	credList, err := c.tlsManager.GetCredentials(config.ServiceName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get TLS credentials for service %s: %w", config.ServiceName, err)
 	}
 
-	return creds, nil
+	return credList, nil
 }
 
 // getDefaultMiddleware returns default middleware for gRPC clients
@@ -453,13 +454,13 @@ func (c *ClientPlugin) getMetricsMiddleware() middleware.Middleware {
 			resp, err := handler(ctx, req)
 
 			duration := time.Since(start)
-			status := "success"
+			s := "success"
 			if err != nil {
-				status = "error"
+				s = "error"
 			}
 
 			// Record metrics
-			c.metrics.RecordRequest("unknown", "unknown", status, duration)
+			c.metrics.RecordRequest("unknown", "unknown", s, duration)
 
 			return resp, err
 		}
@@ -474,67 +475,67 @@ func (c *ClientPlugin) getRetryMiddleware() middleware.Middleware {
 			maxRetries := 3
 			baseDelay := 100 * time.Millisecond
 			maxDelay := 5 * time.Second
-			
+
 			// Try to get retry config from client configuration
 			if c.conf != nil {
 				if c.conf.MaxRetries > 0 {
 					maxRetries = int(c.conf.MaxRetries)
 				}
 				if c.conf.RetryBackoff != nil {
-			baseDelay = c.conf.RetryBackoff.AsDuration()
+					baseDelay = c.conf.RetryBackoff.AsDuration()
 				}
 			}
-			
+
 			var lastErr error
 			for attempt := 0; attempt <= maxRetries; attempt++ {
 				// First attempt or retry
 				resp, err := handler(ctx, req)
-				
+
 				// If successful, return immediately
 				if err == nil {
 					if attempt > 0 {
 						// Record retry success metrics
 						if c.metrics != nil {
-					c.metrics.RecordRetry("unknown", "success", fmt.Sprintf("%d", attempt))
-				}
+							c.metrics.RecordRetry("unknown", "success", fmt.Sprintf("%d", attempt))
+						}
 					}
 					return resp, nil
 				}
-				
+
 				lastErr = err
-				
+
 				// Check if error is retryable
 				if !c.isRetryableError(err) {
 					// Non-retryable error, return immediately
 					if c.metrics != nil {
-				c.metrics.RecordRetry("unknown", "non_retryable", fmt.Sprintf("%d", attempt))
-			}
+						c.metrics.RecordRetry("unknown", "non_retryable", fmt.Sprintf("%d", attempt))
+					}
 					return resp, err
 				}
-				
+
 				// If this was the last attempt, don't wait
 				if attempt == maxRetries {
 					if c.metrics != nil {
-				c.metrics.RecordRetry("unknown", "max_attempts", fmt.Sprintf("%d", attempt))
-			}
+						c.metrics.RecordRetry("unknown", "max_attempts", fmt.Sprintf("%d", attempt))
+					}
 					break
 				}
-				
+
 				// Calculate delay with exponential backoff
 				delay := c.calculateRetryDelay(attempt, baseDelay, maxDelay)
-				
+
 				// Wait before retry, but respect context cancellation
 				select {
 				case <-ctx.Done():
 					if c.metrics != nil {
-					c.metrics.RecordRetry("unknown", "context_cancelled", fmt.Sprintf("%d", attempt))
-				}
+						c.metrics.RecordRetry("unknown", "context_cancelled", fmt.Sprintf("%d", attempt))
+					}
 					return nil, ctx.Err()
 				case <-time.After(delay):
 					// Continue to next retry
 				}
 			}
-			
+
 			// All retries exhausted, return last error
 			return nil, lastErr
 		}
@@ -553,15 +554,15 @@ func (c *ClientPlugin) GetConnectionStatus() map[string]string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	status := make(map[string]string)
+	s := make(map[string]string)
 	for serviceName, conn := range c.connections {
 		if conn != nil {
-			status[serviceName] = conn.GetState().String()
+			s[serviceName] = conn.GetState().String()
 		} else {
-			status[serviceName] = "nil"
+			s[serviceName] = "nil"
 		}
 	}
-	return status
+	return s
 }
 
 // validateConfiguration validates the gRPC client configuration
@@ -693,7 +694,11 @@ func (c *ClientPlugin) CheckRequiredServices() error {
 
 		// Close the test connection
 		if conn != nil {
-			conn.Close()
+			err := conn.Close()
+			if err != nil {
+				log.Error(err)
+				return err
+			}
 		}
 
 		log.Infof("Required service %s is available", svc.Name)
@@ -732,7 +737,7 @@ func (c *ClientPlugin) isRetryableError(err error) bool {
 	}
 
 	// Check for context errors
-	if err == context.DeadlineExceeded || err == context.Canceled {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return false // Don't retry context errors
 	}
 
@@ -744,21 +749,21 @@ func (c *ClientPlugin) isRetryableError(err error) bool {
 func (c *ClientPlugin) calculateRetryDelay(attempt int, baseDelay, maxDelay time.Duration) time.Duration {
 	// Exponential backoff: baseDelay * 2^attempt
 	delay := time.Duration(float64(baseDelay) * math.Pow(2, float64(attempt)))
-	
+
 	// Cap at maxDelay
 	if delay > maxDelay {
 		delay = maxDelay
 	}
-	
+
 	// Add jitter to avoid thundering herd (±25% random variation)
 	jitter := time.Duration(float64(delay) * 0.25 * (rand.Float64()*2 - 1))
 	delay += jitter
-	
+
 	// Ensure delay is not negative
 	if delay < 0 {
 		delay = baseDelay
 	}
-	
+
 	return delay
 }
 

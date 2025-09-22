@@ -32,8 +32,8 @@ type ConnectionPoolStats struct {
 	MaxLifetimeClosed  int64         // Total number of connections closed due to SetConnMaxLifetime
 }
 
-// BaseSQLPlugin provides common functionality for all SQL plugins
-type BaseSQLPlugin struct {
+// SQLPlugin provides common functionality for all SQL plugins
+type SQLPlugin struct {
 	*plugins.BasePlugin
 
 	// Configuration
@@ -65,10 +65,10 @@ func NewBaseSQLPlugin(
 	id, name, desc, version, confPrefix string,
 	weight int,
 	config *interfaces.Config,
-) *BaseSQLPlugin {
+) *SQLPlugin {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &BaseSQLPlugin{
+	return &SQLPlugin{
 		BasePlugin:      plugins.NewBasePlugin(id, name, desc, version, confPrefix, weight),
 		config:          config,
 		confPrefix:      confPrefix,
@@ -79,7 +79,7 @@ func NewBaseSQLPlugin(
 }
 
 // InitializeResources initializes plugin resources
-func (p *BaseSQLPlugin) InitializeResources(rt plugins.Runtime) error {
+func (p *SQLPlugin) InitializeResources(rt plugins.Runtime) error {
 	// Load configuration
 	if err := rt.GetConfig().Value(p.confPrefix).Scan(p.config); err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
@@ -97,7 +97,7 @@ func (p *BaseSQLPlugin) InitializeResources(rt plugins.Runtime) error {
 }
 
 // StartupTasks performs startup initialization
-func (p *BaseSQLPlugin) StartupTasks() error {
+func (p *SQLPlugin) StartupTasks() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -129,7 +129,11 @@ func (p *BaseSQLPlugin) StartupTasks() error {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		err := db.Close()
+		if err != nil {
+			log.Error(err)
+			return err
+		}
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -152,7 +156,7 @@ func (p *BaseSQLPlugin) StartupTasks() error {
 }
 
 // CleanupTasks performs cleanup on shutdown
-func (p *BaseSQLPlugin) CleanupTasks() error {
+func (p *SQLPlugin) CleanupTasks() error {
 	if !p.closing.CompareAndSwap(false, true) {
 		return ErrAlreadyClosed
 	}
@@ -184,7 +188,7 @@ func (p *BaseSQLPlugin) CleanupTasks() error {
 }
 
 // GetDB returns the database connection
-func (p *BaseSQLPlugin) GetDB() (*sql.DB, error) {
+func (p *SQLPlugin) GetDB() (*sql.DB, error) {
 	if !p.IsConnected() {
 		return nil, ErrNotConnected
 	}
@@ -195,26 +199,26 @@ func (p *BaseSQLPlugin) GetDB() (*sql.DB, error) {
 }
 
 // GetDialect returns the database dialect
-func (p *BaseSQLPlugin) GetDialect() string {
+func (p *SQLPlugin) GetDialect() string {
 	return p.dialect
 }
 
 // SetMetricsRecorder sets the metrics recorder for this plugin
-func (p *BaseSQLPlugin) SetMetricsRecorder(recorder MetricsRecorder) {
+func (p *SQLPlugin) SetMetricsRecorder(recorder MetricsRecorder) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.metricsRecorder = recorder
 }
 
 // GetMetricsRecorder returns the current metrics recorder
-func (p *BaseSQLPlugin) GetMetricsRecorder() MetricsRecorder {
+func (p *SQLPlugin) GetMetricsRecorder() MetricsRecorder {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.metricsRecorder
 }
 
 // CheckHealth performs a health check
-func (p *BaseSQLPlugin) CheckHealth() error {
+func (p *SQLPlugin) CheckHealth() error {
 	if !p.IsConnected() {
 		p.metricsRecorder.RecordHealthCheck(false)
 		return ErrNotConnected
@@ -246,12 +250,12 @@ func (p *BaseSQLPlugin) CheckHealth() error {
 }
 
 // IsConnected checks if database is connected
-func (p *BaseSQLPlugin) IsConnected() bool {
+func (p *SQLPlugin) IsConnected() bool {
 	return p.connected.Load() && !p.closing.Load()
 }
 
 // GetStats returns connection pool statistics
-func (p *BaseSQLPlugin) GetStats() *ConnectionPoolStats {
+func (p *SQLPlugin) GetStats() *ConnectionPoolStats {
 	if !p.IsConnected() || p.db == nil {
 		return &ConnectionPoolStats{}
 	}
@@ -263,15 +267,15 @@ func (p *BaseSQLPlugin) GetStats() *ConnectionPoolStats {
 		InUse:              int64(stats.InUse),
 		Idle:               int64(stats.Idle),
 		MaxIdleConnections: int64(p.config.MaxIdleConns), // Use config value instead
-		WaitCount:          int64(stats.WaitCount),
+		WaitCount:          stats.WaitCount,
 		WaitDuration:       stats.WaitDuration,
-		MaxIdleClosed:      int64(stats.MaxIdleClosed),
-		MaxLifetimeClosed:  int64(stats.MaxLifetimeClosed),
+		MaxIdleClosed:      stats.MaxIdleClosed,
+		MaxLifetimeClosed:  stats.MaxLifetimeClosed,
 	}
 }
 
 // getDialectFromDriver determines the dialect from the driver name
-func (p *BaseSQLPlugin) getDialectFromDriver(driver string) string {
+func (p *SQLPlugin) getDialectFromDriver(driver string) string {
 	dialectMap := map[string]string{
 		"mysql":      "mysql",
 		"postgres":   "postgres",

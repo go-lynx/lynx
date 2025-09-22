@@ -67,7 +67,7 @@ func (r *PlugRedis) StartupTasks() error {
 
 	// Determine mode (single node/cluster/sentinel)
 	mode := r.detectMode()
-	log.Infof("redis client successfully started, mode=%s, addrs=%v, ping_latency=%s", mode, r.currentAddrs(), latency)
+	log.Infof("redis client successfully started, mode=%s, addrs=%v, ping_latency=%s", mode, r.currentAddrList(), latency)
 
 	// Perform enhanced check at startup stage
 	r.enhancedReadinessCheck(mode)
@@ -179,7 +179,7 @@ func (r *PlugRedis) CheckHealth() error {
 	_, err := r.rdb.Ping(ctx).Result()
 	latency := time.Since(start)
 	redisPingLatency.Observe(latency.Seconds())
-	log.Infof("redis health check: addrs=%v, ping_latency=%s", r.currentAddrs(), latency)
+	log.Infof("redis health check: addrs=%v, ping_latency=%s", r.currentAddrList(), latency)
 	if err != nil {
 		return err
 	}

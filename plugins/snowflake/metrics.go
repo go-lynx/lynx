@@ -6,8 +6,8 @@ import (
 )
 
 // NewSnowflakeMetrics creates a new metrics instance
-func NewSnowflakeMetrics() *SnowflakeMetrics {
-	return &SnowflakeMetrics{
+func NewSnowflakeMetrics() *Metrics {
+	return &Metrics{
 		StartTime:        time.Now(),
 		LatencyHistogram: make(map[string]int64),
 		MinLatency:       time.Hour, // Initialize with a large value
@@ -15,7 +15,7 @@ func NewSnowflakeMetrics() *SnowflakeMetrics {
 }
 
 // RecordIDGeneration records metrics for ID generation
-func (m *SnowflakeMetrics) RecordIDGeneration(latency time.Duration, cacheHit bool) {
+func (m *Metrics) RecordIDGeneration(latency time.Duration, cacheHit bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -55,7 +55,7 @@ func (m *SnowflakeMetrics) RecordIDGeneration(latency time.Duration, cacheHit bo
 }
 
 // RecordCacheRefill records cache refill events
-func (m *SnowflakeMetrics) RecordCacheRefill() {
+func (m *Metrics) RecordCacheRefill() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -63,7 +63,7 @@ func (m *SnowflakeMetrics) RecordCacheRefill() {
 }
 
 // RecordError records different types of errors
-func (m *SnowflakeMetrics) RecordError(errorType string) {
+func (m *Metrics) RecordError(errorType string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -80,7 +80,7 @@ func (m *SnowflakeMetrics) RecordError(errorType string) {
 }
 
 // RecordClockDrift records clock drift events
-func (m *SnowflakeMetrics) RecordClockDrift() {
+func (m *Metrics) RecordClockDrift() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -88,7 +88,7 @@ func (m *SnowflakeMetrics) RecordClockDrift() {
 }
 
 // RecordSequenceOverflow records sequence overflow events
-func (m *SnowflakeMetrics) RecordSequenceOverflow() {
+func (m *Metrics) RecordSequenceOverflow() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -96,7 +96,7 @@ func (m *SnowflakeMetrics) RecordSequenceOverflow() {
 }
 
 // UpdateConnectionMetrics updates Redis connection metrics
-func (m *SnowflakeMetrics) UpdateConnectionMetrics(poolSize, active, idle int) {
+func (m *Metrics) UpdateConnectionMetrics(poolSize, active, idle int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -106,7 +106,7 @@ func (m *SnowflakeMetrics) UpdateConnectionMetrics(poolSize, active, idle int) {
 }
 
 // updateLatencyHistogram updates the latency histogram
-func (m *SnowflakeMetrics) updateLatencyHistogram(latency time.Duration) {
+func (m *Metrics) updateLatencyHistogram(latency time.Duration) {
 	var bucket string
 
 	switch {
@@ -132,7 +132,7 @@ func (m *SnowflakeMetrics) updateLatencyHistogram(latency time.Duration) {
 }
 
 // CalculatePercentiles calculates P95 and P99 latencies
-func (m *SnowflakeMetrics) CalculatePercentiles(latencies []time.Duration) {
+func (m *Metrics) CalculatePercentiles(latencies []time.Duration) {
 	if len(latencies) == 0 {
 		return
 	}
@@ -168,12 +168,12 @@ func (m *SnowflakeMetrics) CalculatePercentiles(latencies []time.Duration) {
 }
 
 // GetSnapshot returns a snapshot of current metrics
-func (m *SnowflakeMetrics) GetSnapshot() *SnowflakeMetrics {
+func (m *Metrics) GetSnapshot() *Metrics {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	// Create a deep copy of the metrics
-	snapshot := &SnowflakeMetrics{
+	snapshot := &Metrics{
 		IDsGenerated:        m.IDsGenerated,
 		ClockDriftEvents:    m.ClockDriftEvents,
 		WorkerIDConflicts:   m.WorkerIDConflicts,
@@ -212,7 +212,7 @@ func (m *SnowflakeMetrics) GetSnapshot() *SnowflakeMetrics {
 }
 
 // Reset resets all metrics
-func (m *SnowflakeMetrics) Reset() {
+func (m *Metrics) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

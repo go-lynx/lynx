@@ -134,6 +134,8 @@ func (cb *CircuitBreaker) RecordFailure() {
 		// Return to open state
 		cb.state = CircuitBreakerOpen
 		log.Warnf("Circuit breaker returned to open state - failure in half-open")
+	default:
+
 	}
 }
 
@@ -159,7 +161,7 @@ func (h *ServiceHttp) circuitBreakerMiddleware() middleware.Middleware {
 			return handler
 		}
 	}
-	
+
 	// Create circuit breaker with configuration if not already created
 	if h.circuitBreaker == nil {
 		config := CircuitBreakerConfig{
@@ -171,7 +173,7 @@ func (h *ServiceHttp) circuitBreakerMiddleware() middleware.Middleware {
 		h.circuitBreaker = NewCircuitBreaker(config)
 	}
 	cb := h.circuitBreaker
-	
+
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
 			// Check if request should be allowed
@@ -186,25 +188,25 @@ func (h *ServiceHttp) circuitBreakerMiddleware() middleware.Middleware {
 					}
 					path = tr.Operation()
 				}
-				
+
 				// Record circuit breaker rejection
 				if h.errorCounter != nil {
 					h.errorCounter.WithLabelValues(method, path, "circuit_breaker_open").Inc()
 				}
-				
+
 				return nil, fmt.Errorf("circuit breaker is open - service unavailable")
 			}
-			
+
 			// Execute the request
 			reply, err = handler(ctx, req)
-			
+
 			// Record result
 			if err != nil {
 				cb.RecordFailure()
 			} else {
 				cb.RecordSuccess()
 			}
-			
+
 			return reply, err
 		}
 	}
@@ -217,14 +219,14 @@ func (h *ServiceHttp) GetCircuitBreakerStats() map[string]interface{} {
 			"enabled": false,
 		}
 	}
-	
+
 	failures, requests, successes, state := h.circuitBreaker.GetStats()
-	
+
 	return map[string]interface{}{
-		"enabled":  true,
-		"state":    state,
-		"failures": failures,
-		"requests": requests,
+		"enabled":   true,
+		"state":     state,
+		"failures":  failures,
+		"requests":  requests,
 		"successes": successes,
 	}
 }

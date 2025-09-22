@@ -1,9 +1,10 @@
 package pgsql
 
 import (
-	"github.com/go-lynx/lynx/plugins/sql/base"
 	"strings"
 	"time"
+
+	"github.com/go-lynx/lynx/plugins/sql/base"
 
 	"github.com/go-lynx/lynx/plugins/sql/pgsql/conf"
 	"github.com/prometheus/client_golang/prometheus"

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-lynx/lynx/app/log"
 	"google.golang.org/grpc"
 )
 
@@ -192,11 +193,11 @@ func (p *ConnectionPool) GetStats() map[string]interface{} {
 	defer p.mu.RUnlock()
 
 	stats := map[string]interface{}{
-		"enabled":     true,
-		"max_size":    p.maxSize,
+		"enabled":      true,
+		"max_size":     p.maxSize,
 		"current_size": len(p.connections),
 		"idle_timeout": p.idleTimeout.String(),
-		"connections": make(map[string]interface{}),
+		"connections":  make(map[string]interface{}),
 	}
 
 	connections := make(map[string]interface{})
@@ -232,7 +233,11 @@ func (p *ConnectionPool) evictLRU() {
 	if oldestService != "" {
 		if pooled, exists := p.connections[oldestService]; exists {
 			pooled.mu.Lock()
-			pooled.conn.Close()
+			err := pooled.conn.Close()
+			if err != nil {
+				log.Error(err)
+				return
+			}
 			pooled.mu.Unlock()
 			delete(p.connections, oldestService)
 		}
@@ -270,7 +275,11 @@ func (p *ConnectionPool) cleanupIdleConnections() {
 	for _, serviceName := range toRemove {
 		if pooled, exists := p.connections[serviceName]; exists {
 			pooled.mu.Lock()
-			pooled.conn.Close()
+			err := pooled.conn.Close()
+			if err != nil {
+				log.Error(err)
+				return
+			}
 			pooled.mu.Unlock()
 			delete(p.connections, serviceName)
 		}

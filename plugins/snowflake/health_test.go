@@ -24,7 +24,7 @@ func TestPlugSnowflake_GetHealth(t *testing.T) {
 				plugin := NewSnowflakePlugin()
 
 				// Initialize generator
-				generator := &SnowflakeGenerator{
+				generator := &Generator{
 					datacenterID:       1,
 					workerID:           1,
 					customEpoch:        1640995200000, // 2022-01-01
@@ -35,7 +35,7 @@ func TestPlugSnowflake_GetHealth(t *testing.T) {
 				plugin.generator = generator
 
 				// Initialize metrics
-				plugin.metrics = &SnowflakeMetrics{
+				plugin.metrics = &Metrics{
 					IDsGenerated:       100,
 					GenerationErrors:   0,
 					IDGenerationRate:   1000.0,
@@ -82,7 +82,7 @@ func TestPlugSnowflake_GetHealth(t *testing.T) {
 				plugin := NewSnowflakePlugin()
 
 				// Initialize generator with clock drift
-				generator := &SnowflakeGenerator{
+				generator := &Generator{
 					datacenterID:       1,
 					workerID:           1,
 					customEpoch:        1640995200000,
@@ -106,7 +106,7 @@ func TestPlugSnowflake_GetHealth(t *testing.T) {
 				plugin := NewSnowflakePlugin()
 
 				// Initialize generator
-				generator := &SnowflakeGenerator{
+				generator := &Generator{
 					datacenterID:       1,
 					workerID:           1,
 					customEpoch:        1640995200000,
@@ -117,7 +117,7 @@ func TestPlugSnowflake_GetHealth(t *testing.T) {
 				plugin.generator = generator
 
 				// Initialize metrics with high error rate
-				plugin.metrics = &SnowflakeMetrics{
+				plugin.metrics = &Metrics{
 					IDsGenerated:       70, // 70 successful
 					GenerationErrors:   30, // 30 errors = 30% error rate
 					IDGenerationRate:   1000.0,
@@ -228,7 +228,7 @@ func TestPlugSnowflake_GetHealth_ThreadSafety(t *testing.T) {
 	plugin := NewSnowflakePlugin()
 
 	// Initialize generator
-	generator := &SnowflakeGenerator{
+	generator := &Generator{
 		datacenterID:       1,
 		workerID:           1,
 		customEpoch:        1640995200000,
@@ -239,7 +239,7 @@ func TestPlugSnowflake_GetHealth_ThreadSafety(t *testing.T) {
 	plugin.generator = generator
 
 	// Initialize metrics
-	plugin.metrics = &SnowflakeMetrics{
+	plugin.metrics = &Metrics{
 		IDsGenerated:       100,
 		GenerationErrors:   0,
 		IDGenerationRate:   1000.0,
