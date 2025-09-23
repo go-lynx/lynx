@@ -70,8 +70,8 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 	}
 
 	// Validate address format
-	if err := validateAddress(c.Addr); err != nil {
-		return nil, nil, false, fmt.Errorf("address validation failed: %w", err)
+	if addrErr := validateAddress(c.Addr); addrErr != nil {
+		return nil, nil, false, fmt.Errorf("address validation failed: %w", addrErr)
 	}
 
 	// Batch processing options
@@ -198,10 +198,7 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 			// Set connection timeout and other connection options via dial options
 			var dialOpts []grpc.DialOption
 
-			// Connection timeout
-			if ct := conn.GetConnectTimeout(); ct != nil {
-				dialOpts = append(dialOpts, grpc.WithBlock(), grpc.WithTimeout(ct.AsDuration()))
-			}
+			// Connection timeout is now handled via context in exporter creation
 
 			// Connection pool settings
 			if conn.GetMaxConnIdleTime() != nil || conn.GetMaxConnAge() != nil || conn.GetMaxConnAgeGrace() != nil {
@@ -248,8 +245,17 @@ func buildExporter(ctx context.Context, c *conf.Tracer) (exp traceSdk.SpanExport
 			opts = append(opts, otlptracegrpc.WithCompressor("gzip"))
 		}
 
-		// Initialize gRPC exporter
-		exp, err = otlptracegrpc.New(ctx, opts...)
+		// Initialize gRPC exporter with connection timeout if configured
+		exporterCtx := ctx
+		var cancel context.CancelFunc
+		if conn := cfg.GetConnection(); conn != nil {
+			if ct := conn.GetConnectTimeout(); ct != nil {
+				exporterCtx, cancel = context.WithTimeout(ctx, ct.AsDuration())
+				defer cancel()
+			}
+		}
+
+		exp, err = otlptracegrpc.New(exporterCtx, opts...)
 		if err != nil {
 			return nil, nil, false, fmt.Errorf("failed to create OTLP gRPC exporter: %w", err)
 		}
