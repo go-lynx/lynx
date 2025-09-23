@@ -51,6 +51,10 @@ type WorkerIDManager struct {
 	ttl               time.Duration
 	heartbeatInterval time.Duration
 	shutdownCh        chan struct{}
+	// Heartbeat lifecycle management
+	heartbeatCtx     context.Context
+	heartbeatCancel  context.CancelFunc
+	heartbeatRunning bool
 	mu                sync.RWMutex
 }
 

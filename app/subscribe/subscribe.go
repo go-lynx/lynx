@@ -2,6 +2,8 @@ package subscribe
 
 import (
 	"context"
+	"crypto/tls"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -115,6 +117,17 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 	if g.svcName == "" {
 		return nil
 	}
+	// Prepare TLS config if needed
+	var tlsConf *tls.Config
+	if g.tls {
+		conf, err := g.tlsLoad()
+		if err != nil {
+			// Log error and return nil (handled by caller for required case)
+			log.Error(err)
+			return nil
+		}
+		tlsConf = conf
+	}
 	// Configure gRPC client options
 	opts := []grpc.ClientOption{
 		grpc.WithEndpoint("discovery:///" + g.svcName), // Set service discovery endpoint
@@ -123,22 +136,30 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 			logging.Client(log.Logger), // Add logging middleware
 			tracing.Client(),           // Add tracing middleware
 		),
-		grpc.WithTLSConfig(g.tlsLoad()),     // Set TLS configuration
-		grpc.WithNodeFilter(g.nodeFilter()), // Set node filter
+		// Set TLS configuration only when enabled
+		// Note: nil TLS config should not be passed
 	}
+	if tlsConf != nil {
+		opts = append(opts, grpc.WithTLSConfig(tlsConf))
+	}
+	opts = append(opts, grpc.WithNodeFilter(g.nodeFilter())) // Set node filter
+
 	var conn *gGrpc.ClientConn
 	var err error
+	// Use a dial timeout context to avoid hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	if g.tls {
 		// When TLS is enabled, use secure connection
-		conn, err = grpc.Dial(context.Background(), opts...)
+		conn, err = grpc.Dial(ctx, opts...)
 	} else {
 		// When TLS is not enabled, use insecure connection
-		conn, err = grpc.DialInsecure(context.Background(), opts...)
+		conn, err = grpc.DialInsecure(ctx, opts...)
 	}
 	if err != nil {
 		// Log error and throw exception
 		log.Error(err)
-		panic(err)
+		return nil
 	}
 	return conn
 }

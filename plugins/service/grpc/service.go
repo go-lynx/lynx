@@ -321,25 +321,33 @@ func (g *Service) checkPortAvailability() error {
 		return fmt.Errorf("server address not configured")
 	}
 
-	// Parse address to get port
-	addr := g.conf.Addr
-	if !strings.Contains(addr, ":") {
-		addr = ":" + addr
-	}
+    // Parse address and normalize host for dial
+    addr := g.conf.Addr
+    if !strings.Contains(addr, ":") {
+        addr = ":" + addr
+    }
+    host, port, err := net.SplitHostPort(addr)
+    if err != nil {
+        return fmt.Errorf("invalid address %q: %v", addr, err)
+    }
+    if host == "" {
+        host = "127.0.0.1"
+    }
+    norm := net.JoinHostPort(host, port)
 
-	// Try to listen on the port to check availability
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("port %s is not available: %v", addr, err)
-	}
-	defer func(listener net.Listener) {
-		err := listener.Close()
-		if err != nil {
-			log.Errorf("failed to close listener: %v", err)
-		}
-	}(listener)
+    // Only check TCP network here
+    if g.conf.Network != "" && g.conf.Network != "tcp" {
+        return nil
+    }
 
-	return nil
+    // Try to dial the port to check if the server is accepting connections.
+    // If we can connect, the service is up; if connection is refused or times out, report error.
+    conn, err := net.DialTimeout("tcp", norm, 2*time.Second)
+    if err != nil {
+        return fmt.Errorf("port %s is not reachable: %v", norm, err)
+    }
+    _ = conn.Close()
+    return nil
 }
 
 // validateTLSConfig validates TLS configuration

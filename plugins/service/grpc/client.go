@@ -376,16 +376,31 @@ func (c *ClientPlugin) buildConnection(config ClientConfig) (*grpc.ClientConn, e
 		}))
 	}
 
-	// Add timeout configuration
-	if config.Timeout > 0 {
-		// Note: grpc.WithTimeout is deprecated, use context.WithTimeout instead
-		// We'll handle timeout in the context when making calls
-	}
-
-	// Create connection
+	// Create connection using NewClient (DialContext is deprecated in newer gRPC)
 	conn, err := grpc.NewClient(target, opts...)
 	if err != nil {
 		return nil, err
+	}
+
+	// If the service is required, block until the connection is Ready or timeout
+	if config.Required {
+		waitTimeout := config.Timeout
+		if waitTimeout <= 0 {
+			waitTimeout = 10 * time.Second
+		}
+		waitCtx, cancel := context.WithTimeout(context.Background(), waitTimeout)
+		defer cancel()
+		// Start connecting and wait for Ready
+		conn.Connect()
+		for {
+			state := conn.GetState()
+			if state == connectivity.Ready {
+				break
+			}
+			if !conn.WaitForStateChange(waitCtx, state) {
+				return nil, fmt.Errorf("connection to %s not ready within %v (last_state=%s)", target, waitTimeout, state.String())
+			}
+		}
 	}
 
 	return conn, nil
