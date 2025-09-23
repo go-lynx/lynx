@@ -151,6 +151,12 @@ func (c *ClientPlugin) StartupTasks() error {
 	// Initialize retry handler
 	// c.retryHandler.Initialize(c.conf.MaxRetries, c.conf.RetryBackoff.AsDuration())
 
+	// Gate startup on required upstream readiness
+	if err := c.CheckRequiredServices(); err != nil {
+		log.Errorf("Required upstream services check failed: %v", err)
+		return err
+	}
+
 	log.Infof("gRPC client plugin started successfully")
 	return nil
 }

@@ -3,6 +3,7 @@ package subscribe
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/app/log"
 	gGrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 // GrpcSubscribe represents a struct for subscribing to GRPC services.
@@ -160,6 +162,26 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 		// Log error and throw exception
 		log.Error(err)
 		return nil
+	}
+
+	// If marked as required, block until connection is Ready or timeout
+	if g.required && conn != nil {
+		waitTimeout := 10 * time.Second
+		waitCtx, cancel := context.WithTimeout(context.Background(), waitTimeout)
+		defer cancel()
+		conn.Connect()
+		for {
+			state := conn.GetState()
+			if state == connectivity.Ready {
+				break
+			}
+			if !conn.WaitForStateChange(waitCtx, state) {
+				// timeout or context done
+				log.Error(fmt.Errorf("grpc subscribe connection to %s not ready within %v (last_state=%s)", g.svcName, waitTimeout, state.String()))
+				_ = conn.Close()
+				return nil
+			}
+		}
 	}
 	return conn
 }
