@@ -24,6 +24,9 @@ func NewWorkerIDManager(redisClient redis.UniversalClient, datacenterID int64, c
 		heartbeatInterval: config.HeartbeatInterval,
 		shutdownCh:        make(chan struct{}),
 		workerID:          -1, // Not assigned yet
+		heartbeatCtx:      nil,
+		heartbeatCancel:   nil,
+		heartbeatRunning:  false,
 	}
 }
 
@@ -38,8 +41,8 @@ func (w *WorkerIDManager) RegisterWorkerID(ctx context.Context, maxWorkerID int6
 			return -1, fmt.Errorf("failed to register worker ID %d: %w", workerID, err)
 		} else if success {
 			w.workerID = workerID
-			// Start heartbeat
-			go w.startHeartbeat()
+			// Start heartbeat (guarded)
+			w.startHeartbeatLocked()
 			return workerID, nil
 		}
 	}
@@ -65,9 +68,44 @@ func (w *WorkerIDManager) RegisterSpecificWorkerID(ctx context.Context, workerID
 	}
 
 	w.workerID = workerID
-	// Start heartbeat
-	go w.startHeartbeat()
+	// Start heartbeat (guarded)
+	w.startHeartbeatLocked()
 	return nil
+}
+
+// startHeartbeatLocked starts the heartbeat if not running.
+// Caller must hold w.mu.
+func (w *WorkerIDManager) startHeartbeatLocked() {
+	if w.heartbeatRunning {
+		return
+	}
+	// Cancel any previous context just in case
+	if w.heartbeatCancel != nil {
+		w.heartbeatCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	w.heartbeatCtx = ctx
+	w.heartbeatCancel = cancel
+	w.heartbeatRunning = true
+	go w.heartbeatLoop(ctx)
+}
+
+// heartbeatLoop starts the heartbeat process with context cancellation.
+func (w *WorkerIDManager) heartbeatLoop(ctx context.Context) {
+	ticker := time.NewTicker(w.heartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := w.sendHeartbeat(); err != nil {
+				// Log error but continue
+				fmt.Printf("heartbeat failed: %v\n", err)
+			}
+		}
+	}
 }
 
 // tryRegisterWorkerID attempts to register a specific worker ID
@@ -128,24 +166,6 @@ func (w *WorkerIDManager) tryRegisterWorkerID(ctx context.Context, workerID int6
 	return true, nil
 }
 
-// startHeartbeat starts the heartbeat process
-func (w *WorkerIDManager) startHeartbeat() {
-	ticker := time.NewTicker(w.heartbeatInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-w.shutdownCh:
-			return
-		case <-ticker.C:
-			if err := w.sendHeartbeat(); err != nil {
-				// Log error but continue
-				fmt.Printf("heartbeat failed: %v\n", err)
-			}
-		}
-	}
-}
-
 // sendHeartbeat sends a heartbeat to maintain worker ID registration
 func (w *WorkerIDManager) sendHeartbeat() error {
 	w.mu.RLock()
@@ -156,7 +176,11 @@ func (w *WorkerIDManager) sendHeartbeat() error {
 		return fmt.Errorf("worker ID not registered")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	parent := w.heartbeatCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 
 	key := w.getWorkerKey(workerID)
@@ -183,7 +207,12 @@ func (w *WorkerIDManager) UnregisterWorkerID(ctx context.Context) error {
 	}
 
 	// Stop heartbeat
-	close(w.shutdownCh)
+	if w.heartbeatCancel != nil {
+		w.heartbeatCancel()
+		w.heartbeatCancel = nil
+		w.heartbeatCtx = nil
+		w.heartbeatRunning = false
+	}
 
 	key := w.getWorkerKey(w.workerID)
 	registryKey := w.getRegistryKey()
