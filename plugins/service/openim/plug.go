@@ -1,6 +1,7 @@
 package openim
 
 import (
+	"fmt"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/factory"
 	"github.com/go-lynx/lynx/plugins"
@@ -31,13 +32,13 @@ func init() {
 // Returns:
 //   - *ServiceOpenIM: Configured OpenIM service instance
 //
-// Note: This function will panic if the plugin is not properly initialized or if the plugin manager cannot find the OpenIM plugin.
-func GetOpenIMService() *ServiceOpenIM {
-	// Get the plugin with the specified name from the application's plugin manager,
-	// convert it to *ServiceOpenIM type, and return it
-	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
-	if service, ok := plugin.(*ServiceOpenIM); ok {
-		return service
-	}
-	panic("failed to get OpenIM service: plugin type assertion failed")
+// Note: This function will return an error if the plugin is not properly initialized or if the plugin manager cannot find the OpenIM plugin.
+func GetOpenIMService() (*ServiceOpenIM, error) {
+    // Get the plugin with the specified name from the application's plugin manager,
+    // convert it to *ServiceOpenIM type, and return it
+    plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
+    if service, ok := plugin.(*ServiceOpenIM); ok && service != nil {
+        return service, nil
+    }
+    return nil, fmt.Errorf("failed to get OpenIM service: plugin not found or type assertion failed")
 }

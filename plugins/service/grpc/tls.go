@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"github.com/go-kratos/kratos/v2/transport/grpc"
+	"github.com/go-lynx/lynx/app"
+	"github.com/go-lynx/lynx/app/log"
 )
 
 // tlsLoad creates and configures TLS settings for the gRPC server.
@@ -18,52 +20,56 @@ import (
 //   - grpc.ServerOption: A configured TLS option for the gRPC server
 //   - error: Any error that occurred during TLS configuration
 func (g *Service) tlsLoad() (grpc.ServerOption, error) {
-	// Load the X.509 certificate and private key pair from the paths provided by the application.
-	// Get the certificate provider using dependency injection
-	certProvider := g.getCertProvider()
-	if certProvider == nil {
+	// Prefer injected provider; fallback to app-level certificate provider
+	var cp app.CertificateProvider
+	if prov := g.getCertProvider(); prov != nil {
+		if typed, ok := prov.(app.CertificateProvider); ok {
+			cp = typed
+		}
+	}
+	if cp == nil {
+		cp = app.Lynx().Certificate()
+	}
+	if cp == nil {
 		return nil, fmt.Errorf("certificate provider not configured")
 	}
 
-	// Validate certificate and private key are provided
-	// Note: In real implementation, type assertion would be needed here
-	// For now, we'll skip the certificate validation to avoid compilation errors
-	// if len(certProvider.GetCertificate()) == 0 {
-	//	return nil, fmt.Errorf("server certificate not provided")
-	// }
-	// if len(certProvider.GetPrivateKey()) == 0 {
-	//	return nil, fmt.Errorf("server private key not provided")
-	// }
-
-	// Load certificate and private key
-	// Note: In real implementation, type assertion would be needed here
-	// For now, we'll create a dummy certificate to avoid compilation errors
-	tlsCert, err := tls.X509KeyPair([]byte("dummy"), []byte("dummy"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load X509 key pair: %v", err)
+	if len(cp.GetCertificate()) == 0 {
+		return nil, fmt.Errorf("certificate data is empty")
+	}
+	if len(cp.GetPrivateKey()) == 0 {
+		return nil, fmt.Errorf("private key data is empty")
 	}
 
-	// Create a new certificate pool to hold trusted root CA certificates
-	certPool := x509.NewCertPool()
+	// Load certificate and private key
+	tlsCert, err := tls.X509KeyPair(cp.GetCertificate(), cp.GetPrivateKey())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load X509 key pair: %w", err)
+	}
 
-	// Attempt to add the root CA certificate (in PEM format) to the certificate pool
-	// Note: In real implementation, type assertion would be needed here
-	// For now, we'll skip the root CA validation to avoid compilation errors
-	// if len(certProvider.GetRootCACertificate()) > 0 {
-	//	if !certPool.AppendCertsFromPEM(certProvider.GetRootCACertificate()) {
-	//		return nil, fmt.Errorf("failed to append root CA certificate to pool")
-	//	}
-	// }
+	// Create certificate pool and add root CA if provided
+	var certPool *x509.CertPool
+	rootCA := cp.GetRootCACertificate()
+	if len(rootCA) > 0 {
+		certPool = x509.NewCertPool()
+		if !certPool.AppendCertsFromPEM(rootCA) {
+			log.Warnf("Failed to append root CA certificate to pool, continuing without client certificate verification")
+			certPool = nil
+		} else {
+			log.Infof("Root CA certificate successfully added to certificate pool")
+		}
+	} else {
+		log.Warnf("No root CA certificate provided, client certificate verification may be disabled")
+	}
 
 	// Configure the TLS settings for the gRPC server.
-	// Certificates: Set the server's certificate and private key pair.
-	// ClientCAs: Set the certificate pool containing trusted root CA certificates for client authentication.
-	// ServerName: Set the server name, which is retrieved from the application configuration.
-	// ClientAuth: Set the client authentication type based on the configuration.
-	return grpc.TLSConfig(&tls.Config{
+	cfg := &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
-		ClientCAs:    certPool,
 		ServerName:   g.getAppName(),
 		ClientAuth:   tls.ClientAuthType(g.conf.GetTlsAuthType()),
-	}), nil
+	}
+	if certPool != nil {
+		cfg.ClientCAs = certPool
+	}
+	return grpc.TLSConfig(cfg), nil
 }

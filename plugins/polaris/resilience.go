@@ -148,8 +148,11 @@ func (cb *CircuitBreaker) Do(operation func() error) error {
 	case CircuitStateHalfOpen:
 		// Half-open state, allow one attempt
 		log.Infof("Circuit breaker in half-open state, allowing one attempt")
+	case CircuitStateClosed:
+		// Closed state: allow normal operation
+		// No state change needed here
 	default:
-		return fmt.Errorf("circuit breaker is closed")
+		return fmt.Errorf("invalid circuit breaker state: %v", cb.state)
 	}
 
 	// Execute operation
