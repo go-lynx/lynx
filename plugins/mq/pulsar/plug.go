@@ -1,6 +1,7 @@
 package pulsar
 
 import (
+	"fmt"
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/factory"
 	"github.com/go-lynx/lynx/plugins"
@@ -24,16 +25,15 @@ func init() {
 //
 // Returns:
 //   - *PulsarClient: Configured Apache Pulsar client instance
-//
-// Note: This function will panic if the plugin is not properly initialized or if the plugin manager cannot find the Pulsar plugin.
-func GetPulsarClient() *PulsarClient {
+//   - error: Error if the plugin is not properly initialized or if the plugin manager cannot find the Pulsar plugin.
+func GetPulsarClient() (*PulsarClient, error) {
 	// Get the plugin with the specified name from the application's plugin manager,
 	// convert it to *PulsarClient type, and return it
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
-	if client, ok := plugin.(*PulsarClient); ok {
-		return client
+	if client, ok := plugin.(*PulsarClient); ok && client != nil {
+		return client, nil
 	}
-	panic("failed to get Pulsar client: plugin type assertion failed")
+	return nil, fmt.Errorf("failed to get Pulsar client: plugin not found or type assertion failed")
 }
 
 // GetPulsarClientByName gets a specific Pulsar client by name if multiple instances are configured.
@@ -44,12 +44,16 @@ func GetPulsarClient() *PulsarClient {
 //
 // Returns:
 //   - *PulsarClient: The specified Pulsar client instance, or nil if not found
-func GetPulsarClientByName(name string) *PulsarClient {
-	client := GetPulsarClient()
+//   - error: Error if the plugin is not properly initialized or if the plugin manager cannot find the Pulsar plugin.
+func GetPulsarClientByName(name string) (*PulsarClient, error) {
+	client, err := GetPulsarClient()
+	if err != nil {
+		return nil, err
+	}
 	if client != nil && client.GetPulsarConfig() != nil {
 		// For now, return the main client since we support single instance
 		// In the future, this could be extended to support multiple named instances
-		return client
+		return client, nil
 	}
-	return nil
+	return nil, fmt.Errorf("pulsar client not configured")
 }

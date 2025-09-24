@@ -173,18 +173,34 @@ func (p *PlugPolaris) checkServiceHealth(serviceName string, instances []model.I
 
 // retryServiceWatch retries service watch
 func (p *PlugPolaris) retryServiceWatch(serviceName string) {
-	// Implement retry logic
-	log.Infof("Retrying service watch for %s", serviceName)
+    // Implement retry logic
+    log.Infof("Retrying service watch for %s", serviceName)
 
-	// Wait for a while before retrying
-	time.Sleep(5 * time.Second)
+    // Wait for a while before retrying, but allow cancellation on plugin stop
+    if p.healthCheckCh != nil {
+        select {
+        case <-p.healthCheckCh:
+            log.Infof("Service watch retry canceled due to plugin shutdown: %s", serviceName)
+            return
+        case <-time.After(5 * time.Second):
+        }
+    } else {
+        if p.IsDestroyed() {
+            return
+        }
+        time.Sleep(5 * time.Second)
+    }
+
+    if p.IsDestroyed() {
+        return
+    }
 
 	// Recreate watcher
-	if _, err := p.WatchService(serviceName); err == nil {
-		log.Infof("Successfully recreated service watcher for %s", serviceName)
-	} else {
-		log.Errorf("Failed to recreate service watcher for %s: %v", serviceName, err)
-	}
+	    if _, err := p.WatchService(serviceName); err == nil {
+        log.Infof("Successfully recreated service watcher for %s", serviceName)
+    } else {
+        log.Errorf("Failed to recreate service watcher for %s: %v", serviceName, err)
+    }
 }
 
 // useCachedServiceInstances uses cached service instances

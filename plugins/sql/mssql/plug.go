@@ -2,6 +2,7 @@ package mssql
 
 import (
 	"database/sql"
+	"fmt"
 
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/factory"
@@ -26,16 +27,17 @@ func init() {
 //
 // Returns:
 //   - *DBMssqlClient: Configured Microsoft SQL Server client instance
+//   - error: Any error that occurred while getting the client
 //
-// Note: This function will panic if the plugin is not properly initialized or if the plugin manager cannot find the Microsoft SQL Server plugin.
-func GetMssqlClient() *DBMssqlClient {
+// Note: This function will return an error if the plugin is not properly initialized or if the plugin manager cannot find the Microsoft SQL Server plugin.
+func GetMssqlClient() (*DBMssqlClient, error) {
 	// Get the plugin with the specified name from the application's plugin manager,
 	// convert it to *DBMssqlClient type, and return it
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
 	if client, ok := plugin.(*DBMssqlClient); ok {
-		return client
+		return client, nil
 	}
-	panic("failed to get MSSQL client: plugin type assertion failed")
+	return nil, fmt.Errorf("failed to get MSSQL client: plugin not found or type assertion failed")
 }
 
 // GetMssqlDB gets the underlying database connection from the Microsoft SQL Server plugin.
@@ -45,7 +47,11 @@ func GetMssqlClient() *DBMssqlClient {
 //   - *sql.DB: The underlying database connection
 //   - error: Any error that occurred while getting the database connection
 //
-// Note: This function will panic if the plugin is not properly initialized.
+// Note: This function will return an error if the plugin is not properly initialized.
 func GetMssqlDB() (*sql.DB, error) {
-	return GetMssqlClient().BaseSQLPlugin.GetDB()
+	client, err := GetMssqlClient()
+	if err != nil {
+		return nil, err
+	}
+	return client.SQLPlugin.GetDB()
 }
