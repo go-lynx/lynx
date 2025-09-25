@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -102,7 +103,7 @@ func (w *WorkerIDManager) heartbeatLoop(ctx context.Context) {
 		case <-ticker.C:
 			if err := w.sendHeartbeat(); err != nil {
 				// Log error but continue
-				fmt.Printf("heartbeat failed: %v\n", err)
+				log.Warnf("snowflake worker heartbeat failed: %v", err)
 			}
 		}
 	}

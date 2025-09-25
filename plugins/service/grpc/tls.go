@@ -17,53 +17,66 @@ import (
 // Returns:
 //   - grpc.ServerOption: A configured TLS option for the gRPC server
 //   - error: Any error that occurred during TLS configuration
+// certificateProvider is a local interface matching the application's provider.
+// It intentionally mirrors method names without importing the app/interfaces package
+// to avoid cross-module import issues when plugins are built as separate modules.
+type certificateProvider interface {
+    GetCertificate() []byte
+    GetPrivateKey() []byte
+    // Root CA method name in adapters: GetRootCA
+    GetRootCA() []byte
+}
+
 func (g *Service) tlsLoad() (grpc.ServerOption, error) {
-	// Load the X.509 certificate and private key pair from the paths provided by the application.
-	// Get the certificate provider using dependency injection
-	certProvider := g.getCertProvider()
-	if certProvider == nil {
+	// Load the X.509 certificate and private key pair from the application certificate provider
+	provider := g.getCertProvider()
+	if provider == nil {
 		return nil, fmt.Errorf("certificate provider not configured")
 	}
-
-	// Validate certificate and private key are provided
-	// Note: In real implementation, type assertion would be needed here
-	// For now, we'll skip the certificate validation to avoid compilation errors
-	// if len(certProvider.GetCertificate()) == 0 {
-	//	return nil, fmt.Errorf("server certificate not provided")
-	// }
-	// if len(certProvider.GetPrivateKey()) == 0 {
-	//	return nil, fmt.Errorf("server private key not provided")
-	// }
-
-	// Load certificate and private key
-	// Note: In real implementation, type assertion would be needed here
-	// For now, we'll create a dummy certificate to avoid compilation errors
-	tlsCert, err := tls.X509KeyPair([]byte("dummy"), []byte("dummy"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load X509 key pair: %v", err)
+	cp, ok := provider.(certificateProvider)
+	if !ok {
+		return nil, fmt.Errorf("invalid certificate provider type: %T", provider)
 	}
 
-	// Create a new certificate pool to hold trusted root CA certificates
-	certPool := x509.NewCertPool()
+	certPEM := cp.GetCertificate()
+	keyPEM := cp.GetPrivateKey()
+	if len(certPEM) == 0 || len(keyPEM) == 0 {
+		return nil, fmt.Errorf("server certificate or private key not provided")
+	}
 
-	// Attempt to add the root CA certificate (in PEM format) to the certificate pool
-	// Note: In real implementation, type assertion would be needed here
-	// For now, we'll skip the root CA validation to avoid compilation errors
-	// if len(certProvider.GetRootCACertificate()) > 0 {
-	//	if !certPool.AppendCertsFromPEM(certProvider.GetRootCACertificate()) {
-	//		return nil, fmt.Errorf("failed to append root CA certificate to pool")
-	//	}
-	// }
+	tlsCert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse X509 key pair: %w", err)
+	}
 
-	// Configure the TLS settings for the gRPC server.
-	// Certificates: Set the server's certificate and private key pair.
-	// ClientCAs: Set the certificate pool containing trusted root CA certificates for client authentication.
-	// ServerName: Set the server name, which is retrieved from the application configuration.
-	// ClientAuth: Set the client authentication type based on the configuration.
-	return grpc.TLSConfig(&tls.Config{
-		Certificates: []tls.Certificate{tlsCert},
-		ClientCAs:    certPool,
-		ServerName:   g.getAppName(),
-		ClientAuth:   tls.ClientAuthType(g.conf.GetTlsAuthType()),
-	}), nil
+	// Root CA for optional mTLS
+	var certPool *x509.CertPool
+	if caPEM := cp.GetRootCA(); len(caPEM) > 0 {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caPEM) {
+			return nil, fmt.Errorf("failed to append root CA certificate to pool")
+		}
+		certPool = pool
+	}
+
+	// Enforce secure defaults
+	tlsConf := &tls.Config{
+		Certificates:             []tls.Certificate{tlsCert},
+		ClientCAs:                certPool,
+		ClientAuth:               tls.ClientAuthType(g.conf.GetTlsAuthType()),
+		MinVersion:               tls.VersionTLS12,
+		MaxVersion:               tls.VersionTLS13,
+		PreferServerCipherSuites: true,
+		// Forward secrecy suites
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		},
+	}
+
+	return grpc.TLSConfig(tlsConf), nil
 }

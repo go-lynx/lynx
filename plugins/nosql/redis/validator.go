@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-lynx/lynx/app/config"
 	"github.com/go-lynx/lynx/plugins/nosql/redis/conf"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
@@ -467,5 +468,313 @@ func setDefaultValues(config *conf.Redis) {
 	}
 	if config.MaxRetryBackoff == nil {
 		config.MaxRetryBackoff = durationpb.New(512 * time.Millisecond)
+	}
+}
+
+// RedisConfigValidator provides Redis-specific configuration validation
+type RedisConfigValidator struct {
+	*config.ConfigValidator
+	defaultSetter *config.DefaultValueSetter
+}
+
+// NewRedisConfigValidator creates a new Redis configuration validator
+func NewRedisConfigValidator(strictMode bool, environment string) *RedisConfigValidator {
+	validator := config.NewConfigValidator(strictMode, environment)
+	defaultSetter := config.NewDefaultValueSetter()
+	
+	rcv := &RedisConfigValidator{
+		ConfigValidator: validator,
+		defaultSetter:   defaultSetter,
+	}
+	
+	// Register validation rules
+	rcv.registerValidationRules()
+	
+	// Register default values
+	rcv.registerDefaultValues()
+	
+	return rcv
+}
+
+// registerValidationRules registers all Redis-specific validation rules
+func (rcv *RedisConfigValidator) registerValidationRules() {
+	// Address validation
+	rcv.AddRule("Addrs", config.ValidationRule{
+		Name:        "redis_addresses",
+		Description: "Validates Redis server addresses",
+		Validator:   rcv.validateAddresses,
+		Required:    true,
+	})
+	
+	// Connection pool validation
+	rcv.AddRule("MinIdleConns", config.ValidationRule{
+		Name:        "min_idle_connections",
+		Description: "Validates minimum idle connections",
+		Validator:   config.ValidateRange(0, 1000),
+		Required:    false,
+	})
+	
+	rcv.AddRule("MaxActiveConns", config.ValidationRule{
+		Name:        "max_active_connections",
+		Description: "Validates maximum active connections",
+		Validator:   config.ValidateRange(1, 10000),
+		Required:    false,
+	})
+	
+	rcv.AddRule("MaxIdleConns", config.ValidationRule{
+		Name:        "max_idle_connections",
+		Description: "Validates maximum idle connections",
+		Validator:   config.ValidateRange(0, 1000),
+		Required:    false,
+	})
+	
+	// Timeout validation
+	rcv.AddRule("DialTimeout", config.ValidationRule{
+		Name:        "dial_timeout",
+		Description: "Validates dial timeout",
+		Validator:   config.ValidateDuration(100*time.Millisecond, 30*time.Second),
+		Required:    false,
+	})
+	
+	rcv.AddRule("ReadTimeout", config.ValidationRule{
+		Name:        "read_timeout",
+		Description: "Validates read timeout",
+		Validator:   config.ValidateDuration(100*time.Millisecond, 60*time.Second),
+		Required:    false,
+	})
+	
+	rcv.AddRule("WriteTimeout", config.ValidationRule{
+		Name:        "write_timeout",
+		Description: "Validates write timeout",
+		Validator:   config.ValidateDuration(100*time.Millisecond, 60*time.Second),
+		Required:    false,
+	})
+	
+	// Database validation
+	rcv.AddRule("DB", config.ValidationRule{
+		Name:        "database_number",
+		Description: "Validates Redis database number",
+		Validator:   config.ValidateRange(0, 15),
+		Required:    false,
+	})
+	
+	// Client name validation
+	rcv.AddRule("ClientName", config.ValidationRule{
+		Name:        "client_name",
+		Description: "Validates Redis client name",
+		Validator:   rcv.validateClientName,
+		Required:    false,
+	})
+	
+	// Retry configuration validation
+	rcv.AddRule("MaxRetries", config.ValidationRule{
+		Name:        "max_retries",
+		Description: "Validates maximum retry attempts",
+		Validator:   config.ValidateRange(0, 10),
+		Required:    false,
+	})
+	
+	rcv.AddRule("MinRetryBackoff", config.ValidationRule{
+		Name:        "min_retry_backoff",
+		Description: "Validates minimum retry backoff",
+		Validator:   config.ValidateDuration(1*time.Millisecond, 10*time.Second),
+		Required:    false,
+	})
+	
+	rcv.AddRule("MaxRetryBackoff", config.ValidationRule{
+		Name:        "max_retry_backoff",
+		Description: "Validates maximum retry backoff",
+		Validator:   config.ValidateDuration(1*time.Millisecond, 60*time.Second),
+		Required:    false,
+	})
+}
+
+// registerDefaultValues registers default values for Redis configuration
+func (rcv *RedisConfigValidator) registerDefaultValues() {
+	// Connection pool defaults
+	rcv.defaultSetter.SetDefault("MinIdleConns", int32(5))
+	rcv.defaultSetter.SetDefault("MaxActiveConns", int32(100))
+	rcv.defaultSetter.SetDefault("MaxIdleConns", int32(20))
+	
+	// Timeout defaults
+	rcv.defaultSetter.SetDefaultFunc("DialTimeout", func(interface{}) interface{} {
+		return durationpb.New(5 * time.Second)
+	})
+	rcv.defaultSetter.SetDefaultFunc("ReadTimeout", func(interface{}) interface{} {
+		return durationpb.New(3 * time.Second)
+	})
+	rcv.defaultSetter.SetDefaultFunc("WriteTimeout", func(interface{}) interface{} {
+		return durationpb.New(3 * time.Second)
+	})
+	rcv.defaultSetter.SetDefaultFunc("PoolTimeout", func(interface{}) interface{} {
+		return durationpb.New(4 * time.Second)
+	})
+	
+	// Connection lifecycle defaults
+	rcv.defaultSetter.SetDefaultFunc("ConnMaxIdleTime", func(interface{}) interface{} {
+		return durationpb.New(30 * time.Minute)
+	})
+	rcv.defaultSetter.SetDefaultFunc("MaxConnAge", func(interface{}) interface{} {
+		return durationpb.New(0) // 0 means no limit
+	})
+	
+	// Retry defaults
+	rcv.defaultSetter.SetDefault("MaxRetries", int32(3))
+	rcv.defaultSetter.SetDefaultFunc("MinRetryBackoff", func(interface{}) interface{} {
+		return durationpb.New(8 * time.Millisecond)
+	})
+	rcv.defaultSetter.SetDefaultFunc("MaxRetryBackoff", func(interface{}) interface{} {
+		return durationpb.New(512 * time.Millisecond)
+	})
+	
+	// Database default
+	rcv.defaultSetter.SetDefault("DB", int32(0))
+	
+	// Network defaults
+	rcv.defaultSetter.SetDefault("Network", "tcp")
+}
+
+// ValidateRedisConfigWithFramework validates Redis configuration using the new framework
+func (rcv *RedisConfigValidator) ValidateRedisConfigWithFramework(config *conf.Redis) *config.ValidationResult {
+	// Apply defaults first
+	if err := rcv.defaultSetter.ApplyDefaults(config); err != nil {
+		result := &config.ValidationResult{Valid: false}
+		result.AddError("config", config, fmt.Sprintf("Failed to apply defaults: %v", err))
+		return result
+	}
+	
+	// Validate configuration
+	result := rcv.ValidateConfig(config, "redis")
+	
+	// Add custom validations that require multiple fields
+	rcv.validateConnectionPoolRelationships(config, result)
+	rcv.validateTimeoutRelationships(config, result)
+	rcv.validateRetryBackoffRelationships(config, result)
+	
+	return result
+}
+
+// Custom validation functions
+
+// validateAddresses validates Redis server addresses
+func (rcv *RedisConfigValidator) validateAddresses(value interface{}, context config.ValidationContext) error {
+	addrs, ok := value.([]string)
+	if !ok {
+		return fmt.Errorf("expected []string, got %T", value)
+	}
+	
+	if len(addrs) == 0 {
+		return fmt.Errorf("at least one address is required")
+	}
+	
+	for i, addr := range addrs {
+		if strings.TrimSpace(addr) == "" {
+			return fmt.Errorf("address[%d] cannot be empty", i)
+		}
+		
+		if err := rcv.validateSingleAddress(addr); err != nil {
+			return fmt.Errorf("address[%d]: %w", i, err)
+		}
+	}
+	
+	return nil
+}
+
+// validateSingleAddress validates a single Redis address
+func (rcv *RedisConfigValidator) validateSingleAddress(addr string) error {
+	// Support rediss:// prefix (TLS)
+	if strings.HasPrefix(strings.ToLower(addr), "rediss://") {
+		addr = strings.TrimPrefix(addr, "rediss://")
+	}
+	
+	// Support redis:// prefix
+	if strings.HasPrefix(strings.ToLower(addr), "redis://") {
+		addr = strings.TrimPrefix(addr, "redis://")
+	}
+	
+	// Validate host:port format
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid address format: %w", err)
+	}
+	
+	// Validate host
+	if host == "" {
+		return fmt.Errorf("host cannot be empty")
+	}
+	
+	// Validate port
+	if port == "" {
+		return fmt.Errorf("port cannot be empty")
+	}
+	
+	// Validate port range
+	if portNum, err := strconv.Atoi(port); err != nil || portNum <= 0 || portNum > 65535 {
+		return fmt.Errorf("invalid port number: %s (must be 1-65535)", port)
+	}
+	
+	return nil
+}
+
+// validateClientName validates Redis client name
+func (rcv *RedisConfigValidator) validateClientName(value interface{}, context config.ValidationContext) error {
+	clientName, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("expected string, got %T", value)
+	}
+	
+	if clientName == "" {
+		return nil // Empty client name is allowed
+	}
+	
+	// Client name should not contain spaces or special characters
+	if matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, clientName); !matched {
+		return fmt.Errorf("client name can only contain alphanumeric characters, underscores, and hyphens")
+	}
+	
+	// Client name length limit
+	if len(clientName) > 64 {
+		return fmt.Errorf("client name cannot exceed 64 characters")
+	}
+	
+	return nil
+}
+
+// validateConnectionPoolRelationships validates relationships between connection pool settings
+func (rcv *RedisConfigValidator) validateConnectionPoolRelationships(config *conf.Redis, result *config.ValidationResult) {
+	if config.MinIdleConns > 0 && config.MaxActiveConns > 0 {
+		if config.MinIdleConns > config.MaxActiveConns {
+			result.AddError("MinIdleConns", config.MinIdleConns, "cannot be greater than MaxActiveConns")
+		}
+	}
+	
+	if config.MaxIdleConns > 0 && config.MaxActiveConns > 0 {
+		if config.MaxIdleConns > config.MaxActiveConns {
+			result.AddWarning("MaxIdleConns", config.MaxIdleConns, "should not exceed MaxActiveConns")
+		}
+	}
+}
+
+// validateTimeoutRelationships validates relationships between timeout settings
+func (rcv *RedisConfigValidator) validateTimeoutRelationships(config *conf.Redis, result *config.ValidationResult) {
+	if config.DialTimeout != nil && config.PoolTimeout != nil {
+		dialTimeout := config.DialTimeout.AsDuration()
+		poolTimeout := config.PoolTimeout.AsDuration()
+		
+		if poolTimeout < dialTimeout {
+			result.AddWarning("PoolTimeout", poolTimeout, "should be greater than or equal to DialTimeout")
+		}
+	}
+}
+
+// validateRetryBackoffRelationships validates relationships between retry backoff settings
+func (rcv *RedisConfigValidator) validateRetryBackoffRelationships(config *conf.Redis, result *config.ValidationResult) {
+	if config.MinRetryBackoff != nil && config.MaxRetryBackoff != nil {
+		minBackoff := config.MinRetryBackoff.AsDuration()
+		maxBackoff := config.MaxRetryBackoff.AsDuration()
+		
+		if minBackoff > maxBackoff {
+			result.AddError("MinRetryBackoff", minBackoff, "cannot be greater than MaxRetryBackoff")
+		}
 	}
 }
