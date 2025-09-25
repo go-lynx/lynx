@@ -526,16 +526,33 @@ func (p *PlugPolaris) sendConfigWatchAlert(fileName, group string, err error) {
 
 // retryConfigWatch retries configuration watching
 func (p *PlugPolaris) retryConfigWatch(fileName, group string) {
-	// Implement retry logic
-	log.Infof("Retrying config watch for %s:%s", fileName, group)
+    // Implement retry logic
+    log.Infof("Retrying config watch for %s:%s", fileName, group)
 
-	// Wait for a period before retrying
-	time.Sleep(5 * time.Second)
+    // Wait for a period before retrying, but allow cancellation on plugin stop
+    if p.healthCheckCh != nil {
+        select {
+        case <-p.healthCheckCh:
+            log.Infof("Config watch retry canceled due to plugin shutdown: %s:%s", fileName, group)
+            return
+        case <-time.After(5 * time.Second):
+        }
+    } else {
+        // Fallback when channel is not available
+        if p.IsDestroyed() {
+            return
+        }
+        time.Sleep(5 * time.Second)
+    }
 
-	// Recreate watcher
-	if _, err := p.WatchConfig(fileName, group); err == nil {
-		log.Infof("Successfully recreated config watcher for %s:%s", fileName, group)
-	} else {
-		log.Errorf("Failed to recreate config watcher for %s:%s: %v", fileName, group, err)
-	}
+    if p.IsDestroyed() {
+        return
+    }
+
+    // Recreate watcher
+    if _, err := p.WatchConfig(fileName, group); err == nil {
+        log.Infof("Successfully recreated config watcher for %s:%s", fileName, group)
+    } else {
+        log.Errorf("Failed to recreate config watcher for %s:%s: %v", fileName, group, err)
+    }
 }
