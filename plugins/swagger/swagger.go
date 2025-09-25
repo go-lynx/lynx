@@ -922,7 +922,7 @@ func (p *PlugSwagger) validateScanDirectory(dir string) error {
 	}
 
 	// Check if directory exists
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(absPath); os.IsNotExist(statErr) {
 		return fmt.Errorf("directory does not exist: %s", absPath)
 	}
 
