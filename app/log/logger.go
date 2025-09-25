@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -42,6 +43,15 @@ var (
 
 	// proxy logger so Kratos app receives a stable logger whose inner can be hot-swapped
 	pLogger *proxyLogger
+
+	// Performance optimization components
+	bufferedWriters map[string]*BufferedWriter
+	asyncWriters    map[string]*AsyncLogWriter
+	writersMu       sync.RWMutex
+	
+	// Performance monitoring
+	globalMetrics *LogPerformanceMetrics
+	metricsEnabled bool
 )
 
 // proxyLogger forwards Log calls to an inner logger stored atomically.
@@ -220,8 +230,16 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		return fmt.Errorf("configuration instance cannot be nil")
 	}
 
+	// Initialize performance components
+	bufferedWriters = make(map[string]*BufferedWriter)
+	asyncWriters = make(map[string]*AsyncLogWriter)
+	globalMetrics = &LogPerformanceMetrics{
+		lastReset: time.Now(),
+	}
+	metricsEnabled = true
+
 	// Log the initialization of the logging component using fmt to avoid uninitialized logger discrepancies
-	fmt.Println("[lynx] initializing logging component")
+	fmt.Println("[lynx] initializing logging component with performance optimizations")
 
 	// Parse log configuration
 	var logConfig lconf.Log
@@ -233,29 +251,20 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		}
 	}
 
-	// Set up log output
+	// Set up log output with performance optimizations
 	var writers []io.Writer
 
-	// Configure console output
+	// Configure console output with optimizations
 	if logConfig.GetConsoleOutput() {
-		consoleWriter := zerolog.ConsoleWriter{
-			Out:        os.Stdout,
-			TimeFormat: time.RFC3339Nano,
-			NoColor:    false,
-			PartsOrder: []string{
-				zerolog.TimestampFieldName,
-				zerolog.LevelFieldName,
-				zerolog.CallerFieldName,
-				zerolog.MessageFieldName,
-			},
-			FormatMessage: func(i interface{}) string {
-				return fmt.Sprintf("msg=\"%v\"", i)
-			},
-		}
-		writers = append(writers, consoleWriter)
+		consoleWriter := NewOptimizedConsoleWriter(os.Stdout)
+		
+		// Wrap with buffered writer for better performance
+		bufferedConsole := NewBufferedWriter(consoleWriter, 32*1024) // 32KB buffer for console
+		bufferedWriters["console"] = bufferedConsole
+		writers = append(writers, bufferedConsole)
 	}
 
-	// Configure file output
+	// Configure file output with optimizations
 	if logConfig.GetFilePath() != "" {
 		// Ensure log directory exists
 		logDir := filepath.Dir(logConfig.GetFilePath())
@@ -283,19 +292,26 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			MaxAge:     ma, // days
 			Compress:   logConfig.GetCompress(),
 		}
-		writers = append(writers, fileWriter)
+
+		// Use async writer for file output to improve performance
+		asyncFile := NewAsyncLogWriter(fileWriter, 2000) // 2000 log queue size
+		asyncWriters["file"] = asyncFile
+		writers = append(writers, asyncFile)
 	}
 
-	// If no output is configured, default to console output
+	// If no output is configured, default to optimized console output
 	if len(writers) == 0 {
-		writers = append(writers, os.Stdout)
+		consoleWriter := NewOptimizedConsoleWriter(os.Stdout)
+		bufferedConsole := NewBufferedWriter(consoleWriter, 32*1024)
+		bufferedWriters["console"] = bufferedConsole
+		writers = append(writers, bufferedConsole)
 	}
 
 	// Create multi-output writer
 	output := zerolog.MultiLevelWriter(writers...)
 
-	// Set global time format and timezone
-	zerolog.TimeFieldFormat = time.RFC3339Nano
+	// Set global time format and timezone with optimizations
+	zerolog.TimeFieldFormat = "15:04:05.000" // Shorter format for better performance
 	// timezone from log config (prefer scanned field)
 	if tz := strings.TrimSpace(logConfig.GetTimezone()); tz != "" {
 		setTimezoneByName(tz)
@@ -332,7 +348,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	applyStackFromConfig(&logConfig)
 	applySamplingFromConfig(&logConfig)
 
-	// Initialize underlying logger with zeroLogger
+	// Initialize underlying logger with zeroLogger and performance optimizations
 	z := zerolog.New(output).With().Timestamp().Logger()
 
 	// Store service metadata for rebuilds
@@ -376,6 +392,9 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	if pLogger != nil {
 		pLogger.inner.Store(logger)
 	}
+
+	// Start performance monitoring goroutine
+	go monitorLogPerformance()
 
 	// Banner display has been decoupled from logger initialization (see app/banner)
 
@@ -468,9 +487,98 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	}
 
 	// Log successful initialization
-	lHelper.Info("lynx application logging component initialized successfully")
+	lHelper.Info("lynx application logging component initialized successfully with performance optimizations")
 
 	return nil
+}
+
+// monitorLogPerformance monitors logging performance and reports metrics
+func monitorLogPerformance() {
+	ticker := time.NewTicker(30 * time.Second) // Report every 30 seconds
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if !metricsEnabled {
+			continue
+		}
+
+		writersMu.RLock()
+		
+		// Collect metrics from buffered writers
+		for name, bw := range bufferedWriters {
+			metrics := bw.GetMetrics()
+			if metrics.TotalLogs > 0 {
+				fmt.Printf("[lynx-log-perf] BufferedWriter[%s]: logs=%d, avg_write=%v, buffer_util=%.1f%%, flushes=%d, errors=%d\n",
+					name, metrics.TotalLogs, metrics.AvgWriteTime, metrics.BufferUtilization, metrics.FlushCount, metrics.ErrorCount)
+			}
+		}
+
+		// Collect metrics from async writers
+		for name, aw := range asyncWriters {
+			metrics := aw.GetMetrics()
+			if metrics.TotalLogs > 0 {
+				fmt.Printf("[lynx-log-perf] AsyncWriter[%s]: logs=%d, dropped=%d, avg_write=%v, queue_util=%.1f%%, errors=%d\n",
+					name, metrics.TotalLogs, metrics.DroppedLogs, metrics.AvgWriteTime, metrics.BufferUtilization, metrics.ErrorCount)
+			}
+		}
+		
+		writersMu.RUnlock()
+	}
+}
+
+// GetLogPerformanceMetrics returns aggregated performance metrics
+func GetLogPerformanceMetrics() map[string]LogPerformanceMetrics {
+	writersMu.RLock()
+	defer writersMu.RUnlock()
+
+	metrics := make(map[string]LogPerformanceMetrics)
+
+	for name, bw := range bufferedWriters {
+		metrics["buffered_"+name] = bw.GetMetrics()
+	}
+
+	for name, aw := range asyncWriters {
+		metrics["async_"+name] = aw.GetMetrics()
+	}
+
+	return metrics
+}
+
+// ResetLogPerformanceMetrics resets all performance metrics
+func ResetLogPerformanceMetrics() {
+	writersMu.RLock()
+	defer writersMu.RUnlock()
+
+	for _, bw := range bufferedWriters {
+		bw.ResetMetrics()
+	}
+
+	for _, aw := range asyncWriters {
+		// Async writers don't have reset method, but we can note the reset time
+		// This would need to be implemented in the AsyncLogWriter if needed
+	}
+}
+
+// EnablePerformanceMonitoring enables or disables performance monitoring
+func EnablePerformanceMonitoring(enabled bool) {
+	metricsEnabled = enabled
+}
+
+// CleanupLoggers properly closes all writers and cleans up resources
+func CleanupLoggers() {
+	writersMu.Lock()
+	defer writersMu.Unlock()
+
+	for _, bw := range bufferedWriters {
+		bw.Close()
+	}
+
+	for _, aw := range asyncWriters {
+		aw.Close()
+	}
+
+	bufferedWriters = make(map[string]*BufferedWriter)
+	asyncWriters = make(map[string]*AsyncLogWriter)
 }
 
 // Caller returns a log.Valuer that provides the caller's source location.

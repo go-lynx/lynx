@@ -41,6 +41,24 @@ type ClientPlugin struct {
 	tlsManager      *TLSManager
 	mu              sync.RWMutex
 	metrics         *ClientMetrics
+	rt              plugins.Runtime
+}
+
+// publishRequiredReadiness publishes the required-upstreams readiness state to the shared runtime resource.
+func (c *ClientPlugin) publishRequiredReadiness(ready bool) {
+    if c == nil || c.rt == nil {
+        return
+    }
+    // RegisterSharedResource also overwrites existing entries safely in our runtime
+    if err := c.rt.RegisterSharedResource(requiredReadinessResourceName, ready); err != nil {
+        log.Warnf("Failed to publish required readiness state: %v", err)
+    } else {
+        if ready {
+            log.Infof("Published required upstream readiness: READY")
+        } else {
+            log.Warnf("Published required upstream readiness: NOT READY")
+        }
+    }
 }
 
 // ClientConfig represents configuration for a specific gRPC client connection
@@ -90,11 +108,13 @@ func NewGrpcClientPlugin() *ClientPlugin {
 
 // InitializeResources initializes the gRPC client plugin
 func (c *ClientPlugin) InitializeResources(rt plugins.Runtime) error {
-	// Load configuration
-	err := rt.GetConfig().Value("lynx.grpc.client").Scan(c.conf)
-	if err != nil {
-		return err
-	}
+    // Store runtime for publishing readiness state
+    c.rt = rt
+    // Load configuration
+    err := rt.GetConfig().Value("lynx.grpc.client").Scan(c.conf)
+    if err != nil {
+        return err
+    }
 
 	// Set default configuration
 	if c.conf.DefaultTimeout == nil {
@@ -138,12 +158,15 @@ func (c *ClientPlugin) InitializeResources(rt plugins.Runtime) error {
 		return fmt.Errorf("configuration validation failed: %w", err)
 	}
 
-	return nil
+    // Initialize required-upstreams readiness as false until checks pass
+    c.publishRequiredReadiness(false)
+
+    return nil
 }
 
 // StartupTasks starts the gRPC client plugin
 func (c *ClientPlugin) StartupTasks() error {
-	log.Infof("Starting gRPC client plugin")
+    log.Infof("Starting gRPC client plugin")
 
 	// Initialize metrics
 	c.metrics.Initialize()
@@ -151,11 +174,17 @@ func (c *ClientPlugin) StartupTasks() error {
 	// Initialize retry handler
 	// c.retryHandler.Initialize(c.conf.MaxRetries, c.conf.RetryBackoff.AsDuration())
 
-	// Gate startup on required upstream readiness
-	if err := c.CheckRequiredServices(); err != nil {
-		log.Errorf("Required upstream services check failed: %v", err)
-		return err
-	}
+	    // Ensure readiness is false until we complete checks
+    c.publishRequiredReadiness(false)
+
+    // Gate startup on required upstream readiness
+    if err := c.CheckRequiredServices(); err != nil {
+        log.Errorf("Required upstream services check failed: %v", err)
+        return err
+    }
+
+    // Mark readiness true after required-check passes
+    c.publishRequiredReadiness(true)
 
 	log.Infof("gRPC client plugin started successfully")
 	return nil

@@ -19,6 +19,8 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/service/grpc/conf"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -45,13 +47,35 @@ type Service struct {
 	*plugins.BasePlugin
 	// gRPC server instance
 	server *grpc.Server
+	// gRPC health server for readiness reporting
+	healthServer *health.Server
+	// cancel function for background health status poller
+	healthPollCancel context.CancelFunc
 	// gRPC service configuration information
 	conf *conf.Service
+	// runtime handle to query shared resources (e.g., required readiness)
+	rt plugins.Runtime
 	// Dependency injection providers
 	appNameProvider      func() string
 	loggerProvider       func() interface{}
 	certProvider         func() interface{}
 	controlPlaneProvider func() interface{}
+}
+
+// healthStatusPoller periodically syncs health serving status with required upstream readiness.
+// It runs until the context is canceled in CleanupTasks.
+func (g *Service) healthStatusPoller(ctx context.Context) {
+    // Poll at a low frequency to avoid overhead, yet responsive enough for rollouts
+    ticker := time.NewTicker(1 * time.Second)
+    defer ticker.Stop()
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case <-ticker.C:
+            g.updateHealthServingStatus()
+        }
+    }
 }
 
 // NewGrpcService creates and initializes a new instance of the gRPC service plugin.
@@ -93,6 +117,8 @@ func (g *Service) SetDependencies(
 // It loads and validates the gRPC server configuration from the runtime environment.
 // If no configuration is provided, it sets up default values for the server.
 func (g *Service) InitializeResources(rt plugins.Runtime) error {
+	// store runtime for later use (e.g., readiness resource lookups)
+	g.rt = rt
 	// Initialize an empty configuration structure
 	g.conf = &conf.Service{}
 
@@ -196,6 +222,9 @@ func (g *Service) StartupTasks() error {
 	// Define gRPC server options list
 	opts := []grpc.ServerOption{
 		gMiddlewares,
+		// Use custom health to register our own health server so we can
+		// programmatically control overall readiness based on required upstreams
+		grpc.CustomHealth(),
 	}
 
 	// Configure server options based on configuration
@@ -222,6 +251,18 @@ func (g *Service) StartupTasks() error {
 
 	// Create gRPC server instance
 	g.server = grpc.NewServer(opts...)
+
+	// Register custom health server and set initial serving status from required readiness
+	g.healthServer = health.NewServer()
+	// Register health on the underlying google gRPC server
+	grpc_health_v1.RegisterHealthServer(g.server.Server, g.healthServer)
+	// Apply initial serving status based on required upstream readiness
+	g.updateHealthServingStatus()
+
+	// Start background poller to keep serving status in sync with required upstream readiness
+	pollCtx, cancel := context.WithCancel(context.Background())
+	g.healthPollCancel = cancel
+	go g.healthStatusPoller(pollCtx)
 
 	// Record server start time for metrics
 	g.recordServerStartTime()
@@ -264,6 +305,14 @@ func (g *Service) CleanupTasksContext(parentCtx context.Context) error {
 		ctx, cancel = context.WithTimeout(parentCtx, timeout)
 	}
 	defer cancel()
+
+	// Stop background poller and shutdown health server
+	if g.healthPollCancel != nil {
+		g.healthPollCancel()
+	}
+	if g.healthServer != nil {
+		g.healthServer.Shutdown()
+	}
 
 	if err := g.server.Stop(ctx); err != nil {
 		// If stopping fails, return plugin error with error information
@@ -348,6 +397,26 @@ func (g *Service) checkPortAvailability() error {
     }
     _ = conn.Close()
     return nil
+}
+
+// updateHealthServingStatus sets the overall health serving status based on
+// the shared readiness resource published by the gRPC client plugin.
+// If the readiness resource is not found, it defaults to SERVING to remain
+// backward compatible. If the resource exists and is false, it reports NOT_SERVING.
+func (g *Service) updateHealthServingStatus() {
+    if g.healthServer == nil {
+        return
+    }
+
+    status := grpc_health_v1.HealthCheckResponse_SERVING
+    if g.rt != nil {
+        if val, err := g.rt.GetSharedResource(requiredReadinessResourceName); err == nil {
+            if ready, ok := val.(bool); ok && !ready {
+                status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+            }
+        }
+    }
+    g.healthServer.SetServingStatus("", status)
 }
 
 // validateTLSConfig validates TLS configuration
