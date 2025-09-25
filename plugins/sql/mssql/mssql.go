@@ -25,7 +25,7 @@ const (
 
 // DBMssqlClient represents Microsoft SQL Server client plugin instance
 type DBMssqlClient struct {
-	*base.BaseSQLPlugin
+	*base.SQLPlugin
 	config            *conf.Mssql
 	closeChan         chan struct{}
 	closed            bool
@@ -67,7 +67,7 @@ func NewMssqlClient() *DBMssqlClient {
 	// Convert conf.Mssql to interfaces.Config
 	baseConfig := convertToBaseConfig(mssqlConf)
 
-	c.BaseSQLPlugin = base.NewBaseSQLPlugin(
+	c.SQLPlugin = base.NewBaseSQLPlugin(
 		plugins.GeneratePluginID("", pluginName, pluginVersion),
 		pluginName,
 		pluginDescription,
@@ -104,8 +104,8 @@ func (m *DBMssqlClient) InitializeResources(rt plugins.Runtime) error {
 		m.config.Source = buildDSN(m.config)
 	}
 
-	// Initialize base SQL plugin
-	if err := m.BaseSQLPlugin.InitializeResources(rt); err != nil {
+	// Initialize SQL plugin
+	if err := m.SQLPlugin.InitializeResources(rt); err != nil {
 		return err
 	}
 
@@ -119,8 +119,8 @@ func (m *DBMssqlClient) StartupTasks() error {
 	// Initialize Prometheus metrics
 	m.initPrometheusMetrics()
 
-	// Start base SQL plugin
-	if err := m.BaseSQLPlugin.StartupTasks(); err != nil {
+	// Start SQL plugin
+	if err := m.SQLPlugin.StartupTasks(); err != nil {
 		return err
 	}
 
@@ -144,8 +144,8 @@ func (m *DBMssqlClient) CleanupTasks() error {
 	close(m.closeChan)
 	m.closed = true
 
-	// Cleanup base SQL plugin
-	if err := m.BaseSQLPlugin.CleanupTasks(); err != nil {
+	// Cleanup SQL plugin
+	if err := m.SQLPlugin.CleanupTasks(); err != nil {
 		return err
 	}
 
@@ -155,7 +155,7 @@ func (m *DBMssqlClient) CleanupTasks() error {
 
 // CheckHealth performs comprehensive health check on database connection
 func (m *DBMssqlClient) CheckHealth() error {
-	if err := m.BaseSQLPlugin.CheckHealth(); err != nil {
+	if err := m.SQLPlugin.CheckHealth(); err != nil {
 		return err
 	}
 
@@ -176,7 +176,7 @@ func (m *DBMssqlClient) initPrometheusMetrics() {
 
 // updateStats updates connection pool statistics
 func (m *DBMssqlClient) updateStats() {
-	stats := m.BaseSQLPlugin.GetStats()
+	stats := m.SQLPlugin.GetStats()
 	if m.prometheusMetrics != nil {
 		m.prometheusMetrics.RecordConnectionPoolStats(stats)
 	}
@@ -206,7 +206,7 @@ func (m *DBMssqlClient) GetMssqlConfig() *conf.Mssql {
 
 // TestConnection tests the database connection with a simple query
 func (m *DBMssqlClient) TestConnection(ctx context.Context) error {
-	db, err := m.BaseSQLPlugin.GetDB()
+	db, err := m.SQLPlugin.GetDB()
 	if err != nil || db == nil {
 		return fmt.Errorf("database connection not initialized")
 	}
@@ -228,7 +228,7 @@ func (m *DBMssqlClient) TestConnection(ctx context.Context) error {
 
 // GetServerInfo retrieves SQL Server version and configuration information
 func (m *DBMssqlClient) GetServerInfo(ctx context.Context) (map[string]interface{}, error) {
-	db, err := m.BaseSQLPlugin.GetDB()
+	db, err := m.SQLPlugin.GetDB()
 	if err != nil || db == nil {
 		return nil, fmt.Errorf("database connection not initialized")
 	}
@@ -272,7 +272,7 @@ func (m *DBMssqlClient) GetServerInfo(ctx context.Context) (map[string]interface
 
 // ExecuteStoredProcedure executes a stored procedure with parameters
 func (m *DBMssqlClient) ExecuteStoredProcedure(ctx context.Context, procName string, args ...interface{}) (*sql.Rows, error) {
-	db, err := m.BaseSQLPlugin.GetDB()
+	db, err := m.SQLPlugin.GetDB()
 	if err != nil || db == nil {
 		return nil, fmt.Errorf("database connection not initialized")
 	}
@@ -292,7 +292,7 @@ func (m *DBMssqlClient) ExecuteStoredProcedure(ctx context.Context, procName str
 
 // BeginTransaction starts a new database transaction
 func (m *DBMssqlClient) BeginTransaction(ctx context.Context) (*sql.Tx, error) {
-	db, err := m.BaseSQLPlugin.GetDB()
+	db, err := m.SQLPlugin.GetDB()
 	if err != nil || db == nil {
 		return nil, fmt.Errorf("database connection not initialized")
 	}
@@ -305,12 +305,12 @@ func (m *DBMssqlClient) BeginTransaction(ctx context.Context) (*sql.Tx, error) {
 
 // IsConnected checks if the database is connected
 func (m *DBMssqlClient) IsConnected() bool {
-	return !m.closed && m.BaseSQLPlugin.IsConnected()
+	return !m.closed && m.SQLPlugin.IsConnected()
 }
 
 // GetConnectionStats returns detailed connection statistics
 func (m *DBMssqlClient) GetConnectionStats() map[string]interface{} {
-	stats := m.BaseSQLPlugin.GetStats()
+	stats := m.SQLPlugin.GetStats()
 
 	result := map[string]interface{}{
 		"max_open_connections": stats.MaxOpenConnections,

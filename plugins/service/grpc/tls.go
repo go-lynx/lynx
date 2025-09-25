@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"github.com/go-kratos/kratos/v2/transport/grpc"
+	"github.com/go-lynx/lynx/app"
+	"github.com/go-lynx/lynx/app/log"
 )
 
 // tlsLoad creates and configures TLS settings for the gRPC server.

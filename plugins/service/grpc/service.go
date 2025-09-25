@@ -21,6 +21,7 @@ import (
 	"github.com/go-lynx/lynx/plugins/service/grpc/conf"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"github.com/go-lynx/lynx/app"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -421,33 +422,39 @@ func (g *Service) updateHealthServingStatus() {
 
 // validateTLSConfig validates TLS configuration
 func (g *Service) validateTLSConfig() error {
-	if !g.conf.GetTlsEnable() {
-		return nil
-	}
+    if !g.conf.GetTlsEnable() {
+        return nil
+    }
 
-	// Check TLS auth type is valid
-	authType := g.conf.GetTlsAuthType()
-	if authType < 0 || authType > 4 {
-		return fmt.Errorf("invalid TLS auth type: %d", authType)
-	}
+    // Check TLS auth type is valid
+    authType := g.conf.GetTlsAuthType()
+    if authType < 0 || authType > 4 {
+        return fmt.Errorf("invalid TLS auth type: %d", authType)
+    }
 
-	// Check if certificate provider is available
-	certProvider := g.getCertProvider()
-	if certProvider == nil {
-		return fmt.Errorf("certificate provider not configured")
-	}
+    // Check if certificate provider is available
+    var cp app.CertificateProvider
+    if prov := g.getCertProvider(); prov != nil {
+        if typed, ok := prov.(app.CertificateProvider); ok {
+            cp = typed
+        }
+    }
+    if cp == nil && app.Lynx() != nil {
+        cp = app.Lynx().Certificate()
+    }
+    if cp == nil {
+        return fmt.Errorf("certificate provider not configured")
+    }
 
-	// Check if certificates are provided
-	// Note: In real implementation, type assertion would be needed here
-	// For now, we'll skip the certificate validation to avoid compilation errors
-	// if len(certProvider.GetCertificate()) == 0 {
-	//	return fmt.Errorf("server certificate not provided")
-	// }
-	// if len(certProvider.GetPrivateKey()) == 0 {
-	//	return fmt.Errorf("server private key not provided")
-	// }
+    // Validate certificate data presence
+    if len(cp.GetCertificate()) == 0 {
+        return fmt.Errorf("server certificate not provided")
+    }
+    if len(cp.GetPrivateKey()) == 0 {
+        return fmt.Errorf("server private key not provided")
+    }
 
-	return nil
+    return nil
 }
 
 // validateConfig validates the gRPC server configuration

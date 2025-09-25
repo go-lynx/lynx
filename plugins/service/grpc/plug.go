@@ -2,8 +2,8 @@ package grpc
 
 import (
 	"fmt"
-
 	"github.com/go-kratos/kratos/v2/transport/grpc"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/factory"
 	"github.com/go-lynx/lynx/plugins"
 )
@@ -29,8 +29,30 @@ func init() {
 //   - *grpc.Server: Configured gRPC server instance
 //   - error: Any error that occurred while retrieving the server
 func GetGrpcServer(pluginManager interface{}) (*grpc.Server, error) {
-	// Get the plugin with the specified name from the application's plugin manager
-	// Note: In real implementation, type assertion would be needed here
-	// For now, return an error to indicate this needs to be implemented
-	return nil, fmt.Errorf("GetGrpcServer needs to be implemented with proper plugin manager interface")
+	var pm app.PluginManager
+	if pluginManager == nil {
+		if app.Lynx() == nil || app.Lynx().GetPluginManager() == nil {
+			return nil, fmt.Errorf("plugin manager is nil")
+		}
+		pm = app.Lynx().GetPluginManager()
+	} else {
+		var ok bool
+		pm, ok = pluginManager.(app.PluginManager)
+		if !ok {
+			return nil, fmt.Errorf("unsupported plugin manager type %T", pluginManager)
+		}
+	}
+
+	p := pm.GetPlugin(pluginName)
+	if p == nil {
+		return nil, fmt.Errorf("plugin %s not found", pluginName)
+	}
+	svc, ok := p.(*Service)
+	if !ok {
+		return nil, fmt.Errorf("plugin %s is not a *Service instance", pluginName)
+	}
+	if svc.server == nil {
+		return nil, fmt.Errorf("gRPC server not initialized")
+	}
+	return svc.server, nil
 }
