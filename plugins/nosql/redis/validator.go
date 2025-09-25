@@ -298,6 +298,8 @@ func validateTLSConfig(config *conf.Redis, result *ValidationResult) {
 
 	// If TLS is enabled, check if addresses support TLS
 	if config.Tls.Enabled {
+        // reference result to avoid unused parameter warning in this validation stub
+        _ = result
 		hasTLSSupport := false
 		for _, addr := range config.Addrs {
 			if strings.HasPrefix(strings.ToLower(addr), "rediss://") {
@@ -635,21 +637,21 @@ func (rcv *RedisConfigValidator) registerDefaultValues() {
 }
 
 // ValidateRedisConfigWithFramework validates Redis configuration using the new framework
-func (rcv *RedisConfigValidator) ValidateRedisConfigWithFramework(config *conf.Redis) *config.ValidationResult {
+func (rcv *RedisConfigValidator) ValidateRedisConfigWithFramework(cfg *conf.Redis) *config.ValidationResult {
 	// Apply defaults first
-	if err := rcv.defaultSetter.ApplyDefaults(config); err != nil {
+	if err := rcv.defaultSetter.ApplyDefaults(cfg); err != nil {
 		result := &config.ValidationResult{Valid: false}
-		result.AddError("config", config, fmt.Sprintf("Failed to apply defaults: %v", err))
+		result.AddError("config", cfg, fmt.Sprintf("Failed to apply defaults: %v", err))
 		return result
 	}
 	
 	// Validate configuration
-	result := rcv.ValidateConfig(config, "redis")
+	result := rcv.ValidateConfig(cfg, "redis")
 	
 	// Add custom validations that require multiple fields
-	rcv.validateConnectionPoolRelationships(config, result)
-	rcv.validateTimeoutRelationships(config, result)
-	rcv.validateRetryBackoffRelationships(config, result)
+	rcv.validateConnectionPoolRelationships(cfg, result)
+	rcv.validateTimeoutRelationships(cfg, result)
+	rcv.validateRetryBackoffRelationships(cfg, result)
 	
 	return result
 }

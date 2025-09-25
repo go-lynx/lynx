@@ -209,13 +209,15 @@ func (s *UserService) fetchUserFromDB(ctx context.Context, userID string) (*User
 }
 
 func (s *UserService) updateUserInDB(ctx context.Context, user *User) error {
-	// Simulate database update
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(10 * time.Millisecond):
-		return nil
-	}
+    // reference parameter to avoid unused warning in this simulated example
+    _ = user
+    // Simulate database update
+    select {
+    case <-ctx.Done():
+        return ctx.Err()
+    case <-time.After(10 * time.Millisecond):
+        return nil
+    }
 }
 
 func (s *UserService) fetchUsersByRoleFromDB(ctx context.Context, role string) ([]*User, error) {

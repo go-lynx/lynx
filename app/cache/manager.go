@@ -1,8 +1,8 @@
 package cache
 
 import (
-	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -27,26 +27,33 @@ type Config struct {
 	TTL     time.Duration
 }
 
-// NewManager creates a new cache manager
-func NewManager(logger zerolog.Logger) *Manager {
-	// 创建缓存优化器
-	optimizer := resource.NewCacheOptimizer(
-		resource.DefaultCacheOptimizerConfig(),
-		logger.With().Str("component", "cache_optimizer").Logger(),
-	)
+// NewManager creates a new cache manager with a default logger.
+func NewManager() *Manager {
+    // Create a default logger to avoid nil writer issues.
+    defLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+    return NewManagerWithLogger(defLogger)
+}
 
-	manager := &Manager{
-		caches:    make(map[string]*Cache),
-		optimizer: optimizer,
-		logger:    logger,
-	}
+// NewManagerWithLogger creates a new cache manager using the provided logger.
+func NewManagerWithLogger(logger zerolog.Logger) *Manager {
+    // 创建缓存优化器
+    optimizer := resource.NewCacheOptimizer(
+        resource.DefaultCacheOptimizerConfig(),
+        logger.With().Str("component", "cache_optimizer").Logger(),
+    )
 
-	// 启动缓存优化器
-	if err := optimizer.Start(); err != nil {
-		logger.Error().Err(err).Msg("Failed to start cache optimizer")
-	}
+    manager := &Manager{
+        caches:    make(map[string]*Cache),
+        optimizer: optimizer,
+        logger:    logger,
+    }
 
-	return manager
+    // 启动缓存优化器
+    if err := optimizer.Start(); err != nil {
+        logger.Error().Err(err).Msg("Failed to start cache optimizer")
+    }
+
+    return manager
 }
 
 // Create creates a new cache instance with the given name and options
@@ -321,8 +328,7 @@ var DefaultManager *Manager
 
 // 初始化默认管理器
 func init() {
-	logger := zerolog.New(nil).With().Timestamp().Logger()
-	DefaultManager = NewManager(logger)
+    DefaultManager = NewManager()
 }
 
 // Create creates a new cache in the default manager

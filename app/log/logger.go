@@ -553,7 +553,7 @@ func ResetLogPerformanceMetrics() {
 		bw.ResetMetrics()
 	}
 
-	for _, aw := range asyncWriters {
+	for range asyncWriters {
 		// Async writers don't have reset method, but we can note the reset time
 		// This would need to be implemented in the AsyncLogWriter if needed
 	}
