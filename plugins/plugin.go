@@ -436,7 +436,7 @@ type TypedRuntimeImpl struct {
 // NewTypedRuntime create generic runtime environment
 func NewTypedRuntime() *TypedRuntimeImpl {
 	return &TypedRuntimeImpl{
-		runtime: NewSimpleRuntime(),
+		runtime: NewUnifiedRuntime(),
 	}
 }
 
@@ -467,17 +467,8 @@ type simpleRuntime struct {
 	eventTimeout time.Duration
 }
 
-func NewSimpleRuntime() *simpleRuntime {
-	return &simpleRuntime{
-		privateResources: make(map[string]map[string]any),
-		sharedResources:  make(map[string]any),
-		resourceInfo:     make(map[string]*ResourceInfo),
-		mu:               &sync.RWMutex{},
-		contextMu:        &sync.RWMutex{},
-		eventManager:     nil, // Will be set later to avoid import cycle
-		workerPoolSize:   0,
-		eventTimeout:     0, // Initialize to 0
-	}
+func NewSimpleRuntime() Runtime {
+	return NewUnifiedRuntime()
 }
 
 // EmitEvent emit event - simplified for unified event bus

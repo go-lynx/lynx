@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -22,16 +21,10 @@ const (
 
 // TypedRuntimePlugin generic runtime plugin
 type TypedRuntimePlugin struct {
-	// resources stores shared resources between plugins
-	resources sync.Map
+	// 使用统一Runtime作为底层实现
+	runtime plugins.Runtime
 
-	// logger is the plugin's logger instance
-	logger log.Logger
-
-	// config is the plugin's configuration
-	config config.Config
-
-	// Event bus manager for unified event handling
+	// Event bus manager for unified event handling (保持向后兼容)
 	eventManager *events.EventBusManager
 }
 
@@ -46,8 +39,11 @@ type listenerEntry struct {
 
 // NewTypedRuntimePlugin creates a new TypedRuntimePlugin instance with default settings.
 func NewTypedRuntimePlugin() *TypedRuntimePlugin {
+	runtime := plugins.NewUnifiedRuntime()
+	runtime.SetLogger(log.DefaultLogger)
+	
 	r := &TypedRuntimePlugin{
-		logger:       log.DefaultLogger,
+		runtime:      runtime,
 		eventManager: events.GetGlobalEventBus(),
 	}
 	return r
@@ -56,25 +52,13 @@ func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 // GetResource retrieves a shared plugin resource by name.
 // Returns the resource and any error encountered.
 func (r *TypedRuntimePlugin) GetResource(name string) (any, error) {
-	if value, ok := r.resources.Load(name); ok {
-		return value, nil
-	}
-	return nil, fmt.Errorf("resource not found: %s", name)
+	return r.runtime.GetResource(name)
 }
 
 // RegisterResource registers a resource to be shared with other plugins.
 // Returns an error if registration fails.
 func (r *TypedRuntimePlugin) RegisterResource(name string, resource any) error {
-	if name == "" {
-		return fmt.Errorf("resource name cannot be empty")
-	}
-	if resource == nil {
-		return fmt.Errorf("resource cannot be nil")
-	}
-
-	// Store the resource using sync.Map
-	r.resources.Store(name, resource)
-	return nil
+	return r.runtime.RegisterResource(name, resource)
 }
 
 // GetTypedResource retrieves a type-safe resource (standalone helper)
@@ -101,24 +85,22 @@ func RegisterTypedResource[T any](r *TypedRuntimePlugin, name string, resource T
 // GetConfig returns the plugin configuration manager.
 // Provides access to configuration values and updates.
 func (r *TypedRuntimePlugin) GetConfig() config.Config {
-	if r.config == nil {
+	cfg := r.runtime.GetConfig()
+	if cfg == nil {
 		if app := Lynx(); app != nil {
-			if cfg := app.GetGlobalConfig(); cfg != nil {
-				r.config = cfg
+			if globalCfg := app.GetGlobalConfig(); globalCfg != nil {
+				r.runtime.SetConfig(globalCfg)
+				return globalCfg
 			}
 		}
 	}
-	return r.config
+	return cfg
 }
 
 // GetLogger returns the plugin logger instance.
 // Provides structured logging capabilities.
 func (r *TypedRuntimePlugin) GetLogger() log.Logger {
-	if r.logger == nil {
-		// Initialize with a default logger if not set
-		r.logger = log.DefaultLogger
-	}
-	return r.logger
+	return r.runtime.GetLogger()
 }
 
 // EmitEvent broadcasts a plugin event to the unified event bus.
@@ -135,8 +117,8 @@ func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 	// Convert to LynxEvent and publish to unified event bus
 	lynxEvent := events.ConvertPluginEvent(event)
 	if err := r.eventManager.PublishEvent(lynxEvent); err != nil {
-		if r.logger != nil {
-			_ = r.logger.Log(log.LevelError, "msg", "failed to publish event", "type", event.Type, "plugin", event.PluginID, "error", err)
+		if logger := r.runtime.GetLogger(); logger != nil {
+			_ = logger.Log(log.LevelError, "msg", "failed to publish event", "type", event.Type, "plugin", event.PluginID, "error", err)
 		}
 	}
 }
@@ -367,3 +349,95 @@ type RuntimePlugin = TypedRuntimePlugin
 func NewRuntimePlugin() *RuntimePlugin {
 	return NewTypedRuntimePlugin()
 }
+
+// GetPrivateResource gets a private resource for the current plugin context
+func (r *TypedRuntimePlugin) GetPrivateResource(name string) (any, error) {
+	return r.runtime.GetPrivateResource(name)
+}
+
+// RegisterPrivateResource registers a private resource for the current plugin context
+func (r *TypedRuntimePlugin) RegisterPrivateResource(name string, resource any) error {
+	return r.runtime.RegisterPrivateResource(name, resource)
+}
+
+// GetSharedResource gets a shared resource accessible by all plugins
+func (r *TypedRuntimePlugin) GetSharedResource(name string) (any, error) {
+	return r.runtime.GetSharedResource(name)
+}
+
+// RegisterSharedResource registers a shared resource accessible by all plugins
+func (r *TypedRuntimePlugin) RegisterSharedResource(name string, resource any) error {
+	return r.runtime.RegisterSharedResource(name, resource)
+}
+
+// EmitPluginEvent emits a plugin-specific event
+func (r *TypedRuntimePlugin) EmitPluginEvent(pluginName string, eventType string, data map[string]any) {
+	r.runtime.EmitPluginEvent(pluginName, eventType, data)
+}
+
+// AddPluginListener adds a listener for plugin-specific events
+func (r *TypedRuntimePlugin) AddPluginListener(pluginName string, listener plugins.EventListener, filter *plugins.EventFilter) {
+	r.runtime.AddPluginListener(pluginName, listener, filter)
+}
+
+// GetPluginEventHistory gets event history for a specific plugin
+func (r *TypedRuntimePlugin) GetPluginEventHistory(pluginName string, filter plugins.EventFilter) []plugins.PluginEvent {
+	return r.runtime.GetPluginEventHistory(pluginName, filter)
+}
+
+// SetEventDispatchMode sets the event dispatch mode
+func (r *TypedRuntimePlugin) SetEventDispatchMode(mode string) error {
+	return r.runtime.SetEventDispatchMode(mode)
+}
+
+// SetEventWorkerPoolSize sets the event worker pool size
+func (r *TypedRuntimePlugin) SetEventWorkerPoolSize(size int) {
+	r.runtime.SetEventWorkerPoolSize(size)
+}
+
+// SetEventTimeout sets the event processing timeout
+func (r *TypedRuntimePlugin) SetEventTimeout(timeout time.Duration) {
+	r.runtime.SetEventTimeout(timeout)
+}
+
+// GetEventStats gets event system statistics
+func (r *TypedRuntimePlugin) GetEventStats() map[string]any {
+	return r.runtime.GetEventStats()
+}
+
+// WithPluginContext creates a runtime with plugin context
+func (r *TypedRuntimePlugin) WithPluginContext(pluginName string) plugins.Runtime {
+	return r.runtime.WithPluginContext(pluginName)
+}
+
+// GetCurrentPluginContext gets the current plugin context
+func (r *TypedRuntimePlugin) GetCurrentPluginContext() string {
+	return r.runtime.GetCurrentPluginContext()
+}
+
+// SetConfig sets the configuration
+func (r *TypedRuntimePlugin) SetConfig(conf config.Config) {
+	r.runtime.SetConfig(conf)
+}
+
+// GetResourceInfo gets resource information
+func (r *TypedRuntimePlugin) GetResourceInfo(name string) (*plugins.ResourceInfo, error) {
+	return r.runtime.GetResourceInfo(name)
+}
+
+// ListResources lists all resources
+func (r *TypedRuntimePlugin) ListResources() []*plugins.ResourceInfo {
+	return r.runtime.ListResources()
+}
+
+// CleanupResources cleans up resources for a specific plugin
+func (r *TypedRuntimePlugin) CleanupResources(pluginID string) error {
+	return r.runtime.CleanupResources(pluginID)
+}
+
+// GetResourceStats gets resource statistics
+func (r *TypedRuntimePlugin) GetResourceStats() map[string]any {
+	return r.runtime.GetResourceStats()
+}
+
+// RemoveListener unregisters an event listener.
