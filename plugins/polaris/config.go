@@ -248,13 +248,20 @@ func (p *PlugPolaris) loadPolarisConfiguration() (api.SDKContext, error) {
 				return nil, fmt.Errorf("failed to parse Polaris configuration file: %w", err)
 			}
 
-			// Set SDK configuration based on configuration file content
+			// Validate and set env based on configuration file content
 			if err := p.applyPolarisConfig(configuration, polarisConfig); err != nil {
 				log.Errorf("Failed to apply Polaris configuration: %v", err)
 				return nil, fmt.Errorf("failed to apply Polaris configuration: %w", err)
 			}
 
 			log.Infof("Successfully loaded Polaris configuration from: %s", p.conf.ConfigPath)
+
+			// Initialize SDK context directly from the YAML file to ensure full configuration is applied
+			sdk, err := api.InitContextByFile(p.conf.ConfigPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize Polaris SDK context: %w", err)
+			}
+			return sdk, nil
 		}
 	} else {
 		log.Info("Using default Polaris SDK configuration")
