@@ -7,10 +7,10 @@ require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/go-kratos/kratos/v2 v2.8.4
-	github.com/go-lynx/lynx/plugins/nosql/redis v0.0.0-00010101000000-000000000000
-	github.com/go-lynx/lynx/plugins/polaris v0.0.0-00010101000000-000000000000
-	github.com/go-lynx/lynx/plugins/sql/mysql v0.0.0-00010101000000-000000000000
-	github.com/go-lynx/lynx/plugins/swagger v0.0.0-00010101000000-000000000000
+	github.com/go-lynx/lynx/plugins/nosql/redis v1.2.3
+	github.com/go-lynx/lynx/plugins/polaris v1.2.3
+	github.com/go-lynx/lynx/plugins/sql/mysql v1.2.3
+	github.com/go-lynx/lynx/plugins/swagger v1.2.3
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/gorilla/mux v1.8.1
@@ -25,17 +25,6 @@ require (
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-)
-
-replace (
-	github.com/go-lynx/lynx/plugins/nosql/redis => ./plugins/nosql/redis
-	github.com/go-lynx/lynx/plugins/polaris => ./plugins/polaris
-	github.com/go-lynx/lynx/plugins/service/grpc => ./plugins/service/grpc
-	github.com/go-lynx/lynx/plugins/snowflake => ./plugins/snowflake
-	github.com/go-lynx/lynx/plugins/sql/base => ./plugins/sql/base
-	github.com/go-lynx/lynx/plugins/sql/interfaces => ./plugins/sql/interfaces
-	github.com/go-lynx/lynx/plugins/sql/mysql => ./plugins/sql/mysql
-	github.com/go-lynx/lynx/plugins/swagger => ./plugins/swagger
 )
 
 require (
