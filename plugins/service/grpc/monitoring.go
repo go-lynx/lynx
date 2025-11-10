@@ -14,7 +14,9 @@ var (
 	// grpcServerUp indicates whether the gRPC server is running
 	grpcServerUp = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "grpc_server_up",
+			Namespace: "lynx",
+			Subsystem: "grpc",
+			Name: "server_up",
 			Help: "Whether the gRPC server is up",
 		},
 		[]string{"server_name", "address"},
@@ -23,7 +25,9 @@ var (
 	// grpcRequestsTotal records the total number of gRPC requests
 	grpcRequestsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "grpc_requests_total",
+			Namespace: "lynx",
+			Subsystem: "grpc",
+			Name: "requests_total",
 			Help: "Total number of gRPC requests",
 		},
 		[]string{"method", "status"},
@@ -32,7 +36,9 @@ var (
 	// grpcRequestDuration records the duration of gRPC requests
 	grpcRequestDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "grpc_request_duration_seconds",
+			Namespace: "lynx",
+			Subsystem: "grpc",
+			Name:    "request_duration_seconds",
 			Help:    "Duration of gRPC requests",
 			Buckets: prometheus.DefBuckets,
 		},
@@ -42,7 +48,9 @@ var (
 	// grpcActiveConnections records the number of active connections
 	grpcActiveConnections = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "grpc_active_connections",
+			Namespace: "lynx",
+			Subsystem: "grpc",
+			Name: "active_connections",
 			Help: "Number of active gRPC connections",
 		},
 		[]string{"server_name"},
@@ -51,7 +59,9 @@ var (
 	// grpcServerStartTime records the server start time
 	grpcServerStartTime = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "grpc_server_start_time_seconds",
+			Namespace: "lynx",
+			Subsystem: "grpc",
+			Name: "server_start_time_seconds",
 			Help: "Unix timestamp of gRPC server start time",
 		},
 		[]string{"server_name"},
@@ -60,7 +70,9 @@ var (
 	// grpcServerErrors records the number of server errors
 	grpcServerErrors = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "grpc_server_errors_total",
+			Namespace: "lynx",
+			Subsystem: "grpc",
+			Name: "server_errors_total",
 			Help: "Total number of gRPC server errors",
 		},
 		[]string{"error_type"},

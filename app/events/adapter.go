@@ -103,6 +103,33 @@ func (a *PluginEventBusAdapter) AddPluginListener(pluginName string, id string, 
 	return AddGlobalListener(id, ef, lynxHandler, BusTypePlugin)
 }
 
+// GetEventHistory returns historical plugin events via the unified event manager
+func (a *PluginEventBusAdapter) GetEventHistory(filter *plugins.EventFilter) []plugins.PluginEvent {
+	if a == nil || a.eventManager == nil {
+		return nil
+	}
+	ef := convertPluginFilter(filter)
+	events := a.eventManager.GetEventHistory(ef)
+	out := make([]plugins.PluginEvent, 0, len(events))
+	for _, ev := range events {
+		out = append(out, ConvertLynxEvent(ev))
+	}
+	return out
+}
+
+// GetPluginEventHistory returns historical events for a specific plugin
+func (a *PluginEventBusAdapter) GetPluginEventHistory(pluginID string, filter *plugins.EventFilter) []plugins.PluginEvent {
+	if a == nil || a.eventManager == nil {
+		return nil
+	}
+	ef := convertPluginFilter(filter)
+	events := a.eventManager.GetPluginEventHistory(pluginID, ef)
+	out := make([]plugins.PluginEvent, 0, len(events))
+	for _, ev := range events {
+		out = append(out, ConvertLynxEvent(ev))
+	}
+	return out
+}
 // convertPluginFilter converts plugins.EventFilter to events.EventFilter
 func convertPluginFilter(pf *plugins.EventFilter) *EventFilter {
 	if pf == nil {

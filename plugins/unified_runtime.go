@@ -288,36 +288,122 @@ func (r *UnifiedRuntime) AddListener(listener EventListener, filter *EventFilter
 	if listener == nil {
 		return
 	}
-	
+
 	// 转换为统一事件总线监听器
-	// 这里简化实现，实际应该使用事件总线的监听器管理
-	// TODO: 实现完整的事件监听器管理
+	adapter := EnsureGlobalEventBusAdapter()
+
+	id := listener.GetListenerID()
+	if id == "" {
+		id = fmt.Sprintf("listener-%d", time.Now().UnixNano())
+	}
+
+	// 可选接口：事件监听器管理（由 app/events 的适配器实现）
+	type addListenerIface interface {
+		AddListener(id string, filter *EventFilter, handler func(interface{}), bus string) error
+	}
+
+	if al, ok := adapter.(addListenerIface); ok {
+		_ = al.AddListener(id, filter, func(ev interface{}) {
+			if pe, ok := ev.(PluginEvent); ok {
+				listener.HandleEvent(pe)
+			}
+		}, "plugin")
+		return
+	}
+
+	// 回退：直接订阅所有匹配的事件类型（当无监听器管理接口时）
+	// 若 filter 指定了类型则逐个订阅，否则订阅所有插件总线事件类型集合由上层维护
+	if filter != nil && len(filter.Types) > 0 {
+		for _, t := range filter.Types {
+			_ = adapter.SubscribeTo(t, func(pe PluginEvent) {
+				// 仅做最基本的过滤（类型已由 SubscribeTo 限定）
+				listener.HandleEvent(pe)
+			})
+		}
+	} else {
+		// 无类型限定，按事件类型不可知的情况下无法总线级订阅，这里不做额外处理
+		// 依赖具体适配器的 AddListener 能力
+	}
 }
 
 // RemoveListener 移除事件监听器
 func (r *UnifiedRuntime) RemoveListener(listener EventListener) {
 	// 委托给统一事件总线
-	// TODO: 实现完整的事件监听器管理
+	if listener == nil {
+		return
+	}
+	id := listener.GetListenerID()
+	if id == "" {
+		return
+	}
+	adapter := EnsureGlobalEventBusAdapter()
+	type removeListenerIface interface {
+		RemoveListener(id string) error
+	}
+	if rl, ok := adapter.(removeListenerIface); ok {
+		_ = rl.RemoveListener(id)
+	}
 }
 
 // AddPluginListener 添加插件特定的事件监听器
 func (r *UnifiedRuntime) AddPluginListener(pluginName string, listener EventListener, filter *EventFilter) {
 	// 委托给统一事件总线
-	// TODO: 实现完整的插件事件监听器管理
+	if listener == nil {
+		return
+	}
+	adapter := EnsureGlobalEventBusAdapter()
+	id := listener.GetListenerID()
+	if id == "" {
+		id = fmt.Sprintf("plugin-listener-%s-%d", pluginName, time.Now().UnixNano())
+	}
+	type addPluginListenerIface interface {
+		AddPluginListener(pluginName string, id string, filter *EventFilter, handler func(interface{})) error
+	}
+	if apl, ok := adapter.(addPluginListenerIface); ok {
+		_ = apl.AddPluginListener(pluginName, id, filter, func(ev interface{}) {
+			if pe, ok := ev.(PluginEvent); ok {
+				listener.HandleEvent(pe)
+			}
+		})
+		return
+	}
+
+	// 回退：按事件类型订阅并在回调中过滤 PluginID
+	if filter != nil && len(filter.Types) > 0 {
+		for _, t := range filter.Types {
+			_ = adapter.SubscribeTo(t, func(pe PluginEvent) {
+				if pe.PluginID == pluginName {
+					listener.HandleEvent(pe)
+				}
+			})
+		}
+	}
 }
 
 // GetEventHistory 获取事件历史
 func (r *UnifiedRuntime) GetEventHistory(filter EventFilter) []PluginEvent {
 	// 委托给统一事件总线
-	// TODO: 实现事件历史查询
-	return []PluginEvent{}
+	adapter := EnsureGlobalEventBusAdapter()
+	type historyIface interface {
+		GetEventHistory(filter *EventFilter) []PluginEvent
+	}
+	if hi, ok := adapter.(historyIface); ok {
+		return hi.GetEventHistory(&filter)
+	}
+	return nil
 }
 
 // GetPluginEventHistory 获取插件事件历史
 func (r *UnifiedRuntime) GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent {
 	// 委托给统一事件总线
-	// TODO: 实现插件事件历史查询
-	return []PluginEvent{}
+	adapter := EnsureGlobalEventBusAdapter()
+	type pluginHistoryIface interface {
+		GetPluginEventHistory(pluginName string, filter *EventFilter) []PluginEvent
+	}
+	if phi, ok := adapter.(pluginHistoryIface); ok {
+		return phi.GetPluginEventHistory(pluginName, &filter)
+	}
+	return nil
 }
 
 // ============================================================================

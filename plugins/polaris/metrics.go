@@ -52,14 +52,18 @@ func NewPolarisMetrics() *Metrics {
 		// SDK operation metrics
 		sdkOperationsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_sdk_operations_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "sdk_operations_total",
 				Help: "Total number of SDK operations",
 			},
 			[]string{"operation", "status"},
 		),
 		sdkOperationsDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name:    "polaris_sdk_operations_duration_seconds",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name:    "sdk_operations_duration_seconds",
 				Help:    "Duration of SDK operations",
 				Buckets: prometheus.DefBuckets,
 			},
@@ -67,7 +71,9 @@ func NewPolarisMetrics() *Metrics {
 		),
 		sdkErrorsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_sdk_errors_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "sdk_errors_total",
 				Help: "Total number of SDK errors",
 			},
 			[]string{"operation", "error_type"},
@@ -76,14 +82,18 @@ func NewPolarisMetrics() *Metrics {
 		// Service discovery metrics
 		serviceDiscoveryTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_service_discovery_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "service_discovery_total",
 				Help: "Total number of service discovery operations",
 			},
 			[]string{"service", "namespace", "status"},
 		),
 		serviceDiscoveryDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name:    "polaris_service_discovery_duration_seconds",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name:    "service_discovery_duration_seconds",
 				Help:    "Duration of service discovery operations",
 				Buckets: prometheus.DefBuckets,
 			},
@@ -91,7 +101,9 @@ func NewPolarisMetrics() *Metrics {
 		),
 		serviceInstancesTotal: promauto.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "polaris_service_instances_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "service_instances_total",
 				Help: "Total number of service instances",
 			},
 			[]string{"service", "namespace", "status"},
@@ -100,14 +112,18 @@ func NewPolarisMetrics() *Metrics {
 		// Service registration metrics
 		serviceRegistrationTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_service_registration_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "service_registration_total",
 				Help: "Total number of service registration operations",
 			},
 			[]string{"service", "namespace", "status"},
 		),
 		serviceRegistrationDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name:    "polaris_service_registration_duration_seconds",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name:    "service_registration_duration_seconds",
 				Help:    "Duration of service registration operations",
 				Buckets: prometheus.DefBuckets,
 			},
@@ -115,7 +131,9 @@ func NewPolarisMetrics() *Metrics {
 		),
 		serviceHeartbeatTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_service_heartbeat_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "service_heartbeat_total",
 				Help: "Total number of service heartbeat operations",
 			},
 			[]string{"service", "namespace", "status"},
@@ -124,14 +142,18 @@ func NewPolarisMetrics() *Metrics {
 		// Configuration management metrics
 		configOperationsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_config_operations_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "config_operations_total",
 				Help: "Total number of config operations",
 			},
 			[]string{"operation", "file", "group", "status"},
 		),
 		configOperationsDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name:    "polaris_config_operations_duration_seconds",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name:    "config_operations_duration_seconds",
 				Help:    "Duration of config operations",
 				Buckets: prometheus.DefBuckets,
 			},
@@ -139,7 +161,9 @@ func NewPolarisMetrics() *Metrics {
 		),
 		configChangesTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_config_changes_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "config_changes_total",
 				Help: "Total number of config changes",
 			},
 			[]string{"file", "group"},
@@ -148,14 +172,18 @@ func NewPolarisMetrics() *Metrics {
 		// Routing metrics
 		routeOperationsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_route_operations_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "route_operations_total",
 				Help: "Total number of route operations",
 			},
 			[]string{"service", "namespace", "status"},
 		),
 		routeOperationsDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name:    "polaris_route_operations_duration_seconds",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name:    "route_operations_duration_seconds",
 				Help:    "Duration of route operations",
 				Buckets: prometheus.DefBuckets,
 			},
@@ -165,21 +193,27 @@ func NewPolarisMetrics() *Metrics {
 		// Rate limiting metrics
 		rateLimitRequestsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_rate_limit_requests_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "rate_limit_requests_total",
 				Help: "Total number of rate limit requests",
 			},
 			[]string{"service", "namespace", "status"},
 		),
 		rateLimitRejectedTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_rate_limit_rejected_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "rate_limit_rejected_total",
 				Help: "Total number of rate limit rejections",
 			},
 			[]string{"service", "namespace"},
 		),
 		rateLimitQuotaUsed: promauto.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "polaris_rate_limit_quota_used",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "rate_limit_quota_used",
 				Help: "Rate limit quota usage",
 			},
 			[]string{"service", "namespace"},
@@ -188,14 +222,18 @@ func NewPolarisMetrics() *Metrics {
 		// Health check metrics
 		healthCheckTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_health_check_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "health_check_total",
 				Help: "Total number of health checks",
 			},
 			[]string{"component", "status"},
 		),
 		healthCheckDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name:    "polaris_health_check_duration_seconds",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name:    "health_check_duration_seconds",
 				Help:    "Duration of health checks",
 				Buckets: prometheus.DefBuckets,
 			},
@@ -203,7 +241,9 @@ func NewPolarisMetrics() *Metrics {
 		),
 		healthCheckFailed: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_health_check_failed_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "health_check_failed_total",
 				Help: "Total number of failed health checks",
 			},
 			[]string{"component", "error_type"},
@@ -212,14 +252,18 @@ func NewPolarisMetrics() *Metrics {
 		// Connection metrics
 		connectionTotal: promauto.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "polaris_connection_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "connection_total",
 				Help: "Total number of connections",
 			},
 			[]string{"type", "status"},
 		),
 		connectionErrorsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "polaris_connection_errors_total",
+				Namespace: "lynx",
+				Subsystem: "polaris",
+				Name: "connection_errors_total",
 				Help: "Total number of connection errors",
 			},
 			[]string{"type", "error_type"},
