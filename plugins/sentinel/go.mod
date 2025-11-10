@@ -1,6 +1,7 @@
 module github.com/go-lynx/lynx/plugins/sentinel
 
 go 1.25
+
 toolchain go1.25.3
 
 require (
