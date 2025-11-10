@@ -90,19 +90,19 @@
       },
       "targets": [
         {
-          "expr": "lynx_sql_connection_pool_total",
+          "expr": "lynx_mssql_open_connections",
           "interval": "",
-          "legendFormat": "Total Connections",
+          "legendFormat": "Open Connections",
           "refId": "A"
         },
         {
-          "expr": "lynx_sql_connection_pool_active",
+          "expr": "lynx_mssql_in_use_connections",
           "interval": "",
-          "legendFormat": "Active Connections",
+          "legendFormat": "In-use Connections",
           "refId": "B"
         },
         {
-          "expr": "lynx_sql_connection_pool_idle",
+          "expr": "lynx_mssql_idle_connections",
           "interval": "",
           "legendFormat": "Idle Connections",
           "refId": "C"
@@ -183,25 +183,25 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, lynx_sql_query_duration_seconds_bucket)",
+          "expr": "histogram_quantile(0.50, lynx_mssql_query_duration_seconds_bucket)",
           "interval": "",
           "legendFormat": "50th percentile",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.90, lynx_sql_query_duration_seconds_bucket)",
+          "expr": "histogram_quantile(0.90, lynx_mssql_query_duration_seconds_bucket)",
           "interval": "",
           "legendFormat": "90th percentile",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.95, lynx_sql_query_duration_seconds_bucket)",
+          "expr": "histogram_quantile(0.95, lynx_mssql_query_duration_seconds_bucket)",
           "interval": "",
           "legendFormat": "95th percentile",
           "refId": "C"
         },
         {
-          "expr": "histogram_quantile(0.99, lynx_sql_query_duration_seconds_bucket)",
+          "expr": "histogram_quantile(0.99, lynx_mssql_query_duration_seconds_bucket)",
           "interval": "",
           "legendFormat": "99th percentile",
           "refId": "D"
@@ -282,13 +282,13 @@
       },
       "targets": [
         {
-          "expr": "rate(lynx_sql_queries_total[5m])",
+          "expr": "rate(lynx_mssql_query_duration_seconds_count[5m])",
           "interval": "",
           "legendFormat": "Queries/sec",
           "refId": "A"
         },
         {
-          "expr": "rate(lynx_sql_transactions_total[5m])",
+          "expr": "rate(lynx_mssql_tx_duration_seconds_count[5m])",
           "interval": "",
           "legendFormat": "Transactions/sec",
           "refId": "B"
@@ -346,9 +346,9 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "lynx_sql_health_check_status",
+          "expr": "sum(rate(lynx_mssql_health_check_success_total[5m])) / sum(rate(lynx_mssql_health_check_total[5m])) * 100",
           "interval": "",
-          "legendFormat": "Health Status",
+          "legendFormat": "Health Success Rate %",
           "refId": "A"
         }
       ],

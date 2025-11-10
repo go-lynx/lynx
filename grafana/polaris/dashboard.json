@@ -59,7 +59,7 @@
           "type": "prometheus",
           "uid": "$DS_PROM"
         },
-        "query": "label_values(polaris_sdk_operations_total, operation)",
+        "query": "label_values(lynx_polaris_sdk_operations_total, operation)",
         "refresh": 2,
         "multi": true,
         "includeAll": true
@@ -71,7 +71,7 @@
           "type": "prometheus",
           "uid": "$DS_PROM"
         },
-        "query": "label_values(polaris_service_discovery_total, service)",
+        "query": "label_values(lynx_polaris_service_discovery_total, service)",
         "refresh": 2,
         "multi": true,
         "includeAll": true
@@ -83,7 +83,7 @@
           "type": "prometheus",
           "uid": "$DS_PROM"
         },
-        "query": "label_values(polaris_service_discovery_total, namespace)",
+        "query": "label_values(lynx_polaris_service_discovery_total, namespace)",
         "refresh": 2,
         "multi": true,
         "includeAll": true
@@ -106,11 +106,11 @@
       },
       "targets": [
         {
-          "expr": "sum by (operation) (rate(polaris_sdk_operations_total{job=~\"$job\",instance=~\"$instance\",operation=~\"$operation\"}[$rate_interval]))",
+          "expr": "sum by (operation) (rate(lynx_polaris_sdk_operations_total{job=~\"$job\",instance=~\"$instance\",operation=~\"$operation\"}[$rate_interval]))",
           "legendFormat": "ops {{operation}}"
         },
         {
-          "expr": "sum by (operation) (rate(polaris_sdk_errors_total{job=~\"$job\",instance=~\"$instance\",operation=~\"$operation\"}[$rate_interval]))",
+          "expr": "sum by (operation) (rate(lynx_polaris_sdk_errors_total{job=~\"$job\",instance=~\"$instance\",operation=~\"$operation\"}[$rate_interval]))",
           "legendFormat": "err {{operation}}"
         }
       ]
@@ -130,7 +130,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (operation, le) (rate(polaris_sdk_operations_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\",operation=~\"$operation\"}[$rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (operation, le) (rate(lynx_polaris_sdk_operations_duration_seconds_bucket{job=~\"$job\",instance=~\"$instance\",operation=~\"$operation\"}[$rate_interval])))",
           "legendFormat": "p95 {{operation}}"
         }
       ]
@@ -150,7 +150,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (service,namespace) (rate(polaris_service_discovery_total{job=~\"$job\",instance=~\"$instance\",service=~\"$service\",namespace=~\"$namespace\"}[$rate_interval]))",
+          "expr": "sum by (service,namespace) (rate(lynx_polaris_service_discovery_total{job=~\"$job\",instance=~\"$instance\",service=~\"$service\",namespace=~\"$namespace\"}[$rate_interval]))",
           "legendFormat": "{{service}}/{{namespace}}"
         }
       ]
@@ -170,11 +170,11 @@
       },
       "targets": [
         {
-          "expr": "sum by (service,namespace) (rate(polaris_rate_limit_requests_total{job=~\"$job\",instance=~\"$instance\",service=~\"$service\",namespace=~\"$namespace\"}[$rate_interval]))",
+          "expr": "sum by (service,namespace) (rate(lynx_polaris_rate_limit_requests_total{job=~\"$job\",instance=~\"$instance\",service=~\"$service\",namespace=~\"$namespace\"}[$rate_interval]))",
           "legendFormat": "req {{service}}/{{namespace}}"
         },
         {
-          "expr": "sum by (service,namespace) (rate(polaris_rate_limit_rejected_total{job=~\"$job\",instance=~\"$instance\",service=~\"$service\",namespace=~\"$namespace\"}[$rate_interval]))",
+          "expr": "sum by (service,namespace) (rate(lynx_polaris_rate_limit_rejected_total{job=~\"$job\",instance=~\"$instance\",service=~\"$service\",namespace=~\"$namespace\"}[$rate_interval]))",
           "legendFormat": "rej {{service}}/{{namespace}}"
         }
       ]
