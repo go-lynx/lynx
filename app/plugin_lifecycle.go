@@ -302,7 +302,7 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				// 增强panic信息
+				// Enhance panic details
 				stackTrace := make([]byte, 4096)
 				stackLen := runtime.Stack(stackTrace, false)
 				log.Errorf("Panic in Initialize of %s: %v\nStack trace:\n%s", p.ID(), r, stackTrace[:stackLen])
@@ -317,7 +317,7 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 	}()
 	select {
 	case err := <-done:
-		// 记录执行时间
+		// Record execution duration
 		duration := time.Since(t0)
 		if duration > timeout/2 {
 			log.Warnf("Plugin %s initialize took %v (50%% of timeout %v)", p.Name(), duration, timeout)

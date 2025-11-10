@@ -11,14 +11,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// CacheManager 提供高级缓存管理功能
+// CacheManager provides advanced cache management features
 type CacheManager struct {
 	client redis.UniversalClient
 	logger zerolog.Logger
 	stats  *CacheStats
 }
 
-// CacheStats 缓存统计
+// CacheStats cache statistics
 type CacheStats struct {
 	Hits        uint64
 	Misses      uint64
@@ -30,7 +30,7 @@ type CacheStats struct {
 	mu          sync.RWMutex
 }
 
-// NewCacheManager 创建缓存管理器
+// NewCacheManager creates a cache manager
 func NewCacheManager(client redis.UniversalClient, logger zerolog.Logger) *CacheManager {
 	return &CacheManager{
 		client: client,
@@ -41,12 +41,12 @@ func NewCacheManager(client redis.UniversalClient, logger zerolog.Logger) *Cache
 	}
 }
 
-// GetWithLoader 获取缓存，如果不存在则使用loader加载
+// GetWithLoader gets from cache, or uses loader when missing
 func (cm *CacheManager) GetWithLoader(ctx context.Context, key string, loader func() (interface{}, error), ttl time.Duration) (interface{}, error) {
 	start := time.Now()
 	defer cm.recordLatency(start)
 	
-	// 尝试从缓存获取
+	// Try to get from cache
 	val, err := cm.client.Get(ctx, key).Result()
 	if err == nil {
 		cm.recordHit()
@@ -62,13 +62,13 @@ func (cm *CacheManager) GetWithLoader(ctx context.Context, key string, loader fu
 		cm.recordMiss()
 	}
 	
-	// 使用loader加载数据
+	// Load data using loader
 	data, err := loader()
 	if err != nil {
 		return nil, fmt.Errorf("loader failed: %w", err)
 	}
 	
-	// 序列化并缓存
+	// Marshal and cache
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return data, fmt.Errorf("failed to marshal data: %w", err)
@@ -77,7 +77,7 @@ func (cm *CacheManager) GetWithLoader(ctx context.Context, key string, loader fu
 	if err := cm.client.Set(ctx, key, jsonData, ttl).Err(); err != nil {
 		cm.recordError()
 		cm.logger.Error().Err(err).Str("key", key).Msg("Failed to set cache")
-		// 即使缓存失败，也返回数据
+		// Return data even if caching fails
 		return data, nil
 	}
 	
@@ -85,7 +85,7 @@ func (cm *CacheManager) GetWithLoader(ctx context.Context, key string, loader fu
 	return data, nil
 }
 
-// SetWithRetry 带重试的缓存设置
+// SetWithRetry sets cache value with retry
 func (cm *CacheManager) SetWithRetry(ctx context.Context, key string, value interface{}, ttl time.Duration, maxRetries int) error {
 	jsonData, err := json.Marshal(value)
 	if err != nil {
@@ -105,7 +105,7 @@ func (cm *CacheManager) SetWithRetry(ctx context.Context, key string, value inte
 			Str("key", key).
 			Msg("Retry cache set")
 		
-		// 指数退避
+		// Exponential backoff
 		time.Sleep(time.Duration(1<<uint(i)) * time.Millisecond * 100)
 	}
 	
@@ -113,7 +113,7 @@ func (cm *CacheManager) SetWithRetry(ctx context.Context, key string, value inte
 	return fmt.Errorf("failed to set cache after %d retries", maxRetries)
 }
 
-// DeletePattern 删除匹配模式的所有键
+// DeletePattern deletes all keys matching pattern
 func (cm *CacheManager) DeletePattern(ctx context.Context, pattern string) error {
 	iter := cm.client.Scan(ctx, 0, pattern, 0).Iterator()
 	var keys []string
@@ -138,11 +138,11 @@ func (cm *CacheManager) DeletePattern(ctx context.Context, pattern string) error
 	return nil
 }
 
-// GetStats 获取缓存统计
+// GetStats gets cache statistics
 func (cm *CacheManager) GetStats() CacheStats {
 	cm.stats.mu.RLock()
 	defer cm.stats.mu.RUnlock()
-	// 创建一个不包含锁的副本来避免锁值拷贝警告
+	// Create a copy without the mutex to avoid lock copy warnings
 	return CacheStats{
 		Hits:       cm.stats.Hits,
 		Misses:     cm.stats.Misses,
@@ -151,11 +151,11 @@ func (cm *CacheManager) GetStats() CacheStats {
 		Errors:     cm.stats.Errors,
 		AvgLatency: cm.stats.AvgLatency,
 		lastReset:  cm.stats.lastReset,
-		// 不拷贝 mu 字段
+		// Do not copy mu field
 	}
 }
 
-// ResetStats 重置统计
+// ResetStats resets statistics
 func (cm *CacheManager) ResetStats() {
 	cm.stats.mu.Lock()
 	defer cm.stats.mu.Unlock()
@@ -203,7 +203,7 @@ func (cm *CacheManager) recordLatency(start time.Time) {
 	cm.stats.mu.Lock()
 	defer cm.stats.mu.Unlock()
 	
-	// 简单的移动平均
+	// Simple moving average
 	if cm.stats.AvgLatency == 0 {
 		cm.stats.AvgLatency = latency
 	} else {
@@ -211,7 +211,7 @@ func (cm *CacheManager) recordLatency(start time.Time) {
 	}
 }
 
-// DistributedLock 分布式锁实现
+// DistributedLock distributed lock implementation
 type DistributedLock struct {
 	client   redis.UniversalClient
 	key      string
@@ -222,7 +222,7 @@ type DistributedLock struct {
 	mu       sync.Mutex
 }
 
-// NewDistributedLock 创建分布式锁
+// NewDistributedLock creates a distributed lock
 func NewDistributedLock(client redis.UniversalClient, key string, ttl time.Duration, logger zerolog.Logger) *DistributedLock {
 	return &DistributedLock{
 		client: client,
@@ -233,12 +233,12 @@ func NewDistributedLock(client redis.UniversalClient, key string, ttl time.Durat
 	}
 }
 
-// Lock 获取锁
+// Lock acquires the lock
 func (dl *DistributedLock) Lock(ctx context.Context) error {
 	return dl.LockWithRetry(ctx, 1)
 }
 
-// LockWithRetry 带重试的获取锁
+// LockWithRetry acquires the lock with retry
 func (dl *DistributedLock) LockWithRetry(ctx context.Context, maxRetries int) error {
 	for i := 0; i < maxRetries; i++ {
 		success, err := dl.client.SetNX(ctx, dl.key, dl.value, dl.ttl).Result()
@@ -254,19 +254,19 @@ func (dl *DistributedLock) LockWithRetry(ctx context.Context, maxRetries int) er
 			return nil
 		}
 		
-		// 等待后重试
+		// Wait then retry
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(time.Millisecond * 100 * time.Duration(i+1)):
-			// 指数退避
+			// Exponential backoff
 		}
 	}
 	
 	return fmt.Errorf("failed to acquire lock after %d retries", maxRetries)
 }
 
-// Unlock 释放锁
+// Unlock releases the lock
 func (dl *DistributedLock) Unlock(ctx context.Context) error {
 	dl.mu.Lock()
 	defer dl.mu.Unlock()
@@ -275,7 +275,7 @@ func (dl *DistributedLock) Unlock(ctx context.Context) error {
 		return fmt.Errorf("lock already released")
 	}
 	
-	// 使用Lua脚本确保只释放自己的锁
+	// Use Lua script to ensure only the owner releases the lock
 	script := redis.NewScript(`
 		if redis.call('GET', KEYS[1]) == ARGV[1] then
 			return redis.call('DEL', KEYS[1])
@@ -302,7 +302,7 @@ func (dl *DistributedLock) Unlock(ctx context.Context) error {
 	return nil
 }
 
-// Extend 延长锁的时间
+// Extend extends the lock TTL
 func (dl *DistributedLock) Extend(ctx context.Context, additionalTTL time.Duration) error {
 	dl.mu.Lock()
 	defer dl.mu.Unlock()
@@ -311,7 +311,7 @@ func (dl *DistributedLock) Extend(ctx context.Context, additionalTTL time.Durati
 		return fmt.Errorf("lock already released")
 	}
 	
-	// 使用Lua脚本确保只延长自己的锁
+	// Use Lua script to ensure only the owner extends the lock
 	script := redis.NewScript(`
 		if redis.call('GET', KEYS[1]) == ARGV[1] then
 			return redis.call('EXPIRE', KEYS[1], ARGV[2])
@@ -333,13 +333,13 @@ func (dl *DistributedLock) Extend(ctx context.Context, additionalTTL time.Durati
 	return nil
 }
 
-// RateLimiter 速率限制器
+// RateLimiter rate limiter
 type RateLimiter struct {
 	client redis.UniversalClient
 	logger zerolog.Logger
 }
 
-// NewRateLimiter 创建速率限制器
+// NewRateLimiter creates a rate limiter
 func NewRateLimiter(client redis.UniversalClient, logger zerolog.Logger) *RateLimiter {
 	return &RateLimiter{
 		client: client,
@@ -347,32 +347,32 @@ func NewRateLimiter(client redis.UniversalClient, logger zerolog.Logger) *RateLi
 	}
 }
 
-// Allow 检查是否允许操作
+// Allow checks whether the operation is allowed
 func (rl *RateLimiter) Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error) {
 	now := time.Now().Unix()
 	windowStart := now - int64(window.Seconds())
 	
 	pipe := rl.client.Pipeline()
 	
-	// 移除窗口外的记录
+	// Remove records outside the window
 	pipe.ZRemRangeByScore(ctx, key, "0", fmt.Sprintf("%d", windowStart))
 	
-	// 计算当前窗口内的请求数
+	// Count requests within the current window
 	count := pipe.ZCard(ctx, key)
 	
-	// 执行管道
+	// Execute pipeline
 	_, err := pipe.Exec(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to check rate limit: %w", err)
 	}
 	
-	// 获取计数
+	// Get count
 	currentCount, err := count.Result()
 	if err != nil {
 		return false, err
 	}
 	
-	// 检查是否超限
+	// Check if limit exceeded
 	if currentCount >= int64(limit) {
 		rl.logger.Warn().
 			Str("key", key).
@@ -382,7 +382,7 @@ func (rl *RateLimiter) Allow(ctx context.Context, key string, limit int, window 
 		return false, nil
 	}
 	
-	// 添加新记录
+	// Add new record
 	member := fmt.Sprintf("%d:%d", now, randInt())
 	if err := rl.client.ZAdd(ctx, key, redis.Z{
 		Score:  float64(now),
@@ -391,30 +391,30 @@ func (rl *RateLimiter) Allow(ctx context.Context, key string, limit int, window 
 		return false, fmt.Errorf("failed to add rate limit record: %w", err)
 	}
 	
-	// 设置过期时间
+	// Set expiration
 	rl.client.Expire(ctx, key, window)
 	
 	return true, nil
 }
 
-// GetUsage 获取当前使用量
+// GetUsage gets current usage
 func (rl *RateLimiter) GetUsage(ctx context.Context, key string, window time.Duration) (int64, error) {
 	now := time.Now().Unix()
 	windowStart := now - int64(window.Seconds())
 	
-	// 移除窗口外的记录
+	// Remove records outside the window
 	rl.client.ZRemRangeByScore(ctx, key, "0", fmt.Sprintf("%d", windowStart))
 	
-	// 获取当前计数
+	// Get current count
 	return rl.client.ZCard(ctx, key).Result()
 }
 
-// Reset 重置限制
+// Reset resets the limiter
 func (rl *RateLimiter) Reset(ctx context.Context, key string) error {
 	return rl.client.Del(ctx, key).Err()
 }
 
-// randInt 生成随机数
+// randInt generates a pseudo-random int
 func randInt() int {
 	return int(time.Now().UnixNano() % 1000000)
 }

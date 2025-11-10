@@ -19,7 +19,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
-// RedisIntegrationTestSuite 定义Redis集成测试套件
+// RedisIntegrationTestSuite defines Redis integration test suite
 type RedisIntegrationTestSuite struct {
 	suite.Suite
 	plugin  *PlugRedis
@@ -29,7 +29,7 @@ type RedisIntegrationTestSuite struct {
 	runtime *mockRuntime
 }
 
-// mockRuntime 模拟Runtime实现
+// mockRuntime mock implementation of Runtime
 type mockRuntime struct {
 	resources map[string]interface{}
 	mu        sync.RWMutex
@@ -182,17 +182,17 @@ func (m *mockRuntime) ListResources() []*plugins.ResourceInfo {
 	return []*plugins.ResourceInfo{}
 }
 
-// SetupSuite 设置测试套件
+// SetupSuite sets up the test suite
 func (suite *RedisIntegrationTestSuite) SetupSuite() {
 	suite.ctx, suite.cancel = context.WithCancel(context.Background())
 	suite.runtime = &mockRuntime{
 		resources: make(map[string]interface{}),
 	}
 
-	// 创建Redis插件
+	// Create Redis plugin
 	suite.plugin = NewRedisClient()
 
-	// 设置配置
+	// Set configuration
 	config := &conf.Redis{
 		Addrs:          []string{"localhost:6379"},
 		Password:       "",
@@ -210,23 +210,23 @@ func (suite *RedisIntegrationTestSuite) SetupSuite() {
 
 	suite.plugin.conf = config
 
-	// 初始化插件
+	// Initialize plugin
 	err := suite.plugin.Initialize(suite.plugin, suite.runtime)
 	require.NoError(suite.T(), err)
 
-	// 启动插件
+	// Start plugin
 	err = suite.plugin.Start(suite.plugin)
 	require.NoError(suite.T(), err)
 
-	// 获取客户端
+	// Get client
 	suite.client = suite.plugin.rdb
 	require.NotNil(suite.T(), suite.client)
 
-	// 清理测试数据
+	// Cleanup test data
 	suite.client.FlushDB(suite.ctx)
 }
 
-// TearDownSuite 清理测试套件
+// TearDownSuite cleans up the test suite
 func (suite *RedisIntegrationTestSuite) TearDownSuite() {
 	if suite.client != nil {
 		suite.client.FlushDB(suite.ctx)
@@ -237,12 +237,12 @@ func (suite *RedisIntegrationTestSuite) TearDownSuite() {
 	suite.cancel()
 }
 
-// TestBasicOperations 测试基本操作
+// TestBasicOperations tests basic operations
 func (suite *RedisIntegrationTestSuite) TestBasicOperations() {
 	ctx := suite.ctx
 	client := suite.client
 
-	// 测试SET和GET
+	// Test SET and GET
 	err := client.Set(ctx, "test_key", "test_value", time.Minute).Err()
 	assert.NoError(suite.T(), err)
 
@@ -250,22 +250,22 @@ func (suite *RedisIntegrationTestSuite) TestBasicOperations() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "test_value", val)
 
-	// 测试DEL
+	// Test DEL
 	err = client.Del(ctx, "test_key").Err()
 	assert.NoError(suite.T(), err)
 
-	// 验证删除
+	// Verify deletion
 	_, err = client.Get(ctx, "test_key").Result()
 	assert.Error(suite.T(), err)
 	assert.Equal(suite.T(), redis.Nil, err)
 }
 
-// TestHashOperations 测试Hash操作
+// TestHashOperations tests Hash operations
 func (suite *RedisIntegrationTestSuite) TestHashOperations() {
 	ctx := suite.ctx
 	client := suite.client
 
-	// 测试HSET和HGET
+	// Test HSET and HGET
 	err := client.HSet(ctx, "test_hash", "field1", "value1").Err()
 	assert.NoError(suite.T(), err)
 
@@ -273,7 +273,7 @@ func (suite *RedisIntegrationTestSuite) TestHashOperations() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "value1", val)
 
-	// 测试HMSET和HMGET
+	// Test HMSET and HMGET
 	err = client.HMSet(ctx, "test_hash", map[string]interface{}{
 		"field2": "value2",
 		"field3": "value3",
@@ -284,7 +284,7 @@ func (suite *RedisIntegrationTestSuite) TestHashOperations() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), []interface{}{"value2", "value3"}, vals)
 
-	// 测试HGETALL
+	// Test HGETALL
 	all, err := client.HGetAll(ctx, "test_hash").Result()
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), map[string]string{
@@ -294,49 +294,49 @@ func (suite *RedisIntegrationTestSuite) TestHashOperations() {
 	}, all)
 }
 
-// TestListOperations 测试List操作
+// TestListOperations tests List operations
 func (suite *RedisIntegrationTestSuite) TestListOperations() {
 	ctx := suite.ctx
 	client := suite.client
 
-	// 测试LPUSH和RPUSH
+	// Test LPUSH and RPUSH
 	err := client.LPush(ctx, "test_list", "left1", "left2").Err()
 	assert.NoError(suite.T(), err)
 
 	err = client.RPush(ctx, "test_list", "right1", "right2").Err()
 	assert.NoError(suite.T(), err)
 
-	// 测试LLEN
+	// Test LLEN
 	length, err := client.LLen(ctx, "test_list").Result()
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), int64(4), length)
 
-	// 测试LRANGE
+	// Test LRANGE
 	vals, err := client.LRange(ctx, "test_list", 0, -1).Result()
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), []string{"left2", "left1", "right1", "right2"}, vals)
 }
 
-// TestSetOperations 测试Set操作
+// TestSetOperations tests Set operations
 func (suite *RedisIntegrationTestSuite) TestSetOperations() {
 	ctx := suite.ctx
 	client := suite.client
 
-	// 测试SADD
+	// Test SADD
 	err := client.SAdd(ctx, "test_set", "member1", "member2", "member3").Err()
 	assert.NoError(suite.T(), err)
 
-	// 测试SISMEMBER
+	// Test SISMEMBER
 	exists, err := client.SIsMember(ctx, "test_set", "member2").Result()
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), exists)
 
-	// 测试SMEMBERS
+	// Test SMEMBERS
 	members, err := client.SMembers(ctx, "test_set").Result()
 	assert.NoError(suite.T(), err)
 	assert.ElementsMatch(suite.T(), []string{"member1", "member2", "member3"}, members)
 
-	// 测试SREM
+	// Test SREM
 	err = client.SRem(ctx, "test_set", "member2").Err()
 	assert.NoError(suite.T(), err)
 
@@ -345,39 +345,39 @@ func (suite *RedisIntegrationTestSuite) TestSetOperations() {
 	assert.False(suite.T(), exists)
 }
 
-// TestExpiration 测试过期功能
+// TestExpiration tests expiration
 func (suite *RedisIntegrationTestSuite) TestExpiration() {
 	ctx := suite.ctx
 	client := suite.client
 
-	// 设置带过期时间的键
+	// Set a key with expiration
 	err := client.Set(ctx, "expire_key", "value", 2*time.Second).Err()
 	assert.NoError(suite.T(), err)
 
-	// 立即检查
+	// Check immediately
 	val, err := client.Get(ctx, "expire_key").Result()
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "value", val)
 
-	// 等待过期
+	// Wait for expiration
 	time.Sleep(3 * time.Second)
 
-	// 验证已过期
+	// Verify expired
 	_, err = client.Get(ctx, "expire_key").Result()
 	assert.Error(suite.T(), err)
 	assert.Equal(suite.T(), redis.Nil, err)
 }
 
-// TestTransactions 测试事务
+// TestTransactions tests transactions
 func (suite *RedisIntegrationTestSuite) TestTransactions() {
 	ctx := suite.ctx
 	client := suite.client
 
-	// 使用WATCH和事务
+	// Use WATCH and transaction
 	key := "counter"
 	client.Set(ctx, key, "0", 0)
 
-	// 执行事务
+	// Execute transaction
 	err := client.Watch(ctx, func(tx *redis.Tx) error {
 		n, getErr := tx.Get(ctx, key).Int()
 		if getErr != nil && getErr != redis.Nil {
@@ -393,29 +393,29 @@ func (suite *RedisIntegrationTestSuite) TestTransactions() {
 
 	assert.NoError(suite.T(), err)
 
-	// 验证结果
+	// Verify result
 	val, err := client.Get(ctx, key).Result()
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "1", val)
 }
 
-// TestPipelining 测试管道
+// TestPipelining tests pipelining
 func (suite *RedisIntegrationTestSuite) TestPipelining() {
 	ctx := suite.ctx
 	client := suite.client
 
-	// 使用管道批量执行命令
+	// Use pipeline to execute commands in bulk
 	pipe := client.Pipeline()
 
 	for i := 0; i < 10; i++ {
 		pipe.Set(ctx, fmt.Sprintf("pipe_key_%d", i), fmt.Sprintf("value_%d", i), 0)
 	}
 
-	// 执行管道
+	// Execute pipeline
 	_, err := pipe.Exec(ctx)
 	assert.NoError(suite.T(), err)
 
-	// 验证结果
+	// Verify results
 	for i := 0; i < 10; i++ {
 		val, err := client.Get(ctx, fmt.Sprintf("pipe_key_%d", i)).Result()
 		assert.NoError(suite.T(), err)
@@ -423,15 +423,15 @@ func (suite *RedisIntegrationTestSuite) TestPipelining() {
 	}
 }
 
-// TestConcurrency 测试并发安全性
+// TestConcurrency tests concurrency safety
 func (suite *RedisIntegrationTestSuite) TestConcurrency() {
 	ctx := suite.ctx
 	client := suite.client
 
-	// 设置初始值
+	// Set initial value
 	client.Set(ctx, "concurrent_counter", "0", 0)
 
-	// 并发增加计数器
+	// Concurrently increment the counter
 	var wg sync.WaitGroup
 	var successCount int32
 	iterations := 100
@@ -441,7 +441,7 @@ func (suite *RedisIntegrationTestSuite) TestConcurrency() {
 		go func() {
 			defer wg.Done()
 
-			// 使用Lua脚本保证原子性
+			// Use Lua script to guarantee atomicity
 			script := redis.NewScript(`
 				local current = redis.call('GET', KEYS[1])
 				if not current then
@@ -461,37 +461,37 @@ func (suite *RedisIntegrationTestSuite) TestConcurrency() {
 
 	wg.Wait()
 
-	// 验证结果
+	// Verify results
 	val, err := client.Get(ctx, "concurrent_counter").Result()
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), fmt.Sprintf("%d", successCount), val)
 	assert.Equal(suite.T(), int32(iterations), successCount)
 }
 
-// TestConnectionPoolMetrics 测试连接池指标
+// TestConnectionPoolMetrics tests connection pool metrics
 func (suite *RedisIntegrationTestSuite) TestConnectionPoolMetrics() {
-	// 获取连接池统计
+	// Get pool stats
 	stats := suite.plugin.GetPoolStats()
 	assert.NotNil(suite.T(), stats)
 
-	// 验证指标
+	// Validate metrics
 	assert.GreaterOrEqual(suite.T(), stats.TotalConns, uint32(0))
 	assert.GreaterOrEqual(suite.T(), stats.IdleConns, uint32(0))
 	assert.GreaterOrEqual(suite.T(), stats.Hits, uint64(0))
 	assert.GreaterOrEqual(suite.T(), stats.Timeouts, uint64(0))
 }
 
-// TestHealthCheck 测试健康检查
+// TestHealthCheck tests health check
 func (suite *RedisIntegrationTestSuite) TestHealthCheck() {
-	// 执行健康检查
+	// Perform health check
 	healthy, err := suite.plugin.HealthCheck()
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), healthy)
 }
 
-// TestRunIntegrationTestSuite 运行测试套件
+// TestRunIntegrationTestSuite runs the test suite
 func TestRunIntegrationTestSuite(t *testing.T) {
-	// 跳过如果没有Redis服务
+	// Skip if no Redis server
 	client := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})

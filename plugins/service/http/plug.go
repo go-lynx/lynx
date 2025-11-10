@@ -14,10 +14,10 @@ func init() {
 	})
 }
 
-// GetHttpServer 获取 HTTP 服务端实例（安全版本，无 panic）。
-// 返回：
-//   - *http.Server: 若存在则返回实例，否则为 nil
-//   - error: 找不到插件或类型不匹配等错误
+// GetHttpServer retrieves the HTTP server instance (safe version, no panic).
+// Returns:
+//   - *http.Server: the instance if present, otherwise nil
+//   - error: when plugin is not found or type assertion fails
 func GetHttpServer() (*http.Server, error) {
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
 	if service, ok := plugin.(*ServiceHttp); ok && service != nil {

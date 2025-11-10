@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestKafkaConnection 测试Kafka连接
+// TestKafkaConnection tests Kafka connectivity
 func TestKafkaConnection(t *testing.T) {
-	// Kafka配置
+	// Kafka configuration
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_6_0_0
 	config.Producer.Return.Successes = true
@@ -24,7 +24,7 @@ func TestKafkaConnection(t *testing.T) {
 
 	brokers := []string{"localhost:9092"}
 
-	// 创建生产者
+	// Create producer
 	producer, err := sarama.NewSyncProducer(brokers, config)
 	if err != nil {
 		t.Skip("Kafka is not available:", err)
@@ -32,17 +32,17 @@ func TestKafkaConnection(t *testing.T) {
 	}
 	defer producer.Close()
 
-	// 创建消费者
+	// Create consumer
 	consumer, err := sarama.NewConsumer(brokers, config)
 	require.NoError(t, err)
 	defer consumer.Close()
 
-	// 测试主题
+	// Test topic
 	topic := "test-topic"
 
-	// 测试生产和消费
+	// Test produce and consume
 	t.Run("ProduceAndConsume", func(t *testing.T) {
-		// 发送消息
+		// Send message
 		message := &sarama.ProducerMessage{
 			Topic: topic,
 			Key:   sarama.StringEncoder("test-key"),
@@ -56,7 +56,7 @@ func TestKafkaConnection(t *testing.T) {
 
 		t.Logf("Message sent to partition %d at offset %d", partition, offset)
 
-		// 消费消息
+		// Consume message
 		partitionConsumer, err := consumer.ConsumePartition(topic, partition, offset)
 		require.NoError(t, err)
 		defer partitionConsumer.Close()
@@ -75,7 +75,7 @@ func TestKafkaConnection(t *testing.T) {
 		}
 	})
 
-	// 测试批量生产
+	// Test batch produce
 	t.Run("BatchProduce", func(t *testing.T) {
 		messages := make([]*sarama.ProducerMessage, 10)
 		for i := 0; i < 10; i++ {
@@ -86,25 +86,25 @@ func TestKafkaConnection(t *testing.T) {
 			}
 		}
 
-		// 发送批量消息
+		// Send batch messages
 		errors := producer.SendMessages(messages)
 		assert.NoError(t, errors)
 
-		// 验证所有消息都有有效的分区和偏移量
+		// Validate each message has valid partition and offset
 		for _, msg := range messages {
 			assert.GreaterOrEqual(t, msg.Partition, int32(0))
 			assert.GreaterOrEqual(t, msg.Offset, int64(0))
 		}
 	})
 
-	// 测试消费者组
+	// Test consumer group
 	t.Run("ConsumerGroup", func(t *testing.T) {
-		// 创建消费者组
+		// Create consumer group
 		group, err := sarama.NewConsumerGroup(brokers, "test-group", config)
 		require.NoError(t, err)
 		defer group.Close()
 
-		// 发送测试消息
+		// Send a test message
 		testMsg := &sarama.ProducerMessage{
 			Topic: topic,
 			Value: sarama.StringEncoder("group-test-value"),
@@ -112,7 +112,7 @@ func TestKafkaConnection(t *testing.T) {
 		_, _, err = producer.SendMessage(testMsg)
 		require.NoError(t, err)
 
-		// 消费消息
+		// Consume message
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
@@ -132,7 +132,7 @@ func TestKafkaConnection(t *testing.T) {
 			}
 		}()
 
-		// 等待消费者准备就绪
+		// Wait until consumer is ready
 		select {
 		case <-handler.ready:
 			t.Log("Consumer group is ready")
@@ -142,7 +142,7 @@ func TestKafkaConnection(t *testing.T) {
 	})
 }
 
-// TestKafkaPerformance 测试Kafka性能
+// TestKafkaPerformance tests Kafka performance
 func TestKafkaPerformance(t *testing.T) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_6_0_0
@@ -152,7 +152,7 @@ func TestKafkaPerformance(t *testing.T) {
 
 	brokers := []string{"localhost:9092"}
 
-	// 创建异步生产者
+	// Create async producer
 	producer, err := sarama.NewAsyncProducer(brokers, config)
 	if err != nil {
 		t.Skip("Kafka is not available:", err)
@@ -162,7 +162,7 @@ func TestKafkaPerformance(t *testing.T) {
 
 	topic := "perf-test-topic"
 
-	// 性能测试：异步生产
+	// Performance test: async produce
 	t.Run("AsyncProduce", func(t *testing.T) {
 		messageCount := 10000
 		start := time.Now()
@@ -170,7 +170,7 @@ func TestKafkaPerformance(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(1)
 
-		// 处理成功和错误
+		// Handle successes and errors
 		go func() {
 			defer wg.Done()
 			successCount := 0
@@ -195,12 +195,12 @@ func TestKafkaPerformance(t *testing.T) {
 			t.Logf("Async produce performance: %d messages in %v (%.2f msg/sec)",
 				successCount, elapsed, throughput)
 
-			// 验证性能阈值
+			// Validate performance threshold
 			assert.Greater(t, throughput, 1000.0, "Should achieve at least 1000 msg/sec")
 			assert.Equal(t, 0, errorCount, "Should have no errors")
 		}()
 
-		// 发送消息
+		// Send messages
 		for i := 0; i < messageCount; i++ {
 			message := &sarama.ProducerMessage{
 				Topic: topic,
@@ -218,18 +218,18 @@ func TestKafkaPerformance(t *testing.T) {
 		wg.Wait()
 	})
 
-	// 性能测试：批量消费
+	// Performance test: batch consume
 	t.Run("BatchConsume", func(t *testing.T) {
 		consumer, err := sarama.NewConsumer(brokers, config)
 		require.NoError(t, err)
 		defer consumer.Close()
 
-		// 获取主题的所有分区
+		// Get all partitions of the topic
 		partitions, err := consumer.Partitions(topic)
 		require.NoError(t, err)
 		require.NotEmpty(t, partitions)
 
-		// 消费第一个分区
+		// Consume from the first partition
 		partitionConsumer, err := consumer.ConsumePartition(topic, partitions[0], sarama.OffsetOldest)
 		require.NoError(t, err)
 		defer partitionConsumer.Close()
@@ -256,19 +256,19 @@ func TestKafkaPerformance(t *testing.T) {
 		t.Logf("Batch consume performance: %d messages in %v (%.2f msg/sec)",
 			consumed, elapsed, throughput)
 
-		// 验证性能阈值
+		// Validate performance threshold
 		assert.Greater(t, throughput, 1000.0, "Should achieve at least 1000 msg/sec consumption")
 	})
 }
 
-// TestKafkaReliability 测试Kafka可靠性
+// TestKafkaReliability tests Kafka reliability
 func TestKafkaReliability(t *testing.T) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_6_0_0
 	config.Producer.Return.Successes = true
-	config.Producer.RequiredAcks = sarama.WaitForAll // 等待所有副本确认
+	config.Producer.RequiredAcks = sarama.WaitForAll // wait for all replicas to ack
 	config.Producer.Retry.Max = 10
-	config.Producer.Idempotent = true // 幂等性
+	config.Producer.Idempotent = true // idempotent producer
 
 	brokers := []string{"localhost:9092"}
 
@@ -281,9 +281,9 @@ func TestKafkaReliability(t *testing.T) {
 
 	topic := "reliability-test-topic"
 
-	// 测试消息顺序性
+	// Test message ordering
 	t.Run("MessageOrdering", func(t *testing.T) {
-		// 使用相同的key确保消息发送到同一分区
+		// Use the same key to ensure messages go to the same partition
 		key := "order-key"
 		messages := make([]*sarama.ProducerMessage, 10)
 
@@ -295,7 +295,7 @@ func TestKafkaReliability(t *testing.T) {
 			}
 		}
 
-		// 发送消息并记录分区和偏移量
+		// Send messages and record partition and offset
 		var partition int32
 		offsets := make([]int64, 10)
 
@@ -306,14 +306,14 @@ func TestKafkaReliability(t *testing.T) {
 			if i == 0 {
 				partition = p
 			} else {
-				// 验证所有消息都发送到同一分区
+				// Verify all messages were sent to the same partition
 				assert.Equal(t, partition, p, "Messages with same key should go to same partition")
 			}
 
 			offsets[i] = o
 		}
 
-		// 验证偏移量是连续递增的
+		// Verify offsets are sequentially increasing
 		for i := 1; i < len(offsets); i++ {
 			assert.Equal(t, offsets[i-1]+1, offsets[i], "Offsets should be sequential")
 		}
@@ -321,7 +321,7 @@ func TestKafkaReliability(t *testing.T) {
 		t.Logf("All messages sent to partition %d with sequential offsets", partition)
 	})
 
-	// 测试幂等性
+	// Test idempotency
 	t.Run("Idempotency", func(t *testing.T) {
 		message := &sarama.ProducerMessage{
 			Topic: topic,
@@ -329,11 +329,11 @@ func TestKafkaReliability(t *testing.T) {
 			Value: sarama.StringEncoder("idempotent-value"),
 		}
 
-		// 发送相同消息多次
+		// Send the same message multiple times
 		partition1, offset1, err1 := producer.SendMessage(message)
 		require.NoError(t, err1)
 
-		// 由于幂等性，重复发送会得到不同的偏移量
+		// With idempotency, repeated sends get different offsets
 		partition2, offset2, err2 := producer.SendMessage(message)
 		require.NoError(t, err2)
 
@@ -344,7 +344,7 @@ func TestKafkaReliability(t *testing.T) {
 	})
 }
 
-// testConsumerGroupHandler 实现ConsumerGroupHandler接口
+// testConsumerGroupHandler implements ConsumerGroupHandler
 type testConsumerGroupHandler struct {
 	ready chan bool
 	done  chan bool

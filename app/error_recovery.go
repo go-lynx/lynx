@@ -134,7 +134,7 @@ type ErrorRecord struct {
 	Context      map[string]interface{}
 	Recovered    bool
 	RecoveryTime *time.Time
-	// 新增字段
+	// Additional fields
 	StackTrace  string
 	UserID      string
 	RequestID   string
@@ -285,17 +285,17 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 	erm.mu.Lock()
 	defer erm.mu.Unlock()
 
-	// 增强上下文信息
+	// Enrich context information
 	if context == nil {
 		context = make(map[string]interface{})
 	}
 
-	// 添加系统信息
+	// Add system information
 	context["timestamp"] = time.Now().Unix()
 	context["goroutines"] = runtime.NumGoroutine()
 	context["memory_alloc"] = getMemoryStats()
 
-	// 添加环境信息
+	// Add environment information
 	if env := os.Getenv("ENV"); env != "" {
 		context["environment"] = env
 	}
