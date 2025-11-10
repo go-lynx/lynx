@@ -1,6 +1,7 @@
 module github.com/go-lynx/lynx/plugins/polaris
 
 go 1.25
+
 toolchain go1.25.3
 
 require (
