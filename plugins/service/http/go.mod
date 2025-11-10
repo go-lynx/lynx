@@ -1,6 +1,7 @@
 module github.com/go-lynx/lynx/plugins/service/http
 
-go 1.24.3
+go 1.25
+toolchain go1.25.3
 
 require (
 	github.com/go-kratos/kratos/contrib/middleware/validate/v2 v2.0.0-20250527152916-d6f5f00cf562

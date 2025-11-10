@@ -1,8 +1,8 @@
 module github.com/go-lynx/lynx/plugins/service/openim
 
-go 1.24.3
+go 1.25
 
-toolchain go1.24.4
+toolchain go1.25.3
 
 require (
 	github.com/go-lynx/lynx v1.2.3

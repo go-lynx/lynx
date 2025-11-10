@@ -1,6 +1,7 @@
 module github.com/go-lynx/lynx/cmd/lynx
 
-go 1.24.3
+go 1.25
+toolchain go1.25.3
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7

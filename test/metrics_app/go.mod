@@ -1,6 +1,7 @@
 module github.com/go-lynx/lynx/test/metrics_app
 
-go 1.23.0
+go 1.25
+toolchain go1.25.3
 
 require (
 	github.com/IBM/sarama v1.42.1

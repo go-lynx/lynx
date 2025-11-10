@@ -1,6 +1,7 @@
 module github.com/go-lynx/lynx/plugins/nosql/mongodb
 
-go 1.24.4
+go 1.25
+toolchain go1.25.3
 
 require (
 	github.com/go-kratos/kratos/v2 v2.8.4

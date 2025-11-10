@@ -1,6 +1,7 @@
 module github.com/go-lynx/lynx
 
-go 1.24.4
+go 1.25
+toolchain go1.25.3
 
 require (
 	github.com/IBM/sarama v1.46.0
