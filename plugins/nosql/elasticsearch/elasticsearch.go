@@ -311,7 +311,7 @@ func (p *PlugElasticsearch) closeStatsQuitOnce() {
 
 // checkHealth Perform health check
 func (p *PlugElasticsearch) checkHealth() error {
-	// 使用轻量 Ping 进行健康检查，避免 Cluster Health 的较高开销
+	// Use lightweight Ping for health check to avoid higher overhead of Cluster Health
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 

@@ -331,7 +331,7 @@ type PolarisWatcher struct {
 
 // Next gets next service change event
 func (w *PolarisWatcher) Next() ([]*registry.ServiceInstance, error) {
-	// 轮询回退：使用可配置的间隔，错误时指数退避并记录日志
+	// Polling fallback: use configurable interval; apply exponential backoff with logging on errors
 	interval := w.pollInterval
 	if interval <= 0 {
 		interval = 5 * time.Second
@@ -359,7 +359,7 @@ func (w *PolarisWatcher) Next() ([]*registry.ServiceInstance, error) {
 			resp, err := w.consumer.GetInstances(req)
 			if err != nil {
 				if w.enableRetry {
-					// 指数退避，最大不超过 30s
+					// Exponential backoff capped at 30s
 					attempt++
 					backoff := w.baseRetry
 					if backoff <= 0 {

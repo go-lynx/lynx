@@ -10,35 +10,35 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
-// UnifiedRuntime 统一的Runtime实现，整合了所有现有功能
+// UnifiedRuntime is a unified Runtime implementation that consolidates all existing capabilities
 type UnifiedRuntime struct {
-	// 资源管理 - 使用sync.Map提供更好的并发性能
-	resources *sync.Map // map[string]any - 存储所有资源
+	// Resource management - use sync.Map for better concurrent performance
+	resources *sync.Map // map[string]any - stores all resources
 	
-	// 资源信息跟踪
+	// Resource info tracking
 	resourceInfo *sync.Map // map[string]*ResourceInfo
 	
-	// 配置和日志
+	// Configuration and logging
 	config config.Config
 	logger log.Logger
 	
-	// 插件上下文管理
+	// Plugin context management
 	currentPluginContext string
 	contextMu           sync.RWMutex
 	
-	// 事件系统 - 使用统一的事件总线
-	eventManager interface{} // 避免循环依赖，运行时设置
+	// Event system - uses a unified event bus
+	eventManager interface{} // avoid circular dependency; set at runtime
 	
-	// 性能配置
+	// Performance configuration
 	workerPoolSize int
 	eventTimeout   time.Duration
 	
-	// 运行时状态
+	// Runtime state
 	closed bool
 	mu     sync.RWMutex
 }
 
-// NewUnifiedRuntime 创建新的统一Runtime实例
+// NewUnifiedRuntime creates a new unified Runtime instance
 func NewUnifiedRuntime() *UnifiedRuntime {
 	return &UnifiedRuntime{
 		resources:      &sync.Map{},
@@ -51,20 +51,20 @@ func NewUnifiedRuntime() *UnifiedRuntime {
 }
 
 // ============================================================================
-// 资源管理接口实现
+// Resource management interface
 // ============================================================================
 
-// GetResource 获取资源（兼容旧接口）
+// GetResource gets a resource (backward compatible API)
 func (r *UnifiedRuntime) GetResource(name string) (any, error) {
 	return r.GetSharedResource(name)
 }
 
-// RegisterResource 注册资源（兼容旧接口）
+// RegisterResource registers a resource (backward compatible API)
 func (r *UnifiedRuntime) RegisterResource(name string, resource any) error {
 	return r.RegisterSharedResource(name, resource)
 }
 
-// GetSharedResource 获取共享资源
+// GetSharedResource retrieves a shared resource
 func (r *UnifiedRuntime) GetSharedResource(name string) (any, error) {
 	if r.isClosed() {
 		return nil, fmt.Errorf("runtime is closed")
@@ -79,13 +79,13 @@ func (r *UnifiedRuntime) GetSharedResource(name string) (any, error) {
 		return nil, fmt.Errorf("resource not found: %s", name)
 	}
 	
-	// 更新访问统计
+	// Update access statistics
 	r.updateAccessStats(name, false, "")
 	
 	return value, nil
 }
 
-// RegisterSharedResource 注册共享资源
+// RegisterSharedResource registers a shared resource
 func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error {
 	if r.isClosed() {
 		return fmt.Errorf("runtime is closed")
@@ -99,10 +99,10 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 		return fmt.Errorf("resource cannot be nil")
 	}
 	
-	// 存储资源
+	// Store resource
 	r.resources.Store(name, resource)
 	
-	// 创建资源信息
+	// Create resource info
 	info := &ResourceInfo{
 		Name:        name,
 		Type:        reflect.TypeOf(resource).String(),
@@ -120,7 +120,7 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 	return nil
 }
 
-// GetPrivateResource 获取私有资源（插件特定）
+// GetPrivateResource gets a private (plugin-scoped) resource
 func (r *UnifiedRuntime) GetPrivateResource(name string) (any, error) {
 	pluginID := r.getCurrentPluginContext()
 	if pluginID == "" {
@@ -131,7 +131,7 @@ func (r *UnifiedRuntime) GetPrivateResource(name string) (any, error) {
 	return r.GetSharedResource(privateKey)
 }
 
-// RegisterPrivateResource 注册私有资源（插件特定）
+// RegisterPrivateResource registers a private (plugin-scoped) resource
 func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) error {
 	if r.isClosed() {
 		return fmt.Errorf("runtime is closed")
@@ -152,10 +152,10 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 	
 	privateKey := fmt.Sprintf("%s:%s", pluginID, name)
 	
-	// 存储资源
+	// Store resource
 	r.resources.Store(privateKey, resource)
 	
-	// 创建私有资源信息
+	// Create private resource info
 	info := &ResourceInfo{
 		Name:        privateKey,
 		Type:        reflect.TypeOf(resource).String(),
@@ -174,24 +174,24 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 }
 
 // ============================================================================
-// 配置和日志接口实现
+// Configuration and logging interfaces
 // ============================================================================
 
-// GetConfig 获取配置
+// GetConfig returns the config
 func (r *UnifiedRuntime) GetConfig() config.Config {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.config
 }
 
-// SetConfig 设置配置
+// SetConfig sets the config
 func (r *UnifiedRuntime) SetConfig(conf config.Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.config = conf
 }
 
-// GetLogger 获取日志器
+// GetLogger returns the logger
 func (r *UnifiedRuntime) GetLogger() log.Logger {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -201,7 +201,7 @@ func (r *UnifiedRuntime) GetLogger() log.Logger {
 	return r.logger
 }
 
-// SetLogger 设置日志器
+// SetLogger sets the logger
 func (r *UnifiedRuntime) SetLogger(logger log.Logger) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -209,30 +209,30 @@ func (r *UnifiedRuntime) SetLogger(logger log.Logger) {
 }
 
 // ============================================================================
-// 插件上下文管理
+// Plugin context management
 // ============================================================================
 
-// WithPluginContext 创建带插件上下文的Runtime
+// WithPluginContext creates a Runtime bound with plugin context
 func (r *UnifiedRuntime) WithPluginContext(pluginName string) Runtime {
-	// 创建新的Runtime实例，共享底层资源映射
+	// Create a new Runtime instance sharing underlying resource maps
 	contextRuntime := &UnifiedRuntime{
-		resources:            r.resources,    // 共享同一个资源映射指针
-		resourceInfo:         r.resourceInfo, // 共享同一个资源信息映射指针
+		resources:            r.resources,    // share the same resource map pointer
+		resourceInfo:         r.resourceInfo, // share the same resource info map pointer
 		config:               r.config,
 		logger:               r.logger,
 		currentPluginContext: pluginName,
-		contextMu:            sync.RWMutex{}, // 初始化mutex
+		contextMu:            sync.RWMutex{}, // initialize mutex
 		eventManager:         r.eventManager,
 		workerPoolSize:       r.workerPoolSize,
 		eventTimeout:         r.eventTimeout,
 		closed:               false,
-		mu:                   sync.RWMutex{}, // 初始化mutex
+		mu:                   sync.RWMutex{}, // initialize mutex
 	}
 	
 	return contextRuntime
 }
 
-// GetCurrentPluginContext 获取当前插件上下文
+// GetCurrentPluginContext returns current plugin context
 func (r *UnifiedRuntime) GetCurrentPluginContext() string {
 	return r.getCurrentPluginContext()
 }
@@ -244,10 +244,10 @@ func (r *UnifiedRuntime) getCurrentPluginContext() string {
 }
 
 // ============================================================================
-// 事件系统接口实现
+// Event system interfaces
 // ============================================================================
 
-// EmitEvent 发送事件
+// EmitEvent publishes an event
 func (r *UnifiedRuntime) EmitEvent(event PluginEvent) {
 	if r.isClosed() {
 		return
@@ -261,17 +261,17 @@ func (r *UnifiedRuntime) EmitEvent(event PluginEvent) {
 		event.Timestamp = time.Now().Unix()
 	}
 	
-	// 使用全局事件总线适配器
+	// Use global event bus adapter
 	adapter := EnsureGlobalEventBusAdapter()
 	if err := adapter.PublishEvent(event); err != nil {
-		// 记录错误但不中断操作
+		// Log error without interrupting operation
 		if logger := r.GetLogger(); logger != nil {
 			logger.Log(log.LevelError, "msg", "failed to publish event", "error", err, "event_type", event.Type, "plugin_id", event.PluginID)
 		}
 	}
 }
 
-// EmitPluginEvent 发送插件事件
+// EmitPluginEvent publishes a plugin event
 func (r *UnifiedRuntime) EmitPluginEvent(pluginName string, eventType string, data map[string]any) {
 	event := PluginEvent{
 		Type:      EventType(eventType),
@@ -282,14 +282,14 @@ func (r *UnifiedRuntime) EmitPluginEvent(pluginName string, eventType string, da
 	r.EmitEvent(event)
 }
 
-// AddListener 添加事件监听器
+// AddListener adds an event listener
 func (r *UnifiedRuntime) AddListener(listener EventListener, filter *EventFilter) {
-	// 委托给统一事件总线
+	// Delegate to the unified event bus
 	if listener == nil {
 		return
 	}
 
-	// 转换为统一事件总线监听器
+	// Convert to unified event bus listener
 	adapter := EnsureGlobalEventBusAdapter()
 
 	id := listener.GetListenerID()
@@ -297,7 +297,7 @@ func (r *UnifiedRuntime) AddListener(listener EventListener, filter *EventFilter
 		id = fmt.Sprintf("listener-%d", time.Now().UnixNano())
 	}
 
-	// 可选接口：事件监听器管理（由 app/events 的适配器实现）
+	// Optional interface: listener management (implemented by app/events adapter)
 	type addListenerIface interface {
 		AddListener(id string, filter *EventFilter, handler func(interface{}), bus string) error
 	}
@@ -311,24 +311,24 @@ func (r *UnifiedRuntime) AddListener(listener EventListener, filter *EventFilter
 		return
 	}
 
-	// 回退：直接订阅所有匹配的事件类型（当无监听器管理接口时）
-	// 若 filter 指定了类型则逐个订阅，否则订阅所有插件总线事件类型集合由上层维护
+	// Fallback: directly subscribe to all matching event types when listener management is unavailable
+	// If filter specifies types, subscribe individually; otherwise rely on upper layer to maintain type sets
 	if filter != nil && len(filter.Types) > 0 {
 		for _, t := range filter.Types {
 			_ = adapter.SubscribeTo(t, func(pe PluginEvent) {
-				// 仅做最基本的过滤（类型已由 SubscribeTo 限定）
+				// Basic filtering only (type already constrained by SubscribeTo)
 				listener.HandleEvent(pe)
 			})
 		}
 	} else {
-		// 无类型限定，按事件类型不可知的情况下无法总线级订阅，这里不做额外处理
-		// 依赖具体适配器的 AddListener 能力
+		// Without type constraints and unknown event types, bus-level subscription is not possible here
+		// Depend on adapter's AddListener capability
 	}
 }
 
-// RemoveListener 移除事件监听器
+// RemoveListener removes an event listener
 func (r *UnifiedRuntime) RemoveListener(listener EventListener) {
-	// 委托给统一事件总线
+	// Delegate to the unified event bus
 	if listener == nil {
 		return
 	}
@@ -345,9 +345,9 @@ func (r *UnifiedRuntime) RemoveListener(listener EventListener) {
 	}
 }
 
-// AddPluginListener 添加插件特定的事件监听器
+// AddPluginListener adds a plugin-specific event listener
 func (r *UnifiedRuntime) AddPluginListener(pluginName string, listener EventListener, filter *EventFilter) {
-	// 委托给统一事件总线
+	// Delegate to the unified event bus
 	if listener == nil {
 		return
 	}
@@ -368,7 +368,7 @@ func (r *UnifiedRuntime) AddPluginListener(pluginName string, listener EventList
 		return
 	}
 
-	// 回退：按事件类型订阅并在回调中过滤 PluginID
+	// Fallback: subscribe by event type and filter by PluginID in callback
 	if filter != nil && len(filter.Types) > 0 {
 		for _, t := range filter.Types {
 			_ = adapter.SubscribeTo(t, func(pe PluginEvent) {
@@ -380,9 +380,9 @@ func (r *UnifiedRuntime) AddPluginListener(pluginName string, listener EventList
 	}
 }
 
-// GetEventHistory 获取事件历史
+// GetEventHistory returns event history
 func (r *UnifiedRuntime) GetEventHistory(filter EventFilter) []PluginEvent {
-	// 委托给统一事件总线
+	// Delegate to the unified event bus
 	adapter := EnsureGlobalEventBusAdapter()
 	type historyIface interface {
 		GetEventHistory(filter *EventFilter) []PluginEvent
@@ -393,9 +393,9 @@ func (r *UnifiedRuntime) GetEventHistory(filter EventFilter) []PluginEvent {
 	return nil
 }
 
-// GetPluginEventHistory 获取插件事件历史
+// GetPluginEventHistory returns plugin event history
 func (r *UnifiedRuntime) GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent {
-	// 委托给统一事件总线
+	// Delegate to the unified event bus
 	adapter := EnsureGlobalEventBusAdapter()
 	type pluginHistoryIface interface {
 		GetPluginEventHistory(pluginName string, filter *EventFilter) []PluginEvent
@@ -407,12 +407,12 @@ func (r *UnifiedRuntime) GetPluginEventHistory(pluginName string, filter EventFi
 }
 
 // ============================================================================
-// 性能配置接口
+// Performance configuration interfaces
 // ============================================================================
 
-// SetEventDispatchMode 设置事件分发模式
+// SetEventDispatchMode sets event dispatch mode
 func (r *UnifiedRuntime) SetEventDispatchMode(mode string) error {
-	// 委托给统一事件总线
+	// Delegate to the unified event bus
 	adapter := EnsureGlobalEventBusAdapter()
 	if configurable, ok := adapter.(interface{ SetDispatchMode(string) error }); ok {
 		return configurable.SetDispatchMode(mode)
@@ -420,7 +420,7 @@ func (r *UnifiedRuntime) SetEventDispatchMode(mode string) error {
 	return nil
 }
 
-// SetEventWorkerPoolSize 设置事件工作池大小
+// SetEventWorkerPoolSize sets event worker pool size
 func (r *UnifiedRuntime) SetEventWorkerPoolSize(size int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -429,7 +429,7 @@ func (r *UnifiedRuntime) SetEventWorkerPoolSize(size int) {
 	}
 }
 
-// SetEventTimeout 设置事件超时时间
+// SetEventTimeout sets event timeout duration
 func (r *UnifiedRuntime) SetEventTimeout(timeout time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -438,7 +438,7 @@ func (r *UnifiedRuntime) SetEventTimeout(timeout time.Duration) {
 	}
 }
 
-// GetEventStats 获取事件统计
+// GetEventStats returns event stats
 func (r *UnifiedRuntime) GetEventStats() map[string]any {
 	return map[string]any{
 		"worker_pool_size": r.workerPoolSize,
@@ -448,10 +448,10 @@ func (r *UnifiedRuntime) GetEventStats() map[string]any {
 }
 
 // ============================================================================
-// 资源信息和统计
+// Resource info and statistics
 // ============================================================================
 
-// GetResourceInfo 获取资源信息
+// GetResourceInfo returns resource info
 func (r *UnifiedRuntime) GetResourceInfo(name string) (*ResourceInfo, error) {
 	if name == "" {
 		return nil, fmt.Errorf("resource name cannot be empty")
@@ -470,7 +470,7 @@ func (r *UnifiedRuntime) GetResourceInfo(name string) (*ResourceInfo, error) {
 	return info, nil
 }
 
-// ListResources 列出所有资源
+// ListResources lists all resources
 func (r *UnifiedRuntime) ListResources() []*ResourceInfo {
 	var resources []*ResourceInfo
 	
@@ -484,7 +484,7 @@ func (r *UnifiedRuntime) ListResources() []*ResourceInfo {
 	return resources
 }
 
-// CleanupResources 清理插件资源
+// CleanupResources cleans up resources for a plugin
 func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	if pluginID == "" {
 		return fmt.Errorf("plugin ID cannot be empty")
@@ -492,7 +492,7 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	
 	var toDelete []string
 	
-	// 收集需要删除的资源
+	// Collect resources to be deleted
 	r.resourceInfo.Range(func(key, value interface{}) bool {
 		if info, ok := value.(*ResourceInfo); ok {
 			if info.PluginID == pluginID {
@@ -502,7 +502,7 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 		return true
 	})
 	
-	// 删除资源
+	// Delete resources
 	for _, name := range toDelete {
 		r.resources.Delete(name)
 		r.resourceInfo.Delete(name)
@@ -511,7 +511,7 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	return nil
 }
 
-// GetResourceStats 获取资源统计
+// GetResourceStats returns resource statistics
 func (r *UnifiedRuntime) GetResourceStats() map[string]any {
 	var totalResources, privateResources, sharedResources int
 	var totalSize int64
@@ -539,10 +539,10 @@ func (r *UnifiedRuntime) GetResourceStats() map[string]any {
 }
 
 // ============================================================================
-// 生命周期管理
+// Lifecycle management
 // ============================================================================
 
-// Shutdown 关闭Runtime
+// Shutdown closes the Runtime
 func (r *UnifiedRuntime) Shutdown() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -551,7 +551,7 @@ func (r *UnifiedRuntime) Shutdown() {
 		return
 	}
 	
-	// 关闭事件总线
+	// Close event bus
 	adapter := GetGlobalEventBusAdapter()
 	if adapter != nil {
 		if shutdownable, ok := adapter.(interface{ Shutdown() error }); ok {
@@ -566,13 +566,13 @@ func (r *UnifiedRuntime) Shutdown() {
 	r.closed = true
 }
 
-// Close 关闭Runtime（兼容接口）
+// Close closes the Runtime (compatibility API)
 func (r *UnifiedRuntime) Close() {
 	r.Shutdown()
 }
 
 // ============================================================================
-// 内部辅助方法
+// Internal helper methods
 // ============================================================================
 
 func (r *UnifiedRuntime) isClosed() bool {
@@ -595,14 +595,14 @@ func (r *UnifiedRuntime) estimateResourceSize(resource any) int64 {
 		return 0
 	}
 	
-	// 简化的大小估算
+	// Simplified size estimation
 	val := reflect.ValueOf(resource)
 	return r.estimateValueSize(val, 0, 3)
 }
 
 func (r *UnifiedRuntime) estimateValueSize(val reflect.Value, depth, maxDepth int) int64 {
 	if depth > maxDepth {
-		return 8 // 默认指针大小
+		return 8 // default pointer size
 	}
 	
 	switch val.Kind() {
@@ -620,7 +620,7 @@ func (r *UnifiedRuntime) estimateValueSize(val reflect.Value, depth, maxDepth in
 		return int64(len(val.String()))
 	case reflect.Slice, reflect.Array:
 		size := int64(0)
-		for i := 0; i < val.Len() && i < 100; i++ { // 限制检查数量
+		for i := 0; i < val.Len() && i < 100; i++ { // limit inspected elements
 			size += r.estimateValueSize(val.Index(i), depth+1, maxDepth)
 		}
 		return size
@@ -628,7 +628,7 @@ func (r *UnifiedRuntime) estimateValueSize(val reflect.Value, depth, maxDepth in
 		size := int64(0)
 		count := 0
 		for _, key := range val.MapKeys() {
-			if count >= 100 { // 限制检查数量
+			if count >= 100 { // limit inspected entries
 				break
 			}
 			size += r.estimateValueSize(key, depth+1, maxDepth)
@@ -642,13 +642,13 @@ func (r *UnifiedRuntime) estimateValueSize(val reflect.Value, depth, maxDepth in
 		}
 		return 8
 	default:
-		return 8 // 默认大小
+		return 8 // default size
 	}
 }
 
 // ============================================================================
-// 向后兼容的构造函数
+// Backward-compatible constructors
 // ============================================================================
 
-// 注意：NewSimpleRuntime 和 NewTypedRuntime 函数已在 plugin.go 中定义
-// 这里不重复定义以避免冲突
+// Note: NewSimpleRuntime and NewTypedRuntime are defined in plugin.go
+// They are not redefined here to avoid conflicts

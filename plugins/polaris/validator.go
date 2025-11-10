@@ -88,13 +88,13 @@ func (v *Validator) Validate() *ValidationResult {
 	// Validate dependencies
 	v.validateDependencies(result)
 
-	// 新增：验证安全相关配置
+	// Additional: validate security-related configurations
 	v.validateSecurityConfigs(result)
 
-	// 新增：验证网络相关配置
+	// Additional: validate network-related configurations
 	v.validateNetworkConfigs(result)
 
-	// 新增：验证性能相关配置
+	// Additional: validate performance-related configurations
 	v.validatePerformanceConfigs(result)
 
 	return result
@@ -180,12 +180,12 @@ func (v *Validator) validateDependencies(result *ValidationResult) {
 func (v *Validator) validateSecurityConfigs(result *ValidationResult) {
 	// Validate token security
 	if v.config.Token != "" {
-		// 检查token长度
+		// Check token length
 		if len(v.config.Token) < 8 {
 			result.AddError("token", "token must be at least 8 characters long for security", v.config.Token)
 		}
 
-		// 检查token复杂度（至少包含字母和数字）
+		// Check token complexity (must contain both letters and digits)
 		hasLetter := false
 		hasDigit := false
 		for _, char := range v.config.Token {
@@ -201,9 +201,9 @@ func (v *Validator) validateSecurityConfigs(result *ValidationResult) {
 		}
 	}
 
-	// 验证命名空间安全性
+	// Validate namespace security
 	if v.config.Namespace != "" {
-		// 检查是否包含敏感字符
+		// Check for sensitive words
 		sensitiveChars := []string{"admin", "root", "system", "internal"}
 		namespaceLower := strings.ToLower(v.config.Namespace)
 		for _, sensitive := range sensitiveChars {
@@ -216,7 +216,7 @@ func (v *Validator) validateSecurityConfigs(result *ValidationResult) {
 
 // validateNetworkConfigs validates network-related configurations
 func (v *Validator) validateNetworkConfigs(result *ValidationResult) {
-	// 验证连接超时配置
+	// Validate connection timeout configuration
 	if v.config.Timeout != nil {
 		timeout := v.config.Timeout.AsDuration()
 		if timeout < 100*time.Millisecond {
@@ -227,7 +227,7 @@ func (v *Validator) validateNetworkConfigs(result *ValidationResult) {
 		}
 	}
 
-	// 验证重试配置
+	// Validate retry configuration
 	if v.config.MaxRetryTimes < 0 {
 		result.AddError("max_retry_times", "max_retry_times cannot be negative", v.config.MaxRetryTimes)
 	}
@@ -238,7 +238,7 @@ func (v *Validator) validateNetworkConfigs(result *ValidationResult) {
 
 // validatePerformanceConfigs validates performance-related configurations
 func (v *Validator) validatePerformanceConfigs(result *ValidationResult) {
-	// 验证权重配置
+	// Validate weight configuration
 	if v.config.Weight < 1 {
 		result.AddError("weight", "weight should be at least 1 for load balancing", v.config.Weight)
 	}
@@ -246,7 +246,7 @@ func (v *Validator) validatePerformanceConfigs(result *ValidationResult) {
 		result.AddError("weight", "weight should not exceed 1000 to prevent load balancing issues", v.config.Weight)
 	}
 
-	// 验证TTL配置
+	// Validate TTL configuration
 	if v.config.Ttl < 1 {
 		result.AddError("ttl", "TTL should be at least 1 second", v.config.Ttl)
 	}

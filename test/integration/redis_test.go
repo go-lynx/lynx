@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRedisConnection 测试Redis连接
+// TestRedisConnection tests Redis connectivity
 func TestRedisConnection(t *testing.T) {
-	// 创建Redis客户端
+	// Create Redis client
 	client := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
 		Password: "",
@@ -22,15 +22,15 @@ func TestRedisConnection(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 测试连接
+	// Test connection
 	pong, err := client.Ping(ctx).Result()
 	require.NoError(t, err)
 	assert.Equal(t, "PONG", pong)
 
-	// 清理测试数据
+	// Cleanup test data
 	defer client.FlushDB(ctx)
 
-	// 测试基本操作
+	// Test basic operations
 	t.Run("BasicOperations", func(t *testing.T) {
 		// SET
 		err := client.Set(ctx, "test_key", "test_value", time.Minute).Err()
@@ -52,30 +52,30 @@ func TestRedisConnection(t *testing.T) {
 		assert.Equal(t, int64(1), deleted)
 	})
 
-	// 测试过期功能
+	// Test expiration
 	t.Run("Expiration", func(t *testing.T) {
 		err := client.Set(ctx, "expire_key", "value", 1*time.Second).Err()
 		assert.NoError(t, err)
 
-		// 立即检查
+		// Check immediately
 		val, err := client.Get(ctx, "expire_key").Result()
 		assert.NoError(t, err)
 		assert.Equal(t, "value", val)
 
-		// 等待过期
+		// Wait for expiration
 		time.Sleep(2 * time.Second)
 
-		// 验证已过期
+		// Verify expired
 		_, err = client.Get(ctx, "expire_key").Result()
 		assert.Equal(t, redis.Nil, err)
 	})
 
-	// 测试事务
+	// Test transaction
 	t.Run("Transaction", func(t *testing.T) {
-		// 初始化计数器
+		// Initialize counter
 		client.Set(ctx, "counter", "0", 0)
 
-		// 执行事务
+		// Execute transaction
 		err := client.Watch(ctx, func(tx *redis.Tx) error {
 			n, getErr := tx.Get(ctx, "counter").Int()
 			if getErr != nil && getErr != redis.Nil {
@@ -91,28 +91,28 @@ func TestRedisConnection(t *testing.T) {
 
 		assert.NoError(t, err)
 
-		// 验证结果
+		// Verify result
 		val, err := client.Get(ctx, "counter").Result()
 		assert.NoError(t, err)
 		assert.Equal(t, "1", val)
 	})
 
-	// 测试管道
+	// Test pipeline
 	t.Run("Pipeline", func(t *testing.T) {
 		pipe := client.Pipeline()
 
-		// 批量设置
+		// Bulk set
 		for i := 0; i < 10; i++ {
 			key := fmt.Sprintf("pipe_key_%d", i)
 			val := fmt.Sprintf("value_%d", i)
 			pipe.Set(ctx, key, val, 0)
 		}
 
-		// 执行管道
+		// Execute pipeline
 		_, err := pipe.Exec(ctx)
 		assert.NoError(t, err)
 
-		// 验证结果
+		// Verify results
 		for i := 0; i < 10; i++ {
 			key := fmt.Sprintf("pipe_key_%d", i)
 			expectedVal := fmt.Sprintf("value_%d", i)
@@ -122,18 +122,18 @@ func TestRedisConnection(t *testing.T) {
 			assert.Equal(t, expectedVal, val)
 		}
 
-		// 清理
+		// Cleanup
 		for i := 0; i < 10; i++ {
 			client.Del(ctx, fmt.Sprintf("pipe_key_%d", i))
 		}
 	})
 
-	// 关闭连接
+	// Close connection
 	err = client.Close()
 	assert.NoError(t, err)
 }
 
-// TestRedisHealthCheck 测试Redis健康检查
+// TestRedisHealthCheck tests Redis health check
 func TestRedisHealthCheck(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
@@ -145,7 +145,7 @@ func TestRedisHealthCheck(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	// 执行健康检查
+	// Perform health check
 	start := time.Now()
 	_, err := client.Ping(ctx).Result()
 	latency := time.Since(start)
@@ -153,18 +153,18 @@ func TestRedisHealthCheck(t *testing.T) {
 	require.NoError(t, err)
 	assert.Less(t, latency, 100*time.Millisecond, "Ping latency should be less than 100ms")
 
-	// 获取服务器信息
+	// Get server info
 	info, err := client.Info(ctx, "server").Result()
 	assert.NoError(t, err)
 	assert.Contains(t, info, "redis_version")
 
-	// 获取统计信息
+	// Get stats
 	stats, err := client.Info(ctx, "stats").Result()
 	assert.NoError(t, err)
 	assert.Contains(t, stats, "total_commands_processed")
 }
 
-// TestRedisPerformance 测试Redis性能
+// TestRedisPerformance tests Redis performance
 func TestRedisPerformance(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
 		Addr:         "localhost:6379",
@@ -178,7 +178,7 @@ func TestRedisPerformance(t *testing.T) {
 	ctx := context.Background()
 	defer client.FlushDB(ctx)
 
-	// 性能测试：批量写入
+	// Performance test: bulk write
 	t.Run("BulkWrite", func(t *testing.T) {
 		start := time.Now()
 		pipe := client.Pipeline()
@@ -199,13 +199,13 @@ func TestRedisPerformance(t *testing.T) {
 		t.Logf("Bulk write performance: %d operations in %v (%.2f ops/sec)",
 			count, elapsed, opsPerSec)
 
-		// 验证性能阈值
+		// Validate performance threshold
 		assert.Greater(t, opsPerSec, 1000.0, "Should achieve at least 1000 ops/sec")
 	})
 
-	// 性能测试：并发读取
+	// Performance test: concurrent read
 	t.Run("ConcurrentRead", func(t *testing.T) {
-		// 准备测试数据
+		// Prepare test data
 		for i := 0; i < 100; i++ {
 			key := fmt.Sprintf("read_key_%d", i)
 			val := fmt.Sprintf("value_%d", i)
@@ -227,7 +227,7 @@ func TestRedisPerformance(t *testing.T) {
 			}(w)
 		}
 
-		// 等待所有worker完成
+		// Wait for all workers to finish
 		for w := 0; w < workers; w++ {
 			<-done
 		}
@@ -239,7 +239,7 @@ func TestRedisPerformance(t *testing.T) {
 		t.Logf("Concurrent read performance: %d operations in %v (%.2f ops/sec)",
 			totalReads, elapsed, opsPerSec)
 
-		// 验证性能阈值
+		// Validate performance threshold
 		assert.Greater(t, opsPerSec, 5000.0, "Should achieve at least 5000 ops/sec")
 	})
 }

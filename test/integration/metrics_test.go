@@ -16,16 +16,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestPrometheusMetricsEndpoint 测试Prometheus指标端点
+// TestPrometheusMetricsEndpoint tests Prometheus metrics endpoint
 func TestPrometheusMetricsEndpoint(t *testing.T) {
-	// 启动一个简单的metrics服务器
+	// Start a simple metrics server
 	mux := http.NewServeMux()
 
-	// 注册metrics端点
+	// Register metrics endpoint
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 
-		// 模拟收集各插件的metrics
+		// Simulate collecting metrics from various plugins
 		var metrics []string
 
 		// Redis metrics
@@ -47,7 +47,7 @@ func TestPrometheusMetricsEndpoint(t *testing.T) {
 		fmt.Fprint(w, response)
 	})
 
-	// 启动服务器
+	// Start server
 	server := &http.Server{
 		Addr:    ":9090",
 		Handler: mux,
@@ -59,10 +59,10 @@ func TestPrometheusMetricsEndpoint(t *testing.T) {
 		}
 	}()
 
-	// 等待服务器启动
+	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
 
-	// 测试metrics端点
+	// Test the metrics endpoint
 	t.Run("MetricsEndpointAvailable", func(t *testing.T) {
 		resp, err := http.Get("http://localhost:9090/metrics")
 		require.NoError(t, err)
@@ -80,14 +80,14 @@ func TestPrometheusMetricsEndpoint(t *testing.T) {
 	server.Close()
 }
 
-// collectRedisMetrics 收集Redis指标
+// collectRedisMetrics collects Redis metrics
 func collectRedisMetrics() []string {
 	metrics := []string{
 		"# HELP lynx_redis_connections_active Number of active Redis connections",
 		"# TYPE lynx_redis_connections_active gauge",
 	}
 
-	// 尝试连接Redis并获取实际指标
+	// Try to connect to Redis and get actual metrics
 	opt := &redis.Options{
 		Addr:     "localhost:6379",
 		Password: "",
@@ -97,7 +97,7 @@ func collectRedisMetrics() []string {
 	client := redis.NewClient(opt)
 	defer client.Close()
 
-	// 获取连接池统计
+	// Get pool stats
 	stats := client.PoolStats()
 	if stats != nil {
 		metrics = append(metrics,
@@ -107,7 +107,7 @@ func collectRedisMetrics() []string {
 		)
 	}
 
-	// 添加操作计数器
+	// Add operation counters
 	metrics = append(metrics,
 		"# HELP lynx_redis_commands_total Total number of Redis commands executed",
 		"# TYPE lynx_redis_commands_total counter",
@@ -116,7 +116,7 @@ func collectRedisMetrics() []string {
 		"lynx_redis_commands_total{command=\"del\"} 0",
 	)
 
-	// 添加延迟指标
+	// Add latency metrics
 	metrics = append(metrics,
 		"# HELP lynx_redis_command_duration_seconds Redis command duration in seconds",
 		"# TYPE lynx_redis_command_duration_seconds histogram",
@@ -125,7 +125,7 @@ func collectRedisMetrics() []string {
 	return metrics
 }
 
-// collectKafkaMetrics 收集Kafka指标
+// collectKafkaMetrics collects Kafka metrics
 func collectKafkaMetrics() []string {
 	metrics := []string{
 		"# HELP lynx_kafka_messages_produced_total Total number of messages produced to Kafka",
@@ -148,7 +148,7 @@ func collectKafkaMetrics() []string {
 	return metrics
 }
 
-// collectRabbitMQMetrics 收集RabbitMQ指标
+// collectRabbitMQMetrics collects RabbitMQ metrics
 func collectRabbitMQMetrics() []string {
 	metrics := []string{
 		"# HELP lynx_rabbitmq_messages_published_total Total number of messages published",
@@ -175,7 +175,7 @@ func collectRabbitMQMetrics() []string {
 	return metrics
 }
 
-// TestRedisMetricsCollection 测试Redis指标收集
+// TestRedisMetricsCollection tests Redis metrics collection
 func TestRedisMetricsCollection(t *testing.T) {
 	opt := &redis.Options{
 		Addr: "localhost:6379",
@@ -189,7 +189,7 @@ func TestRedisMetricsCollection(t *testing.T) {
 	}
 	defer client.Close()
 
-	// 执行一些操作来生成指标
+	// Perform some operations to generate metrics
 	operations := 100
 
 	for i := 0; i < operations; i++ {
@@ -199,7 +199,7 @@ func TestRedisMetricsCollection(t *testing.T) {
 		client.Del(ctx, key)
 	}
 
-	// 验证连接池统计
+	// Validate pool stats
 	stats := client.PoolStats()
 	assert.NotNil(t, stats)
 	assert.GreaterOrEqual(t, stats.TotalConns, uint32(1))
@@ -208,7 +208,7 @@ func TestRedisMetricsCollection(t *testing.T) {
 		stats.TotalConns, stats.IdleConns, stats.StaleConns)
 }
 
-// TestKafkaMetricsCollection 测试Kafka指标收集
+// TestKafkaMetricsCollection tests Kafka metrics collection
 func TestKafkaMetricsCollection(t *testing.T) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_6_0_0
@@ -223,7 +223,7 @@ func TestKafkaMetricsCollection(t *testing.T) {
 	}
 	defer producer.Close()
 
-	// 发送一些消息来生成指标
+	// Send some messages to generate metrics
 	topic := "metrics-test-topic"
 	messagesProduced := 0
 	messagesFailed := 0
@@ -245,14 +245,14 @@ func TestKafkaMetricsCollection(t *testing.T) {
 		}
 	}
 
-	// 验证指标
+	// Validate metrics
 	assert.Equal(t, 10, messagesProduced+messagesFailed)
 	assert.GreaterOrEqual(t, messagesProduced, 1)
 
 	t.Logf("Kafka Metrics - Produced: %d, Failed: %d", messagesProduced, messagesFailed)
 }
 
-// TestRabbitMQMetricsCollection 测试RabbitMQ指标收集
+// TestRabbitMQMetricsCollection tests RabbitMQ metrics collection
 func TestRabbitMQMetricsCollection(t *testing.T) {
 	conn, err := amqp.Dial("amqp://lynx:lynx123456@localhost:5672/")
 	if err != nil {
@@ -265,16 +265,16 @@ func TestRabbitMQMetricsCollection(t *testing.T) {
 	require.NoError(t, err)
 	defer ch.Close()
 
-	// 声明队列
+	// Declare queue
 	queueName := "metrics-test-queue"
 	q, err := ch.QueueDeclare(queueName, false, true, false, false, nil)
 	require.NoError(t, err)
 
-	// 发送和接收消息来生成指标
+	// Publish and consume messages to generate metrics
 	messagesPublished := 0
 	messagesConsumed := 0
 
-	// 发布消息
+	// Publish messages
 	for i := 0; i < 10; i++ {
 		err := ch.Publish("", q.Name, false, false, amqp.Publishing{
 			ContentType: "text/plain",
@@ -285,7 +285,7 @@ func TestRabbitMQMetricsCollection(t *testing.T) {
 		}
 	}
 
-	// 消费消息
+	// Consume messages
 	msgs, err := ch.Consume(q.Name, "", true, false, false, false, nil)
 	require.NoError(t, err)
 
@@ -301,7 +301,7 @@ func TestRabbitMQMetricsCollection(t *testing.T) {
 		}
 	}
 
-	// 验证指标
+	// Validate metrics
 	assert.Equal(t, 10, messagesPublished)
 	assert.GreaterOrEqual(t, messagesConsumed, 1)
 
@@ -309,11 +309,11 @@ func TestRabbitMQMetricsCollection(t *testing.T) {
 		messagesPublished, messagesConsumed)
 }
 
-// TestMetricsAggregation 测试指标聚合
+// TestMetricsAggregation tests metrics aggregation
 func TestMetricsAggregation(t *testing.T) {
 	aggregatedMetrics := make(map[string]interface{})
 
-	// 收集Redis指标
+	// Collect Redis metrics
 	t.Run("RedisMetricsAggregation", func(t *testing.T) {
 		opt := &redis.Options{Addr: "localhost:6379"}
 		client := redis.NewClient(opt)
@@ -332,7 +332,7 @@ func TestMetricsAggregation(t *testing.T) {
 		}
 	})
 
-	// 收集Kafka指标（模拟）
+	// Collect Kafka metrics (mock)
 	t.Run("KafkaMetricsAggregation", func(t *testing.T) {
 		aggregatedMetrics["kafka"] = map[string]interface{}{
 			"messages_produced": 0,
@@ -343,7 +343,7 @@ func TestMetricsAggregation(t *testing.T) {
 		}
 	})
 
-	// 收集RabbitMQ指标（模拟）
+	// Collect RabbitMQ metrics (mock)
 	t.Run("RabbitMQMetricsAggregation", func(t *testing.T) {
 		aggregatedMetrics["rabbitmq"] = map[string]interface{}{
 			"messages_published": 0,
@@ -354,33 +354,33 @@ func TestMetricsAggregation(t *testing.T) {
 		}
 	})
 
-	// 验证聚合的指标
+	// Validate aggregated metrics
 	assert.NotEmpty(t, aggregatedMetrics)
 
-	// 打印聚合的指标
+	// Print aggregated metrics
 	for service, metrics := range aggregatedMetrics {
 		t.Logf("%s metrics: %+v", service, metrics)
 	}
 }
 
-// TestMetricsExportFormat 测试指标导出格式
+// TestMetricsExportFormat tests metrics export format
 func TestMetricsExportFormat(t *testing.T) {
-	// 测试Prometheus格式
+	// Test Prometheus format
 	t.Run("PrometheusFormat", func(t *testing.T) {
 		metrics := collectRedisMetrics()
 
-		// 验证格式
+		// Validate format
 		for _, line := range metrics {
 			if strings.HasPrefix(line, "#") {
-				// 注释行
+				// Comment line
 				assert.True(t,
 					strings.HasPrefix(line, "# HELP") || strings.HasPrefix(line, "# TYPE"),
 					"Invalid comment line: %s", line)
 			} else if line != "" {
-				// 数据行应该包含metric名称和值
+				// Data line should contain metric name and value
 				parts := strings.Fields(line)
 				if len(parts) >= 2 {
-					// 验证值是数字
+					// Validate value is numeric
 					value := parts[len(parts)-1]
 					assert.Regexp(t, `^-?\d+(\.\d+)?$`, value,
 						"Invalid metric value: %s", value)
@@ -389,7 +389,7 @@ func TestMetricsExportFormat(t *testing.T) {
 		}
 	})
 
-	// 测试JSON格式
+	// Test JSON format
 	t.Run("JSONFormat", func(t *testing.T) {
 		jsonMetrics := map[string]interface{}{
 			"timestamp": time.Now().Unix(),

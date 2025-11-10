@@ -21,10 +21,10 @@ const (
 
 // TypedRuntimePlugin generic runtime plugin
 type TypedRuntimePlugin struct {
-	// 使用统一Runtime作为底层实现
+	// Use unified Runtime as the underlying implementation
 	runtime plugins.Runtime
 
-	// Event bus manager for unified event handling (保持向后兼容)
+	// Event bus manager for unified event handling (kept for backward compatibility)
 	eventManager *events.EventBusManager
 }
 
