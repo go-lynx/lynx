@@ -1,6 +1,7 @@
 module github.com/go-lynx/lynx/plugins/nosql/elasticsearch
 
-go 1.24.3
+go 1.25
+toolchain go1.25.3
 
 require (
 	github.com/elastic/go-elasticsearch/v8 v8.12.0

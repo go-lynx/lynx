@@ -1,8 +1,8 @@
 module github.com/go-lynx/lynx/plugins/dtm/dtm
 
-go 1.24.3
+go 1.25
 
-toolchain go1.24.4
+toolchain go1.25.3
 
 require (
 	github.com/dtm-labs/client v1.18.7
