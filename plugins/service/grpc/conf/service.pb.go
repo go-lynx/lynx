@@ -45,8 +45,14 @@ type Service struct {
 	// Default value is 0 (unlimited), but it's recommended to set a reasonable limit based on your server capacity.
 	// Typical values range from 100 to 10000 depending on your use case.
 	MaxConcurrentStreams uint32 `protobuf:"varint,6,opt,name=max_concurrent_streams,json=maxConcurrentStreams,proto3" json:"max_concurrent_streams,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// MaxRecvMsgSize specifies the maximum size (in bytes) of a single inbound gRPC message.
+	// Default is 0 (use server default ~4MB). Set this to protect the server from oversized payloads.
+	MaxRecvMsgSize uint32 `protobuf:"varint,7,opt,name=max_recv_msg_size,json=maxRecvMsgSize,proto3" json:"max_recv_msg_size,omitempty"`
+	// MaxSendMsgSize specifies the maximum size (in bytes) of a single outbound gRPC message.
+	// Default is 0 (use server default ~4MB). Set this to ensure responses stay within expected limits.
+	MaxSendMsgSize uint32 `protobuf:"varint,8,opt,name=max_send_msg_size,json=maxSendMsgSize,proto3" json:"max_send_msg_size,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Service) Reset() {
@@ -117,6 +123,20 @@ func (x *Service) GetTimeout() *durationpb.Duration {
 func (x *Service) GetMaxConcurrentStreams() uint32 {
 	if x != nil {
 		return x.MaxConcurrentStreams
+	}
+	return 0
+}
+
+func (x *Service) GetMaxRecvMsgSize() uint32 {
+	if x != nil {
+		return x.MaxRecvMsgSize
+	}
+	return 0
+}
+
+func (x *Service) GetMaxSendMsgSize() uint32 {
+	if x != nil {
+		return x.MaxSendMsgSize
 	}
 	return 0
 }

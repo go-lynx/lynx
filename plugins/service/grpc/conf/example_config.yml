@@ -24,13 +24,18 @@ lynx:
       
       # Maximum number of concurrent streams per HTTP/2 connection
       # This is an important parameter for controlling server resource usage
-      # Default: 0 (unlimited)
+      # Default: 1000 (safe default, adjust based on capacity)
       # Recommended: Set based on your server capacity (typical range: 100-10000)
       # Example values:
       #   - Small service: 100-500
       #   - Medium service: 500-2000
       #   - Large service: 2000-10000
       max_concurrent_streams: 1000
+
+      # Maximum inbound/outbound message sizes (bytes)
+      # Default 0 uses gRPC defaults (~4MB); set explicit values to control memory usage
+      max_recv_msg_size: 10485760   # 10MB
+      max_send_msg_size: 10485760   # 10MB
 
 # Example with TLS enabled
 # lynx:

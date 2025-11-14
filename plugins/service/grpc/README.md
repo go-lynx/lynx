@@ -79,7 +79,7 @@ lynx:
   - 2: Require any client certificate
   - 3: Verify client certificate if given
   - 4: Require and verify client certificate
-- `max_concurrent_streams`: Maximum number of concurrent streams per HTTP/2 connection (default: 0, unlimited)
+- `max_concurrent_streams`: Maximum number of concurrent streams per HTTP/2 connection (default: 1000)
   - **Important**: This parameter controls server resource usage and prevents overload
   - **Recommended values**:
     - Small service: 100-500
@@ -87,6 +87,8 @@ lynx:
     - Large service: 2000-10000
   - Setting this too high may cause resource exhaustion
   - Setting this too low may unnecessarily limit concurrent requests
+- `max_recv_msg_size`: Maximum inbound message size (bytes). Default 0 uses the gRPC server default (~4MB). Set explicit values to protect from oversized payloads.
+- `max_send_msg_size`: Maximum outbound message size (bytes). Default 0 uses the gRPC server default (~4MB). Set explicit values to keep responses within expected limits.
 
 #### gRPC Client Configuration (`lynx.grpc.client`)
 
