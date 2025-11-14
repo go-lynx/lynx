@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	nhttp "net/http"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -472,35 +471,14 @@ func (h *ServiceHttp) StartupTasks() error {
 
 // applyPerformanceConfig applies performance settings to the underlying HTTP server.
 func (h *ServiceHttp) applyPerformanceConfig() {
-	// Preferred: access embedded *net/http.Server directly (public embedded field)
+	// Access embedded *net/http.Server directly (Kratos exposes it via Server field)
 	var httpServer *nhttp.Server
 	if h.server != nil && h.server.Server != nil {
 		httpServer = h.server.Server
-	} else {
-		// Fallback: reflectively search for an embedded *net/http.Server field
-		// to keep compatibility if upstream changes the struct shape.
-		defer func() {
-			if r := recover(); r != nil {
-				log.Warnf("Recovered while reflecting underlying http.Server: %v", r)
-			}
-		}()
-		sv := reflect.ValueOf(h.server)
-		if sv.IsValid() && sv.Kind() == reflect.Ptr && !sv.IsNil() {
-			sv = sv.Elem()
-			for i := 0; i < sv.NumField(); i++ {
-				f := sv.Field(i)
-				if f.IsValid() && f.CanInterface() {
-					if srv, ok := f.Interface().(*nhttp.Server); ok && srv != nil {
-						httpServer = srv
-						break
-					}
-				}
-			}
-		}
-		if httpServer == nil {
-			log.Warnf("Unable to access underlying net/http.Server; only kratos ServerOption-based settings will apply")
-			return
-		}
+	}
+	if httpServer == nil {
+		log.Warnf("Unable to access underlying net/http.Server; only kratos ServerOption-based settings will apply")
+		return
 	}
 
 	// Apply performance settings from configuration onto net/http.Server
@@ -551,9 +529,9 @@ func (h *ServiceHttp) applyPerformanceConfig() {
 		httpServer.IdleTimeout = h.idleTimeout
 		log.Infof("Applied default IdleTimeout: %v", h.idleTimeout)
 	}
-	if h.keepAliveTimeout > 0 {
-		httpServer.ReadHeaderTimeout = h.keepAliveTimeout
-		log.Infof("Applied default KeepAliveTimeout (via ReadHeaderTimeout): %v", h.keepAliveTimeout)
+	if h.keepAliveTimeout > 0 && httpServer.IdleTimeout == 0 {
+		httpServer.IdleTimeout = h.keepAliveTimeout
+		log.Infof("Applied default KeepAliveTimeout using IdleTimeout: %v", h.keepAliveTimeout)
 	}
 	if h.readHeaderTimeout > 0 {
 		httpServer.ReadHeaderTimeout = h.readHeaderTimeout
