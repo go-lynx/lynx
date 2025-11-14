@@ -4,10 +4,12 @@ package http
 import (
 	"context"
 	"fmt"
+	"net"
 	nhttp "net/http"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/transport/http"
@@ -79,6 +81,14 @@ type ServiceHttp struct {
 
 	// Circuit breaker instance
 	circuitBreaker *CircuitBreaker
+
+	// Connection limit semaphores (initialized once)
+	connectionSem chan struct{}
+	requestSem    chan struct{}
+	semInitOnce   sync.Once
+
+	// Active connection tracking for metrics
+	activeConnectionsCount int32
 
 	// Shutdown signal channel
 	shutdownChan chan struct{}
@@ -178,7 +188,7 @@ func (h *ServiceHttp) setDefaultConfig() {
 
 	// Graceful shutdown defaults
 	h.initGracefulShutdownDefaults()
-	
+
 	// Circuit breaker defaults
 	h.initCircuitBreakerDefaults()
 }
@@ -261,7 +271,7 @@ func (h *ServiceHttp) validateConfig() error {
 	if h.shutdownTimeout > 300*time.Second { // 5 minutes
 		return fmt.Errorf("shutdown timeout cannot exceed 5 minutes")
 	}
-	
+
 	// Validate performance configuration
 	if h.maxConnections < 0 {
 		return fmt.Errorf("max connections cannot be negative")
@@ -275,7 +285,7 @@ func (h *ServiceHttp) validateConfig() error {
 	if h.writeBufferSize < 0 {
 		return fmt.Errorf("write buffer size cannot be negative")
 	}
-	
+
 	// Validate circuit breaker configuration
 	if h.conf.CircuitBreaker != nil {
 		if h.conf.CircuitBreaker.MaxFailures < 0 {
@@ -331,12 +341,12 @@ func (h *ServiceHttp) initPerformanceDefaults() {
 	h.idleTimeout = 60 * time.Second
 	h.keepAliveTimeout = 30 * time.Second
 	h.readHeaderTimeout = 20 * time.Second
-	
+
 	// Set performance defaults if not configured
 	if h.conf.Performance == nil {
 		h.conf.Performance = &conf.PerformanceConfig{}
 	}
-	
+
 	// Connection limits
 	if h.conf.Performance.MaxConnections == 0 {
 		h.conf.Performance.MaxConnections = 1000
@@ -344,7 +354,7 @@ func (h *ServiceHttp) initPerformanceDefaults() {
 	if h.conf.Performance.MaxConcurrentRequests == 0 {
 		h.conf.Performance.MaxConcurrentRequests = 500
 	}
-	
+
 	// Buffer sizes
 	if h.conf.Performance.ReadBufferSize == 0 {
 		h.conf.Performance.ReadBufferSize = 4096
@@ -352,7 +362,7 @@ func (h *ServiceHttp) initPerformanceDefaults() {
 	if h.conf.Performance.WriteBufferSize == 0 {
 		h.conf.Performance.WriteBufferSize = 4096
 	}
-	
+
 	// Store in instance variables for easy access
 	h.maxConnections = int(h.conf.Performance.MaxConnections)
 	h.maxConcurrentRequests = int(h.conf.Performance.MaxConcurrentRequests)
@@ -446,7 +456,7 @@ func (h *ServiceHttp) StartupTasks() error {
 
 	// Apply performance configuration to the underlying net/http.Server
 	h.applyPerformanceConfig()
-	
+
 	// Apply connection limits
 	h.applyConnectionLimits()
 
@@ -462,95 +472,96 @@ func (h *ServiceHttp) StartupTasks() error {
 
 // applyPerformanceConfig applies performance settings to the underlying HTTP server.
 func (h *ServiceHttp) applyPerformanceConfig() {
-    // Preferred: access embedded *net/http.Server directly (public embedded field)
-    var httpServer *nhttp.Server
-    if h.server != nil && h.server.Server != nil {
-        httpServer = h.server.Server
-    } else {
-        // Fallback: reflectively search for an embedded *net/http.Server field
-        // to keep compatibility if upstream changes the struct shape.
-        defer func() {
-            if r := recover(); r != nil {
-                log.Warnf("Recovered while reflecting underlying http.Server: %v", r)
-            }
-        }()
-        sv := reflect.ValueOf(h.server)
-        if sv.IsValid() && sv.Kind() == reflect.Ptr && !sv.IsNil() {
-            sv = sv.Elem()
-            for i := 0; i < sv.NumField(); i++ {
-                f := sv.Field(i)
-                if f.IsValid() && f.CanInterface() {
-                    if srv, ok := f.Interface().(*nhttp.Server); ok && srv != nil {
-                        httpServer = srv
-                        break
-                    }
-                }
-            }
-        }
-        if httpServer == nil {
-            log.Warnf("Unable to access underlying net/http.Server; only kratos ServerOption-based settings will apply")
-            return
-        }
-    }
+	// Preferred: access embedded *net/http.Server directly (public embedded field)
+	var httpServer *nhttp.Server
+	if h.server != nil && h.server.Server != nil {
+		httpServer = h.server.Server
+	} else {
+		// Fallback: reflectively search for an embedded *net/http.Server field
+		// to keep compatibility if upstream changes the struct shape.
+		defer func() {
+			if r := recover(); r != nil {
+				log.Warnf("Recovered while reflecting underlying http.Server: %v", r)
+			}
+		}()
+		sv := reflect.ValueOf(h.server)
+		if sv.IsValid() && sv.Kind() == reflect.Ptr && !sv.IsNil() {
+			sv = sv.Elem()
+			for i := 0; i < sv.NumField(); i++ {
+				f := sv.Field(i)
+				if f.IsValid() && f.CanInterface() {
+					if srv, ok := f.Interface().(*nhttp.Server); ok && srv != nil {
+						httpServer = srv
+						break
+					}
+				}
+			}
+		}
+		if httpServer == nil {
+			log.Warnf("Unable to access underlying net/http.Server; only kratos ServerOption-based settings will apply")
+			return
+		}
+	}
 
-    // Apply performance settings from configuration onto net/http.Server
-    if h.conf.Performance != nil {
-        if h.conf.Performance.ReadTimeout != nil {
-            if v := h.conf.Performance.ReadTimeout.AsDuration(); v > 0 {
-                httpServer.ReadTimeout = v
-                log.Infof("Applied ReadTimeout: %v", v)
-            }
-        }
-        if h.conf.Performance.WriteTimeout != nil {
-            if v := h.conf.Performance.WriteTimeout.AsDuration(); v > 0 {
-                httpServer.WriteTimeout = v
-                log.Infof("Applied WriteTimeout: %v", v)
-            }
-        }
-        if h.conf.Performance.IdleTimeout != nil {
-            if v := h.conf.Performance.IdleTimeout.AsDuration(); v > 0 {
-                httpServer.IdleTimeout = v
-                log.Infof("Applied IdleTimeout: %v", v)
-            }
-        }
-        if h.conf.Performance.ReadHeaderTimeout != nil {
-            if v := h.conf.Performance.ReadHeaderTimeout.AsDuration(); v > 0 {
-                httpServer.ReadHeaderTimeout = v
-                log.Infof("Applied ReadHeaderTimeout: %v", v)
-            }
-        }
+	// Apply performance settings from configuration onto net/http.Server
+	h.installConnStateHook(httpServer)
+	if h.conf.Performance != nil {
+		if h.conf.Performance.ReadTimeout != nil {
+			if v := h.conf.Performance.ReadTimeout.AsDuration(); v > 0 {
+				httpServer.ReadTimeout = v
+				log.Infof("Applied ReadTimeout: %v", v)
+			}
+		}
+		if h.conf.Performance.WriteTimeout != nil {
+			if v := h.conf.Performance.WriteTimeout.AsDuration(); v > 0 {
+				httpServer.WriteTimeout = v
+				log.Infof("Applied WriteTimeout: %v", v)
+			}
+		}
+		if h.conf.Performance.IdleTimeout != nil {
+			if v := h.conf.Performance.IdleTimeout.AsDuration(); v > 0 {
+				httpServer.IdleTimeout = v
+				log.Infof("Applied IdleTimeout: %v", v)
+			}
+		}
+		if h.conf.Performance.ReadHeaderTimeout != nil {
+			if v := h.conf.Performance.ReadHeaderTimeout.AsDuration(); v > 0 {
+				httpServer.ReadHeaderTimeout = v
+				log.Infof("Applied ReadHeaderTimeout: %v", v)
+			}
+		}
 
-        // Buffer sizes & max connections require listener-level or middleware control; log intent
-        if h.conf.Performance.ReadBufferSize > 0 {
-            log.Infof("Configured ReadBufferSize: %d bytes (apply via listener/middleware)", h.conf.Performance.ReadBufferSize)
-        }
-        if h.conf.Performance.WriteBufferSize > 0 {
-            log.Infof("Configured WriteBufferSize: %d bytes (apply via listener/middleware)", h.conf.Performance.WriteBufferSize)
-        }
-        if h.conf.Performance.MaxConnections > 0 {
-            httpServer.SetKeepAlivesEnabled(true)
-            log.Infof("Configured MaxConnections: %d (enforced via accept limit/middleware)", h.conf.Performance.MaxConnections)
-        }
-        log.Infof("Performance optimizations applied to net/http.Server")
-        return
-    }
+		// Buffer sizes & max connections require listener-level or middleware control; log intent
+		if h.conf.Performance.ReadBufferSize > 0 {
+			log.Infof("Configured ReadBufferSize: %d bytes (apply via listener/middleware)", h.conf.Performance.ReadBufferSize)
+		}
+		if h.conf.Performance.WriteBufferSize > 0 {
+			log.Infof("Configured WriteBufferSize: %d bytes (apply via listener/middleware)", h.conf.Performance.WriteBufferSize)
+		}
+		if h.conf.Performance.MaxConnections > 0 {
+			httpServer.SetKeepAlivesEnabled(true)
+			log.Infof("Configured MaxConnections: %d (enforced via accept limit/middleware)", h.conf.Performance.MaxConnections)
+		}
+		log.Infof("Performance optimizations applied to net/http.Server")
+		return
+	}
 
-    // Defaults fallback when no Performance config
-    if h.idleTimeout > 0 {
-        httpServer.IdleTimeout = h.idleTimeout
-        log.Infof("Applied default IdleTimeout: %v", h.idleTimeout)
-    }
-    if h.keepAliveTimeout > 0 {
-        httpServer.ReadHeaderTimeout = h.keepAliveTimeout
-        log.Infof("Applied default KeepAliveTimeout (via ReadHeaderTimeout): %v", h.keepAliveTimeout)
-    }
-    if h.readHeaderTimeout > 0 {
-        httpServer.ReadHeaderTimeout = h.readHeaderTimeout
-        log.Infof("Applied default ReadHeaderTimeout: %v", h.readHeaderTimeout)
-    }
+	// Defaults fallback when no Performance config
+	if h.idleTimeout > 0 {
+		httpServer.IdleTimeout = h.idleTimeout
+		log.Infof("Applied default IdleTimeout: %v", h.idleTimeout)
+	}
+	if h.keepAliveTimeout > 0 {
+		httpServer.ReadHeaderTimeout = h.keepAliveTimeout
+		log.Infof("Applied default KeepAliveTimeout (via ReadHeaderTimeout): %v", h.keepAliveTimeout)
+	}
+	if h.readHeaderTimeout > 0 {
+		httpServer.ReadHeaderTimeout = h.readHeaderTimeout
+		log.Infof("Applied default ReadHeaderTimeout: %v", h.readHeaderTimeout)
+	}
 
-    // Note: MaxHeaderBytes only limits the header size, not the request body.
-    log.Infof("Performance configurations applied successfully")
+	// Note: MaxHeaderBytes only limits the header size, not the request body.
+	log.Infof("Performance configurations applied successfully")
 }
 
 // applyConnectionLimits applies connection-related performance limits
@@ -559,18 +570,54 @@ func (h *ServiceHttp) applyConnectionLimits() {
 	if h.maxConnections > 0 {
 		log.Infof("Connection limit middleware enabled: max %d connections", h.maxConnections)
 	}
-	
+
 	// Log concurrent request limits
 	if h.maxConcurrentRequests > 0 {
 		log.Infof("Concurrent request limit configured: max %d requests", h.maxConcurrentRequests)
 	}
-	
+
 	// Log buffer sizes
 	if h.readBufferSize > 0 {
 		log.Infof("Read buffer size configured: %d bytes", h.readBufferSize)
 	}
 	if h.writeBufferSize > 0 {
 		log.Infof("Write buffer size configured: %d bytes", h.writeBufferSize)
+	}
+}
+
+// installConnStateHook configures a ConnState hook to apply TCP buffer settings for each new connection.
+func (h *ServiceHttp) installConnStateHook(httpServer *nhttp.Server) {
+	if httpServer == nil {
+		return
+	}
+
+	prevHook := httpServer.ConnState
+	httpServer.ConnState = func(conn net.Conn, state nhttp.ConnState) {
+		if state == nhttp.StateNew {
+			h.applyTCPBufferSettings(conn)
+		}
+		if prevHook != nil {
+			prevHook(conn, state)
+		}
+	}
+}
+
+// applyTCPBufferSettings applies read/write buffer sizes to a TCP connection if configured.
+func (h *ServiceHttp) applyTCPBufferSettings(conn net.Conn) {
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		return
+	}
+
+	if h.readBufferSize > 0 {
+		if err := tcpConn.SetReadBuffer(h.readBufferSize); err != nil {
+			log.Warnf("Failed to set TCP read buffer (%d bytes): %v", h.readBufferSize, err)
+		}
+	}
+	if h.writeBufferSize > 0 {
+		if err := tcpConn.SetWriteBuffer(h.writeBufferSize); err != nil {
+			log.Warnf("Failed to set TCP write buffer (%d bytes): %v", h.writeBufferSize, err)
+		}
 	}
 }
 

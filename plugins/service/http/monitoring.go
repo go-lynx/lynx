@@ -7,6 +7,7 @@ import (
 	"net"
 	nhttp "net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
@@ -287,13 +288,16 @@ func (h *ServiceHttp) CheckRuntimeHealth() error {
 // updateConnectionPoolMetrics updates connection pool metrics with real values
 func (h *ServiceHttp) updateConnectionPoolMetrics() {
 	poolName := "http-server-pool"
+	if h.connectionPoolUsage == nil {
+		return
+	}
 
 	// Calculate real connection pool usage based on configuration
 	if h.maxConnections > 0 {
-		// In a real implementation, you would track actual active connections
-		// For now, we initialize with 0 and let the middleware update it
-		h.connectionPoolUsage.WithLabelValues(poolName).Set(0)
-		log.Debugf("Connection pool metrics initialized for pool: %s", poolName)
+		current := atomic.LoadInt32(&h.activeConnectionsCount)
+		usage := clampUsage(float64(current) / float64(h.maxConnections))
+		h.connectionPoolUsage.WithLabelValues(poolName).Set(usage)
+		log.Debugf("Connection pool metrics initialized for pool: %s (current=%d, max=%d)", poolName, current, h.maxConnections)
 	} else {
 		// No connection limit configured, set to 0
 		h.connectionPoolUsage.WithLabelValues(poolName).Set(0)
@@ -355,7 +359,7 @@ func (h *ServiceHttp) healthCheckHandler() nhttp.Handler {
 // UpdateConnectionPoolUsage updates the connection pool usage metric
 func (h *ServiceHttp) UpdateConnectionPoolUsage(activeConnections, maxConnections int32) {
 	if h.connectionPoolUsage != nil && maxConnections > 0 {
-		usage := float64(activeConnections) / float64(maxConnections)
+		usage := clampUsage(float64(activeConnections) / float64(maxConnections))
 		h.connectionPoolUsage.WithLabelValues("http-server-pool").Set(usage)
 	}
 }
@@ -363,9 +367,19 @@ func (h *ServiceHttp) UpdateConnectionPoolUsage(activeConnections, maxConnection
 // GetConnectionPoolUsage returns the current connection pool usage
 func (h *ServiceHttp) GetConnectionPoolUsage() float64 {
 	if h.maxConnections > 0 {
-		// This would be calculated from actual active connections in a real implementation
-		// For now, return 0 as we don't track this yet
-		return 0.0
+		current := atomic.LoadInt32(&h.activeConnectionsCount)
+		return clampUsage(float64(current) / float64(h.maxConnections))
 	}
 	return 0.0
+}
+
+func clampUsage(v float64) float64 {
+	switch {
+	case v < 0:
+		return 0
+	case v > 1:
+		return 1
+	default:
+		return v
+	}
 }

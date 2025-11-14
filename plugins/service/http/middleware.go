@@ -4,6 +4,7 @@ package http
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kratos/kratos/contrib/middleware/validate/v2"
@@ -76,13 +77,13 @@ func (h *ServiceHttp) buildMiddlewares() []middleware.Middleware {
 		middlewares = append(middlewares, h.rateLimitMiddleware())
 		log.Infof("Rate limit middleware enabled")
 	}
-	
+
 	// Connection limit middleware
 	if h.maxConnections > 0 || h.maxConcurrentRequests > 0 {
 		middlewares = append(middlewares, h.connectionLimitMiddleware())
 		log.Infof("Connection limit middleware enabled")
 	}
-	
+
 	// Circuit breaker middleware
 	middlewares = append(middlewares, h.circuitBreakerMiddleware())
 	log.Infof("Circuit breaker middleware enabled")
@@ -102,25 +103,41 @@ func (h *ServiceHttp) buildMiddlewares() []middleware.Middleware {
 }
 
 // connectionLimitMiddleware returns a connection limit middleware.
+// The semaphores are initialized once and reused across all requests.
 func (h *ServiceHttp) connectionLimitMiddleware() middleware.Middleware {
-	// Create semaphores for connection and request limits
-	var connectionSem chan struct{}
-	var requestSem chan struct{}
-	
-	if h.maxConnections > 0 {
-		connectionSem = make(chan struct{}, h.maxConnections)
-	}
-	if h.maxConcurrentRequests > 0 {
-		requestSem = make(chan struct{}, h.maxConcurrentRequests)
-	}
-	
+	// Initialize semaphores once (thread-safe)
+	h.semInitOnce.Do(func() {
+		if h.maxConnections > 0 {
+			h.connectionSem = make(chan struct{}, h.maxConnections)
+			log.Infof("Initialized connection semaphore with capacity: %d", h.maxConnections)
+		}
+		if h.maxConcurrentRequests > 0 {
+			h.requestSem = make(chan struct{}, h.maxConcurrentRequests)
+			log.Infof("Initialized request semaphore with capacity: %d", h.maxConcurrentRequests)
+		}
+	})
+
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
 			// Apply connection limit
-			if connectionSem != nil {
+			if h.connectionSem != nil {
 				select {
-				case connectionSem <- struct{}{}:
-					defer func() { <-connectionSem }()
+				case h.connectionSem <- struct{}{}:
+					if h.maxConnections > 0 {
+						newCount := atomic.AddInt32(&h.activeConnectionsCount, 1)
+						h.UpdateConnectionPoolUsage(newCount, int32(h.maxConnections))
+					}
+					defer func() {
+						<-h.connectionSem
+						if h.maxConnections > 0 {
+							newCount := atomic.AddInt32(&h.activeConnectionsCount, -1)
+							if newCount < 0 {
+								atomic.StoreInt32(&h.activeConnectionsCount, 0)
+								newCount = 0
+							}
+							h.UpdateConnectionPoolUsage(newCount, int32(h.maxConnections))
+						}
+					}()
 				default:
 					// Connection limit exceeded
 					if h.errorCounter != nil {
@@ -138,12 +155,12 @@ func (h *ServiceHttp) connectionLimitMiddleware() middleware.Middleware {
 					return nil, fmt.Errorf("connection limit exceeded: max %d connections", h.maxConnections)
 				}
 			}
-			
+
 			// Apply concurrent request limit
-			if requestSem != nil {
+			if h.requestSem != nil {
 				select {
-				case requestSem <- struct{}{}:
-					defer func() { <-requestSem }()
+				case h.requestSem <- struct{}{}:
+					defer func() { <-h.requestSem }()
 				default:
 					// Request limit exceeded
 					if h.errorCounter != nil {
@@ -161,7 +178,7 @@ func (h *ServiceHttp) connectionLimitMiddleware() middleware.Middleware {
 					return nil, fmt.Errorf("concurrent request limit exceeded: max %d requests", h.maxConcurrentRequests)
 				}
 			}
-			
+
 			return handler(ctx, req)
 		}
 	}

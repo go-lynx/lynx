@@ -17,13 +17,13 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
+	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/service/grpc/conf"
+	grpcgo "google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"github.com/go-lynx/lynx/app"
 	"google.golang.org/protobuf/types/known/durationpb"
-	grpcgo "google.golang.org/grpc"
 )
 
 // Plugin metadata constants define the basic information about the gRPC plugin
@@ -67,17 +67,17 @@ type Service struct {
 // healthStatusPoller periodically syncs health serving status with required upstream readiness.
 // It runs until the context is canceled in CleanupTasks.
 func (g *Service) healthStatusPoller(ctx context.Context) {
-    // Poll at a low frequency to avoid overhead, yet responsive enough for rollouts
-    ticker := time.NewTicker(1 * time.Second)
-    defer ticker.Stop()
-    for {
-        select {
-        case <-ctx.Done():
-            return
-        case <-ticker.C:
-            g.updateHealthServingStatus()
-        }
-    }
+	// Poll at a low frequency to avoid overhead, yet responsive enough for rollouts
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			g.updateHealthServingStatus()
+		}
+	}
 }
 
 // NewGrpcService creates and initializes a new instance of the gRPC service plugin.
@@ -255,12 +255,39 @@ func (g *Service) StartupTasks() error {
 
 	// Configure MaxConcurrentStreams if specified
 	// This is an important parameter for controlling server resource usage
-	if maxStreams := g.conf.GetMaxConcurrentStreams(); maxStreams > 0 {
+	maxStreams := g.conf.GetMaxConcurrentStreams()
+	if maxStreams > 0 {
 		log.Infof("Setting gRPC MaxConcurrentStreams to %d", maxStreams)
 		// Use underlying gRPC option to set MaxConcurrentStreams
 		opts = append(opts, grpc.Options(grpcgo.MaxConcurrentStreams(uint32(maxStreams))))
 	} else {
-		log.Debugf("MaxConcurrentStreams not configured, using default (unlimited)")
+		// Default to 1000 for production safety (can be overridden by setting to 0 explicitly)
+		const defaultMaxStreams = uint32(1000)
+		log.Infof("MaxConcurrentStreams not configured, using safe default: %d", defaultMaxStreams)
+		opts = append(opts, grpc.Options(grpcgo.MaxConcurrentStreams(defaultMaxStreams)))
+	}
+
+	// Configure message size limits (defaults to 10MB if not specified)
+	const defaultMaxMsgSize = 10 * 1024 * 1024
+
+	maxRecv := g.conf.GetMaxRecvMsgSize()
+	switch {
+	case maxRecv > 0:
+		log.Infof("Setting gRPC MaxRecvMsgSize to %d bytes", maxRecv)
+		opts = append(opts, grpc.Options(grpcgo.MaxRecvMsgSize(int(maxRecv))))
+	default:
+		log.Infof("MaxRecvMsgSize not configured, using safe default: %d bytes", defaultMaxMsgSize)
+		opts = append(opts, grpc.Options(grpcgo.MaxRecvMsgSize(defaultMaxMsgSize)))
+	}
+
+	maxSend := g.conf.GetMaxSendMsgSize()
+	switch {
+	case maxSend > 0:
+		log.Infof("Setting gRPC MaxSendMsgSize to %d bytes", maxSend)
+		opts = append(opts, grpc.Options(grpcgo.MaxSendMsgSize(int(maxSend))))
+	default:
+		log.Infof("MaxSendMsgSize not configured, using safe default: %d bytes", defaultMaxMsgSize)
+		opts = append(opts, grpc.Options(grpcgo.MaxSendMsgSize(defaultMaxMsgSize)))
 	}
 
 	// Create gRPC server instance
@@ -384,33 +411,33 @@ func (g *Service) checkPortAvailability() error {
 		return fmt.Errorf("server address not configured")
 	}
 
-    // Parse address and normalize host for dial
-    addr := g.conf.Addr
-    if !strings.Contains(addr, ":") {
-        addr = ":" + addr
-    }
-    host, port, err := net.SplitHostPort(addr)
-    if err != nil {
-        return fmt.Errorf("invalid address %q: %v", addr, err)
-    }
-    if host == "" {
-        host = "127.0.0.1"
-    }
-    norm := net.JoinHostPort(host, port)
+	// Parse address and normalize host for dial
+	addr := g.conf.Addr
+	if !strings.Contains(addr, ":") {
+		addr = ":" + addr
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid address %q: %v", addr, err)
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	norm := net.JoinHostPort(host, port)
 
-    // Only check TCP network here
-    if g.conf.Network != "" && g.conf.Network != "tcp" {
-        return nil
-    }
+	// Only check TCP network here
+	if g.conf.Network != "" && g.conf.Network != "tcp" {
+		return nil
+	}
 
-    // Try to dial the port to check if the server is accepting connections.
-    // If we can connect, the service is up; if connection is refused or times out, report error.
-    conn, err := net.DialTimeout("tcp", norm, 2*time.Second)
-    if err != nil {
-        return fmt.Errorf("port %s is not reachable: %v", norm, err)
-    }
-    _ = conn.Close()
-    return nil
+	// Try to dial the port to check if the server is accepting connections.
+	// If we can connect, the service is up; if connection is refused or times out, report error.
+	conn, err := net.DialTimeout("tcp", norm, 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("port %s is not reachable: %v", norm, err)
+	}
+	_ = conn.Close()
+	return nil
 }
 
 // updateHealthServingStatus sets the overall health serving status based on
@@ -418,56 +445,56 @@ func (g *Service) checkPortAvailability() error {
 // If the readiness resource is not found, it defaults to SERVING to remain
 // backward compatible. If the resource exists and is false, it reports NOT_SERVING.
 func (g *Service) updateHealthServingStatus() {
-    if g.healthServer == nil {
-        return
-    }
+	if g.healthServer == nil {
+		return
+	}
 
-    status := grpc_health_v1.HealthCheckResponse_SERVING
-    if g.rt != nil {
-        if val, err := g.rt.GetSharedResource(requiredReadinessResourceName); err == nil {
-            if ready, ok := val.(bool); ok && !ready {
-                status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
-            }
-        }
-    }
-    g.healthServer.SetServingStatus("", status)
+	status := grpc_health_v1.HealthCheckResponse_SERVING
+	if g.rt != nil {
+		if val, err := g.rt.GetSharedResource(requiredReadinessResourceName); err == nil {
+			if ready, ok := val.(bool); ok && !ready {
+				status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+			}
+		}
+	}
+	g.healthServer.SetServingStatus("", status)
 }
 
 // validateTLSConfig validates TLS configuration
 func (g *Service) validateTLSConfig() error {
-    if !g.conf.GetTlsEnable() {
-        return nil
-    }
+	if !g.conf.GetTlsEnable() {
+		return nil
+	}
 
-    // Check TLS auth type is valid
-    authType := g.conf.GetTlsAuthType()
-    if authType < 0 || authType > 4 {
-        return fmt.Errorf("invalid TLS auth type: %d", authType)
-    }
+	// Check TLS auth type is valid
+	authType := g.conf.GetTlsAuthType()
+	if authType < 0 || authType > 4 {
+		return fmt.Errorf("invalid TLS auth type: %d", authType)
+	}
 
-    // Check if certificate provider is available
-    var cp app.CertificateProvider
-    if prov := g.getCertProvider(); prov != nil {
-        if typed, ok := prov.(app.CertificateProvider); ok {
-            cp = typed
-        }
-    }
-    if cp == nil && app.Lynx() != nil {
-        cp = app.Lynx().Certificate()
-    }
-    if cp == nil {
-        return fmt.Errorf("certificate provider not configured")
-    }
+	// Check if certificate provider is available
+	var cp app.CertificateProvider
+	if prov := g.getCertProvider(); prov != nil {
+		if typed, ok := prov.(app.CertificateProvider); ok {
+			cp = typed
+		}
+	}
+	if cp == nil && app.Lynx() != nil {
+		cp = app.Lynx().Certificate()
+	}
+	if cp == nil {
+		return fmt.Errorf("certificate provider not configured")
+	}
 
-    // Validate certificate data presence
-    if len(cp.GetCertificate()) == 0 {
-        return fmt.Errorf("server certificate not provided")
-    }
-    if len(cp.GetPrivateKey()) == 0 {
-        return fmt.Errorf("server private key not provided")
-    }
+	// Validate certificate data presence
+	if len(cp.GetCertificate()) == 0 {
+		return fmt.Errorf("server certificate not provided")
+	}
+	if len(cp.GetPrivateKey()) == 0 {
+		return fmt.Errorf("server private key not provided")
+	}
 
-    return nil
+	return nil
 }
 
 // validateConfig validates the gRPC server configuration
@@ -509,6 +536,19 @@ func (g *Service) validateConfig() error {
 		// Warn if value is very small (may limit performance unnecessarily)
 		if maxStreams < 10 {
 			log.Warnf("MaxConcurrentStreams is very small (%d), this may unnecessarily limit concurrent requests", maxStreams)
+		}
+	}
+
+	// Validate message size configurations
+	const maxAllowedMsgSize = 200 * 1024 * 1024 // 200MB upper bound warning
+	if recv := g.conf.GetMaxRecvMsgSize(); recv > 0 {
+		if recv > maxAllowedMsgSize {
+			log.Warnf("MaxRecvMsgSize is very large (%d bytes), this may consume excessive memory", recv)
+		}
+	}
+	if send := g.conf.GetMaxSendMsgSize(); send > 0 {
+		if send > maxAllowedMsgSize {
+			log.Warnf("MaxSendMsgSize is very large (%d bytes), this may consume excessive memory", send)
 		}
 	}
 

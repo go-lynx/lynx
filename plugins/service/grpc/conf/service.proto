@@ -33,4 +33,12 @@ message service {
   // Default value is 0 (unlimited), but it's recommended to set a reasonable limit based on your server capacity.
   // Typical values range from 100 to 10000 depending on your use case.
   uint32 max_concurrent_streams = 6;
+
+  // MaxRecvMsgSize specifies the maximum size (in bytes) of a single inbound gRPC message.
+  // Default is 0 (use server default ~4MB). Set this to protect the server from oversized payloads.
+  uint32 max_recv_msg_size = 7;
+
+  // MaxSendMsgSize specifies the maximum size (in bytes) of a single outbound gRPC message.
+  // Default is 0 (use server default ~4MB). Set this to ensure responses stay within expected limits.
+  uint32 max_send_msg_size = 8;
 }
