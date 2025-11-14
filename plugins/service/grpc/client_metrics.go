@@ -306,12 +306,10 @@ func (m *ClientMetrics) RecordConnectionPoolMiss(serviceName string) {
 	}
 }
 
-// RecordConnectionPoolSize records the current connection pool size
-func (m *ClientMetrics) RecordConnectionPoolSize(size int) {
-	// Connection pool size metrics - using connectionsTotal as fallback
-	if m.connectionsTotal != nil {
-		m.connectionsTotal.Set(float64(size))
-	}
+// RecordConnectionPoolSize records the current connection pool size for a specific service
+func (m *ClientMetrics) RecordConnectionPoolSize(serviceName string, size int) {
+	// Use RecordPoolSize which accepts serviceName
+	m.RecordPoolSize(serviceName, size)
 }
 
 // RecordLoadBalancerSelection records a load balancer node selection

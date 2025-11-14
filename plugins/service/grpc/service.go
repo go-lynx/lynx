@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"github.com/go-lynx/lynx/app"
 	"google.golang.org/protobuf/types/known/durationpb"
+	grpcgo "google.golang.org/grpc"
 )
 
 // Plugin metadata constants define the basic information about the gRPC plugin
@@ -153,6 +154,8 @@ func (g *Service) InitializeResources(rt plugins.Runtime) error {
 	if g.conf.Timeout == nil {
 		g.conf.Timeout = defaultConf.Timeout
 	}
+	// MaxConcurrentStreams defaults to 0 (unlimited) if not set
+	// This is already the default value, so no need to set it explicitly
 
 	// Validate configuration
 	if err := g.validateConfig(); err != nil {
@@ -248,6 +251,16 @@ func (g *Service) StartupTasks() error {
 			return fmt.Errorf("failed to load TLS configuration: %v", err)
 		}
 		opts = append(opts, tlsOption)
+	}
+
+	// Configure MaxConcurrentStreams if specified
+	// This is an important parameter for controlling server resource usage
+	if maxStreams := g.conf.GetMaxConcurrentStreams(); maxStreams > 0 {
+		log.Infof("Setting gRPC MaxConcurrentStreams to %d", maxStreams)
+		// Use underlying gRPC option to set MaxConcurrentStreams
+		opts = append(opts, grpc.Options(grpcgo.MaxConcurrentStreams(uint32(maxStreams))))
+	} else {
+		log.Debugf("MaxConcurrentStreams not configured, using default (unlimited)")
 	}
 
 	// Create gRPC server instance
@@ -483,6 +496,20 @@ func (g *Service) validateConfig() error {
 	// Validate timeout configuration
 	if g.conf.Timeout != nil && g.conf.Timeout.AsDuration() <= 0 {
 		return fmt.Errorf("timeout must be positive, got: %v", g.conf.Timeout.AsDuration())
+	}
+
+	// Validate MaxConcurrentStreams configuration
+	// MaxConcurrentStreams of 0 means unlimited, which is valid
+	// But if set, it should be within reasonable bounds
+	if maxStreams := g.conf.GetMaxConcurrentStreams(); maxStreams > 0 {
+		// Warn if value is very large (may indicate misconfiguration)
+		if maxStreams > 100000 {
+			log.Warnf("MaxConcurrentStreams is very large (%d), this may consume excessive server resources", maxStreams)
+		}
+		// Warn if value is very small (may limit performance unnecessarily)
+		if maxStreams < 10 {
+			log.Warnf("MaxConcurrentStreams is very small (%d), this may unnecessarily limit concurrent requests", maxStreams)
+		}
 	}
 
 	return nil

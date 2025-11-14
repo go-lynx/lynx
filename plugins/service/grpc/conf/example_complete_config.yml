@@ -24,6 +24,16 @@ lynx:
       
       # Request timeout duration (in seconds)
       timeout: 10
+      
+      # Maximum number of concurrent streams per HTTP/2 connection
+      # This is an important parameter for controlling server resource usage
+      # Default: 0 (unlimited)
+      # Recommended: Set based on your server capacity (typical range: 100-10000)
+      # Example values:
+      #   - Small service: 100-500
+      #   - Medium service: 500-2000
+      #   - Large service: 2000-10000
+      max_concurrent_streams: 1000
 
     # gRPC Client Configuration (Client-side)
     client:

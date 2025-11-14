@@ -87,7 +87,8 @@ func NewGrpcClientPlugin() *ClientPlugin {
 	metrics := NewClientMetrics()
 
 	// Initialize connection pool with default settings
-	connectionPool := NewConnectionPool(10, 5*time.Minute, false, metrics)
+	// maxServices: 10, maxConnsPerService: 5, idleTimeout: 5min, enabled: false
+	connectionPool := NewConnectionPool(10, 5, 5*time.Minute, false, metrics)
 
 	// Initialize load balancer (will be configured per service)
 	loadBalancer := NewLoadBalancer(nil, metrics)
@@ -136,16 +137,21 @@ func (c *ClientPlugin) InitializeResources(rt plugins.Runtime) error {
 	// Initialize connection pool with actual config
 	poolEnabled := c.conf.GetConnectionPooling()
 	if poolEnabled {
-		poolSize := int(c.conf.GetPoolSize())
+		maxServices := int(c.conf.GetPoolSize()) // Total number of services
+		maxConnsPerService := int(c.conf.MaxConnections) // Connections per service
 		idleTimeout := c.conf.GetIdleTimeout().AsDuration()
-		if poolSize <= 0 {
-			poolSize = 10
+		if maxServices <= 0 {
+			maxServices = 10
+		}
+		if maxConnsPerService <= 0 {
+			maxConnsPerService = 5 // Default: 5 connections per service
 		}
 		if idleTimeout <= 0 {
 			idleTimeout = 5 * time.Minute
 		}
 		// Recreate connection pool with actual config
-		c.connectionPool = NewConnectionPool(poolSize, idleTimeout, poolEnabled, c.metrics)
+		// Now supports multiple connections per service (channel pool)
+		c.connectionPool = NewConnectionPool(maxServices, maxConnsPerService, idleTimeout, poolEnabled, c.metrics)
 	}
 
 	// Get discovery from control plane

@@ -39,9 +39,14 @@ type Service struct {
 	// 4: Verify client certificate if provided
 	TlsAuthType int32 `protobuf:"varint,4,opt,name=tls_auth_type,json=tlsAuthType,proto3" json:"tls_auth_type,omitempty"`
 	// Timeout specifies the maximum duration for handling gRPC requests. Requests may be terminated if they exceed this duration.
-	Timeout       *durationpb.Duration `protobuf:"bytes,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Timeout *durationpb.Duration `protobuf:"bytes,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	// MaxConcurrentStreams specifies the maximum number of concurrent streams that can be initiated on a single HTTP/2 connection.
+	// This is an important parameter for controlling server resource usage and preventing overload.
+	// Default value is 0 (unlimited), but it's recommended to set a reasonable limit based on your server capacity.
+	// Typical values range from 100 to 10000 depending on your use case.
+	MaxConcurrentStreams uint32 `protobuf:"varint,6,opt,name=max_concurrent_streams,json=maxConcurrentStreams,proto3" json:"max_concurrent_streams,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *Service) Reset() {
@@ -107,6 +112,13 @@ func (x *Service) GetTimeout() *durationpb.Duration {
 		return x.Timeout
 	}
 	return nil
+}
+
+func (x *Service) GetMaxConcurrentStreams() uint32 {
+	if x != nil {
+		return x.MaxConcurrentStreams
+	}
+	return 0
 }
 
 var File_service_proto protoreflect.FileDescriptor
