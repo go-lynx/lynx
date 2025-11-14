@@ -42,8 +42,11 @@ lynx:
       # Backoff duration between retries
       retry_backoff: "1s"
       
-      # Maximum number of connections per service
-      max_connections: 10
+      # Maximum number of connections per service (channel pool size)
+      # This controls how many connections (channels) are maintained for each service
+      # Multiple connections improve performance and fault tolerance
+      # Recommended: 3-10 for most services, 10-50 for high-traffic services
+      max_connections: 5
       
       # Enable TLS for gRPC client connections
       tls_enable: false
@@ -51,11 +54,14 @@ lynx:
       # TLS authentication type (0-4)
       tls_auth_type: 0
       
-      # Enable connection pooling
+      # Enable connection pooling (multi-channel pool)
+      # When enabled, each service maintains a pool of multiple connections
+      # Connections are selected using round-robin, random, or least-used strategies
       connection_pooling: true
       
-      # Connection pool size
-      pool_size: 5
+      # Maximum number of services in the pool
+      # This limits the total number of services that can have connection pools
+      pool_size: 10
       
       # Connection idle timeout
       idle_timeout: "60s"
@@ -396,9 +402,19 @@ The plugin provides comprehensive Prometheus metrics:
 - `grpc_client_health_check_duration_seconds`: Duration of health checks
 
 ### Connection Pool Metrics
-- `grpc_client_pool_size`: Size of connection pool
+- `grpc_client_pool_size`: Number of connections per service (channel pool size)
 - `grpc_client_pool_active`: Number of active connections in pool
 - `grpc_client_pool_idle`: Number of idle connections in pool
+
+### Multi-Channel Pool Features
+- **Multiple Connections Per Service**: Each service can have multiple connections (channels) for better performance
+- **Connection Selection Strategies**: 
+  - Round-robin: Distributes requests evenly across connections
+  - Random: Randomly selects a connection
+  - Least-used: Selects the connection with the least usage
+  - First-available: Selects the first healthy connection
+- **Automatic Health Checks**: Unhealthy connections are automatically removed and replaced
+- **Idle Connection Cleanup**: Idle connections are automatically closed after timeout
 
 ### Message Metrics
 - `grpc_client_message_size_bytes`: Size of gRPC messages

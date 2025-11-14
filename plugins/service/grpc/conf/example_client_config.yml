@@ -14,8 +14,10 @@ lynx:
       # Backoff duration between retries
       retry_backoff: "1s"
       
-      # Maximum number of connections per service
-      max_connections: 10
+      # Maximum number of connections per service (channel pool size)
+      # This controls how many connections are maintained for each service
+      # Recommended: 3-10 for most services, 10-50 for high-traffic services
+      max_connections: 5
       
       # Enable TLS for gRPC client connections
       tls_enable: false
@@ -23,11 +25,14 @@ lynx:
       # TLS authentication type (0-4)
       tls_auth_type: 0
       
-      # Enable connection pooling
+      # Enable connection pooling (multi-channel pool)
+      # When enabled, each service can have multiple connections (channels)
+      # This improves performance and fault tolerance
       connection_pooling: true
       
-      # Connection pool size
-      pool_size: 5
+      # Maximum number of services in the pool
+      # This limits the total number of services that can have connection pools
+      pool_size: 10
       
       # Connection idle timeout
       idle_timeout: "60s"
