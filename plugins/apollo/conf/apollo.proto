@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.apollo;
+
+option go_package = "github.com/go-lynx/lynx/plugins/apollo/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Apollo message defines configuration information for Apollo configuration center.
+// Apollo is a distributed configuration management system. This message is used to configure parameters required for interacting with Apollo.
+message Apollo {
+  // app_id is the application ID in Apollo.
+  // This ID uniquely identifies the application in Apollo configuration center.
+  string app_id = 1;
+  
+  // cluster is the cluster name in Apollo.
+  // Clusters are used to isolate configurations for different environments (e.g., dev, test, prod).
+  string cluster = 2;
+  
+  // namespace is the namespace in Apollo.
+  // Namespaces are used to organize and isolate configurations. Multiple namespaces can be configured.
+  string namespace = 3;
+  
+  // meta_server is the Apollo Meta Server address.
+  // This is the entry point for Apollo client to discover configuration services.
+  string meta_server = 4;
+  
+  // token is the authentication token used to access Apollo services.
+  // This token is used to verify the identity of the client.
+  string token = 5;
+  
+  // timeout is the timeout period for interacting with Apollo services.
+  // If no response is received within this time after sending a request, the request is considered timed out.
+  google.protobuf.Duration timeout = 6;
+  
+  // enable_notification whether to enable configuration change notification.
+  // When enabled, the client will receive notifications when configurations change.
+  bool enable_notification = 7;
+  
+  // notification_timeout notification timeout period.
+  google.protobuf.Duration notification_timeout = 8;
+  
+  // enable_cache whether to enable local cache.
+  // When enabled, configurations will be cached locally to reduce network requests.
+  bool enable_cache = 9;
+  
+  // cache_dir is the directory for local cache storage.
+  string cache_dir = 10;
+  
+  // enable_metrics whether to enable monitoring metrics.
+  // When enabled, it will collect and report various monitoring metrics.
+  bool enable_metrics = 11;
+  
+  // enable_retry whether to enable retry mechanism.
+  // When enabled, it will automatically retry when connection fails.
+  bool enable_retry = 12;
+  
+  // max_retry_times maximum number of retries.
+  int32 max_retry_times = 13;
+  
+  // retry_interval retry interval time.
+  google.protobuf.Duration retry_interval = 14;
+  
+  // enable_circuit_breaker whether to enable circuit breaker.
+  // When enabled, it will automatically break when services are unavailable.
+  bool enable_circuit_breaker = 15;
+  
+  // circuit_breaker_threshold circuit breaker threshold.
+  // When the error rate exceeds this threshold, the circuit breaker is triggered.
+  float circuit_breaker_threshold = 16;
+  
+  // enable_graceful_shutdown whether to enable graceful shutdown.
+  // When enabled, it will gracefully close connections during shutdown.
+  bool enable_graceful_shutdown = 17;
+  
+  // shutdown_timeout graceful shutdown timeout.
+  google.protobuf.Duration shutdown_timeout = 18;
+  
+  // enable_logging whether to enable detailed logging.
+  // When enabled, it will output detailed debug logs.
+  bool enable_logging = 19;
+  
+  // log_level log level.
+  // Supported levels: debug, info, warn, error
+  string log_level = 20;
+  
+  // service_config configuration for remote service configuration loading
+  ServiceConfig service_config = 21;
+  
+  // release_key is the release key for the configuration.
+  // This is used to track configuration versions.
+  string release_key = 22;
+  
+  // ip is the client IP address.
+  // This is used for Apollo server to identify the client.
+  string ip = 23;
+}
+
+// ServiceConfig defines configuration for loading remote service configurations
+message ServiceConfig {
+  // namespace is the configuration namespace in Apollo
+  // If empty, uses the main apollo namespace
+  string namespace = 1;
+  
+  // additional_namespaces defines additional namespaces to load
+  // Each entry specifies a separate namespace to load
+  repeated string additional_namespaces = 2;
+  
+  // priority defines the merge priority (higher number = higher priority)
+  // Default is 0, higher priority configs will override lower priority ones
+  int32 priority = 3;
+  
+  // merge_strategy defines how to handle conflicts with existing configs
+  // "override" (default): later configs override earlier ones
+  // "merge": merge nested objects, override leaf values
+  // "append": append to arrays, override other values
+  string merge_strategy = 4;
+}
+
