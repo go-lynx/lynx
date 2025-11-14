@@ -1,0 +1,41 @@
+# Apollo Plugin Configuration Example
+# Fully utilize all features of Apollo configuration center
+lynx:
+  apollo:
+    # Basic Configuration
+    app_id: "your-app-id"                      # Application ID (required)
+    cluster: "default"                         # Cluster name (default: "default")
+    namespace: "application"                   # Namespace (default: "application")
+    meta_server: "http://localhost:8080"       # Apollo Meta Server address (required)
+    token: "your-apollo-token"                 # Authentication token (optional)
+    timeout: "10s"                             # Operation timeout
+    
+    # Notification Configuration
+    enable_notification: true                  # Enable configuration change notification
+    notification_timeout: "30s"                # Notification timeout
+    
+    # Cache Configuration
+    enable_cache: true                         # Enable local cache
+    cache_dir: "/tmp/apollo-cache"             # Cache directory
+    
+    # Advanced Feature Configuration
+    enable_metrics: true                       # Enable monitoring metrics
+    enable_retry: true                         # Enable retry mechanism
+    max_retry_times: 3                         # Maximum retry times
+    retry_interval: "1s"                      # Retry interval
+    enable_circuit_breaker: true              # Enable circuit breaker
+    circuit_breaker_threshold: 0.5             # Circuit breaker threshold
+    enable_graceful_shutdown: true            # Enable graceful shutdown
+    shutdown_timeout: "30s"                    # Graceful shutdown timeout
+    enable_logging: true                       # Enable detailed logging
+    log_level: "info"                          # Log level (debug, info, warn, error)
+    
+    # Service Configuration for remote configuration loading
+    service_config:
+      namespace: "application"                # Main namespace
+      additional_namespaces:                  # Additional namespaces to load
+        - "shared-config"
+        - "feature-flags"
+      priority: 0                             # Merge priority
+      merge_strategy: "override"              # Merge strategy (override, merge, append)
+
