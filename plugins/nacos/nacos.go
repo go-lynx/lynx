@@ -7,7 +7,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/plugins/nacos/conf"
@@ -340,4 +339,3 @@ func (p *PlugNacos) Configure(c any) error {
 	log.Infof("Nacos configuration updated successfully")
 	return nil
 }
-
