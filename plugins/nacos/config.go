@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app"
@@ -48,9 +49,8 @@ func NewNacosConfigSource(client config_client.IConfigClient, dataId, group, for
 // load loads configuration from Nacos
 func (s *NacosConfigSource) load() error {
 	param := vo.ConfigParam{
-		DataId:  s.dataId,
-		Group:   s.group,
-		Timeout: 5000, // 5 seconds
+		DataId: s.dataId,
+		Group:  s.group,
 	}
 
 	content, err := s.client.GetConfig(param)
@@ -91,14 +91,16 @@ func (s *NacosConfigSource) Watch() (config.Watcher, error) {
 
 // NacosConfigWatcher implements config.Watcher interface
 type NacosConfigWatcher struct {
-	client  config_client.IConfigClient
-	dataId  string
-	group   string
-	format  string
-	stopCh  chan struct{}
-	eventCh chan []*config.KeyValue
-	mu      sync.RWMutex
-	running bool
+	client      config_client.IConfigClient
+	dataId      string
+	group       string
+	format      string
+	stopCh      chan struct{}
+	eventCh     chan []*config.KeyValue
+	mu          sync.RWMutex
+	running     bool
+	stopOnce    sync.Once
+	closed      int32 // Use atomic for checking if channels are closed
 }
 
 // NewNacosConfigWatcher creates a new Nacos config watcher
@@ -156,15 +158,23 @@ func (w *NacosConfigWatcher) handleConfigChange(namespace, group, dataId, data s
 		return
 	}
 
+	// Check if watcher is still running before sending to channel
+	if atomic.LoadInt32(&w.closed) == 1 {
+		return
+	}
+
 	kv := &config.KeyValue{
 		Key:    dataId,
 		Value:  []byte(data),
 		Format: w.format,
 	}
 
-	// Send event (non-blocking)
+	// Send event (non-blocking, with closed channel check)
 	select {
 	case w.eventCh <- []*config.KeyValue{kv}:
+	case <-w.stopCh:
+		// Channel is closed, watcher is stopping
+		return
 	default:
 		log.Warnf("Config watcher event channel full, dropping event for dataId: %s", dataId)
 	}
@@ -182,24 +192,32 @@ func (w *NacosConfigWatcher) Next() ([]*config.KeyValue, error) {
 
 // Stop stops the watcher
 func (w *NacosConfigWatcher) Stop() error {
+	var wasRunning bool
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	wasRunning = w.running
+	w.running = false
+	w.mu.Unlock()
 
-	if !w.running {
+	if !wasRunning {
 		return nil
 	}
 
-	// Cancel listening
-	param := vo.ConfigParam{
-		DataId: w.dataId,
-		Group:  w.group,
-	}
-	_ = w.client.CancelListenConfig(param)
+	// Use sync.Once to ensure channels are closed only once
+	w.stopOnce.Do(func() {
+		// Mark as closed atomically
+		atomic.StoreInt32(&w.closed, 1)
 
-	// Close channels
-	close(w.stopCh)
-	close(w.eventCh)
-	w.running = false
+		// Cancel listening
+		param := vo.ConfigParam{
+			DataId: w.dataId,
+			Group:  w.group,
+		}
+		_ = w.client.CancelListenConfig(param)
+
+		// Close channels safely
+		close(w.stopCh)
+		close(w.eventCh)
+	})
 
 	return nil
 }
