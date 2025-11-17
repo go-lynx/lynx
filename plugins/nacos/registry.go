@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
+	"sync/atomic"
 
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-lynx/lynx/app/log"
@@ -119,7 +119,7 @@ func (r *NacosRegistrar) Deregister(ctx context.Context, service *registry.Servi
 		Port:        uint64(port),
 		ServiceName: service.Name,
 		GroupName:   r.group,
-		ClusterName: r.cluster,
+		Cluster:     r.cluster,
 		Ephemeral:   true,
 	}
 
@@ -217,10 +217,6 @@ func (d *NacosDiscovery) GetService(ctx context.Context, serviceName string) ([]
 	// Convert to registry.ServiceInstance
 	var serviceInstances []*registry.ServiceInstance
 	for _, instance := range instances {
-		if instance == nil {
-			continue
-		}
-
 		// Build endpoint
 		endpoint := fmt.Sprintf("%s:%d", instance.Ip, instance.Port)
 		if instance.Metadata != nil {
@@ -294,6 +290,8 @@ type ServiceWatcher struct {
 	eventCh     chan []*registry.ServiceInstance
 	mu          sync.RWMutex
 	running     bool
+	stopOnce    sync.Once
+	closed      int32 // Use atomic for checking if channels are closed
 }
 
 // NewServiceWatcher creates a new service watcher
@@ -353,13 +351,14 @@ func (w *ServiceWatcher) handleServiceChange(services []model.Instance, err erro
 		return
 	}
 
+	// Check if watcher is still running before sending to channel
+	if atomic.LoadInt32(&w.closed) == 1 {
+		return
+	}
+
 	// Convert to registry.ServiceInstance
 	var serviceInstances []*registry.ServiceInstance
 	for _, instance := range services {
-		if instance == nil {
-			continue
-		}
-
 		endpoint := fmt.Sprintf("%s:%d", instance.Ip, instance.Port)
 		metadata := make(map[string]string)
 		if instance.Metadata != nil {
@@ -379,9 +378,12 @@ func (w *ServiceWatcher) handleServiceChange(services []model.Instance, err erro
 		serviceInstances = append(serviceInstances, serviceInstance)
 	}
 
-	// Send event (non-blocking)
+	// Send event (non-blocking, with closed channel check)
 	select {
 	case w.eventCh <- serviceInstances:
+	case <-w.stopCh:
+		// Channel is closed, watcher is stopping
+		return
 	default:
 		log.Warnf("Service watcher event channel full, dropping event for %s", w.serviceName)
 	}
@@ -399,25 +401,33 @@ func (w *ServiceWatcher) Next() ([]*registry.ServiceInstance, error) {
 
 // Stop stops the watcher
 func (w *ServiceWatcher) Stop() error {
+	var wasRunning bool
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	wasRunning = w.running
+	w.running = false
+	w.mu.Unlock()
 
-	if !w.running {
+	if !wasRunning {
 		return nil
 	}
 
-	// Unsubscribe
-	param := &vo.SubscribeParam{
-		ServiceName: w.serviceName,
-		GroupName:   w.group,
-		Clusters:    []string{w.cluster},
-	}
-	_ = w.client.Unsubscribe(param)
+	// Use sync.Once to ensure channels are closed only once
+	w.stopOnce.Do(func() {
+		// Mark as closed atomically
+		atomic.StoreInt32(&w.closed, 1)
 
-	// Close channels
-	close(w.stopCh)
-	close(w.eventCh)
-	w.running = false
+		// Unsubscribe
+		param := &vo.SubscribeParam{
+			ServiceName: w.serviceName,
+			GroupName:   w.group,
+			Clusters:    []string{w.cluster},
+		}
+		_ = w.client.Unsubscribe(param)
+
+		// Close channels safely
+		close(w.stopCh)
+		close(w.eventCh)
+	})
 
 	return nil
 }
