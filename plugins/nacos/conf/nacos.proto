@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package lynx.plugins.nacos.conf;
+
+option go_package = "github.com/go-lynx/lynx/plugins/nacos/conf";
+
+// Nacos configuration
+message Nacos {
+  // Server addresses (comma-separated, e.g., "127.0.0.1:8848,127.0.0.1:8849")
+  string server_addresses = 1;
+  
+  // Namespace ID
+  string namespace_id = 2;
+  
+  // Namespace name (alternative to namespace_id)
+  string namespace = 3;
+  
+  // Username for authentication
+  string username = 4;
+  
+  // Password for authentication
+  string password = 5;
+  
+  // Access key for authentication
+  string access_key = 6;
+  
+  // Secret key for authentication
+  string secret_key = 7;
+  
+  // Service instance weight (default: 1.0)
+  double weight = 8;
+  
+  // Service instance metadata
+  map<string, string> metadata = 9;
+  
+  // Enable service registration
+  bool enable_register = 10;
+  
+  // Enable service discovery
+  bool enable_discovery = 11;
+  
+  // Enable configuration management
+  bool enable_config = 12;
+  
+  // Connection timeout (in seconds)
+  uint64 timeout = 13;
+  
+  // Log level: debug, info, warn, error
+  string log_level = 14;
+  
+  // Log directory
+  string log_dir = 15;
+  
+  // Cache directory
+  string cache_dir = 16;
+  
+  // Notify timeout (in milliseconds)
+  uint64 notify_timeout = 17;
+  
+  // Service configuration
+  ServiceConfig service_config = 18;
+  
+  // Additional configuration sources
+  repeated ConfigSource additional_configs = 19;
+  
+  // Context path for Nacos server
+  string context_path = 20;
+  
+  // Endpoint for Nacos server (alternative to server_addresses)
+  string endpoint = 21;
+  
+  // Region ID
+  string region_id = 22;
+}
+
+// Service configuration for registration
+message ServiceConfig {
+  // Service name
+  string service_name = 1;
+  
+  // Group name (default: DEFAULT_GROUP)
+  string group = 2;
+  
+  // Cluster name (default: DEFAULT)
+  string cluster = 3;
+  
+  // Health check enabled
+  bool health_check = 4;
+  
+  // Health check interval (in seconds)
+  uint64 health_check_interval = 5;
+  
+  // Health check timeout (in seconds)
+  uint64 health_check_timeout = 6;
+  
+  // Health check type: none, tcp, http, mysql
+  string health_check_type = 7;
+  
+  // Health check URL (for http type)
+  string health_check_url = 8;
+}
+
+// Configuration source for multi-config loading
+message ConfigSource {
+  // Configuration data ID
+  string data_id = 1;
+  
+  // Configuration group (default: DEFAULT_GROUP)
+  string group = 2;
+  
+  // Configuration format: yaml, json, properties, xml
+  string format = 3;
+}
+

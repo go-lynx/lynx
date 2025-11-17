@@ -1,0 +1,62 @@
+# Nacos Plugin Configuration Example
+lynx:
+  nacos:
+    # Nacos server addresses (comma-separated for cluster)
+    server_addresses: "127.0.0.1:8848"
+    
+    # Namespace configuration
+    namespace_id: ""  # Use namespace_id or namespace
+    namespace: "public"  # Default: public
+    
+    # Authentication (optional)
+    username: ""
+    password: ""
+    # Or use access_key and secret_key
+    # access_key: ""
+    # secret_key: ""
+    
+    # Service instance configuration
+    weight: 1.0  # Service instance weight
+    metadata:
+      version: "v1.0.0"
+      env: "production"
+    
+    # Feature flags
+    enable_register: true   # Enable service registration
+    enable_discovery: true  # Enable service discovery
+    enable_config: true     # Enable configuration management
+    
+    # Connection settings
+    timeout: 5  # Connection timeout in seconds
+    notify_timeout: 3000  # Notify timeout in milliseconds
+    
+    # Logging configuration
+    log_level: "info"  # debug, info, warn, error
+    log_dir: "./logs/nacos"
+    cache_dir: "./cache/nacos"
+    
+    # Service registration configuration
+    service_config:
+      service_name: "my-service"  # Will use app name if not set
+      group: "DEFAULT_GROUP"
+      cluster: "DEFAULT"
+      health_check: true
+      health_check_interval: 5  # seconds
+      health_check_timeout: 3   # seconds
+      health_check_type: "tcp"  # none, tcp, http, mysql
+      health_check_url: ""      # For http type
+    
+    # Additional configuration sources (for multi-config loading)
+    additional_configs:
+      - data_id: "database-config"
+        group: "DEFAULT_GROUP"
+        format: "yaml"
+      - data_id: "redis-config"
+        group: "DEFAULT_GROUP"
+        format: "yaml"
+    
+    # Advanced settings
+    context_path: "/nacos"  # Nacos server context path
+    # endpoint: ""  # Alternative to server_addresses
+    # region_id: ""  # Region ID for cloud deployment
+
