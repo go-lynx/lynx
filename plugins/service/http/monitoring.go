@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	nhttp "net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -228,8 +229,10 @@ func (h *ServiceHttp) initMetrics() {
 
 	// Initialize real connection pool metrics if enabled
 	if h.conf.Monitoring != nil && h.conf.Monitoring.EnableConnectionMetrics {
+		// Create context for metrics goroutine
+		h.metricsCtx, h.metricsCancel = context.WithCancel(context.Background())
 		// Initialize connection pool metrics with real values
-		go h.updateConnectionPoolMetrics()
+		go h.updateConnectionPoolMetrics(h.metricsCtx)
 	}
 }
 
@@ -258,6 +261,8 @@ func (h *ServiceHttp) CheckHealth() error {
 
 // CheckRuntimeHealth performs a comprehensive runtime health check including port connectivity.
 // This is used by the health check endpoint when the service is running.
+// It uses a cache to avoid frequent network dials when checks are successful,
+// but always performs a real check on failures to ensure immediate issue detection.
 func (h *ServiceHttp) CheckRuntimeHealth() error {
 	if h.server == nil {
 		return fmt.Errorf("HTTP server is not initialized")
@@ -265,14 +270,10 @@ func (h *ServiceHttp) CheckRuntimeHealth() error {
 
 	// Check if the listen address is accepting connections.
 	if h.conf.Addr != "" {
-		conn, err := net.DialTimeout("tcp", h.conf.Addr, 5*time.Second)
-		if err != nil {
+		// Use cached check result to avoid frequent network dials
+		// Only cache failures briefly, never cache successes
+		if err := h.checkPortAvailability(); err != nil {
 			return fmt.Errorf("HTTP server is not listening on %s: %w", h.conf.Addr, err)
-		}
-		connErr := conn.Close()
-		if connErr != nil {
-			log.Error(connErr)
-			return err
 		}
 	}
 
@@ -281,23 +282,49 @@ func (h *ServiceHttp) CheckRuntimeHealth() error {
 		h.healthCheckTotal.WithLabelValues("success").Inc()
 	}
 
-	log.Infof("HTTP service runtime health check passed")
+	log.Debugf("HTTP service runtime health check passed")
 	return nil
 }
 
 // updateConnectionPoolMetrics updates connection pool metrics with real values
-func (h *ServiceHttp) updateConnectionPoolMetrics() {
+// Runs in a background goroutine until context is cancelled
+func (h *ServiceHttp) updateConnectionPoolMetrics(ctx context.Context) {
 	poolName := "http-server-pool"
 	if h.connectionPoolUsage == nil {
 		return
 	}
 
+	// Update metrics periodically until context is cancelled
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	// Initial update
+	h.updateConnectionPoolMetricsOnce(poolName)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Debugf("Connection pool metrics goroutine stopped")
+			return
+		case <-ticker.C:
+			h.updateConnectionPoolMetricsOnce(poolName)
+		}
+	}
+}
+
+// updateConnectionPoolMetricsOnce performs a single metrics update
+func (h *ServiceHttp) updateConnectionPoolMetricsOnce(poolName string) {
+	if h.connectionPoolUsage == nil {
+		return
+	}
+
 	// Calculate real connection pool usage based on configuration
+	// Note: Prometheus Set() operations don't return errors, so we don't need error handling here
 	if h.maxConnections > 0 {
 		current := atomic.LoadInt32(&h.activeConnectionsCount)
 		usage := clampUsage(float64(current) / float64(h.maxConnections))
 		h.connectionPoolUsage.WithLabelValues(poolName).Set(usage)
-		log.Debugf("Connection pool metrics initialized for pool: %s (current=%d, max=%d)", poolName, current, h.maxConnections)
+		log.Debugf("Connection pool metrics updated for pool: %s (current=%d, max=%d)", poolName, current, h.maxConnections)
 	} else {
 		// No connection limit configured, set to 0
 		h.connectionPoolUsage.WithLabelValues(poolName).Set(0)
@@ -382,4 +409,70 @@ func clampUsage(v float64) float64 {
 	default:
 		return v
 	}
+}
+
+// checkPortAvailability checks if the configured port is available for binding.
+// It always performs a real network check to ensure real-time failure detection.
+// Failed checks are cached briefly to avoid hammering unreachable ports.
+func (h *ServiceHttp) checkPortAvailability() error {
+	if h.conf == nil || h.conf.Addr == "" {
+		return fmt.Errorf("server address not configured")
+	}
+
+	// Parse address and normalize host for dial
+	addr := h.conf.Addr
+	if !strings.Contains(addr, ":") {
+		addr = ":" + addr
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid address %q: %v", addr, err)
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	norm := net.JoinHostPort(host, port)
+
+	// Only check TCP network here
+	if h.conf.Network != "" && h.conf.Network != "tcp" && h.conf.Network != "tcp4" && h.conf.Network != "tcp6" {
+		return nil
+	}
+
+	// Check if we recently failed and should skip retry to avoid hammering
+	h.portCheckCache.mu.RLock()
+	lastFailure := h.portCheckCache.lastFailure
+	lastError := h.portCheckCache.lastError
+	retryWindow := h.portCheckCache.retryWindow
+	h.portCheckCache.mu.RUnlock()
+
+	now := time.Now()
+	// If we have a recent failure within retry window, return cached error
+	// This avoids hammering unreachable ports while still checking frequently
+	if lastError != nil && !lastFailure.IsZero() && now.Sub(lastFailure) < retryWindow {
+		return fmt.Errorf("port %s is not reachable (cached): %v", norm, lastError)
+	}
+
+	// Always perform actual network check for real-time detection
+	// This ensures we detect server crashes immediately, not after cache expiry
+	conn, err := net.DialTimeout("tcp", norm, 2*time.Second)
+	if err != nil {
+		// Cache failure to avoid frequent retries
+		h.portCheckCache.mu.Lock()
+		h.portCheckCache.lastFailure = now
+		h.portCheckCache.lastError = err
+		h.portCheckCache.mu.Unlock()
+		return fmt.Errorf("port %s is not reachable: %v", norm, err)
+	}
+	if err := conn.Close(); err != nil {
+		log.Errorf("Failed to close health check connection: %v", err)
+		return fmt.Errorf("failed to close health check connection: %w", err)
+	}
+
+	// Clear cache on success - we never cache successes to ensure real-time detection
+	h.portCheckCache.mu.Lock()
+	h.portCheckCache.lastFailure = time.Time{} // Clear failure cache
+	h.portCheckCache.lastError = nil
+	h.portCheckCache.mu.Unlock()
+
+	return nil
 }

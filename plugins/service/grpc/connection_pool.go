@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-kratos/kratos/v2/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 )
@@ -43,8 +44,9 @@ type ConnectionPool struct {
 	metrics  *ClientMetrics                    // Metrics collector
 
 	// Cleanup
-	cleanupTicker *time.Ticker
-	stopCleanup   chan struct{}
+	cleanupTicker  *time.Ticker
+	stopCleanup    chan struct{}
+	stopCleanupOnce sync.Once // Ensure stopCleanup is only closed once
 }
 
 // serviceConnectionPool manages multiple connections for a single service
@@ -97,8 +99,21 @@ func NewConnectionPoolWithStrategy(maxServices int, maxConnsPerService int, idle
 // GetConnection retrieves or creates a connection for the given service
 // Returns one connection from the service's connection pool
 func (p *ConnectionPool) GetConnection(serviceName string, createFunc func() (*grpc.ClientConn, error)) (*grpc.ClientConn, error) {
+	return p.getConnectionWithRetry(serviceName, createFunc, 0)
+}
+
+// getConnectionWithRetry is the internal implementation with retry limit to prevent infinite recursion
+const maxGetConnectionRetries = 3
+
+func (p *ConnectionPool) getConnectionWithRetry(serviceName string, createFunc func() (*grpc.ClientConn, error), retryCount int) (*grpc.ClientConn, error) {
 	if !p.enabled {
 		// If pooling is disabled, create a new connection each time
+		return createFunc()
+	}
+
+	// Prevent infinite recursion
+	if retryCount >= maxGetConnectionRetries {
+		log.Warnf("Service pool for %s was deleted multiple times, creating connection directly", serviceName)
 		return createFunc()
 	}
 
@@ -120,6 +135,19 @@ func (p *ConnectionPool) GetConnection(serviceName string, createFunc func() (*g
 		p.services[serviceName] = servicePool
 	}
 	p.mu.Unlock()
+
+	// Re-check servicePool exists after releasing lock (defensive programming)
+	// This handles the rare case where servicePool was deleted between lock release and use
+	p.mu.RLock()
+	servicePool, exists = p.services[serviceName]
+	p.mu.RUnlock()
+
+	if !exists {
+		// Service pool was deleted (e.g., by cleanup or eviction), retry with limit
+		// This should be very rare, but we handle it defensively
+		log.Debugf("Service pool for %s was deleted, retrying connection creation (attempt %d/%d)", serviceName, retryCount+1, maxGetConnectionRetries)
+		return p.getConnectionWithRetry(serviceName, createFunc, retryCount+1)
+	}
 
 	// Get connection from service pool
 	return servicePool.GetConnection(p.selectionStrategy, p.maxConnsPerService, createFunc, p.metrics)
@@ -302,11 +330,13 @@ func (p *ConnectionPool) CloseAll() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Stop cleanup routine
+	// Stop cleanup routine (only once)
 	if p.cleanupTicker != nil {
 		p.cleanupTicker.Stop()
-		close(p.stopCleanup)
 	}
+	p.stopCleanupOnce.Do(func() {
+		close(p.stopCleanup)
+	})
 
 	// Collect all service names before deletion for metrics recording
 	serviceNames := make([]string, 0, len(p.services))
@@ -406,7 +436,9 @@ func (s ConnectionSelectionStrategy) String() string {
 }
 
 // evictLRUService removes the least recently used service pool
+// Avoids deadlock by releasing locks before closing connections
 func (p *ConnectionPool) evictLRUService() {
+	p.mu.RLock()
 	var oldestService string
 	var oldestTime time.Time
 
@@ -418,18 +450,12 @@ func (p *ConnectionPool) evictLRUService() {
 		}
 		servicePool.mu.RUnlock()
 	}
+	p.mu.RUnlock()
 
+	// Release lock before closing connections to avoid deadlock
 	if oldestService != "" {
-		if servicePool, exists := p.services[oldestService]; exists {
-			servicePool.mu.Lock()
-			for _, conn := range servicePool.connections {
-				conn.mu.Lock()
-				_ = conn.conn.Close()
-				conn.mu.Unlock()
-			}
-			servicePool.mu.Unlock()
-			delete(p.services, oldestService)
-		}
+		// Use CloseConnection which handles locking properly
+		_ = p.CloseConnection(oldestService)
 	}
 }
 
@@ -446,18 +472,24 @@ func (p *ConnectionPool) cleanupRoutine() {
 }
 
 // cleanupIdleConnections removes connections that have been idle for too long
+// Avoids holding locks while closing connections to prevent blocking
 func (p *ConnectionPool) cleanupIdleConnections() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	now := time.Now()
 	var servicesToRemove []string
+	var connectionsToClose []*pooledConnection
+	var connectionsToKeep = make(map[string][]*pooledConnection)
 
+	// Collect connections to close while holding locks
 	for serviceName, servicePool := range p.services {
 		servicePool.mu.Lock()
 		// Check if service pool is idle
 		if now.Sub(servicePool.lastUsed) > p.idleTimeout {
 			servicesToRemove = append(servicesToRemove, serviceName)
+			// Collect all connections for removal
+			for _, conn := range servicePool.connections {
+				connectionsToClose = append(connectionsToClose, conn)
+			}
 		} else {
 			// Clean up idle connections within the service pool
 			activeConns := make([]*pooledConnection, 0)
@@ -470,33 +502,41 @@ func (p *ConnectionPool) cleanupIdleConnections() {
 					// Connection is still active, keep it
 					activeConns = append(activeConns, conn)
 				} else {
-					// Close idle connection
-					conn.mu.Lock()
-					_ = conn.conn.Close()
-					conn.mu.Unlock()
+					// Mark for closing
+					connectionsToClose = append(connectionsToClose, conn)
 				}
 			}
-			servicePool.connections = activeConns
+			connectionsToKeep[serviceName] = activeConns
 		}
 		servicePool.mu.Unlock()
+	}
+	p.mu.Unlock()
+
+	// Close connections without holding locks
+	for _, conn := range connectionsToClose {
+		conn.mu.Lock()
+		_ = conn.conn.Close()
+		conn.mu.Unlock()
+	}
+
+	// Update service pools without holding main lock
+	p.mu.Lock()
+	for serviceName, activeConns := range connectionsToKeep {
+		if servicePool, exists := p.services[serviceName]; exists {
+			servicePool.mu.Lock()
+			servicePool.connections = activeConns
+			servicePool.mu.Unlock()
+		}
 	}
 
 	// Remove idle service pools
 	for _, serviceName := range servicesToRemove {
-		if servicePool, exists := p.services[serviceName]; exists {
-			servicePool.mu.Lock()
-			for _, conn := range servicePool.connections {
-				conn.mu.Lock()
-				_ = conn.conn.Close()
-				conn.mu.Unlock()
-			}
-			servicePool.mu.Unlock()
-			delete(p.services, serviceName)
-			if p.metrics != nil {
-				p.metrics.RecordConnectionPoolSize(serviceName, 0)
-			}
+		delete(p.services, serviceName)
+		if p.metrics != nil {
+			p.metrics.RecordConnectionPoolSize(serviceName, 0)
 		}
 	}
+	p.mu.Unlock()
 }
 
 // HealthCheck performs health checks on all pooled connections
