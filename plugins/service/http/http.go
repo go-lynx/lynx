@@ -91,10 +91,23 @@ type ServiceHttp struct {
 
 	// Shutdown signal channel
 	shutdownChan chan struct{}
-	// Whether shutting down
+	shutdownOnce sync.Once // Ensure shutdownChan is only closed once
+	// Whether shutting down (protected by shutdownMu)
+	shutdownMu    sync.RWMutex
 	isShuttingDown bool
 	// Shutdown timeout
 	shutdownTimeout time.Duration
+	// Context for stopping background goroutines
+	metricsCtx    context.Context
+	metricsCancel context.CancelFunc
+	// Port availability check cache to avoid frequent retries on failures
+	// Note: We only cache failures, never successes, to ensure real-time detection
+	portCheckCache struct {
+		mu          sync.RWMutex
+		lastFailure time.Time
+		lastError   error
+		retryWindow time.Duration // Avoid retrying failed checks within this window
+	}
 }
 
 // netHTTPToKratosHandlerAdapter adapts a net/http.Handler to a kratos http.HandlerFunc
@@ -132,6 +145,16 @@ func NewServiceHttp() *ServiceHttp {
 			10,
 		),
 		shutdownChan: make(chan struct{}),
+		// Initialize port check cache to avoid frequent retries on failures
+		// Success checks are never cached to ensure real-time failure detection
+		portCheckCache: struct {
+			mu          sync.RWMutex
+			lastFailure time.Time
+			lastError   error
+			retryWindow time.Duration
+		}{
+			retryWindow: 500 * time.Millisecond, // Short window to avoid hammering failed ports
+		},
 	}
 }
 
@@ -407,8 +430,20 @@ func (h *ServiceHttp) StartupTasks() error {
 	// Log HTTP service startup
 	log.Infof("Starting HTTP service on %s", h.conf.Addr)
 
-	// Initialize metrics
+	// Track resources that need cleanup on failure
+	var cleanup func()
+	defer func() {
+		if cleanup != nil {
+			log.Warnf("Startup failed, cleaning up resources")
+			cleanup()
+		}
+	}()
+
+	// Initialize metrics (may start background goroutine)
 	h.initMetrics()
+	if h.metricsCancel != nil {
+		cleanup = h.metricsCancel
+	}
 
 	// Initialize rate limiter
 	h.initRateLimiter()
@@ -463,6 +498,9 @@ func (h *ServiceHttp) StartupTasks() error {
 	h.server.HandlePrefix("/metrics", metrics.Handler())
 	// Adapt net/http.Handler to kratos http.HandlerFunc
 	h.server.HandlePrefix("/health", &netHTTPToKratosHandlerAdapter{handler: h.healthCheckHandler()})
+
+	// Success - clear cleanup function
+	cleanup = nil
 
 	// Log successful startup
 	log.Infof("HTTP service successfully started with monitoring endpoints and performance optimizations")
@@ -609,8 +647,20 @@ func (h *ServiceHttp) CleanupTasks() error {
 
 	log.Infof("Starting graceful shutdown of HTTP service")
 
+	// Set shutdown flag with mutex protection
+	h.shutdownMu.Lock()
 	h.isShuttingDown = true
-	close(h.shutdownChan)
+	h.shutdownMu.Unlock()
+
+	// Close shutdown channel only once
+	h.shutdownOnce.Do(func() {
+		close(h.shutdownChan)
+	})
+
+	// Stop background metrics goroutine
+	if h.metricsCancel != nil {
+		h.metricsCancel()
+	}
 
 	// Configure shutdown timeout with proper context handling
 	ctx, cancel := h.createShutdownContext()
@@ -640,29 +690,34 @@ func (h *ServiceHttp) createShutdownContext() (context.Context, context.CancelFu
 // Configure updates the HTTP server configuration.
 // It accepts any type, attempts to cast it to *conf.Http, and updates the configuration on success.
 func (h *ServiceHttp) Configure(c any) error {
-	// Try to convert the provided configuration to *conf.Http
-	if httpConf, ok := c.(*conf.Http); ok {
-		// Save the old configuration for rollback
-		oldConf := h.conf
-		h.conf = httpConf
-
-		// Set defaults
-		h.setDefaultConfig()
-
-		// Validate the new configuration
-		if err := h.validateConfig(); err != nil {
-			// Invalid configuration; roll back to the old one
-			h.conf = oldConf
-			log.Errorf("Invalid new configuration, rolling back: %v", err)
-			return fmt.Errorf("configuration validation failed: %w", err)
-		}
-
-		log.Infof("HTTP configuration updated successfully")
-		return nil
+	// Check for nil configuration
+	if c == nil {
+		return fmt.Errorf("configuration cannot be nil")
 	}
 
-	// Conversion failed; return invalid configuration error
-	return plugins.ErrInvalidConfiguration
+	// Try to convert the provided configuration to *conf.Http
+	httpConf, ok := c.(*conf.Http)
+	if !ok {
+		return fmt.Errorf("invalid configuration type: expected *conf.Http, got %T", c)
+	}
+
+	// Save the old configuration for rollback
+	oldConf := h.conf
+	h.conf = httpConf
+
+	// Set defaults
+	h.setDefaultConfig()
+
+	// Validate the new configuration
+	if err := h.validateConfig(); err != nil {
+		// Invalid configuration; roll back to the old one
+		h.conf = oldConf
+		log.Errorf("Invalid new configuration, rolling back: %v", err)
+		return fmt.Errorf("configuration validation failed: %w", err)
+	}
+
+	log.Infof("HTTP configuration updated successfully")
+	return nil
 }
 
 // RegisterMetricsGatherer allows injecting an external Prometheus registry into the unified /metrics aggregation.

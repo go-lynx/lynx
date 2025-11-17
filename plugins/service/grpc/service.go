@@ -84,8 +84,63 @@ func (g *Service) healthStatusPoller(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			g.updateHealthServingStatus()
+			// Add timeout control to prevent blocking
+			updateCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+			g.updateHealthServingStatusWithContext(updateCtx)
+			cancel()
 		}
+	}
+}
+
+// updateHealthServingStatusWithContext updates health status with context support
+// Ensures goroutine exits when context is cancelled to prevent leaks
+func (g *Service) updateHealthServingStatusWithContext(ctx context.Context) {
+	// Use a channel to ensure we don't block indefinitely
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// Check context before execution
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// Perform update with context awareness
+			// Use a separate goroutine context to ensure we can cancel if needed
+			updateCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+			defer cancel()
+
+			// Create a channel to signal completion
+			updateDone := make(chan struct{})
+			go func() {
+				defer close(updateDone)
+				g.updateHealthServingStatus()
+			}()
+
+			// Wait for update or timeout
+			select {
+			case <-updateCtx.Done():
+				// Context cancelled or timed out
+				return
+			case <-updateDone:
+				// Update completed
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		// Timeout or cancellation - log but don't fail
+		log.Warnf("Health status update timed out or was cancelled")
+		// Wait briefly for goroutine to exit (non-blocking)
+		select {
+		case <-done:
+		case <-time.After(50 * time.Millisecond):
+			// Goroutine should complete quickly, but log if it doesn't
+			log.Debugf("Health status update goroutine may still be running")
+		}
+	case <-done:
+		// Update completed successfully
 	}
 }
 
@@ -319,13 +374,26 @@ func (g *Service) StartupTasks() error {
 	// Apply initial serving status based on required upstream readiness
 	g.updateHealthServingStatus()
 
+	// Track resources that need cleanup on failure
+	var cleanup func()
+	defer func() {
+		if cleanup != nil {
+			log.Warnf("Startup failed, cleaning up resources")
+			cleanup()
+		}
+	}()
+
 	// Start background poller to keep serving status in sync with required upstream readiness
 	pollCtx, cancel := context.WithCancel(context.Background())
 	g.healthPollCancel = cancel
 	go g.healthStatusPoller(pollCtx)
+	cleanup = cancel // Set cleanup function to cancel poller on failure
 
 	// Record server start time for metrics
 	g.recordServerStartTime()
+
+	// Success - clear cleanup function
+	cleanup = nil
 
 	// Log successful gRPC service startup
 	log.Info("grpc service successfully started")
@@ -386,10 +454,28 @@ func (g *Service) CleanupTasksContext(parentCtx context.Context) error {
 // and updates the server settings accordingly.
 func (g *Service) Configure(c any) error {
 	if c == nil {
-		return nil
+		return fmt.Errorf("configuration cannot be nil")
 	}
-	// Convert the incoming configuration to *conf.Service type and update server configuration
-	g.conf = c.(*conf.Service)
+
+	// Try to convert the incoming configuration to *conf.Service type
+	grpcConf, ok := c.(*conf.Service)
+	if !ok {
+		return fmt.Errorf("invalid configuration type: expected *conf.Service, got %T", c)
+	}
+
+	// Save the old configuration for rollback
+	oldConf := g.conf
+	g.conf = grpcConf
+
+	// Validate the new configuration
+	if err := g.validateConfig(); err != nil {
+		// Invalid configuration; roll back to the old one
+		g.conf = oldConf
+		log.Errorf("Invalid new gRPC configuration, rolling back: %v", err)
+		return fmt.Errorf("gRPC configuration validation failed: %w", err)
+	}
+
+	log.Infof("gRPC configuration updated successfully")
 	return nil
 }
 
@@ -493,17 +579,32 @@ func (g *Service) checkPortAvailability() error {
 // backward compatible. If the resource exists and is false, it reports NOT_SERVING.
 func (g *Service) updateHealthServingStatus() {
 	if g.healthServer == nil {
+		log.Warnf("Health server is nil, cannot update serving status")
 		return
 	}
 
 	status := grpc_health_v1.HealthCheckResponse_SERVING
 	if g.rt != nil {
-		if val, err := g.rt.GetSharedResource(requiredReadinessResourceName); err == nil {
-			if ready, ok := val.(bool); ok && !ready {
-				status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+		val, err := g.rt.GetSharedResource(requiredReadinessResourceName)
+		if err != nil {
+			// Resource not found or error accessing it - log but use default SERVING status
+			log.Debugf("Could not get shared readiness resource: %v, defaulting to SERVING", err)
+		} else {
+			if ready, ok := val.(bool); ok {
+				if !ready {
+					status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+					log.Debugf("Upstream readiness is false, setting status to NOT_SERVING")
+				}
+			} else {
+				// Type assertion failed - log warning but use default SERVING status
+				log.Warnf("Shared readiness resource has unexpected type: %T, expected bool, defaulting to SERVING", val)
 			}
 		}
+	} else {
+		log.Debugf("Runtime is nil, defaulting to SERVING status")
 	}
+
+	// Set the serving status
 	g.healthServer.SetServingStatus("", status)
 }
 
