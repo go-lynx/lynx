@@ -69,7 +69,7 @@ func (p *GoroutinePool) Wait() {
 	p.wg.Wait()
 }
 
-// Close closes the pool
+// Close closes the pool and waits for all goroutines to finish
 func (p *GoroutinePool) Close() {
 	p.mu.Lock()
 	if !p.closed {
@@ -77,6 +77,8 @@ func (p *GoroutinePool) Close() {
 		p.closed = true
 	}
 	p.mu.Unlock()
+	// Wait for all goroutines to finish to prevent leaks
+	p.wg.Wait()
 }
 
 // IsClosed checks if the pool is closed

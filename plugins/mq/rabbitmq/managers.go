@@ -13,6 +13,7 @@ import (
 type HealthChecker struct {
 	interval   time.Duration
 	stopChan   chan struct{}
+	stopOnce   sync.Once // Protect against multiple close operations
 	healthy    bool
 	lastCheck  time.Time
 	errorCount int
@@ -38,17 +39,16 @@ func (h *HealthChecker) Start() {
 // Stop stops the health checker
 func (h *HealthChecker) Stop() {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.stopped {
-		return
-	}
-	h.stopped = true
-	select {
-	case <-h.stopChan:
-		// already closed
-		return
-	default:
-		close(h.stopChan)
+	stopped := h.stopped
+	h.mu.Unlock()
+	
+	if !stopped {
+		h.stopOnce.Do(func() {
+			close(h.stopChan)
+			h.mu.Lock()
+			h.stopped = true
+			h.mu.Unlock()
+		})
 	}
 }
 
@@ -111,6 +111,7 @@ type ConnectionManager struct {
 	config    *conf.RabbitMQ
 	connected bool
 	stopChan  chan struct{}
+	stopOnce  sync.Once // Protect against multiple close operations
 	mu        sync.RWMutex
 	stopped   bool
 }

@@ -20,15 +20,22 @@ import (
 var (
 	// lynxApp is the singleton instance of the Lynx application
 	lynxApp *LynxApp
-	// initOnce ensures the Lynx application is initialized only once.
-	// Uses sync.Once to guarantee atomic initialization in concurrent scenarios.
-	initOnce sync.Once
+	// initState tracks initialization state using atomic operations for better control
+	// 0 = not initialized, 1 = initializing, 2 = initialized, 3 = failed
+	initState int32
 	// RW mutex protecting reads/writes of lynxApp to avoid race conditions
 	lynxMu sync.RWMutex
 	// initErr stores initialization error for retry mechanism
 	initErr error
 	// initMu protects initErr and allows reset on failure
 	initMu sync.Mutex
+)
+
+const (
+	initStateNotInitialized = iota
+	initStateInitializing
+	initStateInitialized
+	initStateFailed
 )
 
 // Fixed plugin ID used internally for configuration-related events.
@@ -143,29 +150,151 @@ func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
 		return existing, nil
 	}
 
-	// Check if previous initialization failed
-	initMu.Lock()
-	prevErr := initErr
-	initMu.Unlock()
-	if prevErr != nil {
-		// Previous initialization failed, allow retry by resetting initOnce
-		// Note: This is a workaround - sync.Once doesn't support reset
-		// In production, consider using a more sophisticated initialization mechanism
+	// Check initialization state atomically
+	state := atomic.LoadInt32(&initState)
+	if state == initStateInitialized {
+		// Already initialized successfully, return existing instance
+		lynxMu.RLock()
+		existing := lynxApp
+		lynxMu.RUnlock()
+		if existing != nil {
+			return existing, nil
+		}
+	}
+
+	// Try to acquire initialization lock
+	acquired := atomic.CompareAndSwapInt32(&initState, initStateNotInitialized, initStateInitializing) ||
+		atomic.CompareAndSwapInt32(&initState, initStateFailed, initStateInitializing)
+
+	if !acquired {
+		// Another goroutine is initializing or already initialized
+		// Wait for it to complete with timeout
+		waitTimeout := 100 * 10 * time.Millisecond // 100 iterations * 10ms = 1 second
+		deadline := time.Now().Add(waitTimeout)
+
+		for time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+			state := atomic.LoadInt32(&initState)
+
+			if state == initStateInitialized {
+				// Initialization completed, check if app exists
+				lynxMu.RLock()
+				existing := lynxApp
+				lynxMu.RUnlock()
+				if existing != nil {
+					return existing, nil
+				}
+				// App was initialized but is now nil (likely closed)
+				// Return error instead of continuing to initialize
+				return nil, fmt.Errorf("application was closed after initialization")
+			}
+
+			if state == initStateFailed {
+				// Previous initialization failed, try to acquire lock for retry
+				if atomic.CompareAndSwapInt32(&initState, initStateFailed, initStateInitializing) {
+					acquired = true
+					break
+				}
+			}
+
+			// If state is still initializing, continue waiting
+			// If state changed to not initialized (shouldn't happen), try to acquire
+			if state == initStateNotInitialized {
+				if atomic.CompareAndSwapInt32(&initState, initStateNotInitialized, initStateInitializing) {
+					acquired = true
+					break
+				}
+			}
+		}
+
+		// After waiting loop, check final state before proceeding
+		// CRITICAL: Do not proceed to initializeApp() if we don't hold the lock
+		if !acquired {
+			finalState := atomic.LoadInt32(&initState)
+
+			if finalState == initStateInitialized {
+				// Another goroutine completed initialization
+				lynxMu.RLock()
+				existing := lynxApp
+				lynxMu.RUnlock()
+				if existing != nil {
+					return existing, nil
+				}
+				// App was closed after initialization, return error
+				return nil, fmt.Errorf("application was closed after initialization")
+			}
+
+			if finalState == initStateInitializing {
+				// Another goroutine is still initializing
+				// Wait a bit more to see if it completes
+				time.Sleep(100 * time.Millisecond)
+				finalState = atomic.LoadInt32(&initState)
+				if finalState == initStateInitialized {
+					lynxMu.RLock()
+					existing := lynxApp
+					lynxMu.RUnlock()
+					if existing != nil {
+						return existing, nil
+					}
+				}
+				// Still initializing or failed - return error to prevent duplicate initialization
+				return nil, fmt.Errorf("initialization timeout: another goroutine is still initializing")
+			}
+
+			// Final attempt to acquire lock (state might be failed or not initialized)
+			if atomic.CompareAndSwapInt32(&initState, initStateNotInitialized, initStateInitializing) ||
+				atomic.CompareAndSwapInt32(&initState, initStateFailed, initStateInitializing) {
+				acquired = true
+			} else {
+				// Still can't acquire lock - another goroutine must have acquired it
+				// Return error to prevent duplicate initialization
+				return nil, fmt.Errorf("failed to acquire initialization lock: another goroutine is initializing")
+			}
+		}
+	}
+
+	// CRITICAL: Verify we hold the initialization lock before proceeding
+	// Double-check to prevent race condition where lock was lost
+	currentState := atomic.LoadInt32(&initState)
+	if currentState != initStateInitializing {
+		// We don't hold the lock - another goroutine must have it
+		if currentState == initStateInitialized {
+			lynxMu.RLock()
+			existing := lynxApp
+			lynxMu.RUnlock()
+			if existing != nil {
+				return existing, nil
+			}
+		}
+		return nil, fmt.Errorf("initialization lock verification failed: state is %d, expected %d",
+			currentState, initStateInitializing)
 	}
 
 	var app *LynxApp
 	var err error
 
-	// Use sync.Once to ensure the application is initialized only once
-	initOnce.Do(func() {
-		app, err = initializeApp(cfg, plugins...)
-		initMu.Lock()
-		initErr = err
-		initMu.Unlock()
-	})
+	// Perform initialization (we hold the lock at this point)
+	app, err = initializeApp(cfg, plugins...)
+
+	initMu.Lock()
+	initErr = err
+	initMu.Unlock()
+
+	if err != nil {
+		atomic.StoreInt32(&initState, initStateFailed)
+	} else {
+		atomic.StoreInt32(&initState, initStateInitialized)
+	}
 
 	// If initialization failed, return error
 	if err != nil {
+		// Store error for potential retry mechanism
+		initMu.Lock()
+		storedErr := initErr
+		initMu.Unlock()
+		if storedErr != nil {
+			return nil, fmt.Errorf("failed to initialize application: %w (stored error: %v)", err, storedErr)
+		}
 		return nil, fmt.Errorf("failed to initialize application: %w", err)
 	}
 
@@ -430,6 +559,12 @@ func (a *LynxApp) Close() error {
 	lynxMu.Lock()
 	lynxApp = nil
 	lynxMu.Unlock()
+
+	// Reset initialization state to allow re-initialization
+	atomic.StoreInt32(&initState, initStateNotInitialized)
+	initMu.Lock()
+	initErr = nil
+	initMu.Unlock()
 
 	return nil
 }

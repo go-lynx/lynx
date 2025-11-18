@@ -23,6 +23,7 @@ type RabbitMQClient struct {
 	consumerMutex     sync.RWMutex
 	connectionMutex   sync.RWMutex
 	closeChan         chan struct{}
+	closeOnce         sync.Once // Protect against multiple close operations
 	closed            bool
 	metrics           *Metrics
 	healthChecker     *HealthChecker
@@ -135,8 +136,10 @@ func (r *RabbitMQClient) StartupTasks() error {
 func (r *RabbitMQClient) CleanupTasks() error {
 	log.Infof("shutting down RabbitMQ client plugin")
 
-	// Signal background tasks to stop
-	close(r.closeChan)
+	// Signal background tasks to stop (protected against multiple calls)
+	r.closeOnce.Do(func() {
+		close(r.closeChan)
+	})
 	r.closed = true
 
 	// Stop health checker

@@ -121,6 +121,12 @@ type ErrorRecoveryManager struct {
 	// Internal state
 	mu       sync.RWMutex
 	stopChan chan struct{}
+	stopOnce sync.Once // Protect against multiple Stop() calls
+
+	// Concurrency control for recovery operations
+	recoverySemaphore chan struct{}
+	maxConcurrentRecoveries int
+	activeRecoveries        sync.Map // map[string]context.CancelFunc - track active recoveries
 }
 
 // ErrorRecord represents a recorded error with enhanced context
@@ -230,18 +236,21 @@ func (s *DefaultRecoveryStrategy) GetTimeout() time.Duration {
 
 // NewErrorRecoveryManager creates a new error recovery manager
 func NewErrorRecoveryManager(metrics *metrics.ProductionMetrics) *ErrorRecoveryManager {
+	maxConcurrent := 10 // Default max concurrent recoveries
 	erm := &ErrorRecoveryManager{
-		errorCounts:        make(map[string]int64),
-		errorHistory:       make([]ErrorRecord, 0),
-		recoveryHistory:    make([]RecoveryRecord, 0),
-		circuitBreakers:    make(map[string]*CircuitBreaker),
-		recoveryStrategies: make(map[string]RecoveryStrategy),
-		maxErrorHistory:    1000,
-		maxRecoveryHistory: 500,
-		errorThreshold:     10,
-		recoveryTimeout:    30 * time.Second,
-		metrics:            metrics,
-		stopChan:           make(chan struct{}),
+		errorCounts:             make(map[string]int64),
+		errorHistory:            make([]ErrorRecord, 0),
+		recoveryHistory:         make([]RecoveryRecord, 0),
+		circuitBreakers:         make(map[string]*CircuitBreaker),
+		recoveryStrategies:      make(map[string]RecoveryStrategy),
+		maxErrorHistory:         1000,
+		maxRecoveryHistory:      500,
+		errorThreshold:          10,
+		recoveryTimeout:         30 * time.Second,
+		metrics:                 metrics,
+		stopChan:                make(chan struct{}),
+		maxConcurrentRecoveries: maxConcurrent,
+		recoverySemaphore:       make(chan struct{}, maxConcurrent),
 	}
 
 	// Register default recovery strategies
@@ -303,6 +312,19 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 		context["version"] = version
 	}
 
+	// Safely extract environment and version with existence checks
+	var environment, version string
+	if envVal, ok := context["environment"]; ok {
+		if envStr, ok := envVal.(string); ok {
+			environment = envStr
+		}
+	}
+	if verVal, ok := context["version"]; ok {
+		if verStr, ok := verVal.(string); ok {
+			version = verStr
+		}
+	}
+
 	// Create error record with enhanced information
 	record := ErrorRecord{
 		Timestamp:   time.Now(),
@@ -314,8 +336,8 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 		Context:     context,
 		Recovered:   false,
 		StackTrace:  getStackTrace(),
-		Environment: context["environment"].(string),
-		Version:     context["version"].(string),
+		Environment: environment,
+		Version:     version,
 	}
 
 	// Add to history
@@ -351,13 +373,34 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 
 // attemptRecovery attempts to recover from an error
 func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
+	// Generate recovery key first
+	recoveryKey := fmt.Sprintf("%s:%s:%d", record.ErrorType, record.Component, record.Timestamp.Unix())
+	
+	// CRITICAL: Atomically check and store recovery key to prevent TOCTOU race condition
+	// Use a placeholder cancel function to mark that recovery is starting
+	placeholderCancel := func() {} // No-op function
+	if _, loaded := erm.activeRecoveries.LoadOrStore(recoveryKey, placeholderCancel); loaded {
+		// Recovery already in progress for this error
+		log.Debugf("Recovery already in progress for %s:%s, skipping duplicate attempt", record.ErrorType, record.Component)
+		return
+	}
+	// Defer cleanup of the recovery key - will be disabled once we successfully start recovery
+	shouldCleanupKey := true
+	defer func() {
+		if shouldCleanupKey {
+			erm.activeRecoveries.Delete(recoveryKey)
+		}
+	}()
+
 	erm.mu.RLock()
 	strategy, exists := erm.recoveryStrategies[record.ErrorType]
 	erm.mu.RUnlock()
 
 	if !exists {
 		// Use default strategy
+		erm.mu.RLock()
 		strategy = erm.recoveryStrategies["transient"]
+		erm.mu.RUnlock()
 		if strategy == nil {
 			log.Warnf("No recovery strategy found for error type: %s", record.ErrorType)
 			return
@@ -370,13 +413,82 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		return
 	}
 
-	// Create recovery context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), strategy.GetTimeout())
+	// Acquire semaphore to limit concurrent recoveries
+	select {
+	case erm.recoverySemaphore <- struct{}{}:
+		// Acquired semaphore, proceed with recovery
+		defer func() { <-erm.recoverySemaphore }()
+	case <-time.After(1 * time.Second):
+		// Semaphore acquisition timeout - too many concurrent recoveries
+		log.Warnf("Recovery semaphore timeout for %s:%s, skipping recovery (too many concurrent recoveries)", 
+			record.ErrorType, record.Component)
+		return
+	case <-erm.stopChan:
+		// Recovery manager is stopping
+		return
+	}
+
+	// Create recovery context with timeout and cancellation
+	recoveryTimeout := strategy.GetTimeout()
+	if recoveryTimeout <= 0 {
+		recoveryTimeout = erm.recoveryTimeout
+	}
+	if recoveryTimeout > 60*time.Second {
+		recoveryTimeout = 60 * time.Second // Cap at 60 seconds
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), recoveryTimeout)
 	defer cancel()
 
-	// Attempt recovery
+	// Replace placeholder with actual cancel function
+	// Now that we've successfully started recovery, disable the cleanup defer
+	// and set up proper cleanup at the end of recovery
+	erm.activeRecoveries.Store(recoveryKey, cancel)
+	shouldCleanupKey = false // Disable the early cleanup defer
+	
+	// Set up proper cleanup at the end of recovery
+	defer erm.activeRecoveries.Delete(recoveryKey)
+
+	// Attempt recovery with timeout protection
 	startTime := time.Now()
-	success, err := strategy.Recover(ctx, record)
+	recoveryDone := make(chan struct {
+		success bool
+		err     error
+	}, 1)
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				recoveryDone <- struct {
+					success bool
+					err     error
+				}{false, fmt.Errorf("panic during recovery: %v", r)}
+			}
+		}()
+		success, err := strategy.Recover(ctx, record)
+		recoveryDone <- struct {
+			success bool
+			err     error
+		}{success, err}
+	}()
+
+	var success bool
+	var err error
+	select {
+	case result := <-recoveryDone:
+		success = result.success
+		err = result.err
+	case <-ctx.Done():
+		// Timeout reached
+		success = false
+		err = fmt.Errorf("recovery timeout after %v: %w", recoveryTimeout, ctx.Err())
+		log.Warnf("Recovery timeout for %s:%s after %v", record.ErrorType, record.Component, recoveryTimeout)
+	case <-erm.stopChan:
+		// Recovery manager is stopping
+		cancel()
+		return
+	}
+
 	duration := time.Since(startTime)
 
 	// Record recovery attempt
@@ -557,7 +669,46 @@ func (erm *ErrorRecoveryManager) ClearHistory() {
 
 // Stop stops the error recovery manager
 func (erm *ErrorRecoveryManager) Stop() {
-	close(erm.stopChan)
+	// Use sync.Once to ensure Stop() can only be called once
+	erm.stopOnce.Do(func() {
+		// Signal stop to all recovery operations
+		close(erm.stopChan)
+
+		// Cancel all active recoveries
+		erm.activeRecoveries.Range(func(key, value interface{}) bool {
+			if cancel, ok := value.(context.CancelFunc); ok {
+				cancel()
+			}
+			erm.activeRecoveries.Delete(key)
+			return true
+		})
+
+		// Wait for all recovery operations to complete (with timeout)
+		done := make(chan struct{})
+		go func() {
+			// Wait for semaphore to be fully released
+		semaphoreWait:
+			for i := 0; i < erm.maxConcurrentRecoveries; i++ {
+				select {
+				case erm.recoverySemaphore <- struct{}{}:
+					// Acquired, release immediately
+					<-erm.recoverySemaphore
+				case <-time.After(5 * time.Second):
+					// Timeout waiting for semaphore
+					break semaphoreWait
+				}
+			}
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			// All recoveries completed
+		case <-time.After(10 * time.Second):
+			// Timeout - some recoveries may still be running
+			log.Warnf("Error recovery manager stop timeout: some recoveries may still be running")
+		}
+	})
 }
 
 // IsHealthy returns the health status of the error recovery manager

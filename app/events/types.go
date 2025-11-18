@@ -1,7 +1,10 @@
 package events
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"sync/atomic"
 	"time"
 )
 
@@ -146,10 +149,23 @@ func NewLynxEvent(eventType EventType, pluginID, source string) LynxEvent {
 	}
 }
 
+var (
+	// eventIDCounter ensures unique event IDs even in high concurrency scenarios
+	eventIDCounter atomic.Uint64
+)
+
 // generateEventID generates a unique event ID for deduplication
-// Format: {pluginID}-{eventType}-{timestamp}-{nanosecond}
+// Format: {pluginID}-{eventType}-{timestamp}-{nanosecond}-{randomHex}-{counter}
+// This ensures uniqueness even when multiple events are generated in the same nanosecond
 func generateEventID(pluginID string, eventType EventType, t time.Time) string {
-	return fmt.Sprintf("%s-%d-%d-%d", pluginID, eventType, t.Unix(), t.Nanosecond())
+	counter := eventIDCounter.Add(1)
+	randomBytes := make([]byte, 4)
+	if _, err := rand.Read(randomBytes); err != nil {
+		// Fallback: use counter as random component if crypto/rand fails
+		randomBytes = []byte{byte(counter), byte(counter >> 8), byte(counter >> 16), byte(counter >> 24)}
+	}
+	randomHex := hex.EncodeToString(randomBytes)
+	return fmt.Sprintf("%s-%d-%d-%d-%s-%d", pluginID, eventType, t.Unix(), t.Nanosecond(), randomHex, counter)
 }
 
 // WithPriority sets the event priority

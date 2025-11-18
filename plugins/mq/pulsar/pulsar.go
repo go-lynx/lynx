@@ -30,6 +30,7 @@ type PulsarClient struct {
 	producerMutex     sync.RWMutex
 	consumerMutex     sync.RWMutex
 	closeChan         chan struct{}
+	closeOnce         sync.Once // Protect against multiple close operations
 	closed            bool
 	metrics           *Metrics
 	healthStatus      *HealthStatus
@@ -190,8 +191,10 @@ func (p *PulsarClient) StartupTasks() error {
 func (p *PulsarClient) CleanupTasks() error {
 	log.Infof("shutting down Apache Pulsar client plugin")
 
-	// Signal background tasks to stop
-	close(p.closeChan)
+	// Signal background tasks to stop (protected against multiple calls)
+	p.closeOnce.Do(func() {
+		close(p.closeChan)
+	})
 	p.closed = true
 
 	// Stop health checker
