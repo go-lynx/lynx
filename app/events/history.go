@@ -13,6 +13,10 @@ type EventHistory struct {
 	maxAge      time.Duration // Maximum age of events to keep
 	lastCleanup time.Time     // Last cleanup time
 	mu          sync.RWMutex
+	// Index for faster queries
+	byPluginID  map[string][]int    // pluginID -> indices in events slice
+	byEventType map[EventType][]int // eventType -> indices in events slice
+	indexMu     sync.RWMutex
 }
 
 // NewEventHistory creates a new event history with the given maximum size
@@ -22,6 +26,8 @@ func NewEventHistory(maxSize int) *EventHistory {
 		maxSize:     maxSize,
 		maxAge:      24 * time.Hour, // Default: keep events for 24 hours
 		lastCleanup: time.Now(),
+		byPluginID:  make(map[string][]int),
+		byEventType: make(map[EventType][]int),
 	}
 }
 
@@ -32,6 +38,8 @@ func NewEventHistoryWithAge(maxSize int, maxAge time.Duration) *EventHistory {
 		maxSize:     maxSize,
 		maxAge:      maxAge,
 		lastCleanup: time.Now(),
+		byPluginID:  make(map[string][]int),
+		byEventType: make(map[EventType][]int),
 	}
 }
 
@@ -45,11 +53,23 @@ func (h *EventHistory) Add(event LynxEvent) {
 		h.cleanupExpiredEvents()
 	}
 
+	eventIndex := len(h.events)
 	h.events = append(h.events, event)
+
+	// Update indexes for faster queries
+	h.indexMu.Lock()
+	if event.PluginID != "" {
+		h.byPluginID[event.PluginID] = append(h.byPluginID[event.PluginID], eventIndex)
+	}
+	h.byEventType[event.EventType] = append(h.byEventType[event.EventType], eventIndex)
+	h.indexMu.Unlock()
 
 	// Trim if exceeds max size
 	if len(h.events) > h.maxSize {
-		h.events = h.events[len(h.events)-h.maxSize:]
+		trimCount := len(h.events) - h.maxSize
+		h.events = h.events[trimCount:]
+		// Rebuild indexes after trimming
+		h.rebuildIndexes()
 	}
 }
 
@@ -70,6 +90,27 @@ func (h *EventHistory) cleanupExpiredEvents() {
 
 	h.events = validEvents
 	h.lastCleanup = time.Now()
+
+	// Rebuild indexes after cleanup
+	h.rebuildIndexes()
+}
+
+// rebuildIndexes rebuilds all indexes from scratch
+func (h *EventHistory) rebuildIndexes() {
+	h.indexMu.Lock()
+	defer h.indexMu.Unlock()
+
+	// Clear existing indexes
+	h.byPluginID = make(map[string][]int)
+	h.byEventType = make(map[EventType][]int)
+
+	// Rebuild indexes
+	for i, event := range h.events {
+		if event.PluginID != "" {
+			h.byPluginID[event.PluginID] = append(h.byPluginID[event.PluginID], i)
+		}
+		h.byEventType[event.EventType] = append(h.byEventType[event.EventType], i)
+	}
 }
 
 // SetMaxAge sets the maximum age for events
@@ -97,11 +138,27 @@ func (h *EventHistory) GetEvents() []LynxEvent {
 	return result
 }
 
-// GetEventsByType returns events filtered by type
+// GetEventsByType returns events filtered by type (optimized with index)
 func (h *EventHistory) GetEventsByType(eventType EventType) []LynxEvent {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
+	// Use index for faster lookup
+	h.indexMu.RLock()
+	indices, hasIndex := h.byEventType[eventType]
+	h.indexMu.RUnlock()
+
+	if hasIndex && len(indices) > 0 {
+		result := make([]LynxEvent, 0, len(indices))
+		for _, idx := range indices {
+			if idx < len(h.events) {
+				result = append(result, h.events[idx])
+			}
+		}
+		return result
+	}
+
+	// Fallback to linear search if index not available
 	var result []LynxEvent
 	for _, event := range h.events {
 		if event.EventType == eventType {
@@ -111,11 +168,27 @@ func (h *EventHistory) GetEventsByType(eventType EventType) []LynxEvent {
 	return result
 }
 
-// GetEventsByPlugin returns events filtered by plugin ID
+// GetEventsByPlugin returns events filtered by plugin ID (optimized with index)
 func (h *EventHistory) GetEventsByPlugin(pluginID string) []LynxEvent {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
+	// Use index for faster lookup
+	h.indexMu.RLock()
+	indices, hasIndex := h.byPluginID[pluginID]
+	h.indexMu.RUnlock()
+
+	if hasIndex && len(indices) > 0 {
+		result := make([]LynxEvent, 0, len(indices))
+		for _, idx := range indices {
+			if idx < len(h.events) {
+				result = append(result, h.events[idx])
+			}
+		}
+		return result
+	}
+
+	// Fallback to linear search if index not available
 	var result []LynxEvent
 	for _, event := range h.events {
 		if event.PluginID == pluginID {
@@ -277,6 +350,12 @@ func (h *EventHistory) Clear() {
 	defer h.mu.Unlock()
 
 	h.events = h.events[:0]
+
+	// Clear indexes
+	h.indexMu.Lock()
+	h.byPluginID = make(map[string][]int)
+	h.byEventType = make(map[EventType][]int)
+	h.indexMu.Unlock()
 }
 
 // Size returns the current number of events in history
@@ -301,6 +380,9 @@ func (h *EventHistory) SetMaxSize(maxSize int) {
 
 	// Trim if current size exceeds new max size
 	if len(h.events) > maxSize {
-		h.events = h.events[len(h.events)-maxSize:]
+		trimCount := len(h.events) - maxSize
+		h.events = h.events[trimCount:]
+		// Rebuild indexes after trimming to ensure index references are valid
+		h.rebuildIndexes()
 	}
 }

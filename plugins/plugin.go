@@ -460,9 +460,6 @@ type simpleRuntime struct {
 	// Event bus manager for unified event handling
 	eventManager interface{}
 
-	// Worker pool size for event dispatching
-	workerPoolSize int
-
 	// Event processing timeout
 	eventTimeout time.Duration
 }
@@ -521,16 +518,14 @@ func (r *simpleRuntime) SetEventDispatchMode(mode string) error {
 	}
 }
 
-// SetEventWorkerPoolSize set event worker pool size - simplified for unified event bus
+// SetEventWorkerPoolSize set event worker pool size - delegates to unified event bus
+// Note: The actual worker pool is managed by the event bus, not by individual runtimes.
 func (r *simpleRuntime) SetEventWorkerPoolSize(size int) {
 	// Set worker pool size on unified event bus if available
 	adapter := EnsureGlobalEventBusAdapter()
 	if configurable, ok := adapter.(interface{ SetWorkerPoolSize(int) }); ok {
 		configurable.SetWorkerPoolSize(size)
 	}
-
-	// Store the setting for future reference
-	r.workerPoolSize = size
 }
 
 // SetEventTimeout set event processing timeout - simplified for unified event bus
@@ -552,7 +547,6 @@ func (r *simpleRuntime) GetEventStats() map[string]any {
 	if statsProvider, ok := adapter.(interface{ GetStats() map[string]any }); ok {
 		stats := statsProvider.GetStats()
 		// Add runtime-specific stats
-		stats["worker_pool_size"] = r.workerPoolSize
 		stats["event_timeout_ms"] = int(r.eventTimeout.Milliseconds())
 		return stats
 	}
@@ -564,7 +558,6 @@ func (r *simpleRuntime) GetEventStats() map[string]any {
 		"events_dropped":       0,
 		"listener_panics":      0,
 		"listener_timeouts":    0,
-		"worker_pool_size":     r.workerPoolSize,
 		"dispatch_mode":        "unified",
 		"event_timeout_ms":     int(r.eventTimeout.Milliseconds()),
 		"history_size":         0,
@@ -966,7 +959,6 @@ func (r *simpleRuntime) WithPluginContext(pluginName string) Runtime {
 			mu:                   r.mu,
 			contextMu:            r.contextMu,
 			eventManager:         r.eventManager,
-			workerPoolSize:       r.workerPoolSize,
 			eventTimeout:         r.eventTimeout,
 		}
 		return contextRuntime
@@ -1049,13 +1041,31 @@ func (r *simpleRuntime) CleanupResources(pluginID string) error {
 	if pluginID == "" {
 		return fmt.Errorf("plugin ID cannot be empty")
 	}
-	// Permission check: only the owner (current plugin context) or privileged (no context) can cleanup
+	// Permission check: only the owner (current plugin context) or system can cleanup
 	r.contextMu.RLock()
 	caller := r.currentPluginContext
 	r.contextMu.RUnlock()
-	if caller != "" && caller != pluginID {
-		return fmt.Errorf("permission denied: plugin %q cannot cleanup resources of plugin %q", caller, pluginID)
+
+	// Permission check: allow cleanup if:
+	// 1. Caller is the plugin itself (pluginID matches caller)
+	// 2. Caller is explicitly "system" (privileged system context)
+	// 3. Caller is empty (system shutdown path - allows cleanup during shutdown)
+	// Empty context is allowed to support system shutdown scenarios where context may not be set
+	// This is safe because cleanup only removes resources owned by the specified pluginID
+	if caller != "" {
+		// Non-empty context: must be owner or system
+		if caller != pluginID && caller != "system" {
+			return fmt.Errorf("permission denied: plugin %q cannot cleanup resources of plugin %q (only owner or system can cleanup)", caller, pluginID)
+		}
+	} else {
+		// Empty context: allowed for system shutdown scenarios
+		// This supports shutdown paths where context may not be set (e.g., app/plugin_ops.go:109)
+		// Security: cleanup only removes resources owned by pluginID, so it's safe
+		caller = "system-shutdown"
 	}
+
+	// Log cleanup operation for audit trail
+	log.Infof("Resource cleanup initiated: plugin=%q, caller=%q, target=%q", pluginID, caller, pluginID)
 
 	// Phase 1: collect and detach resources under short lock
 	type resItem struct {

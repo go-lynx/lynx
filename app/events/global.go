@@ -30,9 +30,20 @@ func InitGlobalEventBus(configs BusConfigs) error {
 
 // GetGlobalEventBus returns the global event bus manager
 func GetGlobalEventBus() *EventBusManager {
+	// First check without lock (fast path)
 	globalMu.RLock()
-	defer globalMu.RUnlock()
+	manager := globalManager
+	globalMu.RUnlock()
 
+	if manager != nil {
+		return manager
+	}
+
+	// Double-checked locking pattern: acquire write lock for initialization
+	globalMu.Lock()
+	defer globalMu.Unlock()
+
+	// Check again after acquiring write lock (another goroutine might have initialized it)
 	if globalManager == nil {
 		// Initialize with default configs if not already initialized
 		// Note: This will panic if initialization fails, but it's better than silent failure
@@ -74,18 +85,11 @@ func CloseGlobalEventBus() error {
 
 	if globalManager != nil {
 		// Emit system shutdown event before closing
-		shutdownEvent := LynxEvent{
-			EventType: EventSystemShutdown,
-			Priority:  PriorityHigh,
-			Source:    "event-system",
-			Category:  "system",
-			PluginID:  "system",
-			Status:    "shutdown",
-			Timestamp: time.Now().Unix(),
-			Metadata: map[string]any{
-				"reason": "event_system_close",
-			},
-		}
+		shutdownEvent := NewLynxEvent(EventSystemShutdown, "system", "event-system").
+			WithPriority(PriorityHigh).
+			WithCategory("system").
+			WithStatus("shutdown").
+			WithMetadata("reason", "event_system_close")
 
 		// Publish shutdown event to all buses with timeout
 		shutdownTimeout := time.After(500 * time.Millisecond)

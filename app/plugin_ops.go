@@ -26,7 +26,10 @@ func (m *DefaultPluginManager[T]) LoadPlugins(conf config.Config) error {
 
 	sortedPlugins, err := m.TopologicalSort(preparedPlugins)
 	if err != nil {
-		return fmt.Errorf("failed to sort plugins: %w", err)
+		// Provide detailed error information for debugging
+		return fmt.Errorf("failed to sort plugins (dependency resolution failed): %w. "+
+			"This usually indicates circular dependencies or missing required dependencies. "+
+			"Please check plugin dependency declarations", err)
 	}
 
 	if err := m.loadSortedPluginsByLevel(sortedPlugins); err != nil {
@@ -64,7 +67,20 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 	timeout := m.getStopTimeout()
 
 	var ordered []plugins.Plugin
-	if sorted, err := m.TopologicalSort(m.pluginList); err == nil {
+	sorted, err := m.TopologicalSort(m.pluginList)
+	if err != nil {
+		// Topological sort failed - provide detailed error information
+		log.Errorf("topological sort failed during unload: %v", err)
+		log.Errorf("This may indicate circular dependencies or missing dependencies")
+		log.Errorf("Attempting to unload plugins in reverse order as fallback")
+		// Still try to unload in reverse order, but log the error
+		ordered = make([]plugins.Plugin, len(m.pluginList))
+		copy(ordered, m.pluginList)
+		// Reverse the order
+		for i, j := 0, len(ordered)-1; i < j; i, j = i+1, j-1 {
+			ordered[i], ordered[j] = ordered[j], ordered[i]
+		}
+	} else {
 		tmp := make([]plugins.Plugin, 0, len(sorted))
 		for _, w := range sorted {
 			if w.Plugin != nil {
@@ -74,9 +90,6 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 		for i := len(tmp) - 1; i >= 0; i-- {
 			ordered = append(ordered, tmp[i])
 		}
-	} else {
-		log.Warnf("topological sort failed during unload, fallback to list order: %v", err)
-		ordered = append(ordered, m.pluginList...)
 	}
 
 	for _, plugin := range ordered {
@@ -131,7 +144,10 @@ func (m *DefaultPluginManager[T]) LoadPluginsByName(conf config.Config, pluginNa
 
 	sortedPlugins, err := m.TopologicalSort(targetPlugins)
 	if err != nil {
-		return fmt.Errorf("failed to sort plugins: %w", err)
+		// Provide detailed error information for debugging
+		return fmt.Errorf("failed to sort plugins (dependency resolution failed): %w. "+
+			"This usually indicates circular dependencies or missing required dependencies. "+
+			"Please check plugin dependency declarations", err)
 	}
 
 	if err := m.loadSortedPluginsByLevel(sortedPlugins); err != nil {
@@ -176,7 +192,21 @@ func (m *DefaultPluginManager[T]) UnloadPluginsByName(names []string) {
 	}
 
 	var ordered []plugins.Plugin
-	if sorted, err := m.TopologicalSort(subset); err == nil {
+	sorted, err := m.TopologicalSort(subset)
+	if err != nil {
+		// Topological sort failed - provide detailed error information
+		log.Errorf("topological sort failed for subset unload: %v", err)
+		log.Errorf("This may indicate circular dependencies or missing dependencies")
+		log.Errorf("Attempting to unload plugins in given order as fallback")
+		// Fallback to given order, but log the error
+		for _, n := range names {
+			if obj, ok := m.pluginInstances.Load(n); ok {
+				if p, ok2 := obj.(plugins.Plugin); ok2 && p != nil {
+					ordered = append(ordered, p)
+				}
+			}
+		}
+	} else {
 		tmp := make([]plugins.Plugin, 0, len(sorted))
 		for _, w := range sorted {
 			if w.Plugin != nil {
@@ -185,15 +215,6 @@ func (m *DefaultPluginManager[T]) UnloadPluginsByName(names []string) {
 		}
 		for i := len(tmp) - 1; i >= 0; i-- {
 			ordered = append(ordered, tmp[i])
-		}
-	} else {
-		log.Warnf("topological sort failed for subset unload, fallback to given order: %v", err)
-		for _, n := range names {
-			if obj, ok := m.pluginInstances.Load(n); ok {
-				if p, ok2 := obj.(plugins.Plugin); ok2 && p != nil {
-					ordered = append(ordered, p)
-				}
-			}
 		}
 	}
 

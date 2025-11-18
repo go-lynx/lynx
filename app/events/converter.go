@@ -1,12 +1,35 @@
 package events
 
 import (
+	"time"
+
 	"github.com/go-lynx/lynx/plugins"
 )
 
 // ConvertPluginEvent converts a PluginEvent to LynxEvent
 func ConvertPluginEvent(pluginEvent plugins.PluginEvent) LynxEvent {
+	// Generate EventID if not present in metadata
+	eventID := ""
+	if pluginEvent.Metadata != nil {
+		if id, ok := pluginEvent.Metadata["event_id"].(string); ok && id != "" {
+			eventID = id
+		}
+	}
+	// If no EventID in metadata, generate one
+	if eventID == "" {
+		var t time.Time
+		// Check if timestamp is unset (0 or negative) before calling time.Unix
+		// time.Unix(0, 0) returns epoch time, not zero time, so IsZero() won't work
+		if pluginEvent.Timestamp <= 0 {
+			t = time.Now()
+		} else {
+			t = time.Unix(pluginEvent.Timestamp, 0)
+		}
+		eventID = generateEventID(pluginEvent.PluginID, ConvertEventType(pluginEvent.Type), t)
+	}
+	
 	return LynxEvent{
+		EventID:   eventID,
 		EventType: ConvertEventType(pluginEvent.Type),
 		Priority:  ConvertPriority(pluginEvent.Priority),
 		Source:    pluginEvent.Source,

@@ -1,6 +1,9 @@
 package events
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // EventType represents the type of event in the Lynx system
 type EventType uint32
@@ -111,6 +114,7 @@ const (
 
 // LynxEvent represents a unified event in the Lynx system
 type LynxEvent struct {
+	EventID   string // Unique event ID for deduplication
 	EventType EventType
 	Priority  Priority
 	Source    string
@@ -129,15 +133,23 @@ func (e LynxEvent) Type() uint32 {
 
 // NewLynxEvent creates a new LynxEvent with default values
 func NewLynxEvent(eventType EventType, pluginID, source string) LynxEvent {
+	now := time.Now()
 	return LynxEvent{
+		EventID:   generateEventID(pluginID, eventType, now),
 		EventType: eventType,
 		Priority:  PriorityNormal,
 		Source:    source,
 		Category:  "default",
 		PluginID:  pluginID,
-		Timestamp: time.Now().Unix(),
+		Timestamp: now.Unix(),
 		Metadata:  make(map[string]any),
 	}
+}
+
+// generateEventID generates a unique event ID for deduplication
+// Format: {pluginID}-{eventType}-{timestamp}-{nanosecond}
+func generateEventID(pluginID string, eventType EventType, t time.Time) string {
+	return fmt.Sprintf("%s-%d-%d-%d", pluginID, eventType, t.Unix(), t.Nanosecond())
 }
 
 // WithPriority sets the event priority

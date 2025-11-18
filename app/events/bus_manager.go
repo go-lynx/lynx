@@ -30,7 +30,7 @@ func (manager *EventBusManager) SubscribeWithFilter(busType BusType, filter func
 
 // SubscribeToWithFilter subscribes to a specific event type with a predicate filter
 func (manager *EventBusManager) SubscribeToWithFilter(eventType EventType, filter func(LynxEvent) bool, handler func(LynxEvent)) (context.CancelFunc, error) {
-	dummyEvent := LynxEvent{EventType: eventType}
+	dummyEvent := NewLynxEvent(eventType, "system", "event-bus-manager")
 	busType := manager.classifier.GetBusType(dummyEvent)
 	bus := manager.GetBus(busType)
 	if bus == nil {
@@ -118,7 +118,7 @@ func (manager *EventBusManager) Subscribe(busType BusType, handler func(LynxEven
 // SubscribeTo subscribes to a specific event type on the appropriate bus
 func (manager *EventBusManager) SubscribeTo(eventType EventType, handler func(LynxEvent)) error {
 	// Create a dummy event to determine the bus type
-	dummyEvent := LynxEvent{EventType: eventType}
+	dummyEvent := NewLynxEvent(eventType, "system", "event-bus-manager")
 	busType := manager.classifier.GetBusType(dummyEvent)
 	bus := manager.GetBus(busType)
 
@@ -143,7 +143,7 @@ func (manager *EventBusManager) SubscribeWithCancel(busType BusType, handler fun
 // SubscribeToWithCancel subscribes to a specific event type and returns cancel func
 func (manager *EventBusManager) SubscribeToWithCancel(eventType EventType, handler func(LynxEvent)) (context.CancelFunc, error) {
 	// Create a dummy event to determine the bus type
-	dummyEvent := LynxEvent{EventType: eventType}
+	dummyEvent := NewLynxEvent(eventType, "system", "event-bus-manager")
 	busType := manager.classifier.GetBusType(dummyEvent)
 	bus := manager.GetBus(busType)
 

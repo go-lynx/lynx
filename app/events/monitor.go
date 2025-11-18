@@ -434,45 +434,35 @@ func performHealthCheck() {
 	GetGlobalMonitor().UpdateHealth(health.OverallHealthy)
 
 	// Emit health check event
-	healthEvent := LynxEvent{
-		EventType: EventHealthCheckStarted,
-		Priority:  PriorityNormal,
-		Source:    "event-system",
-		Category:  "health",
-		PluginID:  "system",
-		Status:    "active",
-		Timestamp: time.Now().Unix(),
-		Metadata: map[string]any{
-			"overall_health": health.OverallHealthy,
-			"bus_count":      len(health.BusesHealthy),
-			"healthy_buses":  countHealthyBuses(health.BusesHealthy),
-			"issues":         health.Issues,
-		},
-	}
+	healthEvent := NewLynxEvent(EventHealthCheckStarted, "system", "event-system").
+		WithPriority(PriorityNormal).
+		WithCategory("health").
+		WithStatus("active").
+		WithMetadata("overall_health", health.OverallHealthy).
+		WithMetadata("bus_count", len(health.BusesHealthy)).
+		WithMetadata("healthy_buses", countHealthyBuses(health.BusesHealthy)).
+		WithMetadata("issues", health.Issues)
 
 	// Publish health event
 	PublishEvent(healthEvent)
 
 	// Emit health status event
-	statusEvent := LynxEvent{
-		EventType: EventHealthStatusOK,
-		Priority:  PriorityNormal,
-		Source:    "event-system",
-		Category:  "health",
-		PluginID:  "system",
-		Status:    "active",
-		Timestamp: time.Now().Unix(),
-		Metadata: map[string]any{
-			"health_status": health.OverallHealthy,
-			"last_check":    health.LastCheck,
-		},
-	}
-
+	eventType := EventHealthStatusOK
+	priority := PriorityNormal
+	status := "active"
+	
 	if !health.OverallHealthy {
-		statusEvent.EventType = EventHealthStatusCritical
-		statusEvent.Priority = PriorityHigh
-		statusEvent.Status = "error"
+		eventType = EventHealthStatusCritical
+		priority = PriorityHigh
+		status = "error"
 	}
+	
+	statusEvent := NewLynxEvent(eventType, "system", "event-system").
+		WithPriority(priority).
+		WithCategory("health").
+		WithStatus(status).
+		WithMetadata("health_status", health.OverallHealthy).
+		WithMetadata("last_check", health.LastCheck)
 
 	PublishEvent(statusEvent)
 }

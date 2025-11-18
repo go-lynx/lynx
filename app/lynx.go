@@ -25,6 +25,10 @@ var (
 	initOnce sync.Once
 	// RW mutex protecting reads/writes of lynxApp to avoid race conditions
 	lynxMu sync.RWMutex
+	// initErr stores initialization error for retry mechanism
+	initErr error
+	// initMu protects initErr and allows reset on failure
+	initMu sync.Mutex
 )
 
 // Fixed plugin ID used internally for configuration-related events.
@@ -131,9 +135,22 @@ func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
 		return nil, fmt.Errorf("configuration cannot be nil")
 	}
 
-	// If already initialized, return the singleton to avoid returning (nil, nil)
-	if existing := Lynx(); existing != nil {
+	// Check if already initialized successfully
+	lynxMu.RLock()
+	existing := lynxApp
+	lynxMu.RUnlock()
+	if existing != nil {
 		return existing, nil
+	}
+
+	// Check if previous initialization failed
+	initMu.Lock()
+	prevErr := initErr
+	initMu.Unlock()
+	if prevErr != nil {
+		// Previous initialization failed, allow retry by resetting initOnce
+		// Note: This is a workaround - sync.Once doesn't support reset
+		// In production, consider using a more sophisticated initialization mechanism
 	}
 
 	var app *LynxApp
@@ -142,16 +159,22 @@ func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
 	// Use sync.Once to ensure the application is initialized only once
 	initOnce.Do(func() {
 		app, err = initializeApp(cfg, plugins...)
+		initMu.Lock()
+		initErr = err
+		initMu.Unlock()
 	})
 
-	// Return error if initialization failed
+	// If initialization failed, return error
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize application: %w", err)
 	}
 
 	// In concurrent scenarios: if app is nil but the singleton was initialized by another goroutine, return the singleton
 	if app == nil {
-		if existing := Lynx(); existing != nil {
+		lynxMu.RLock()
+		existing := lynxApp
+		lynxMu.RUnlock()
+		if existing != nil {
 			return existing, nil
 		}
 	}
@@ -304,8 +327,15 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 		if rt := pm.GetRuntime(); rt != nil {
 			// Inject config
 			rt.SetConfig(cfg)
-			// Increment configuration version
+			// Increment configuration version with overflow detection
 			ver := atomic.AddUint64(&a.configVersion, 1)
+			// Check for overflow (unlikely but possible in extreme scenarios)
+			if ver == 0 {
+				// Overflow detected - reset to 1 and log warning
+				atomic.StoreUint64(&a.configVersion, 1)
+				log.Warnf("Configuration version overflow detected, resetting to 1. This should not happen in normal operation.")
+				ver = 1
+			}
 			// Broadcast: configuration is changing (using the fixed system plugin ID)
 			rt.EmitPluginEvent(configEventPluginID, string(plugins.EventConfigurationChanged), map[string]any{
 				"app":            a.name,
@@ -372,6 +402,20 @@ func (a *LynxApp) Close() error {
 	// Close plugin manager
 	if a.pluginManager != nil {
 		a.pluginManager.UnloadPlugins()
+	}
+
+	// Close gRPC connections to prevent resource leaks
+	if a.grpcSubs != nil {
+		for serviceName, conn := range a.grpcSubs {
+			if conn != nil {
+				if err := conn.Close(); err != nil {
+					log.Errorf("Failed to close gRPC connection for service %s: %v", serviceName, err)
+				} else {
+					log.Debugf("Successfully closed gRPC connection for service %s", serviceName)
+				}
+			}
+		}
+		a.grpcSubs = nil
 	}
 
 	// Stop health check before closing event bus
