@@ -368,7 +368,7 @@ func GetEventSystemHealth() *EventSystemHealth {
 var (
 	globalMonitor     *EventMonitor
 	globalMonitorOnce sync.Once
-	
+
 	// Health check state management
 	healthCheckMu      sync.Mutex
 	healthCheckDone    chan struct{}
@@ -403,26 +403,37 @@ func GetGlobalMetrics() map[string]interface{} {
 func StartHealthCheck(interval time.Duration) {
 	healthCheckMu.Lock()
 	defer healthCheckMu.Unlock()
-	
+
 	// If already running, do nothing
 	if healthCheckRunning {
 		return
 	}
-	
+
 	// Create new channel for this health check instance
 	healthCheckDone = make(chan struct{})
 	healthCheckRunning = true
-	
+
+	// Capture the channel reference for this goroutine instance
+	// This prevents old goroutines from overwriting state of new health checks
+	doneChan := healthCheckDone
+
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
 			select {
-			case <-healthCheckDone:
-				// Mark as not running when goroutine exits
+			case <-doneChan:
+				// Only update state if this is still the current health check instance
+				// This prevents old goroutines from overwriting state of newly started health checks
 				healthCheckMu.Lock()
-				healthCheckRunning = false
+				if healthCheckDone == doneChan {
+					// This is still the current instance, safe to update state
+					healthCheckRunning = false
+					healthCheckDone = nil
+				}
+				// If healthCheckDone != doneChan, a new health check has started,
+				// so we should not update the state
 				healthCheckMu.Unlock()
 				return
 			case <-ticker.C:
@@ -437,9 +448,15 @@ func StartHealthCheck(interval time.Duration) {
 func StopHealthCheck() {
 	healthCheckMu.Lock()
 	defer healthCheckMu.Unlock()
-	
+
 	if healthCheckDone != nil && healthCheckRunning {
+		// Close the channel to signal the goroutine to stop
 		close(healthCheckDone)
+
+		// Clear references immediately to allow new health check to start
+		// The goroutine will check if healthCheckDone == doneChan before updating state
+		// Since we've already set healthCheckDone = nil, the goroutine's check will fail
+		// and it won't overwrite the state, preventing race conditions
 		healthCheckDone = nil
 		healthCheckRunning = false
 	}
@@ -469,13 +486,13 @@ func performHealthCheck() {
 	eventType := EventHealthStatusOK
 	priority := PriorityNormal
 	status := "active"
-	
+
 	if !health.OverallHealthy {
 		eventType = EventHealthStatusCritical
 		priority = PriorityHigh
 		status = "error"
 	}
-	
+
 	statusEvent := NewLynxEvent(eventType, "system", "event-system").
 		WithPriority(priority).
 		WithCategory("health").
