@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -26,6 +27,9 @@ type TypedRuntimePlugin struct {
 
 	// Event bus manager for unified event handling (kept for backward compatibility)
 	eventManager *events.EventBusManager
+
+	// mu protects config initialization to prevent race conditions
+	mu sync.RWMutex
 }
 
 // listenerEntry represents a registered event listener with its filter (kept for backward compatibility)
@@ -41,7 +45,7 @@ type listenerEntry struct {
 func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 	runtime := plugins.NewUnifiedRuntime()
 	runtime.SetLogger(log.DefaultLogger)
-	
+
 	r := &TypedRuntimePlugin{
 		runtime:      runtime,
 		eventManager: events.GetGlobalEventBus(),
@@ -84,17 +88,33 @@ func RegisterTypedResource[T any](r *TypedRuntimePlugin, name string, resource T
 
 // GetConfig returns the plugin configuration manager.
 // Provides access to configuration values and updates.
+// Thread-safe: uses double-checked locking to prevent race conditions.
 func (r *TypedRuntimePlugin) GetConfig() config.Config {
+	// First check without lock (fast path)
 	cfg := r.runtime.GetConfig()
-	if cfg == nil {
-		if app := Lynx(); app != nil {
-			if globalCfg := app.GetGlobalConfig(); globalCfg != nil {
-				r.runtime.SetConfig(globalCfg)
-				return globalCfg
-			}
+	if cfg != nil {
+		return cfg
+	}
+
+	// Double-checked locking: acquire write lock for initialization
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Check again after acquiring lock (another goroutine might have set it)
+	cfg = r.runtime.GetConfig()
+	if cfg != nil {
+		return cfg
+	}
+
+	// Initialize from global config if available
+	if app := Lynx(); app != nil {
+		if globalCfg := app.GetGlobalConfig(); globalCfg != nil {
+			r.runtime.SetConfig(globalCfg)
+			return globalCfg
 		}
 	}
-	return cfg
+
+	return nil
 }
 
 // GetLogger returns the plugin logger instance.

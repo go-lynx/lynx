@@ -51,6 +51,7 @@ type HealthChecker struct {
 	lastCheck     time.Time
 	checkInterval time.Duration
 	stopChan      chan struct{}
+	stopOnce      sync.Once // Protect against multiple Stop() calls
 }
 
 // CircuitBreaker provides error handling and recovery
@@ -398,7 +399,9 @@ func (hc *HealthChecker) Run() {
 
 // Stop stops the health checker
 func (hc *HealthChecker) Stop() {
-	close(hc.stopChan)
+	hc.stopOnce.Do(func() {
+		close(hc.stopChan)
+	})
 }
 
 // performHealthCheck performs a health check
