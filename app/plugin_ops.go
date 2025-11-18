@@ -303,8 +303,8 @@ func (m *DefaultPluginManager[T]) ListResources() []*plugins.ResourceInfo {
 	return m.runtime.ListResources()
 }
 
-// ListPluginNames Public helpers for any PluginManager.
-func ListPluginNames(m PluginManager) []string {
+// ListPluginNames Public helpers for any TypedPluginManager.
+func ListPluginNames(m TypedPluginManager) []string {
 	if m == nil {
 		return nil
 	}
@@ -315,7 +315,7 @@ func ListPluginNames(m PluginManager) []string {
 	return nil
 }
 
-func Plugins(m PluginManager) []plugins.Plugin {
+func Plugins(m TypedPluginManager) []plugins.Plugin {
 	if m == nil {
 		return nil
 	}

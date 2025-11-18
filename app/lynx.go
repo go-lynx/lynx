@@ -417,7 +417,7 @@ func GetTypedPlugin[T plugins.Plugin](name string) (T, error) {
 		return zero, fmt.Errorf("typed plugin manager not initialized")
 	}
 
-	// Retrieve via the unified PluginManager and perform a type assertion
+	// Retrieve via the unified TypedPluginManager and perform a type assertion
 	return GetTypedPluginFromManager[T](manager, name)
 }
 

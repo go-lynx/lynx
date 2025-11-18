@@ -12,10 +12,11 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// Compile-time check: ensure DefaultPluginManager implements PluginManager.
-var _ PluginManager = (*DefaultPluginManager[plugins.Plugin])(nil)
+// Compile-time check: ensure DefaultPluginManager implements TypedPluginManager.
+var _ TypedPluginManager = (*DefaultPluginManager[plugins.Plugin])(nil)
 
 // PluginManager defines plugin management interfaces.
+// Note: TypedPluginManager is an alias for PluginManager and should be used in all public APIs.
 type PluginManager interface {
 	// Basic plugin management
 	LoadPlugins(config.Config) error
@@ -72,7 +73,7 @@ func NewPluginManager[T plugins.Plugin](pluginList ...T) *DefaultPluginManager[T
 }
 
 // NewTypedPluginManager creates a plugin manager with plugins.Plugin as T.
-func NewTypedPluginManager(pluginList ...plugins.Plugin) PluginManager {
+func NewTypedPluginManager(pluginList ...plugins.Plugin) TypedPluginManager {
 	return NewPluginManager[plugins.Plugin](pluginList...)
 }
 
@@ -159,8 +160,8 @@ func (m *DefaultPluginManager[T]) listPluginsInternal() []plugins.Plugin {
 	return out
 }
 
-// GetTypedPluginFromManager gets a typed plugin from any PluginManager.
-func GetTypedPluginFromManager[T plugins.Plugin](m PluginManager, name string) (T, error) {
+// GetTypedPluginFromManager gets a typed plugin from any TypedPluginManager.
+func GetTypedPluginFromManager[T plugins.Plugin](m TypedPluginManager, name string) (T, error) {
 	var zero T
 	if m == nil {
 		return zero, fmt.Errorf("plugin manager is nil")
@@ -176,7 +177,7 @@ func GetTypedPluginFromManager[T plugins.Plugin](m PluginManager, name string) (
 }
 
 // MustGetTypedPluginFromManager gets typed plugin or panics.
-func MustGetTypedPluginFromManager[T plugins.Plugin](m PluginManager, name string) T {
+func MustGetTypedPluginFromManager[T plugins.Plugin](m TypedPluginManager, name string) T {
 	p, err := GetTypedPluginFromManager[T](m, name)
 	if err != nil {
 		panic(err)
