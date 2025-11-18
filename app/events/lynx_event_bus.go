@@ -109,17 +109,42 @@ func (b *LynxEventBus) SubscribeToWithFilter(eventType EventType, filter func(Ly
 // Close closes the event bus
 func (b *LynxEventBus) Close() error {
 	if b.isClosed.CompareAndSwap(false, true) {
+		// Close done channel to signal all goroutines to stop
 		close(b.done)
-		b.wg.Wait()
+
+		// Wait for all goroutines to finish with timeout
+		done := make(chan struct{})
+		go func() {
+			b.wg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			// All goroutines finished successfully
+		case <-time.After(10 * time.Second):
+			// Timeout: log warning but continue with cleanup
+			if b.logger != nil {
+				log.NewHelper(b.logger).Warnf("event bus close timeout: some goroutines may still be running")
+			}
+		}
+
+		// Release worker pool
 		if b.workerPool != nil {
 			b.workerPool.Release()
 		}
+
 		// Clear processed events map
 		b.processedEvents.Range(func(key, value interface{}) bool {
 			b.processedEvents.Delete(key)
 			return true
 		})
-		return b.dispatcher.Close()
+
+		// Close dispatcher
+		if b.dispatcher != nil {
+			return b.dispatcher.Close()
+		}
+		return nil
 	}
 	return nil
 }
@@ -794,35 +819,102 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 	case b.queue <- event:
 		GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
 	default:
-		// queue full
+		// queue full - apply backpressure strategy
 		switch b.config.DropPolicy {
 		case DropBlock:
 			timeout := b.config.EnqueueBlockTimeout
 			if timeout <= 0 {
 				timeout = 5 * time.Millisecond
 			}
+			// For critical events, use longer timeout
+			if event.Priority == PriorityCritical {
+				timeout = timeout * 2
+			}
+
+			// Use context for better cancellation support
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+
 			select {
 			case b.queue <- event:
 				GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
-			case <-time.After(timeout):
-				b.handleEnqueueOverflow(event, "block_timeout")
+			case <-ctx.Done():
+				// Timeout reached - check if we should still try to enqueue critical events
+				if event.Priority == PriorityCritical {
+					// For critical events, try one more time with non-blocking attempt
+					select {
+					case b.queue <- event:
+						GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+					default:
+						b.handleEnqueueOverflow(event, "block_timeout_critical")
+					}
+				} else {
+					b.handleEnqueueOverflow(event, "block_timeout")
+				}
 			}
 		case DropOldest:
 			// Drop one oldest item to make room, then enqueue
+			// Use non-blocking select to avoid deadlock
+			dropped := false
 			select {
 			case <-b.queue:
-				// space made
+				dropped = true
 			default:
-				// extremely rare if consumer raced, fallback
+				// Queue might have been consumed, try direct enqueue
 			}
+
+			// Try to enqueue with timeout
+			enqueueCtx, enqueueCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+			defer enqueueCancel()
+
 			select {
 			case b.queue <- event:
 				GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
-			default:
+				if dropped && b.logger != nil {
+					log.NewHelper(b.logger).Debugf("dropped oldest event to make room for new event")
+				}
+			case <-enqueueCtx.Done():
+				// Still full after dropping, handle overflow
 				b.handleEnqueueOverflow(event, "drop_oldest_failed")
 			}
 		default: // DropNewest (or unset)
-			b.handleEnqueueOverflow(event, "drop_newest")
+			// For critical events, try to force enqueue by dropping non-critical
+			if event.Priority == PriorityCritical {
+				// Try to drop a non-critical event
+				dropped := false
+			dropLoop:
+				for i := 0; i < 3 && !dropped; i++ {
+					select {
+					case oldEvent := <-b.queue:
+						if oldEvent.Priority != PriorityCritical {
+							dropped = true
+							if b.logger != nil {
+								log.NewHelper(b.logger).Debugf("dropped non-critical event to make room for critical event")
+							}
+							break dropLoop
+						} else {
+							// Put it back, try another
+							select {
+							case b.queue <- oldEvent:
+							default:
+								// Queue full, can't put back
+							}
+						}
+					default:
+						break dropLoop
+					}
+				}
+
+				// Try to enqueue critical event
+				select {
+				case b.queue <- event:
+					GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+				default:
+					b.handleEnqueueOverflow(event, "drop_newest_critical_failed")
+				}
+			} else {
+				b.handleEnqueueOverflow(event, "drop_newest")
+			}
 		}
 	}
 }

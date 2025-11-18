@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
@@ -28,6 +29,7 @@ type DBMssqlClient struct {
 	*base.SQLPlugin
 	config            *conf.Mssql
 	closeChan         chan struct{}
+	closeOnce         sync.Once // Protect against multiple close operations
 	closed            bool
 	prometheusMetrics *PrometheusMetrics
 }
@@ -140,8 +142,10 @@ func (m *DBMssqlClient) StartupTasks() error {
 func (m *DBMssqlClient) CleanupTasks() error {
 	log.Infof("shutting down Microsoft SQL Server client plugin")
 
-	// Signal background tasks to stop
-	close(m.closeChan)
+	// Signal background tasks to stop (protected against multiple calls)
+	m.closeOnce.Do(func() {
+		close(m.closeChan)
+	})
 	m.closed = true
 
 	// Cleanup SQL plugin

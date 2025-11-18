@@ -42,10 +42,11 @@ type PlugApollo struct {
 	circuitBreaker *CircuitBreaker
 
 	// State management - using atomic operations to improve concurrency safety
-	mu            sync.RWMutex
-	initialized   int32 // Use int32 instead of bool to support atomic operations
-	destroyed     int32 // Use int32 instead of bool to support atomic operations
-	healthCheckCh chan struct{}
+	mu                  sync.RWMutex
+	initialized         int32 // Use int32 instead of bool to support atomic operations
+	destroyed           int32 // Use int32 instead of bool to support atomic operations
+	healthCheckCh       chan struct{}
+	healthCheckCloseOnce sync.Once // Protect against multiple close operations
 
 	// Configuration watchers
 	configWatchers map[string]*ConfigWatcher

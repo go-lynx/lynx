@@ -19,12 +19,13 @@ type HealthChecker struct {
 	target      HealthCheckable
 	interval    time.Duration
 	customQuery string
-	
+
 	mu        sync.Mutex
 	lastCheck time.Time
 	isHealthy bool
-	
+
 	stopChan chan struct{}
+	stopOnce sync.Once // Protect against multiple close operations
 	stopped  bool
 }
 
@@ -47,11 +48,16 @@ func (h *HealthChecker) Start(ctx context.Context) {
 // Stop stops the health checker
 func (h *HealthChecker) Stop() {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	
-	if !h.stopped {
-		close(h.stopChan)
-		h.stopped = true
+	stopped := h.stopped
+	h.mu.Unlock()
+
+	if !stopped {
+		h.stopOnce.Do(func() {
+			close(h.stopChan)
+			h.mu.Lock()
+			h.stopped = true
+			h.mu.Unlock()
+		})
 	}
 }
 
@@ -66,7 +72,7 @@ func (h *HealthChecker) IsHealthy() bool {
 func (h *HealthChecker) run(ctx context.Context) {
 	ticker := time.NewTicker(h.interval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ticker.C:
@@ -82,12 +88,12 @@ func (h *HealthChecker) run(ctx context.Context) {
 // performHealthCheck performs a single health check
 func (h *HealthChecker) performHealthCheck(ctx context.Context) {
 	err := h.target.CheckHealth()
-	
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	h.lastCheck = time.Now()
-	
+
 	if err != nil {
 		if h.isHealthy {
 			log.Errorf("Health check failed for %s: %v", h.target.Name(), err)

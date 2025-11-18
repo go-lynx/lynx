@@ -173,26 +173,117 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 		close(errCh)
 		if len(errCh) > 0 {
 			var firstErr error
+			var allErrors []error
 			for e := range errCh {
 				if firstErr == nil {
 					firstErr = e
 				}
+				allErrors = append(allErrors, e)
 				log.Errorf("plugin start error: %v", e)
 			}
+
+			// Enhanced rollback with detailed tracking
+			log.Errorf("Starting rollback for %d started plugins due to %d errors", len(started), len(allErrors))
+			rollbackStart := time.Now()
 			timeout := m.getStopTimeout()
+			
+			type rollbackResult struct {
+				pluginName string
+				stopErr    error
+				cleanupErr error
+				success    bool
+			}
+			var rollbackResults []rollbackResult
+			var rollbackMu sync.Mutex
+
+			// Rollback in reverse order (LIFO) to respect dependencies
 			for i := len(started) - 1; i >= 0; i-- {
 				p := started[i]
 				if p == nil {
 					continue
 				}
+
+				result := rollbackResult{
+					pluginName: p.Name(),
+					success:    true,
+				}
+
+				// Stop plugin with timeout
+				stopStart := time.Now()
 				if err := m.safeStopPlugin(p, timeout); err != nil {
-					log.Warnf("rollback stop failed for plugin %s: %v", p.Name(), err)
+					result.stopErr = err
+					result.success = false
+					log.Errorf("rollback stop failed for plugin %s (%s): %v (took %v)", 
+						p.Name(), p.ID(), err, time.Since(stopStart))
+				} else {
+					log.Infof("rollback stop succeeded for plugin %s (%s) (took %v)", 
+						p.Name(), p.ID(), time.Since(stopStart))
 				}
-				if err := m.runtime.CleanupResources(p.ID()); err != nil {
-					log.Warnf("rollback cleanup failed for plugin %s: %v", p.Name(), err)
+
+				// Cleanup resources with timeout
+				cleanupStart := time.Now()
+				cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), timeout)
+				cleanupDone := make(chan error, 1)
+				go func() {
+					cleanupDone <- m.runtime.CleanupResources(p.ID())
+				}()
+				select {
+				case err := <-cleanupDone:
+					if err != nil {
+						result.cleanupErr = err
+						result.success = false
+						log.Errorf("rollback cleanup failed for plugin %s (%s): %v (took %v)", 
+							p.Name(), p.ID(), err, time.Since(cleanupStart))
+					} else {
+						log.Infof("rollback cleanup succeeded for plugin %s (%s) (took %v)", 
+							p.Name(), p.ID(), time.Since(cleanupStart))
+					}
+				case <-cleanupCtx.Done():
+					result.cleanupErr = cleanupCtx.Err()
+					result.success = false
+					log.Errorf("rollback cleanup timeout for plugin %s (%s) after %v", 
+						p.Name(), p.ID(), timeout)
 				}
+				cleanupCancel()
+
+				// Remove from plugin instances
 				m.pluginInstances.Delete(p.Name())
+
+				rollbackMu.Lock()
+				rollbackResults = append(rollbackResults, result)
+				rollbackMu.Unlock()
 			}
+
+			// Log rollback summary
+			rollbackDuration := time.Since(rollbackStart)
+			successCount := 0
+			for _, r := range rollbackResults {
+				if r.success && r.stopErr == nil && r.cleanupErr == nil {
+					successCount++
+				}
+			}
+
+			log.Errorf("Rollback completed: total=%d, successful=%d, failed=%d, duration=%v",
+				len(rollbackResults), successCount, len(rollbackResults)-successCount, rollbackDuration)
+
+			// Emit rollback event with detailed statistics
+			if rt := m.runtime; rt != nil {
+				rt.EmitPluginEvent("plugin-manager", "rollback.completed", map[string]any{
+					"total_plugins":     len(rollbackResults),
+					"successful":        successCount,
+					"failed":            len(rollbackResults) - successCount,
+					"duration_ms":       rollbackDuration.Milliseconds(),
+					"initial_errors":    len(allErrors),
+					"rollback_results":  rollbackResults,
+				})
+			}
+
+			// If rollback had failures, return combined error
+			if successCount < len(rollbackResults) {
+				return fmt.Errorf("plugin startup failed with %d errors, rollback had %d failures: %w",
+					len(allErrors), len(rollbackResults)-successCount, firstErr)
+			}
+
 			return firstErr
 		}
 	}

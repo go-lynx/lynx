@@ -8,11 +8,22 @@ import (
 )
 
 // stopHealthCheck stops health check
+// Uses sync.Once to ensure the channel is closed only once, preventing panic
 func (p *PlugApollo) stopHealthCheck() {
-	if p.healthCheckCh != nil {
-		log.Infof("Stopping health check")
-		close(p.healthCheckCh)
-		p.healthCheckCh = nil
+	p.mu.Lock()
+	ch := p.healthCheckCh
+	p.mu.Unlock()
+	
+	if ch != nil {
+		// Use sync.Once to ensure close() is only called once
+		// This prevents panic if stopHealthCheck() is called multiple times
+		p.healthCheckCloseOnce.Do(func() {
+			close(ch)
+			p.mu.Lock()
+			p.healthCheckCh = nil
+			p.mu.Unlock()
+			log.Infof("Stopping health check")
+		})
 	}
 }
 
