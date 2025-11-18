@@ -368,8 +368,11 @@ func GetEventSystemHealth() *EventSystemHealth {
 var (
 	globalMonitor     *EventMonitor
 	globalMonitorOnce sync.Once
-	healthCheckDone   chan struct{}
-	healthCheckOnce   sync.Once
+	
+	// Health check state management
+	healthCheckMu      sync.Mutex
+	healthCheckDone    chan struct{}
+	healthCheckRunning bool
 )
 
 // GetGlobalMonitor returns the global event monitor
@@ -395,34 +398,50 @@ func GetGlobalMetrics() map[string]interface{} {
 	return GetGlobalMonitor().GetMetrics()
 }
 
-// StartHealthCheck starts periodic health checks for the event system
+// StartHealthCheck starts periodic health checks for the event system.
+// Can be called multiple times to restart the health check after it has been stopped.
 func StartHealthCheck(interval time.Duration) {
-	healthCheckOnce.Do(func() {
-		healthCheckDone = make(chan struct{})
-		go func() {
-			ticker := time.NewTicker(interval)
-			defer ticker.Stop()
+	healthCheckMu.Lock()
+	defer healthCheckMu.Unlock()
+	
+	// If already running, do nothing
+	if healthCheckRunning {
+		return
+	}
+	
+	// Create new channel for this health check instance
+	healthCheckDone = make(chan struct{})
+	healthCheckRunning = true
+	
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
 
-			for {
-				select {
-				case <-healthCheckDone:
-					return
-				case <-ticker.C:
-					performHealthCheck()
-				}
+		for {
+			select {
+			case <-healthCheckDone:
+				// Mark as not running when goroutine exits
+				healthCheckMu.Lock()
+				healthCheckRunning = false
+				healthCheckMu.Unlock()
+				return
+			case <-ticker.C:
+				performHealthCheck()
 			}
-		}()
-	})
+		}
+	}()
 }
 
-// StopHealthCheck stops the health check goroutine
+// StopHealthCheck stops the health check goroutine.
+// Can be called multiple times safely.
 func StopHealthCheck() {
-	healthCheckOnce.Do(func() {
-		// If not started, do nothing
-	})
-	if healthCheckDone != nil {
+	healthCheckMu.Lock()
+	defer healthCheckMu.Unlock()
+	
+	if healthCheckDone != nil && healthCheckRunning {
 		close(healthCheckDone)
 		healthCheckDone = nil
+		healthCheckRunning = false
 	}
 }
 

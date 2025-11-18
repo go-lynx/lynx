@@ -53,7 +53,7 @@ func NewPluginManager[T plugins.Plugin](pluginList ...T) *DefaultPluginManager[T
 	manager := &DefaultPluginManager[T]{
 		pluginList: make([]plugins.Plugin, 0),
 		factory:    factory.GlobalTypedFactory(),
-		runtime:    plugins.NewSimpleRuntime(),
+		runtime:    plugins.NewUnifiedRuntime(),
 	}
 
 	// register initial plugins

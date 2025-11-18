@@ -36,21 +36,27 @@ func (m *DefaultPluginManager[T]) LoadPlugins(conf config.Config) error {
 		return err
 	}
 
-	if Lynx() != nil && Lynx().bootConfig != nil && Lynx().bootConfig.Lynx != nil && Lynx().bootConfig.Lynx.Subscriptions != nil {
-		disc := Lynx().GetControlPlane().NewServiceDiscovery()
-		if disc != nil {
-			routerFactory := func(service string) selector.NodeFilter {
-				return Lynx().GetControlPlane().NewNodeRouter(service)
+		if Lynx() != nil && Lynx().bootConfig != nil && Lynx().bootConfig.Lynx != nil && Lynx().bootConfig.Lynx.Subscriptions != nil {
+			disc := Lynx().GetControlPlane().NewServiceDiscovery()
+			if disc != nil {
+				routerFactory := func(service string) selector.NodeFilter {
+					return Lynx().GetControlPlane().NewNodeRouter(service)
+				}
+				conns, err := subscribe.BuildGrpcSubscriptions(Lynx().bootConfig.Lynx.Subscriptions, disc, routerFactory)
+				if err != nil {
+					return fmt.Errorf("build grpc subscriptions failed: %w", err)
+				}
+				// Use mutex to protect grpcSubs map
+				app := Lynx()
+				if app != nil {
+					app.grpcSubsMu.Lock()
+					app.grpcSubs = conns
+					app.grpcSubsMu.Unlock()
+				}
+			} else {
+				log.Warnf("service discovery is nil, skip building grpc subscriptions")
 			}
-			conns, err := subscribe.BuildGrpcSubscriptions(Lynx().bootConfig.Lynx.Subscriptions, disc, routerFactory)
-			if err != nil {
-				return fmt.Errorf("build grpc subscriptions failed: %w", err)
-			}
-			Lynx().grpcSubs = conns
-		} else {
-			log.Warnf("service discovery is nil, skip building grpc subscriptions")
 		}
-	}
 
 	return nil
 }

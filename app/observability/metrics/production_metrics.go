@@ -104,6 +104,7 @@ type ProductionMetrics struct {
 	lastUpdate     time.Time
 	updateInterval time.Duration
 	stopChan       chan struct{}
+	stopOnce       sync.Once // Protect against multiple Stop() calls
 }
 
 // NewProductionMetrics creates a new production metrics instance
@@ -437,7 +438,9 @@ func (pm *ProductionMetrics) Start() {
 
 // Stop stops the metrics collection
 func (pm *ProductionMetrics) Stop() {
-	close(pm.stopChan)
+	pm.stopOnce.Do(func() {
+		close(pm.stopChan)
+	})
 }
 
 // collectMetrics periodically collects and updates metrics

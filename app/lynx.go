@@ -74,17 +74,16 @@ type LynxApp struct {
 	controlPlane ControlPlane
 
 	// pluginManager handles plugin lifecycle and dependencies.
-	// Responsible for loading, unloading, and coordinating plugins.
+	// Provides type-safe plugin management with generic support.
 	pluginManager TypedPluginManager
 
-	// typedPluginManager handles typed plugin lifecycle and dependencies.
-	// Provides type-safe plugin management with generic support.
-	typedPluginManager TypedPluginManager
-
 	// grpcSubs stores upstream gRPC connections subscribed via configuration; key is the service name
-	grpcSubs map[string]*grpc.ClientConn
+	// Protected by grpcSubsMu for concurrent access
+	grpcSubsMu sync.RWMutex
+	grpcSubs   map[string]*grpc.ClientConn
 
 	// Configuration version (monotonically increasing) used for event ordering and idempotent handling
+	// Uses atomic operations for thread-safe access
 	configVersion uint64
 }
 
@@ -350,15 +349,14 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 	// Create new application instance
 	typedMgr := NewTypedPluginManager(plugins...)
 	app := &LynxApp{
-		host:               host,
-		name:               bConf.Lynx.Application.Name,
-		version:            bConf.Lynx.Application.Version,
-		bootConfig:         &bConf,
-		globalConf:         cfg,
-		pluginManager:      typedMgr,
-		typedPluginManager: typedMgr,
-		controlPlane:       &DefaultControlPlane{},
-		grpcSubs:           make(map[string]*grpc.ClientConn),
+		host:         host,
+		name:         bConf.Lynx.Application.Name,
+		version:      bConf.Lynx.Application.Version,
+		bootConfig:   &bConf,
+		globalConf:   cfg,
+		pluginManager: typedMgr,
+		controlPlane: &DefaultControlPlane{},
+		grpcSubs:     make(map[string]*grpc.ClientConn),
 	}
 
 	// Validate required fields
@@ -392,11 +390,9 @@ func (a *LynxApp) GetPluginManager() TypedPluginManager {
 
 // GetTypedPluginManager returns the typed plugin manager instance.
 // Returns nil if the application is not initialized.
+// This is an alias for GetPluginManager() for backward compatibility.
 func (a *LynxApp) GetTypedPluginManager() TypedPluginManager {
-	if a == nil {
-		return nil
-	}
-	return a.typedPluginManager
+	return a.GetPluginManager()
 }
 
 // GetGlobalConfig returns the global configuration instance.
@@ -534,17 +530,23 @@ func (a *LynxApp) Close() error {
 	}
 
 	// Close gRPC connections to prevent resource leaks
-	if a.grpcSubs != nil {
-		for serviceName, conn := range a.grpcSubs {
-			if conn != nil {
-				if err := conn.Close(); err != nil {
-					log.Errorf("Failed to close gRPC connection for service %s: %v", serviceName, err)
-				} else {
-					log.Debugf("Successfully closed gRPC connection for service %s", serviceName)
-				}
+	a.grpcSubsMu.Lock()
+	grpcSubsCopy := make(map[string]*grpc.ClientConn)
+	for k, v := range a.grpcSubs {
+		grpcSubsCopy[k] = v
+	}
+	a.grpcSubs = nil
+	a.grpcSubsMu.Unlock()
+
+	// Close connections outside the lock to avoid holding lock during I/O
+	for serviceName, conn := range grpcSubsCopy {
+		if conn != nil {
+			if err := conn.Close(); err != nil {
+				log.Errorf("Failed to close gRPC connection for service %s: %v", serviceName, err)
+			} else {
+				log.Debugf("Successfully closed gRPC connection for service %s", serviceName)
 			}
 		}
-		a.grpcSubs = nil
 	}
 
 	// Stop health check before closing event bus
