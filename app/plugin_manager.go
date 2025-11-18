@@ -110,10 +110,28 @@ func containsName(slice []string, name string) bool {
 }
 
 // listPluginNamesInternal returns current plugin names (sorted).
+// Optimized to use pluginList when available to avoid duplicate traversal
 func (m *DefaultPluginManager[T]) listPluginNamesInternal() []string {
 	if m == nil {
 		return nil
 	}
+
+	// Use pluginList if available to avoid traversing sync.Map
+	m.mu.RLock()
+	if len(m.pluginList) > 0 {
+		names := make([]string, 0, len(m.pluginList))
+		for _, p := range m.pluginList {
+			if p != nil {
+				names = append(names, p.Name())
+			}
+		}
+		m.mu.RUnlock()
+		sort.Strings(names)
+		return names
+	}
+	m.mu.RUnlock()
+
+	// Fallback to sync.Map traversal if pluginList is empty
 	names := make([]string, 0)
 	m.pluginInstances.Range(func(key, value any) bool {
 		if name, ok := key.(string); ok {

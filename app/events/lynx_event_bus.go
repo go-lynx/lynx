@@ -114,9 +114,38 @@ func (b *LynxEventBus) Close() error {
 		if b.workerPool != nil {
 			b.workerPool.Release()
 		}
+		// Clear processed events map
+		b.processedEvents.Range(func(key, value interface{}) bool {
+			b.processedEvents.Delete(key)
+			return true
+		})
 		return b.dispatcher.Close()
 	}
 	return nil
+}
+
+// cleanupProcessedEvents periodically cleans up old entries from processed events map
+func (b *LynxEventBus) cleanupProcessedEvents() {
+	defer b.wg.Done()
+	ticker := time.NewTicker(b.dedupWindow)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-ticker.C:
+			now := time.Now()
+			b.processedEvents.Range(func(key, value interface{}) bool {
+				if lastTime, ok := value.(time.Time); ok {
+					if now.Sub(lastTime) > b.dedupWindow {
+						b.processedEvents.Delete(key)
+					}
+				}
+				return true
+			})
+		}
+	}
 }
 
 // IsClosed returns whether the bus is closed
@@ -182,7 +211,12 @@ func (b *LynxEventBus) Pause() {
 		b.paused.Store(true)
 		b.pauseCount.Add(1)
 		// Emit pause event (best effort)
-		pauseEvent := LynxEvent{EventType: EventSystemError, Priority: PriorityHigh, Source: "event-bus", Category: "system", PluginID: "system", Status: "paused", Timestamp: time.Now().Unix(), Metadata: map[string]any{"bus_type": b.busType, "reason": "manual_pause"}}
+		pauseEvent := NewLynxEvent(EventSystemError, "system", "event-bus").
+			WithPriority(PriorityHigh).
+			WithCategory("system").
+			WithStatus("paused").
+			WithMetadata("bus_type", b.busType).
+			WithMetadata("reason", "manual_pause")
 		if manager := GetGlobalEventBus(); manager != nil {
 			_ = manager.PublishEvent(pauseEvent)
 		}
@@ -196,7 +230,13 @@ func (b *LynxEventBus) Resume() {
 	if b.paused.Load() {
 		b.pauseDuration += time.Since(b.pauseStartTime)
 		b.paused.Store(false)
-		resumeEvent := LynxEvent{EventType: EventSystemError, Priority: PriorityNormal, Source: "event-bus", Category: "system", PluginID: "system", Status: "resumed", Timestamp: time.Now().Unix(), Metadata: map[string]any{"bus_type": b.busType, "pause_duration": b.pauseDuration.String(), "reason": "manual_resume"}}
+		resumeEvent := NewLynxEvent(EventSystemError, "system", "event-bus").
+			WithPriority(PriorityNormal).
+			WithCategory("system").
+			WithStatus("resumed").
+			WithMetadata("bus_type", b.busType).
+			WithMetadata("pause_duration", b.pauseDuration.String()).
+			WithMetadata("reason", "manual_resume")
 		if manager := GetGlobalEventBus(); manager != nil {
 			_ = manager.PublishEvent(resumeEvent)
 		}
@@ -602,6 +642,8 @@ type LynxEventBus struct {
 	// Degradation tracking
 	isDegraded           atomic.Bool
 	degradationStartTime time.Time
+	// Performance optimization: sample degradation checks instead of checking every event
+	lastDegradationCheck atomic.Int64 // Unix timestamp in nanoseconds
 
 	// Throttling for degradation mode
 	throttler *SimpleThrottler
@@ -615,6 +657,10 @@ type LynxEventBus struct {
 	// Memory optimization
 	bufferPool   *EventBufferPool
 	metadataPool *MetadataPool
+
+	// Event deduplication
+	processedEvents sync.Map // map[string]time.Time - eventID -> processing timestamp
+	dedupWindow     time.Duration
 }
 
 // NewLynxEventBus creates a new LynxEventBus with the given configuration
@@ -671,9 +717,16 @@ func NewLynxEventBus(config BusConfig, busType BusType) *LynxEventBus {
 	bus.bufferPool = GetGlobalEventBufferPool()
 	bus.metadataPool = GetGlobalMetadataPool()
 
+	// Initialize deduplication (default: 5 minutes window)
+	bus.dedupWindow = 5 * time.Minute
+
 	// Start worker to drain queue and publish to dispatcher
 	bus.wg.Add(1)
 	go bus.run()
+
+	// Start cleanup goroutine for processed events map
+	bus.wg.Add(1)
+	go bus.cleanupProcessedEvents()
 
 	return bus
 }
@@ -705,20 +758,27 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 		return
 	}
 
-	// Update metrics
+	// Update metrics (use atomic operations where possible to reduce lock contention)
 	if b.metrics != nil {
 		b.metrics.IncrementPublished()
 	}
-	// Update global monitor (bucketed by priority)
+	// Update global monitor (bucketed by priority) - uses atomic operations internally
 	GetGlobalMonitor().IncrementPublishedByPriority(event.Priority)
 
-	// Add to history if enabled
+	// Add to history if enabled (non-blocking, uses internal locks)
 	if b.history != nil {
 		b.history.Add(event)
 	}
 
-	// Check degradation before publishing
-	b.checkDegradation()
+	// Check degradation before publishing (sampled to reduce overhead)
+	// Only check every 100ms or when queue is getting full
+	now := time.Now().UnixNano()
+	lastCheck := b.lastDegradationCheck.Load()
+	if now-lastCheck > 100*int64(time.Millisecond) || b.totalQueueSize()*100/b.totalQueueCap() > 50 {
+		if b.lastDegradationCheck.CompareAndSwap(lastCheck, now) {
+			b.checkDegradation()
+		}
+	}
 
 	// Reserve headroom for critical events (if configured)
 	if b.config.ReserveForCritical > 0 && event.Priority != PriorityCritical {
@@ -770,9 +830,19 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 // UpdateConfig applies a subset of configuration at runtime (non-destructive)
 // Supports MaxRetries, HistorySize (when history enabled), WorkerCount, MaxConcurrentRetries,
 // Degradation hysteresis, Throttling settings, Drop policy and critical reserve
+// Uses atomic configuration update to prevent inconsistent states
 func (b *LynxEventBus) UpdateConfig(cfg BusConfig) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	// Create a snapshot of current config for rollback if needed
+	oldConfig := b.config
+	var rollbackNeeded bool
+	defer func() {
+		if rollbackNeeded {
+			b.config = oldConfig
+		}
+	}()
 
 	// MaxRetries can be changed directly
 	b.config.MaxRetries = cfg.MaxRetries
@@ -783,10 +853,20 @@ func (b *LynxEventBus) UpdateConfig(cfg BusConfig) {
 	// WorkerCount can be tuned dynamically if pool exists
 	if b.workerPool != nil && cfg.WorkerCount > 0 && cfg.WorkerCount != b.config.WorkerCount {
 		// ants v2 supports Tune to resize pool at runtime
-		b.workerPool.Tune(cfg.WorkerCount)
-		b.config.WorkerCount = cfg.WorkerCount
+		// Tune doesn't return error, but we validate the size is reasonable
+		if cfg.WorkerCount > 0 && cfg.WorkerCount <= 10000 {
+			b.workerPool.Tune(cfg.WorkerCount)
+			b.config.WorkerCount = cfg.WorkerCount
+		} else {
+			rollbackNeeded = true
+			if b.logger != nil {
+				log.NewHelper(b.logger).Errorf("Invalid worker pool size: %d (must be 1-10000)", cfg.WorkerCount)
+			}
+			return
+		}
 	}
 	// History size can be changed by recreating history buffer
+	// Preserve existing events when possible
 	if b.config.EnableHistory {
 		size := cfg.HistorySize
 		if size <= 0 {
@@ -796,7 +876,23 @@ func (b *LynxEventBus) UpdateConfig(cfg BusConfig) {
 			size = 1000
 		}
 		if size != b.config.HistorySize {
-			b.history = NewEventHistory(size)
+			// Preserve existing events if possible
+			var existingEvents []LynxEvent
+			if b.history != nil {
+				existingEvents = b.history.GetEvents()
+			}
+			newHistory := NewEventHistory(size)
+			// Restore events up to new size limit
+			if len(existingEvents) > 0 {
+				startIdx := 0
+				if len(existingEvents) > size {
+					startIdx = len(existingEvents) - size
+				}
+				for i := startIdx; i < len(existingEvents); i++ {
+					newHistory.Add(existingEvents[i])
+				}
+			}
+			b.history = newHistory
 			b.config.HistorySize = size
 		}
 	}
@@ -876,6 +972,24 @@ func (b *LynxEventBus) handleEnqueueOverflow(event LynxEvent, reason string) {
 
 // handleWithRetry executes the handler with panic recovery and schedules retries asynchronously
 func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), attempt int) {
+	// Check for duplicate events (deduplication)
+	// Only check deduplication for first attempt to allow retries
+	shouldCheckDedup := attempt == 0 && ev.EventID != ""
+	if shouldCheckDedup {
+		now := time.Now()
+		if lastProcessed, ok := b.processedEvents.Load(ev.EventID); ok {
+			if lastTime, ok := lastProcessed.(time.Time); ok {
+				if now.Sub(lastTime) < b.dedupWindow {
+					// Event was recently processed, skip to prevent duplicate handling
+					if b.logger != nil {
+						log.NewHelper(b.logger).Debugf("duplicate event detected and skipped: eventID=%s, lastProcessed=%v", ev.EventID, lastTime)
+					}
+					return
+				}
+			}
+		}
+	}
+
 	start := time.Now()
 	panicked := false
 	func() {
@@ -886,6 +1000,12 @@ func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), at
 		}()
 		handler(ev)
 	}()
+
+	// Only mark as processed if handler executed successfully (no panic)
+	// This allows retries to proceed even if the event was previously marked
+	if !panicked && ev.EventID != "" {
+		b.processedEvents.Store(ev.EventID, time.Now())
+	}
 
 	duration := time.Since(start)
 	if panicked {
