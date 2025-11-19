@@ -28,7 +28,9 @@ type TypedRuntimePlugin struct {
 	// Event bus manager for unified event handling (kept for backward compatibility)
 	eventManager *events.EventBusManager
 
-	// mu protects config initialization to prevent race conditions
+	// configInit ensures config initialization happens only once
+	configInit sync.Once
+	// mu protects config initialization to prevent race conditions (kept for backward compatibility)
 	mu sync.RWMutex
 }
 
@@ -88,33 +90,29 @@ func RegisterTypedResource[T any](r *TypedRuntimePlugin, name string, resource T
 
 // GetConfig returns the plugin configuration manager.
 // Provides access to configuration values and updates.
-// Thread-safe: uses double-checked locking to prevent race conditions.
+// Thread-safe: uses sync.Once to ensure initialization happens only once.
+// Fixed: Replaced double-checked locking with sync.Once for better thread safety.
 func (r *TypedRuntimePlugin) GetConfig() config.Config {
-	// First check without lock (fast path)
+	// Fast path: check if config is already set
 	cfg := r.runtime.GetConfig()
 	if cfg != nil {
 		return cfg
 	}
 
-	// Double-checked locking: acquire write lock for initialization
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// Check again after acquiring lock (another goroutine might have set it)
-	cfg = r.runtime.GetConfig()
-	if cfg != nil {
-		return cfg
-	}
-
-	// Initialize from global config if available
-	if app := Lynx(); app != nil {
-		if globalCfg := app.GetGlobalConfig(); globalCfg != nil {
-			r.runtime.SetConfig(globalCfg)
-			return globalCfg
+	// Use sync.Once to ensure initialization happens only once, even under high concurrency
+	r.configInit.Do(func() {
+		// Initialize from global config if available
+		if app := Lynx(); app != nil {
+			if globalCfg := app.GetGlobalConfig(); globalCfg != nil {
+				r.runtime.SetConfig(globalCfg)
+			}
 		}
-	}
+		// If no global config available, runtime config remains nil
+	})
 
-	return nil
+	// After initialization, get the config (which may have been set by sync.Once)
+	cfg = r.runtime.GetConfig()
+	return cfg
 }
 
 // GetLogger returns the plugin logger instance.
