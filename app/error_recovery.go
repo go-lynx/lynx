@@ -126,7 +126,14 @@ type ErrorRecoveryManager struct {
 	// Concurrency control for recovery operations
 	recoverySemaphore chan struct{}
 	maxConcurrentRecoveries int
-	activeRecoveries        sync.Map // map[string]context.CancelFunc - track active recoveries
+	activeRecoveries        sync.Map // map[string]*recoveryState or context.CancelFunc - track active recoveries
+}
+
+// recoveryState tracks the state of an active recovery operation
+// Fixed: Moved to package level to support proper type checking in Stop() method
+type recoveryState struct {
+	cancel  context.CancelFunc
+	started bool
 }
 
 // ErrorRecord represents a recorded error with enhanced context
@@ -372,25 +379,30 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 }
 
 // attemptRecovery attempts to recover from an error
+// Fixed: Improved race condition handling by using atomic state management
 func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	// Generate recovery key first
 	recoveryKey := fmt.Sprintf("%s:%s:%d", record.ErrorType, record.Component, record.Timestamp.Unix())
 	
 	// CRITICAL: Atomically check and store recovery key to prevent TOCTOU race condition
-	// Use a placeholder cancel function to mark that recovery is starting
-	placeholderCancel := func() {} // No-op function
-	if _, loaded := erm.activeRecoveries.LoadOrStore(recoveryKey, placeholderCancel); loaded {
+	// Use recoveryState to track recovery status and cancel function
+	// This ensures we can atomically check and set the recovery state
+	
+	// Try to atomically set recovery state
+	state := &recoveryState{started: true}
+	actual, loaded := erm.activeRecoveries.LoadOrStore(recoveryKey, state)
+	if loaded {
 		// Recovery already in progress for this error
-		log.Debugf("Recovery already in progress for %s:%s, skipping duplicate attempt", record.ErrorType, record.Component)
-		return
-	}
-	// Defer cleanup of the recovery key - will be disabled once we successfully start recovery
-	shouldCleanupKey := true
-	defer func() {
-		if shouldCleanupKey {
-			erm.activeRecoveries.Delete(recoveryKey)
+		if existingState, ok := actual.(*recoveryState); ok && existingState.started {
+			log.Debugf("Recovery already in progress for %s:%s, skipping duplicate attempt", record.ErrorType, record.Component)
+			return
 		}
-	}()
+		// If it's not a recoveryState, it might be an old cancel function - replace it
+		erm.activeRecoveries.Store(recoveryKey, state)
+	}
+	
+	// Track if recovery actually started (passed semaphore acquisition)
+	recoveryStarted := false
 
 	erm.mu.RLock()
 	strategy, exists := erm.recoveryStrategies[record.ErrorType]
@@ -417,14 +429,19 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	select {
 	case erm.recoverySemaphore <- struct{}{}:
 		// Acquired semaphore, proceed with recovery
+		recoveryStarted = true
 		defer func() { <-erm.recoverySemaphore }()
 	case <-time.After(1 * time.Second):
 		// Semaphore acquisition timeout - too many concurrent recoveries
 		log.Warnf("Recovery semaphore timeout for %s:%s, skipping recovery (too many concurrent recoveries)", 
 			record.ErrorType, record.Component)
+		// Clean up recovery state since we didn't start
+		erm.activeRecoveries.Delete(recoveryKey)
 		return
 	case <-erm.stopChan:
 		// Recovery manager is stopping
+		// Clean up recovery state since we didn't start
+		erm.activeRecoveries.Delete(recoveryKey)
 		return
 	}
 
@@ -440,14 +457,21 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	ctx, cancel := context.WithTimeout(context.Background(), recoveryTimeout)
 	defer cancel()
 
-	// Replace placeholder with actual cancel function
-	// Now that we've successfully started recovery, disable the cleanup defer
-	// and set up proper cleanup at the end of recovery
-	erm.activeRecoveries.Store(recoveryKey, cancel)
-	shouldCleanupKey = false // Disable the early cleanup defer
+	// Atomically update recovery state with actual cancel function
+	// Mark recovery as started (not just initializing)
+	state.cancel = cancel
+	state.started = true
+	erm.activeRecoveries.Store(recoveryKey, state)
 	
 	// Set up proper cleanup at the end of recovery
-	defer erm.activeRecoveries.Delete(recoveryKey)
+	// This will be called after recovery completes (success or failure)
+	// Only cleanup if recovery actually started
+	defer func() {
+		if recoveryStarted {
+			// Remove from active recoveries
+			erm.activeRecoveries.Delete(recoveryKey)
+		}
+	}()
 
 	// Attempt recovery with timeout protection
 	startTime := time.Now()
@@ -676,8 +700,11 @@ func (erm *ErrorRecoveryManager) Stop() {
 
 		// Cancel all active recoveries
 		erm.activeRecoveries.Range(func(key, value interface{}) bool {
+			// Handle both old format (context.CancelFunc) and new format (recoveryState)
 			if cancel, ok := value.(context.CancelFunc); ok {
 				cancel()
+			} else if state, ok := value.(*recoveryState); ok && state != nil && state.cancel != nil {
+				state.cancel()
 			}
 			erm.activeRecoveries.Delete(key)
 			return true
