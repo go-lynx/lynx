@@ -124,7 +124,7 @@ type ErrorRecoveryManager struct {
 	stopOnce sync.Once // Protect against multiple Stop() calls
 
 	// Concurrency control for recovery operations
-	recoverySemaphore chan struct{}
+	recoverySemaphore       chan struct{}
 	maxConcurrentRecoveries int
 	activeRecoveries        sync.Map // map[string]*recoveryState or context.CancelFunc - track active recoveries
 }
@@ -384,59 +384,29 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 }
 
 // attemptRecovery attempts to recover from an error
-// Fixed: Improved race condition handling by using atomic state management
+// Fixed: Simplified concurrent logic using context for goroutine lifecycle management
 func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	// Generate recovery key first
 	recoveryKey := fmt.Sprintf("%s:%s:%d", record.ErrorType, record.Component, record.Timestamp.Unix())
-	
-	// CRITICAL: Atomically check and store recovery key to prevent TOCTOU race condition
-	// Use recoveryState to track recovery status and cancel function
-	// This ensures we can atomically check and set the recovery state
-	
-	// Try to atomically set recovery state
-	// Use CAS loop to ensure atomic state transition
-	state := &recoveryState{started: false} // Start as false, set to true after semaphore acquisition
-	for {
-		actual, loaded := erm.activeRecoveries.LoadOrStore(recoveryKey, state)
-		if !loaded {
-			// Successfully stored new state
-			break
-		}
-		// Recovery already in progress for this error
-		if existingState, ok := actual.(*recoveryState); ok {
-			if existingState.started {
-				log.Debugf("Recovery already in progress for %s:%s, skipping duplicate attempt", record.ErrorType, record.Component)
-				return
-			}
-			// State exists but not started yet - another goroutine is initializing
-			// Wait briefly and check again to avoid race condition
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
-		// If it's not a recoveryState, it might be an old cancel function - replace it
-		if erm.activeRecoveries.CompareAndSwap(recoveryKey, actual, state) {
-			break
-		}
-		// CAS failed, retry
-		time.Sleep(10 * time.Millisecond)
-	}
-	
-	// Track if recovery actually started (passed semaphore acquisition)
-	recoveryStarted := false
 
+	// Fixed: sync.Map is thread-safe, no need for mutex protection
+	// Check if recovery is already in progress (sync.Map is thread-safe)
+	if _, exists := erm.activeRecoveries.Load(recoveryKey); exists {
+		log.Debugf("Recovery already in progress for %s:%s, skipping duplicate attempt", record.ErrorType, record.Component)
+		return
+	}
+
+	// Get strategy (use RLock for map access, not for sync.Map)
 	erm.mu.RLock()
 	strategy, exists := erm.recoveryStrategies[record.ErrorType]
+	if !exists {
+		strategy = erm.recoveryStrategies["transient"]
+	}
 	erm.mu.RUnlock()
 
-	if !exists {
-		// Use default strategy
-		erm.mu.RLock()
-		strategy = erm.recoveryStrategies["transient"]
-		erm.mu.RUnlock()
-		if strategy == nil {
-			log.Warnf("No recovery strategy found for error type: %s", record.ErrorType)
-			return
-		}
+	if strategy == nil {
+		log.Warnf("No recovery strategy found for error type: %s", record.ErrorType)
+		return
 	}
 
 	// Check if strategy can recover
@@ -445,29 +415,8 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		return
 	}
 
-	// Acquire semaphore to limit concurrent recoveries
-	// Use configurable timeout instead of hardcoded value
-	semaphoreTimeout := defaultRecoverySemaphoreTimeout
-	select {
-	case erm.recoverySemaphore <- struct{}{}:
-		// Acquired semaphore, proceed with recovery
-		recoveryStarted = true
-		defer func() { <-erm.recoverySemaphore }()
-	case <-time.After(semaphoreTimeout):
-		// Semaphore acquisition timeout - too many concurrent recoveries
-		log.Warnf("Recovery semaphore timeout for %s:%s after %v, skipping recovery (too many concurrent recoveries)", 
-			record.ErrorType, record.Component, semaphoreTimeout)
-		// Clean up recovery state since we didn't start
-		erm.activeRecoveries.Delete(recoveryKey)
-		return
-	case <-erm.stopChan:
-		// Recovery manager is stopping
-		// Clean up recovery state since we didn't start
-		erm.activeRecoveries.Delete(recoveryKey)
-		return
-	}
-
 	// Create recovery context with timeout and cancellation
+	// Fixed: Use parent context that respects stopChan to prevent goroutine leaks
 	recoveryTimeout := strategy.GetTimeout()
 	if recoveryTimeout <= 0 {
 		recoveryTimeout = erm.recoveryTimeout
@@ -476,46 +425,95 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		recoveryTimeout = 60 * time.Second // Cap at 60 seconds
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), recoveryTimeout)
-	defer cancel()
+	// Create parent context that monitors stopChan
+	// This ensures the context is cancelled when recovery manager stops
+	parentCtx, parentCancel := context.WithCancel(context.Background())
+	defer parentCancel()
 
-	// Atomically update recovery state with actual cancel function
-	// Mark recovery as started (not just initializing)
-	// Use CAS to ensure we're updating the correct state
-	for {
-		current, ok := erm.activeRecoveries.Load(recoveryKey)
-		if !ok {
-			// State was deleted, recovery was cancelled
-			cancel()
-			return
+	// Monitor stopChan in background - ensure goroutine exits when context is cancelled
+	stopMonitorDone := make(chan struct{}, 1)
+	go func() {
+		defer func() {
+			select {
+			case stopMonitorDone <- struct{}{}:
+			default:
+			}
+		}()
+		select {
+		case <-erm.stopChan:
+			parentCancel()
+		case <-parentCtx.Done():
+			// Context already cancelled
 		}
-		currentState, ok := current.(*recoveryState)
-		if !ok || currentState != state {
-			// State changed, recovery was cancelled or replaced
-			cancel()
-			return
+	}()
+
+	// Apply timeout to parent context
+	ctx, timeoutCancel := context.WithTimeout(parentCtx, recoveryTimeout)
+	defer timeoutCancel()
+
+	// Acquire semaphore to limit concurrent recoveries
+	// Use configurable timeout instead of hardcoded value
+	semaphoreTimeout := defaultRecoverySemaphoreTimeout
+	select {
+	case erm.recoverySemaphore <- struct{}{}:
+		// Acquired semaphore, proceed with recovery
+		defer func() { <-erm.recoverySemaphore }()
+	case <-time.After(semaphoreTimeout):
+		// Semaphore acquisition timeout - too many concurrent recoveries
+		log.Warnf("Recovery semaphore timeout for %s:%s after %v, skipping recovery (too many concurrent recoveries)",
+			record.ErrorType, record.Component, semaphoreTimeout)
+		// Cancel context to ensure stop monitor goroutine exits
+		parentCancel()
+		// Wait briefly for stop monitor to exit (non-blocking)
+		select {
+		case <-stopMonitorDone:
+		case <-time.After(50 * time.Millisecond):
+			// Timeout waiting, but continue anyway
 		}
-		// Update state atomically
-		state.cancel = cancel
-		state.started = true
-		if erm.activeRecoveries.CompareAndSwap(recoveryKey, current, state) {
-			break
+		return
+	case <-ctx.Done():
+		// Context cancelled before semaphore acquisition
+		// Ensure stop monitor goroutine exits
+		select {
+		case <-stopMonitorDone:
+		case <-time.After(50 * time.Millisecond):
+			// Timeout waiting, but continue anyway
 		}
-		// CAS failed, retry
-		time.Sleep(5 * time.Millisecond)
+		return
 	}
-	
+
+	// Store recovery state atomically (simplified - no complex CAS loop)
+	// Fixed: Use parentCancel instead of timeoutCancel to ensure proper cleanup
+	state := &recoveryState{
+		cancel:  parentCancel, // Use parent cancel to ensure stop monitor goroutine exits
+		started: true,
+	}
+	if _, loaded := erm.activeRecoveries.LoadOrStore(recoveryKey, state); loaded {
+		// Another goroutine started recovery, cleanup and return
+		// Ensure stop monitor goroutine exits
+		parentCancel()
+		select {
+		case <-stopMonitorDone:
+		case <-time.After(50 * time.Millisecond):
+			// Timeout waiting, but continue anyway
+		}
+		return
+	}
+
 	// Set up proper cleanup at the end of recovery
-	// This will be called after recovery completes (success or failure)
-	// Only cleanup if recovery actually started
 	defer func() {
-		if recoveryStarted {
-			// Remove from active recoveries
-			erm.activeRecoveries.Delete(recoveryKey)
+		erm.activeRecoveries.Delete(recoveryKey)
+		// Ensure stop monitor goroutine exits
+		parentCancel()
+		select {
+		case <-stopMonitorDone:
+		case <-time.After(50 * time.Millisecond):
+			// Timeout waiting, but continue anyway
 		}
 	}()
 
 	// Attempt recovery with timeout protection
+	// Simplified: Single goroutine with proper context management
 	startTime := time.Now()
 	recoveryDone := make(chan struct {
 		success bool
@@ -525,17 +523,25 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				recoveryDone <- struct {
+				select {
+				case recoveryDone <- struct {
 					success bool
 					err     error
-				}{false, fmt.Errorf("panic during recovery: %v", r)}
+				}{false, fmt.Errorf("panic during recovery: %v", r)}:
+				case <-ctx.Done():
+					// Context cancelled, ignore result
+				}
 			}
 		}()
 		success, err := strategy.Recover(ctx, record)
-		recoveryDone <- struct {
+		select {
+		case recoveryDone <- struct {
 			success bool
 			err     error
-		}{success, err}
+		}{success, err}:
+		case <-ctx.Done():
+			// Context cancelled, ignore result
+		}
 	}()
 
 	var success bool
@@ -545,14 +551,10 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		success = result.success
 		err = result.err
 	case <-ctx.Done():
-		// Timeout reached
+		// Timeout or cancellation reached
 		success = false
-		err = fmt.Errorf("recovery timeout after %v: %w", recoveryTimeout, ctx.Err())
-		log.Warnf("Recovery timeout for %s:%s after %v", record.ErrorType, record.Component, recoveryTimeout)
-	case <-erm.stopChan:
-		// Recovery manager is stopping
-		cancel()
-		return
+		err = fmt.Errorf("recovery cancelled or timeout after %v: %w", recoveryTimeout, ctx.Err())
+		log.Warnf("Recovery cancelled or timeout for %s:%s after %v", record.ErrorType, record.Component, recoveryTimeout)
 	}
 
 	duration := time.Since(startTime)

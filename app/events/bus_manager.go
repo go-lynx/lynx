@@ -80,11 +80,13 @@ func (manager *EventBusManager) initBuses() {
 }
 
 // GetBus returns the bus for the given bus type
+// Fixed: Avoid holding lock while calling bus methods to prevent deadlock
 func (manager *EventBusManager) GetBus(busType BusType) *LynxEventBus {
 	manager.mu.RLock()
-	defer manager.mu.RUnlock()
+	bus, exists := manager.buses[busType]
+	manager.mu.RUnlock()
 
-	if bus, exists := manager.buses[busType]; exists {
+	if exists {
 		return bus
 	}
 
@@ -92,65 +94,96 @@ func (manager *EventBusManager) GetBus(busType BusType) *LynxEventBus {
 }
 
 // PublishEvent publishes an event to the appropriate bus based on classification
+// Fixed: Get bus reference without holding lock to avoid deadlock
 func (manager *EventBusManager) PublishEvent(event LynxEvent) error {
 	busType := manager.classifier.GetBusType(event)
-	bus := manager.GetBus(busType)
 
-	if bus == nil {
+	// Get bus reference without holding lock
+	manager.mu.RLock()
+	bus, exists := manager.buses[busType]
+	manager.mu.RUnlock()
+
+	if !exists {
 		return fmt.Errorf("no bus found for bus type: %d", busType)
 	}
 
+	// Call bus method without holding manager lock to prevent deadlock
 	bus.Publish(event)
 	return nil
 }
 
 // Subscribe subscribes to events on a specific bus
+// Fixed: Get bus reference without holding lock to avoid deadlock
 func (manager *EventBusManager) Subscribe(busType BusType, handler func(LynxEvent)) error {
-	bus := manager.GetBus(busType)
-	if bus == nil {
+	// Get bus reference without holding lock
+	manager.mu.RLock()
+	bus, exists := manager.buses[busType]
+	manager.mu.RUnlock()
+
+	if !exists {
 		return fmt.Errorf("no bus found for bus type: %d", busType)
 	}
 
+	// Call bus method without holding manager lock to prevent deadlock
 	bus.Subscribe(handler)
 	return nil
 }
 
 // SubscribeTo subscribes to a specific event type on the appropriate bus
+// Fixed: Get bus reference without holding lock to avoid deadlock
 func (manager *EventBusManager) SubscribeTo(eventType EventType, handler func(LynxEvent)) error {
 	// Create a dummy event to determine the bus type
 	dummyEvent := NewLynxEvent(eventType, "system", "event-bus-manager")
 	busType := manager.classifier.GetBusType(dummyEvent)
-	bus := manager.GetBus(busType)
 
-	if bus == nil {
+	// Get bus reference without holding lock
+	manager.mu.RLock()
+	bus, exists := manager.buses[busType]
+	manager.mu.RUnlock()
+
+	if !exists {
 		return fmt.Errorf("no bus found for event type: %d", eventType)
 	}
 
+	// Call bus method without holding manager lock to prevent deadlock
 	bus.SubscribeTo(eventType, handler)
 	return nil
 }
 
 // SubscribeWithCancel subscribes and returns a cancel func for unsubscription
+// Fixed: Get bus reference without holding lock to avoid deadlock
 func (manager *EventBusManager) SubscribeWithCancel(busType BusType, handler func(LynxEvent)) (context.CancelFunc, error) {
-	bus := manager.GetBus(busType)
-	if bus == nil {
+	// Get bus reference without holding lock
+	manager.mu.RLock()
+	bus, exists := manager.buses[busType]
+	manager.mu.RUnlock()
+
+	if !exists {
 		return func() {}, fmt.Errorf("no bus found for bus type: %d", busType)
 	}
+
+	// Call bus method without holding manager lock to prevent deadlock
 	cancel := bus.Subscribe(handler)
 	return cancel, nil
 }
 
 // SubscribeToWithCancel subscribes to a specific event type and returns cancel func
+// Fixed: Get bus reference without holding lock to avoid deadlock
 func (manager *EventBusManager) SubscribeToWithCancel(eventType EventType, handler func(LynxEvent)) (context.CancelFunc, error) {
 	// Create a dummy event to determine the bus type
 	dummyEvent := NewLynxEvent(eventType, "system", "event-bus-manager")
 	busType := manager.classifier.GetBusType(dummyEvent)
-	bus := manager.GetBus(busType)
 
-	if bus == nil {
+	// Get bus reference without holding lock
+	manager.mu.RLock()
+	bus, exists := manager.buses[busType]
+	manager.mu.RUnlock()
+
+	if !exists {
 		return func() {}, fmt.Errorf("no bus found for event type: %d", eventType)
 	}
 
+	// Call bus method without holding manager lock to prevent deadlock
 	cancel := bus.SubscribeTo(eventType, handler)
 	return cancel, nil
 }
@@ -239,21 +272,35 @@ type BusStatus struct {
 }
 
 // Pause pauses a specific bus consumption; publishing still enqueues
+// Fixed: Get bus reference without holding lock to avoid deadlock
 func (manager *EventBusManager) Pause(busType BusType) error {
-	bus := manager.GetBus(busType)
-	if bus == nil {
+	// Get bus reference without holding lock
+	manager.mu.RLock()
+	bus, exists := manager.buses[busType]
+	manager.mu.RUnlock()
+
+	if !exists {
 		return fmt.Errorf("no bus found for bus type: %d", busType)
 	}
+
+	// Call bus method without holding manager lock to prevent deadlock
 	bus.Pause()
 	return nil
 }
 
 // Resume resumes a specific bus consumption
+// Fixed: Get bus reference without holding lock to avoid deadlock
 func (manager *EventBusManager) Resume(busType BusType) error {
-	bus := manager.GetBus(busType)
-	if bus == nil {
+	// Get bus reference without holding lock
+	manager.mu.RLock()
+	bus, exists := manager.buses[busType]
+	manager.mu.RUnlock()
+
+	if !exists {
 		return fmt.Errorf("no bus found for bus type: %d", busType)
 	}
+
+	// Call bus method without holding manager lock to prevent deadlock
 	bus.Resume()
 	return nil
 }
@@ -297,21 +344,35 @@ func (manager *EventBusManager) ResumeAll() (int, error) {
 }
 
 // UpdateBusConfig applies runtime-safe config updates to a specific bus
+// Fixed: Get bus reference without holding lock to avoid deadlock
 func (manager *EventBusManager) UpdateBusConfig(busType BusType, cfg BusConfig) error {
-	bus := manager.GetBus(busType)
-	if bus == nil {
+	// Get bus reference without holding lock
+	manager.mu.RLock()
+	bus, exists := manager.buses[busType]
+	manager.mu.RUnlock()
+
+	if !exists {
 		return fmt.Errorf("no bus found for bus type: %d", busType)
 	}
+
+	// Call bus method without holding manager lock to prevent deadlock
 	bus.UpdateConfig(cfg)
 	return nil
 }
 
 // GetBusMetrics returns metrics map for a specific bus combining bus metrics and global monitor snapshot
+// Fixed: Get bus reference without holding lock to avoid deadlock
 func (manager *EventBusManager) GetBusMetrics(busType BusType) (map[string]interface{}, error) {
-	bus := manager.GetBus(busType)
-	if bus == nil {
+	// Get bus reference without holding lock
+	manager.mu.RLock()
+	bus, exists := manager.buses[busType]
+	manager.mu.RUnlock()
+
+	if !exists {
 		return nil, fmt.Errorf("no bus found for bus type: %d", busType)
 	}
+
+	// Call bus methods without holding manager lock to prevent deadlock
 	result := map[string]interface{}{
 		"bus_type":    busType,
 		"is_paused":   bus.IsPaused(),

@@ -1,5 +1,5 @@
 lynx:
-  # MongoDB 插件配置
+  # MongoDB plugin configuration
   mongodb:
     uri: "mongodb://localhost:27017"
     database: "myapp"

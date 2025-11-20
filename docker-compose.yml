@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Redis服务
+  # Redis service
   redis:
     image: redis:7-alpine
     container_name: lynx-redis
@@ -18,7 +18,7 @@ services:
     networks:
       - lynx-network
 
-  # MySQL服务
+  # MySQL service
   mysql:
     image: mysql:8.0
     container_name: lynx-mysql
@@ -39,7 +39,7 @@ services:
     networks:
       - lynx-network
 
-  # PostgreSQL服务
+  # PostgreSQL service
   postgres:
     image: postgres:15-alpine
     container_name: lynx-postgres
@@ -59,7 +59,7 @@ services:
     networks:
       - lynx-network
 
-  # Kafka服务
+  # Kafka service
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: lynx-zookeeper
@@ -93,7 +93,7 @@ services:
     networks:
       - lynx-network
 
-  # Elasticsearch服务
+  # Elasticsearch service
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     container_name: lynx-elasticsearch
@@ -113,7 +113,7 @@ services:
     networks:
       - lynx-network
 
-  # MongoDB服务
+  # MongoDB service
   mongodb:
     image: mongo:latest
     container_name: lynx-mongodb
@@ -133,7 +133,7 @@ services:
     networks:
       - lynx-network
 
-  # RabbitMQ服务
+  # RabbitMQ service
   rabbitmq:
     image: rabbitmq:3.12-management-alpine
     container_name: lynx-rabbitmq
@@ -180,24 +180,24 @@ services:
     networks:
       - lynx-network
 
-  # Polaris服务（服务治理）
+  # Polaris service (service governance)
   polaris:
     image: polarismesh/polaris-standalone:latest
     container_name: lynx-polaris
     restart: unless-stopped
     ports:
-      - "8080:8080"   # 控制台 UI
+      - "8080:8080"   # Console UI
       - "8090:8090"   # HTTP API
       - "8091:8091"   # gRPC API
-      - "8093:8093"   # 配置中心 HTTP
-      - "8761:8761"   # Eureka 兼容
-      - "8848:8848"   # Nacos 兼容 API
-      - "9848:9848"   # Nacos gRPC 兼容
+      - "8093:8093"   # Config center HTTP
+      - "8761:8761"   # Eureka compatible
+      - "8848:8848"   # Nacos compatible API
+      - "9848:9848"   # Nacos gRPC compatible
       - "15010:15010" # xDS v3 (Envoy)
       - "9090:9090"   # Prometheus metrics
-      - "9091:9091"   # 管理接口
-      - "8100:8100"   # 内部端口（非必须）
-      - "8101:8101"   # 内部端口（非必须）
+      - "9091:9091"   # Management interface
+      - "8100:8100"   # Internal port (optional)
+      - "8101:8101"   # Internal port (optional)
     volumes:
       - polaris-data:/data
     networks:
