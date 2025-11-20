@@ -12,7 +12,12 @@ A simple and flexible SQL database plugin system that provides database connecti
 
 - ✅ Database connection pool management
 - ✅ Automatic health checks
+- ✅ Connection retry with exponential backoff
+- ✅ Connection pool monitoring and alerting
+- ✅ Configuration validation
+- ✅ Context support for timeout and cancellation
 - ✅ Graceful shutdown
+- ✅ Unified API across all database types (MySQL, PostgreSQL, MSSQL)
 - ✅ Multi-database support (MySQL, PostgreSQL, MSSQL, etc.)
 
 ## Usage Examples
@@ -86,6 +91,8 @@ func setupBun(sqlPlugin interfaces.SQLPlugin) (*bun.DB, error) {
 
 ## Configuration
 
+### Basic Configuration
+
 ```yaml
 mysql:
   driver: mysql
@@ -98,6 +105,73 @@ mysql:
   health_check_query: "SELECT 1"  # optional custom query
 ```
 
+### Advanced Configuration with Retry and Monitoring
+
+```yaml
+mysql:
+  driver: mysql
+  dsn: "user:password@tcp(localhost:3306)/database?charset=utf8mb4&parseTime=True"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 3600  # seconds
+  conn_max_idle_time: 300  # seconds
+  
+  # Health check settings
+  health_check_interval: 30  # seconds, 0 to disable
+  health_check_query: "SELECT 1"  # optional custom query
+  
+  # Connection retry settings
+  retry_enabled: true
+  retry_max_attempts: 3
+  retry_initial_delay: 1  # seconds
+  retry_max_delay: 30  # seconds
+  retry_multiplier: 2.0  # exponential backoff multiplier
+  
+  # Connection pool monitoring and alerting
+  monitor_enabled: true
+  monitor_interval: 30  # seconds
+  alert_threshold_usage: 0.8  # alert when pool usage exceeds 80%
+  alert_threshold_wait: 5  # seconds, alert when wait duration exceeds this
+  alert_threshold_wait_count: 10  # alert when wait count exceeds this
+```
+
+### Unified API Usage
+
+All database plugins (MySQL, PostgreSQL, MSSQL) now provide a unified API:
+
+```go
+// MySQL
+db, err := mysql.GetDB()
+dialect := mysql.GetDialect()
+connected := mysql.IsConnected()
+err = mysql.CheckHealth()
+
+// PostgreSQL
+db, err := pgsql.GetDB()
+dialect := pgsql.GetDialect()
+connected := pgsql.IsConnected()
+err = pgsql.CheckHealth()
+
+// MSSQL (now unified!)
+db, err := mssql.GetDB()
+dialect := mssql.GetDialect()
+connected := mssql.IsConnected()
+err = mssql.CheckHealth()
+```
+
+### Context Support
+
+```go
+// Get database connection with context for timeout control
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+db, err := sqlPlugin.GetDBWithContext(ctx)
+if err != nil {
+    return err
+}
+```
+
 ## Project Structure
 
 ```
@@ -106,7 +180,8 @@ plugins/sql/
 │   └── sql.go          # Core interface definitions
 ├── base/
 │   ├── base_plugin.go  # Base plugin implementation
-│   └── health_checker.go # Health checker
+│   ├── health_checker.go # Health checker
+│   └── pool_monitor.go  # Connection pool monitor
 ├── mysql/
 │   └── mysql_plugin.go # MySQL implementation
 ├── postgres/

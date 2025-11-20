@@ -7,6 +7,7 @@ import (
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/factory"
 	"github.com/go-lynx/lynx/plugins"
+	"github.com/go-lynx/lynx/plugins/sql/interfaces"
 )
 
 // init function registers the Microsoft SQL Server plugin to the global plugin factory.
@@ -48,10 +49,59 @@ func GetMssqlClient() (*DBMssqlClient, error) {
 //   - error: Any error that occurred while getting the database connection
 //
 // Note: This function will return an error if the plugin is not properly initialized.
+// Deprecated: Use GetDB() instead for consistency with other database plugins.
 func GetMssqlDB() (*sql.DB, error) {
-	client, err := GetMssqlClient()
-	if err != nil {
-		return nil, err
+	return GetDB()
+}
+
+// GetDB gets the database connection from the MSSQL plugin.
+// This function provides a unified API consistent with MySQL and PostgreSQL plugins.
+func GetDB() (*sql.DB, error) {
+	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
+	if plugin == nil {
+		return nil, fmt.Errorf("plugin %s not found", pluginName)
 	}
-	return client.SQLPlugin.GetDB()
+	if sqlPlugin, ok := plugin.(interfaces.SQLPlugin); ok {
+		return sqlPlugin.GetDB()
+	}
+	return nil, fmt.Errorf("plugin %s is not a SQLPlugin", pluginName)
+}
+
+// GetDialect gets the database dialect.
+// This function provides a unified API consistent with MySQL and PostgreSQL plugins.
+func GetDialect() string {
+	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
+	if plugin == nil {
+		return ""
+	}
+	if sqlPlugin, ok := plugin.(interfaces.SQLPlugin); ok {
+		return sqlPlugin.GetDialect()
+	}
+	return ""
+}
+
+// IsConnected checks if the database is connected.
+// This function provides a unified API consistent with MySQL and PostgreSQL plugins.
+func IsConnected() bool {
+	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
+	if plugin == nil {
+		return false
+	}
+	if sqlPlugin, ok := plugin.(interfaces.SQLPlugin); ok {
+		return sqlPlugin.IsConnected()
+	}
+	return false
+}
+
+// CheckHealth performs health check.
+// This function provides a unified API consistent with MySQL and PostgreSQL plugins.
+func CheckHealth() error {
+	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
+	if plugin == nil {
+		return fmt.Errorf("plugin %s not found", pluginName)
+	}
+	if sqlPlugin, ok := plugin.(interfaces.SQLPlugin); ok {
+		return sqlPlugin.CheckHealth()
+	}
+	return fmt.Errorf("plugin %s is not a SQLPlugin", pluginName)
 }

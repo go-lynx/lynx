@@ -2,6 +2,7 @@ package pgsql
 
 import (
 	"database/sql"
+	"fmt"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-lynx/lynx/app"
@@ -24,12 +25,12 @@ func init() {
 func GetDB() (*sql.DB, error) {
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
 	if plugin == nil {
-		return nil, nil
+		return nil, fmt.Errorf("plugin %s not found", pluginName)
 	}
 	if sqlPlugin, ok := plugin.(interfaces.SQLPlugin); ok {
 		return sqlPlugin.GetDB()
 	}
-	return nil, nil
+	return nil, fmt.Errorf("plugin %s is not a SQLPlugin", pluginName)
 }
 
 // GetDialect gets the database dialect
@@ -60,19 +61,23 @@ func IsConnected() bool {
 func CheckHealth() error {
 	plugin := app.Lynx().GetPluginManager().GetPlugin(pluginName)
 	if plugin == nil {
-		return nil
+		return fmt.Errorf("plugin %s not found", pluginName)
 	}
 	if sqlPlugin, ok := plugin.(interfaces.SQLPlugin); ok {
 		return sqlPlugin.CheckHealth()
 	}
-	return nil
+	return fmt.Errorf("plugin %s is not a SQLPlugin", pluginName)
 }
 
 // GetDriver gets the ent SQL driver from the PostgreSQL plugin
-func GetDriver() *entsql.Driver {
+// Returns an error if the database connection cannot be obtained
+func GetDriver() (*entsql.Driver, error) {
 	db, err := GetDB()
-	if err != nil || db == nil {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database connection: %w", err)
 	}
-	return entsql.OpenDB(GetDialect(), db)
+	if db == nil {
+		return nil, fmt.Errorf("database connection is nil")
+	}
+	return entsql.OpenDB(GetDialect(), db), nil
 }

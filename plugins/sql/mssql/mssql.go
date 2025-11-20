@@ -352,11 +352,22 @@ func convertToBaseConfig(mssqlConf *conf.Mssql) *interfaces.Config {
 		maxIdleTime = int(mssqlConf.MaxIdleTime.AsDuration().Seconds())
 	}
 
+	// Handle MaxIdleConns: if MaxIdleConn is 0 or not set, use 0 to let base plugin set default
+	// If MaxIdleConn is explicitly set, use it; otherwise calculate a reasonable default
+	maxIdleConns := int(mssqlConf.MaxIdleConn)
+	if maxIdleConns == 0 && mssqlConf.MaxConn > 0 {
+		// If MaxIdleConn is not set but MaxConn is, use a reasonable default (20% of MaxConn, min 1)
+		maxIdleConns = int(mssqlConf.MaxConn) / 5
+		if maxIdleConns < 1 {
+			maxIdleConns = 1
+		}
+	}
+
 	return &interfaces.Config{
 		Driver:              mssqlConf.Driver,
 		DSN:                 dsn,
 		MaxOpenConns:        int(mssqlConf.MaxConn),
-		MaxIdleConns:        int(mssqlConf.MaxIdleConn),
+		MaxIdleConns:        maxIdleConns,
 		ConnMaxLifetime:     maxLifetime,
 		ConnMaxIdleTime:     maxIdleTime,
 		HealthCheckInterval: 30, // Default 30 seconds

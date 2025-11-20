@@ -95,11 +95,13 @@ func (h *HealthChecker) performHealthCheck(ctx context.Context) {
 	h.lastCheck = time.Now()
 
 	if err != nil {
+		// Only log on state transition from healthy to unhealthy to avoid log spam
 		if h.isHealthy {
 			log.Errorf("Health check failed for %s: %v", h.target.Name(), err)
 		}
 		h.isHealthy = false
 	} else {
+		// Only log on state transition from unhealthy to healthy to avoid log spam
 		if !h.isHealthy {
 			log.Infof("Health check recovered for %s", h.target.Name())
 		}
