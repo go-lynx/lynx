@@ -51,7 +51,8 @@ type HealthChecker struct {
 	lastCheck     time.Time
 	checkInterval time.Duration
 	stopChan      chan struct{}
-	stopOnce      sync.Once // Protect against multiple Stop() calls
+	stopOnce      sync.Once    // Protect against multiple Stop() calls
+	app           *Application // Reference to application for health checks
 }
 
 // CircuitBreaker provides error handling and recovery
@@ -115,9 +116,6 @@ func (app *Application) Run() error {
 	// Initialize enhanced features
 	app.initializeEnhancedFeatures()
 
-	// Set up signal handling for graceful shutdown
-	app.setupSignalHandling()
-
 	// Improved resource cleanup order: handle panic first, then execute cleanup
 	defer func() {
 		if r := recover(); r != nil {
@@ -141,10 +139,13 @@ func (app *Application) Run() error {
 	}
 	app.lynxApp = lynxApp
 
-	// Initialize logger
+	// Initialize logger (must be done before signal handling to allow logging)
 	if err := log.InitLogger(app.GetName(), app.GetHost(), app.GetVersion(), app.conf); err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
+
+	// Set up signal handling for graceful shutdown (after logger is initialized)
+	app.setupSignalHandling()
 
 	// Show startup banner (decoupled from logger)
 	if err := banner.Init(app.conf); err != nil {
@@ -161,6 +162,11 @@ func (app *Application) Run() error {
 	}
 
 	// Load plugins with circuit breaker protection
+	// Note: Control plane plugins (Apollo/Polaris) may call LoadPlugins() in their StartupTasks()
+	// to load plugins from remote configuration. This initial LoadPlugins() loads plugins from
+	// local bootstrap configuration, which typically includes the control plane plugin itself.
+	// The preparePlugin() method has built-in deduplication logic to prevent loading the same
+	// plugin twice, so it's safe to call LoadPlugins() multiple times.
 	if err := app.loadPluginsWithProtection(pluginManager); err != nil {
 		return err
 	}
@@ -184,7 +190,8 @@ func (app *Application) Run() error {
 		UseProtoNames:   true,
 	}
 
-	// Start health checker
+	// Start health checker after plugins are loaded
+	// This ensures health checks can properly verify plugin states
 	app.startHealthChecker()
 
 	// Calculate application startup duration
@@ -218,6 +225,7 @@ func (app *Application) initializeEnhancedFeatures() {
 		lastCheck:     time.Now(),
 		checkInterval: DefaultHealthCheckInterval,
 		stopChan:      make(chan struct{}),
+		app:           app, // Store reference for health checks
 	}
 
 	// Initialize circuit breaker
@@ -229,12 +237,14 @@ func (app *Application) initializeEnhancedFeatures() {
 }
 
 // setupSignalHandling sets up signal handling for graceful shutdown
+// Note: This should be called after logger is initialized to ensure proper logging
 func (app *Application) setupSignalHandling() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	go func() {
 		sig := <-sigChan
+		// Logger should be initialized by now
 		log.Infof("Received signal %v, initiating graceful shutdown", sig)
 		app.initiateShutdown()
 	}()
@@ -248,28 +258,69 @@ func (app *Application) initiateShutdown() {
 }
 
 // gracefulShutdown performs graceful shutdown of the application
+// Shutdown order: health checker -> plugins -> application -> cleanup -> loggers
 func (app *Application) gracefulShutdown() {
+	// Protect against panic during shutdown
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("Panic during graceful shutdown: %v", r)
+		}
+	}()
+
 	log.Info("Starting graceful shutdown...")
 
-	// Stop health checker
+	// Step 1: Stop health checker first to prevent new health checks during shutdown
 	if app.healthChecker != nil {
-		app.healthChecker.Stop()
+		// Protect against panic when stopping health checker
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Errorf("Panic when stopping health checker: %v", r)
+				}
+			}()
+			app.healthChecker.Stop()
+		}()
 	}
 
-	// Close Lynx application
+	// Step 2: Close Lynx application (this will unload plugins in reverse dependency order)
 	if app.lynxApp != nil {
-		if err := app.lynxApp.Close(); err != nil {
-			log.Errorf("Error during Lynx application shutdown: %v", err)
-		}
+		// Protect against panic when closing application
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Errorf("Panic when closing Lynx application: %v", r)
+				}
+			}()
+			if err := app.lynxApp.Close(); err != nil {
+				log.Errorf("Error during Lynx application shutdown: %v", err)
+			}
+		}()
 	}
 
-	// Execute custom cleanup
+	// Step 3: Execute custom cleanup functions
 	if app.cleanup != nil {
-		app.cleanup()
+		// Protect against panic in custom cleanup
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Errorf("Panic in custom cleanup: %v", r)
+				}
+			}()
+			app.cleanup()
+		}()
 	}
 
-	// Cleanup loggers and close all writers
-	log.CleanupLoggers()
+	// Step 4: Cleanup loggers and close all writers (should be last)
+	// Protect against panic when cleaning up loggers
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Use fmt.Printf as fallback since logger may be closed
+				fmt.Printf("Panic when cleaning up loggers: %v\n", r)
+			}
+		}()
+		log.CleanupLoggers()
+	}()
 
 	log.Info("Graceful shutdown completed")
 }
@@ -291,6 +342,12 @@ func (app *Application) runWithGracefulShutdown(kratosApp *kratos.App) error {
 	// Run Kratos application in a goroutine
 	errChan := make(chan error, 1)
 	go func() {
+		defer func() {
+			// Recover from panic in Kratos application
+			if r := recover(); r != nil {
+				errChan <- fmt.Errorf("panic in Kratos application: %v", r)
+			}
+		}()
 		if err := kratosApp.Run(); err != nil {
 			errChan <- err
 		}
@@ -308,6 +365,12 @@ func (app *Application) runWithGracefulShutdown(kratosApp *kratos.App) error {
 		// Stop Kratos application gracefully with timeout
 		stopChan := make(chan error, 1)
 		go func() {
+			defer func() {
+				// Recover from panic during stop
+				if r := recover(); r != nil {
+					stopChan <- fmt.Errorf("panic during Kratos application stop: %v", r)
+				}
+			}()
 			stopChan <- kratosApp.Stop()
 		}()
 
@@ -324,6 +387,8 @@ func (app *Application) runWithGracefulShutdown(kratosApp *kratos.App) error {
 
 	case err := <-errChan:
 		log.Error(err)
+		// Initiate shutdown on error to ensure cleanup
+		app.initiateShutdown()
 		return fmt.Errorf("failed to run Kratos application: %w", err)
 	}
 }
@@ -409,13 +474,110 @@ func (hc *HealthChecker) Stop() {
 
 // performHealthCheck performs a health check
 func (hc *HealthChecker) performHealthCheck() {
+	// Protect against panic in health check
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("Panic in health check: %v", r)
+			// Mark as unhealthy on panic
+			hc.mu.Lock()
+			hc.isHealthy = false
+			hc.mu.Unlock()
+		}
+	}()
+
 	hc.mu.Lock()
 	defer hc.mu.Unlock()
 
 	hc.lastCheck = time.Now()
-	// Add your health check logic here
-	// For now, we'll just mark as healthy
-	hc.isHealthy = true
+
+	// Enhanced health check: check application and plugin states
+	healthy := true
+
+	// Check if application is initialized
+	if hc.app != nil && hc.app.lynxApp != nil {
+		// Check plugin manager
+		pluginManager := hc.app.lynxApp.GetPluginManager()
+		if pluginManager != nil {
+			// Check for unload failures
+			failures := pluginManager.GetUnloadFailures()
+			if len(failures) > 0 {
+				// Recent failures (within last 5 minutes) indicate unhealthy state
+				recentFailures := 0
+				fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
+				for _, failure := range failures {
+					if failure.FailureTime.After(fiveMinutesAgo) {
+						recentFailures++
+					}
+				}
+				if recentFailures > 0 {
+					log.Warnf("Health check: %d recent plugin unload failures detected", recentFailures)
+					healthy = false
+				}
+			}
+
+			// Check resource stats for potential leaks
+			resourceStats := pluginManager.GetResourceStats()
+			if resourceStats != nil {
+				// Check if resource count is reasonable (threshold: 1000 resources)
+				// Use type assertion with error handling for robustness
+				if totalResourcesVal, exists := resourceStats["total_resources"]; exists {
+					var totalResources int
+					switch v := totalResourcesVal.(type) {
+					case int:
+						totalResources = v
+					case int32:
+						totalResources = int(v)
+					case int64:
+						totalResources = int(v)
+					default:
+						// Try to convert if possible
+						if intVal, ok := totalResourcesVal.(int); ok {
+							totalResources = intVal
+						} else {
+							log.Debugf("Health check: unexpected type for total_resources: %T", totalResourcesVal)
+							break
+						}
+					}
+					if totalResources > 1000 {
+						log.Warnf("Health check: high resource count detected: %d (potential leak)", totalResources)
+						// Don't mark as unhealthy, just warn - could be legitimate high usage
+					}
+				}
+
+				// Check resource size for potential memory leaks
+				if totalSizeVal, exists := resourceStats["total_size_bytes"]; exists {
+					var totalSize int64
+					switch v := totalSizeVal.(type) {
+					case int64:
+						totalSize = v
+					case int:
+						totalSize = int64(v)
+					case int32:
+						totalSize = int64(v)
+					default:
+						// Try to convert if possible
+						if int64Val, ok := totalSizeVal.(int64); ok {
+							totalSize = int64Val
+						} else {
+							log.Debugf("Health check: unexpected type for total_size_bytes: %T", totalSizeVal)
+							break
+						}
+					}
+					if totalSize > 0 {
+						// Threshold: 100MB
+						const maxSizeBytes = 100 * 1024 * 1024
+						if totalSize > maxSizeBytes {
+							log.Warnf("Health check: large resource size detected: %d bytes (%.2f MB) - potential memory leak",
+								totalSize, float64(totalSize)/(1024*1024))
+							// Don't mark as unhealthy, just warn
+						}
+					}
+				}
+			}
+		}
+	}
+
+	hc.isHealthy = healthy
 }
 
 // IsHealthy returns the current health status
@@ -476,6 +638,13 @@ func (cb *CircuitBreaker) RecordResult(err error) {
 			cb.state = CircuitStateClosed
 			cb.resetCounters()
 			log.Info("Circuit breaker closed after successful attempt")
+		} else if cb.state == CircuitStateClosed {
+			// Reset counters periodically in closed state to prevent unbounded growth
+			// Reset after a reasonable number of successes to maintain recent history
+			const resetThreshold = 1000
+			if cb.successCount >= resetThreshold {
+				cb.resetCounters()
+			}
 		}
 	}
 }

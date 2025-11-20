@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/app/factory"
@@ -34,10 +35,24 @@ type PluginManager interface {
 	StopPlugin(pluginName string) error
 	GetResourceStats() map[string]any
 	ListResources() []*plugins.ResourceInfo
+	
+	// Monitoring operations
+	GetUnloadFailures() []UnloadFailureRecord
+	ClearUnloadFailures()
 }
 
 // TypedPluginManager is an alias for PluginManager.
 type TypedPluginManager = PluginManager
+
+// UnloadFailureRecord tracks plugin unload failures for monitoring
+type UnloadFailureRecord struct {
+	PluginName    string
+	PluginID      string
+	FailureTime   time.Time
+	StopError     error
+	CleanupError  error
+	RetryCount    int
+}
 
 // DefaultPluginManager is the generic plugin manager implementation.
 type DefaultPluginManager[T plugins.Plugin] struct {
@@ -47,6 +62,10 @@ type DefaultPluginManager[T plugins.Plugin] struct {
 	mu              sync.RWMutex
 	runtime         plugins.Runtime
 	config          config.Config
+	
+	// Unload failure tracking for monitoring
+	unloadFailures []UnloadFailureRecord
+	unloadFailuresMu sync.RWMutex
 }
 
 // NewPluginManager creates a generic plugin manager.
