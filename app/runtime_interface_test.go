@@ -7,24 +7,24 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// TestTypedRuntimePluginImplementsRuntime 验证TypedRuntimePlugin是否正确实现了plugins.Runtime接口
+// TestTypedRuntimePluginImplementsRuntime verifies that TypedRuntimePlugin correctly implements the plugins.Runtime interface
 func TestTypedRuntimePluginImplementsRuntime(t *testing.T) {
-	// 创建TypedRuntimePlugin实例
+	// Create TypedRuntimePlugin instance
 	runtime := NewTypedRuntimePlugin()
 	
-	// 验证是否实现了plugins.Runtime接口
+	// Verify it implements plugins.Runtime interface
 	var _ plugins.Runtime = runtime
 	
 	t.Log("TypedRuntimePlugin correctly implements plugins.Runtime interface")
 }
 
-// TestTypedRuntimePluginBasicFunctionality 测试TypedRuntimePlugin的基本功能
+// TestTypedRuntimePluginBasicFunctionality tests the basic functionality of TypedRuntimePlugin
 func TestTypedRuntimePluginBasicFunctionality(t *testing.T) {
 	runtime := NewTypedRuntimePlugin()
 	
-	// 测试资源管理
+	// Test resource management
 	t.Run("ResourceManagement", func(t *testing.T) {
-		// 测试共享资源
+		// Test shared resources
 		testResource := "test-shared-resource"
 		err := runtime.RegisterSharedResource("test-shared", testResource)
 		if err != nil {
@@ -40,7 +40,7 @@ func TestTypedRuntimePluginBasicFunctionality(t *testing.T) {
 			t.Errorf("Expected %v, got %v", testResource, retrieved)
 		}
 		
-		// 测试私有资源（需要插件上下文）
+		// Test private resources (requires plugin context)
 		contextRuntime := runtime.WithPluginContext("test-plugin")
 		err = contextRuntime.RegisterPrivateResource("test-private", "private-resource")
 		if err != nil {
@@ -57,23 +57,23 @@ func TestTypedRuntimePluginBasicFunctionality(t *testing.T) {
 		}
 	})
 	
-	// 测试插件上下文
+	// Test plugin context
 	t.Run("PluginContext", func(t *testing.T) {
 		contextRuntime := runtime.WithPluginContext("test-plugin")
 		
-		// 验证返回的是plugins.Runtime接口
+		// Verify it returns plugins.Runtime interface
 		var _ plugins.Runtime = contextRuntime
 		
-		// 测试获取当前插件上下文
+		// Test getting current plugin context
 		context := contextRuntime.GetCurrentPluginContext()
 		if context != "test-plugin" {
 			t.Errorf("Expected 'test-plugin', got %s", context)
 		}
 	})
 	
-	// 测试事件系统
+	// Test event system
 	t.Run("EventSystem", func(t *testing.T) {
-		// 测试事件配置
+		// Test event configuration
 		err := runtime.SetEventDispatchMode("async")
 		if err != nil {
 			t.Logf("SetEventDispatchMode returned error: %v", err)
@@ -82,37 +82,37 @@ func TestTypedRuntimePluginBasicFunctionality(t *testing.T) {
 		runtime.SetEventWorkerPoolSize(5)
 		runtime.SetEventTimeout(time.Second * 30)
 		
-		// 测试获取事件统计
+		// Test getting event statistics
 		stats := runtime.GetEventStats()
 		if stats == nil {
 			t.Error("GetEventStats returned nil")
 		}
 		
-		// 测试插件事件
+		// Test plugin events
 		runtime.EmitPluginEvent("test-plugin", "test-event", map[string]any{
 			"test": "data",
 		})
 	})
 	
-	// 测试配置管理
+	// Test configuration management
 	t.Run("ConfigManagement", func(t *testing.T) {
-		// 获取配置（可能为nil）
+		// Get configuration (may be nil)
 		conf := runtime.GetConfig()
 		t.Logf("Current config: %v", conf)
 		
-		// 设置配置
-		runtime.SetConfig(nil) // 测试设置nil配置
+		// Set configuration
+		runtime.SetConfig(nil) // Test setting nil configuration
 	})
 	
-	// 测试资源信息
+	// Test resource information
 	t.Run("ResourceInfo", func(t *testing.T) {
-		// 注册一个资源
+		// Register a resource
 		err := runtime.RegisterSharedResource("info-test", "test-value")
 		if err != nil {
 			t.Fatalf("Failed to register resource: %v", err)
 		}
 		
-		// 获取资源信息
+		// Get resource information
 		info, err := runtime.GetResourceInfo("info-test")
 		if err != nil {
 			t.Fatalf("Failed to get resource info: %v", err)
@@ -124,13 +124,13 @@ func TestTypedRuntimePluginBasicFunctionality(t *testing.T) {
 			t.Logf("Resource info: %+v", info)
 		}
 		
-		// 列出所有资源
+		// List all resources
 		resources := runtime.ListResources()
 		if len(resources) == 0 {
 			t.Error("No resources found")
 		}
 		
-		// 获取资源统计
+		// Get resource statistics
 		stats := runtime.GetResourceStats()
 		if stats == nil {
 			t.Error("Resource stats is nil")
@@ -138,23 +138,23 @@ func TestTypedRuntimePluginBasicFunctionality(t *testing.T) {
 	})
 }
 
-// TestTypedRuntimePluginEventHandling 测试事件处理功能
+// TestTypedRuntimePluginEventHandling tests event handling functionality
 func TestTypedRuntimePluginEventHandling(t *testing.T) {
 	runtime := NewTypedRuntimePlugin()
 	
-	// 创建一个简单的事件监听器
+	// Create a simple event listener
 	listener := &testEventListener{
 		id:     "test-listener",
 		events: make([]plugins.PluginEvent, 0),
 	}
 	
-	// 添加监听器
+	// Add listener
 	filter := &plugins.EventFilter{
 		Types: []plugins.EventType{"test-event"},
 	}
 	runtime.AddListener(listener, filter)
 	
-	// 发送事件
+	// Emit event
 	event := plugins.PluginEvent{
 		Type:     "test-event",
 		PluginID: "test-plugin",
@@ -162,21 +162,21 @@ func TestTypedRuntimePluginEventHandling(t *testing.T) {
 	}
 	runtime.EmitEvent(event)
 	
-	// 等待事件处理
+	// Wait for event processing
 	time.Sleep(100 * time.Millisecond)
 	
-	// 验证事件历史
+	// Verify event history
 	history := runtime.GetEventHistory(plugins.EventFilter{
 		Types: []plugins.EventType{"test-event"},
 	})
 	
 	t.Logf("Event history length: %d", len(history))
 	
-	// 移除监听器
+	// Remove listener
 	runtime.RemoveListener(listener)
 }
 
-// testEventListener 测试用的事件监听器
+// testEventListener is a test event listener
 type testEventListener struct {
 	id     string
 	events []plugins.PluginEvent

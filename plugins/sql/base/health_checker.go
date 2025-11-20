@@ -14,15 +14,23 @@ type HealthCheckable interface {
 	Name() string
 }
 
+// Recoverable interface for components that can recover from failures
+type Recoverable interface {
+	Reconnect() error
+	IsConnected() bool
+}
+
 // HealthChecker performs periodic health checks
 type HealthChecker struct {
 	target      HealthCheckable
 	interval    time.Duration
 	customQuery string
 
-	mu        sync.Mutex
-	lastCheck time.Time
-	isHealthy bool
+	mu            sync.Mutex
+	lastCheck     time.Time
+	isHealthy     bool
+	failureCount  int64 // Count of consecutive failures
+	maxFailures   int64 // Max failures before attempting recovery
 
 	stopChan chan struct{}
 	stopOnce sync.Once // Protect against multiple close operations
@@ -36,6 +44,7 @@ func NewHealthChecker(target HealthCheckable, interval time.Duration, customQuer
 		interval:    interval,
 		customQuery: customQuery,
 		isHealthy:   true,
+		maxFailures: 3, // Attempt recovery after 3 consecutive failures
 		stopChan:    make(chan struct{}),
 	}
 }
@@ -95,12 +104,39 @@ func (h *HealthChecker) performHealthCheck(ctx context.Context) {
 	h.lastCheck = time.Now()
 
 	if err != nil {
+		h.failureCount++
+		
 		// Only log on state transition from healthy to unhealthy to avoid log spam
 		if h.isHealthy {
 			log.Errorf("Health check failed for %s: %v", h.target.Name(), err)
 		}
 		h.isHealthy = false
+
+		// Attempt automatic recovery after consecutive failures
+		if h.failureCount >= h.maxFailures {
+			// Try to recover by reconnecting
+			if recoverable, ok := h.target.(Recoverable); ok {
+				log.Infof("Attempting automatic recovery for %s after %d consecutive failures", 
+					h.target.Name(), h.failureCount)
+				
+				// Release lock before reconnecting to avoid deadlock
+				h.mu.Unlock()
+				reconnectErr := recoverable.Reconnect()
+				h.mu.Lock()
+				
+				if reconnectErr == nil {
+					log.Infof("Automatic recovery successful for %s", h.target.Name())
+					h.failureCount = 0
+					h.isHealthy = true
+				} else {
+					log.Warnf("Automatic recovery failed for %s: %v", h.target.Name(), reconnectErr)
+				}
+			}
+		}
 	} else {
+		// Reset failure count on success
+		h.failureCount = 0
+		
 		// Only log on state transition from unhealthy to healthy to avoid log spam
 		if !h.isHealthy {
 			log.Infof("Health check recovered for %s", h.target.Name())

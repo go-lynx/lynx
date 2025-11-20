@@ -35,18 +35,8 @@ func (s *PlugSentinel) CreateHTTPMiddleware(resourceExtractor func(interface{}) 
 }
 
 // CreateGRPCInterceptor creates gRPC interceptor for Sentinel protection
+// This method returns a middleware instance that provides both unary and stream interceptors
 func (s *PlugSentinel) CreateGRPCInterceptor() interface{} {
-	// Return a placeholder interceptor function
-	// In a real implementation, this would return proper gRPC interceptor types
-	return func(method string) error {
-		entry, err := s.Entry(method)
-		if err != nil {
-			return fmt.Errorf("request blocked by Sentinel: %w", err)
-		}
-
-		// In real implementation, we would properly handle the entry lifecycle
-		_ = entry
-
-		return nil
-	}
+	// Return the SentinelMiddleware which provides GRPCUnaryInterceptor and GRPCStreamInterceptor
+	return s.CreateMiddleware()
 }

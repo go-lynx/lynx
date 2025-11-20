@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ main, develop ]
   schedule:
-    - cron: '0 2 * * 1' # 每周一凌晨2点运行
+    - cron: '0 2 * * 1' # Run every Monday at 2 AM
 
 jobs:
   dependency-check:
@@ -18,7 +18,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24'
+        go-version: '1.25'
         
     - name: Run Nancy (Go dependency scanner)
       run: |
@@ -55,7 +55,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24'
+        go-version: '1.25'
         
     - name: Run Gosec Security Scanner
       uses: securecodewarrior/github-action-gosec@master
@@ -105,7 +105,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24'
+        go-version: '1.25'
         
     - name: Install go-licenses
       run: go install github.com/google/go-licenses@latest

@@ -72,13 +72,13 @@ func (p *PlugApollo) checkApolloHealth() error {
 // checkClientConnection verifies client connection status.
 func (p *PlugApollo) checkClientConnection() error {
 	// Try to get a configuration value to validate connectivity
-	// This is a placeholder - actual implementation depends on Apollo SDK
 	testNamespace := p.conf.Namespace
 	if testNamespace == "" {
 		testNamespace = conf.DefaultNamespace
 	}
 
 	// Try to get a test configuration key
+	// If the key doesn't exist, that's fine - we just need to verify we can connect
 	_, err := p.GetConfigValue(testNamespace, "health.check.key")
 	if err != nil {
 		// If the error indicates the key is not found, connectivity is fine
@@ -86,9 +86,11 @@ func (p *PlugApollo) checkClientConnection() error {
 			log.Debugf("Client connection test passed (key not found is expected)")
 			return nil
 		}
+		// Other errors indicate connection problems
 		return fmt.Errorf("client connection test failed: %v", err)
 	}
 
+	// Key exists and was retrieved successfully
 	return nil
 }
 

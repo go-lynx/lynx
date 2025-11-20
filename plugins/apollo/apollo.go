@@ -34,8 +34,8 @@ type PlugApollo struct {
 	*plugins.BasePlugin
 	conf *conf.Apollo
 
-	// Apollo client (will be implemented based on actual Apollo SDK)
-	client interface{} // Placeholder for Apollo client
+	// Apollo HTTP client
+	client *ApolloHTTPClient
 
 	// Enhanced components
 	metrics        *Metrics
@@ -247,40 +247,46 @@ func (p *PlugApollo) StartupTasks() error {
 	return nil
 }
 
-// initApolloClient initializes Apollo client
-// NOTE: This is a placeholder implementation that needs to be completed with an actual Apollo Go SDK.
-//
-// Recommended Apollo Go SDKs:
-//   - github.com/apolloconfig/apollo-go-sdk (official)
-//   - github.com/shima-park/agollo (community)
-//
-// Implementation steps:
-// 1. Add the chosen SDK to go.mod dependencies
-// 2. Create Apollo client configuration from p.conf
-// 3. Set up connection to Apollo Meta Server (p.conf.MetaServer)
-// 4. Configure cache if enabled (p.conf.CacheDir)
-// 5. Set up notification listener if enabled
-// 6. Return the configured client instance
-//
-// Example structure (using agollo):
-//   import "github.com/shima-park/agollo"
-//   client := agollo.NewClient(&agollo.Conf{
-//       AppID:          p.conf.AppId,
-//       Cluster:        p.conf.Cluster,
-//       NamespaceName:  p.conf.Namespace,
-//       IP:             p.conf.MetaServer,
-//       CacheDir:       p.conf.CacheDir,
-//   })
-//   return client, client.Start()
-func (p *PlugApollo) initApolloClient() (interface{}, error) {
-	log.Warnf("Apollo client initialization is not yet implemented. "+
-		"Please implement initApolloClient() using an Apollo Go SDK. "+
-		"AppID: %s, MetaServer: %s", p.conf.AppId, p.conf.MetaServer)
-	
-	// Return a placeholder that will cause errors if used
-	// This ensures the plugin fails fast rather than silently failing
-	return nil, fmt.Errorf("Apollo client initialization not implemented. "+
-		"Please complete the initApolloClient() implementation using an Apollo Go SDK")
+// initApolloClient initializes Apollo HTTP client
+func (p *PlugApollo) initApolloClient() (*ApolloHTTPClient, error) {
+	if p.conf.MetaServer == "" {
+		return nil, fmt.Errorf("meta server address is required")
+	}
+	if p.conf.AppId == "" {
+		return nil, fmt.Errorf("app ID is required")
+	}
+
+	// Set defaults
+	cluster := p.conf.Cluster
+	if cluster == "" {
+		cluster = conf.DefaultCluster
+	}
+
+	namespace := p.conf.Namespace
+	if namespace == "" {
+		namespace = conf.DefaultNamespace
+	}
+
+	// Get timeout
+	timeout := 10 * time.Second
+	if p.conf.Timeout != nil {
+		timeout = p.conf.Timeout.AsDuration()
+	}
+
+	// Create HTTP client
+	client := NewApolloHTTPClient(
+		p.conf.MetaServer,
+		p.conf.AppId,
+		cluster,
+		namespace,
+		p.conf.Token,
+		timeout,
+	)
+
+	log.Infof("Apollo HTTP client initialized - MetaServer: %s, AppId: %s, Cluster: %s, Namespace: %s",
+		p.conf.MetaServer, p.conf.AppId, cluster, namespace)
+
+	return client, nil
 }
 
 // GetMetrics gets monitoring metrics

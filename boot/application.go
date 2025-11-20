@@ -268,6 +268,9 @@ func (app *Application) gracefulShutdown() {
 		app.cleanup()
 	}
 
+	// Cleanup loggers and close all writers
+	log.CleanupLoggers()
+
 	log.Info("Graceful shutdown completed")
 }
 

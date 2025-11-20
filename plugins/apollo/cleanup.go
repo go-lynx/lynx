@@ -49,35 +49,20 @@ func (p *PlugApollo) cleanupWatchers() {
 // closeClientConnection closes client connection
 func (p *PlugApollo) closeClientConnection() {
 	if p.client != nil {
-		log.Infof("Closing client connection")
+		log.Infof("Closing Apollo HTTP client connection")
 
 		// Get client information
 		clientInfo := map[string]interface{}{
-			"client_type": fmt.Sprintf("%T", p.client),
+			"client_type": "ApolloHTTPClient",
 			"app_id":      p.conf.AppId,
 			"cluster":     p.conf.Cluster,
 			"namespace":   p.conf.Namespace,
 		}
 
-		// Implement specific client shutdown logic
-		// 1. Stop all active watchers
-		log.Infof("Stopping all active watchers")
+		// Close HTTP client
+		p.client.Close()
 
-		// 2. Close client connection
-		log.Infof("Closing client connection")
-
-		// 3. Close client
-		log.Infof("Destroying client")
-		// NOTE: Call actual Apollo client close/destroy method when implemented
-		// Example (using agollo):
-		//   if client, ok := p.client.(*agollo.Client); ok {
-		//       client.Stop()
-		//   }
-		// For now, just log a warning
-		log.Warnf("Apollo client close/destroy not implemented. "+
-			"Please implement closeClientConnection() after initApolloClient() is done")
-
-		log.Infof("Client connection closed: %+v", clientInfo)
+		log.Infof("Apollo HTTP client connection closed: %+v", clientInfo)
 		p.client = nil
 	}
 }

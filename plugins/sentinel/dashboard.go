@@ -25,7 +25,7 @@ func (ds *DashboardServer) Start(wg *sync.WaitGroup, stopCh chan struct{}) {
 	defer wg.Done()
 
 	mux := http.NewServeMux()
-	
+
 	// Register endpoints
 	mux.HandleFunc("/", ds.handleIndex)
 	mux.HandleFunc("/api/metrics", ds.handleMetrics)
@@ -48,11 +48,11 @@ func (ds *DashboardServer) Start(wg *sync.WaitGroup, stopCh chan struct{}) {
 
 	// Wait for stop signal
 	<-stopCh
-	
+
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if err := ds.server.Shutdown(ctx); err != nil {
 		log.Errorf("Dashboard server shutdown error: %v", err)
 	} else {
@@ -135,7 +135,7 @@ func (ds *DashboardServer) handleIndex(w http.ResponseWriter, r *http.Request) {
     </div>
 </body>
 </html>`
-	
+
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
 }
@@ -143,14 +143,14 @@ func (ds *DashboardServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 // handleMetrics serves metrics data
 func (ds *DashboardServer) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	if ds.metricsCollector == nil {
 		http.Error(w, "Metrics collector not available", http.StatusServiceUnavailable)
 		return
 	}
-	
+
 	summary := ds.metricsCollector.GetMetricsSummary()
-	
+
 	if err := json.NewEncoder(w).Encode(summary); err != nil {
 		log.Errorf("Failed to encode metrics: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -160,29 +160,29 @@ func (ds *DashboardServer) handleMetrics(w http.ResponseWriter, r *http.Request)
 // handleResources serves resource statistics
 func (ds *DashboardServer) handleResources(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	if ds.metricsCollector == nil {
 		http.Error(w, "Metrics collector not available", http.StatusServiceUnavailable)
 		return
 	}
-	
+
 	stats := ds.metricsCollector.GetAllResourceStats()
-	
+
 	// Convert to JSON-friendly format
 	result := make(map[string]interface{})
 	for resource, stat := range stats {
 		result[resource] = map[string]interface{}{
-			"resource":   stat.Resource,
-			"total_qps":  stat.TotalQPS,
-			"pass_qps":   stat.PassQPS,
-			"block_qps":  stat.BlockQPS,
-			"avg_rt":     stat.AvgRT,
-			"min_rt":     stat.MinRT,
-			"max_rt":     stat.MaxRT,
-			"timestamp":  stat.Timestamp.Format(time.RFC3339),
+			"resource":  stat.Resource,
+			"total_qps": stat.TotalQPS,
+			"pass_qps":  stat.PassQPS,
+			"block_qps": stat.BlockQPS,
+			"avg_rt":    stat.AvgRT,
+			"min_rt":    stat.MinRT,
+			"max_rt":    stat.MaxRT,
+			"timestamp": stat.Timestamp.Format(time.RFC3339),
 		}
 	}
-	
+
 	if err := json.NewEncoder(w).Encode(result); err != nil {
 		log.Errorf("Failed to encode resources: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -192,16 +192,31 @@ func (ds *DashboardServer) handleResources(w http.ResponseWriter, r *http.Reques
 // handleRules serves current rules information
 func (ds *DashboardServer) handleRules(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
-	// For now, return a placeholder response
-	// In a real implementation, you would get rules from Sentinel
-	rules := map[string]interface{}{
-		"flow_rules":           []interface{}{},
-		"circuit_breaker_rules": []interface{}{},
-		"system_rules":         []interface{}{},
-		"message":              "Rules endpoint - implementation pending",
+
+	// Get plugin instance to access rules
+	plugin, err := GetSentinel()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Sentinel plugin not available: %v", err), http.StatusServiceUnavailable)
+		return
 	}
-	
+
+	// Get all rules
+	flowRules := plugin.GetFlowRules()
+	circuitBreakerRules := plugin.GetCircuitBreakerRules()
+	systemRules := plugin.GetSystemRules()
+
+	// Convert to JSON-friendly format
+	rules := map[string]interface{}{
+		"flow_rules":            flowRules,
+		"circuit_breaker_rules": circuitBreakerRules,
+		"system_rules":          systemRules,
+		"count": map[string]int{
+			"flow_rules":            len(flowRules),
+			"circuit_breaker_rules": len(circuitBreakerRules),
+			"system_rules":          len(systemRules),
+		},
+	}
+
 	if err := json.NewEncoder(w).Encode(rules); err != nil {
 		log.Errorf("Failed to encode rules: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -211,19 +226,19 @@ func (ds *DashboardServer) handleRules(w http.ResponseWriter, r *http.Request) {
 // handleHealth serves health check
 func (ds *DashboardServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	health := map[string]interface{}{
 		"status":    "ok",
 		"timestamp": time.Now().Format(time.RFC3339),
 		"uptime":    time.Since(time.Now()).String(), // This would be calculated properly in real implementation
 		"version":   "1.0.0",
 		"services": map[string]string{
-			"dashboard":        "running",
+			"dashboard":         "running",
 			"metrics_collector": "running",
-			"sentinel_core":    "running",
+			"sentinel_core":     "running",
 		},
 	}
-	
+
 	if err := json.NewEncoder(w).Encode(health); err != nil {
 		log.Errorf("Failed to encode health: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

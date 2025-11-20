@@ -51,14 +51,16 @@ type EventHandler func(ctx context.Context, event interface{}) error
 
 // OpenIMClient represents an OpenIM client instance
 type OpenIMClient struct {
-	config *conf.Client
-	// Add more client fields as needed
+	config    *conf.Client
+	connected bool
+	mu        sync.RWMutex
 }
 
 // OpenIMServer represents an OpenIM server instance
 type OpenIMServer struct {
-	config *conf.Server
-	// Add more server fields as needed
+	config  *conf.Server
+	running bool
+	mu      sync.RWMutex
 }
 
 // NewServiceOpenIM creates and initializes a new instance of the OpenIM service plugin.
@@ -293,8 +295,20 @@ func (o *ServiceOpenIM) startServer() error {
 		return fmt.Errorf("server not initialized")
 	}
 
-	// Start server logic here
-	log.Infof("OpenIM server started on %s", o.server.config.Addr)
+	o.server.mu.Lock()
+	defer o.server.mu.Unlock()
+
+	if o.server.running {
+		return fmt.Errorf("server is already running")
+	}
+
+	// Mark server as running
+	// Note: This is a plugin framework implementation, actual server logic
+	// should be implemented by the application using this plugin
+	o.server.running = true
+
+	log.Infof("OpenIM server started on %s (API version: %s)", 
+		o.server.config.Addr, o.server.config.ApiVersion)
 	return nil
 }
 
@@ -304,7 +318,16 @@ func (o *ServiceOpenIM) stopServer() error {
 		return nil
 	}
 
-	// Stop server logic here
+	o.server.mu.Lock()
+	defer o.server.mu.Unlock()
+
+	if !o.server.running {
+		return nil
+	}
+
+	// Mark server as stopped
+	o.server.running = false
+
 	log.Infof("OpenIM server stopped")
 	return nil
 }
@@ -315,8 +338,25 @@ func (o *ServiceOpenIM) startClient() error {
 		return fmt.Errorf("client not initialized")
 	}
 
-	// Start client logic here
-	log.Infof("OpenIM client started")
+	o.client.mu.Lock()
+	defer o.client.mu.Unlock()
+
+	if o.client.connected {
+		return fmt.Errorf("client is already connected")
+	}
+
+	// Mark client as connected
+	// Note: This is a plugin framework implementation, actual client connection
+	// should be implemented by the application using this plugin
+	o.client.connected = true
+
+	timeout := 30 * time.Second
+	if o.client.config.Timeout != nil {
+		timeout = o.client.config.Timeout.AsDuration()
+	}
+
+	log.Infof("OpenIM client started (timeout: %v, heartbeat: %v)", 
+		timeout, o.client.config.HeartbeatInterval)
 	return nil
 }
 
@@ -326,20 +366,57 @@ func (o *ServiceOpenIM) stopClient() error {
 		return nil
 	}
 
-	// Stop client logic here
+	o.client.mu.Lock()
+	defer o.client.mu.Unlock()
+
+	if !o.client.connected {
+		return nil
+	}
+
+	// Mark client as disconnected
+	o.client.connected = false
+
 	log.Infof("OpenIM client stopped")
 	return nil
 }
 
 // checkServerHealth checks the health of the OpenIM server
 func (o *ServiceOpenIM) checkServerHealth() error {
-	// Implement server health check logic
+	if o.server == nil {
+		return fmt.Errorf("server not initialized")
+	}
+
+	o.server.mu.RLock()
+	running := o.server.running
+	o.server.mu.RUnlock()
+
+	if !running {
+		return fmt.Errorf("server is not running")
+	}
+
+	// Basic health check passed
+	// Note: Actual health check logic (e.g., ping server endpoint) should be
+	// implemented by the application using this plugin
 	return nil
 }
 
 // checkClientHealth checks the health of the OpenIM client
 func (o *ServiceOpenIM) checkClientHealth() error {
-	// Implement client health check logic
+	if o.client == nil {
+		return fmt.Errorf("client not initialized")
+	}
+
+	o.client.mu.RLock()
+	connected := o.client.connected
+	o.client.mu.RUnlock()
+
+	if !connected {
+		return fmt.Errorf("client is not connected")
+	}
+
+	// Basic health check passed
+	// Note: Actual health check logic (e.g., verify connection status) should be
+	// implemented by the application using this plugin
 	return nil
 }
 
