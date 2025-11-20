@@ -401,7 +401,6 @@ func (g *Generator) refillSequenceCache() {
 
 	// Calculate how many valid sequences we can cache
 	// Start from sequence 1 (since 0 is already used)
-	validCount := 0
 	maxValidCount := int(g.maxSequence) // Maximum sequences per millisecond
 	
 	// Limit cache size to available sequence space
@@ -425,11 +424,10 @@ func (g *Generator) refillSequenceCache() {
 			break
 		}
 		g.sequenceCache[i] = seq
-		validCount = i + 1
 	}
 
-	// Note: We keep the original slice size, but only use validCount entries
-	// The cacheIndex check in GenerateID ensures we don't access beyond validCount
+	// Note: We keep the original slice size, but only use actualCacheSize entries
+	// The cacheIndex check in GenerateID ensures we don't access beyond actualCacheSize
 
 	// Reset cache index
 	g.cacheIndex = 0
