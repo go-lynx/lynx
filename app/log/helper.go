@@ -84,15 +84,16 @@ func GetLevel() Level {
 // fallbackLogger provides a simple fallback logger when main logger is not initialized
 type fallbackLogger struct{}
 
-func (f *fallbackLogger) log(level, msg string, args ...any) {
+func (f *fallbackLogger) logPlain(level, msg string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-	formatted := fmt.Sprintf("[%s] [%s] [lynx-log-fallback] ", timestamp, level)
-	if len(args) > 0 {
-		formatted += fmt.Sprintf(msg, args...)
-	} else {
-		formatted += fmt.Sprint(msg)
-	}
-	formatted += "\n"
+	formatted := fmt.Sprintf("[%s] [%s] [lynx-log-fallback] %s\n", timestamp, level, msg)
+	os.Stderr.WriteString(formatted)
+}
+
+func (f *fallbackLogger) logFormat(level, format string, args ...any) {
+	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+	msg := fmt.Sprintf(format, args...)
+	formatted := fmt.Sprintf("[%s] [%s] [lynx-log-fallback] %s\n", timestamp, level, msg)
 	os.Stderr.WriteString(formatted)
 }
 
@@ -121,7 +122,7 @@ func Debug(a ...any) {
 	if h := helper(); h != nil {
 		h.Debug(a...)
 	} else {
-		fallback.log("DEBUG", fmt.Sprint(a...))
+		fallback.logPlain("DEBUG", fmt.Sprint(a...))
 	}
 }
 
@@ -136,7 +137,7 @@ func Debugf(format string, a ...any) {
 	if h := helper(); h != nil {
 		h.Debugf(format, a...)
 	} else {
-		fallback.log("DEBUG", format, a...)
+		fallback.logFormat("DEBUG", format, a...)
 	}
 }
 
@@ -162,7 +163,7 @@ func Info(a ...any) {
 	if h := helper(); h != nil {
 		h.Info(a...)
 	} else {
-		fallback.log("INFO", fmt.Sprint(a...))
+		fallback.logPlain("INFO", fmt.Sprint(a...))
 	}
 }
 
@@ -176,7 +177,7 @@ func Infof(format string, a ...any) {
 	if h := helper(); h != nil {
 		h.Infof(format, a...)
 	} else {
-		fallback.log("INFO", format, a...)
+		fallback.logFormat("INFO", format, a...)
 	}
 }
 
@@ -202,7 +203,7 @@ func Warn(a ...any) {
 	if h := helper(); h != nil {
 		h.Warn(a...)
 	} else {
-		fallback.log("WARN", fmt.Sprint(a...))
+		fallback.logPlain("WARN", fmt.Sprint(a...))
 	}
 }
 
@@ -216,7 +217,7 @@ func Warnf(format string, a ...any) {
 	if h := helper(); h != nil {
 		h.Warnf(format, a...)
 	} else {
-		fallback.log("WARN", format, a...)
+		fallback.logFormat("WARN", format, a...)
 	}
 }
 
@@ -242,7 +243,7 @@ func Error(a ...any) {
 	if h := helper(); h != nil {
 		h.Error(a...)
 	} else {
-		fallback.log("ERROR", fmt.Sprint(a...))
+		fallback.logPlain("ERROR", fmt.Sprint(a...))
 	}
 }
 
@@ -256,7 +257,7 @@ func Errorf(format string, a ...any) {
 	if h := helper(); h != nil {
 		h.Errorf(format, a...)
 	} else {
-		fallback.log("ERROR", format, a...)
+		fallback.logFormat("ERROR", format, a...)
 	}
 }
 
@@ -284,7 +285,7 @@ func Fatal(a ...any) {
 	if h := helper(); h != nil {
 		h.Fatal("msg", fmt.Sprint(a...))
 	} else {
-		fallback.log("FATAL", fmt.Sprint(a...))
+		fallback.logPlain("FATAL", fmt.Sprint(a...))
 		os.Exit(1)
 	}
 }
@@ -301,7 +302,7 @@ func Fatalf(format string, a ...any) {
 	if h := helper(); h != nil {
 		h.Fatal("msg", fmt.Sprintf(format, a...))
 	} else {
-		fallback.log("FATAL", format, a...)
+		fallback.logFormat("FATAL", format, a...)
 		os.Exit(1)
 	}
 }

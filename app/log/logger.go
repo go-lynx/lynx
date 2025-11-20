@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -288,18 +289,88 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		}
 		ma := int(logConfig.GetMaxAgeDays())
 		if ma < 0 {
-			ma = 0 // 0 means no age-based removal in lumberjack
+			ma = 0 // 0 means no age-based removal
 		}
-		fileWriter := &lumberjack.Logger{
-			Filename:   logConfig.GetFilePath(),
-			MaxSize:    ms, // MB
-			MaxBackups: mb, // files
-			MaxAge:     ma, // days
-			Compress:   logConfig.GetCompress(),
+		// Get new configuration fields (with fallback for compatibility)
+		// Note: These fields will be available after regenerating proto files
+		// For now, use reflection to access them if they exist
+		maxTotalSizeMB := 0
+		rotationStrategyStr := ""
+		rotationIntervalStr := ""
+		
+		// Try to get new fields using reflection
+		// If proto file hasn't been regenerated, use defaults
+		configVal := reflect.ValueOf(&logConfig).Elem()
+		if configVal.IsValid() {
+			if field := configVal.FieldByName("MaxTotalSizeMb"); field.IsValid() && field.CanInterface() {
+				if val, ok := field.Interface().(int32); ok {
+					maxTotalSizeMB = int(val)
+				}
+			}
+			if field := configVal.FieldByName("RotationStrategy"); field.IsValid() && field.CanInterface() {
+				if val, ok := field.Interface().(string); ok {
+					rotationStrategyStr = val
+				}
+			}
+			if field := configVal.FieldByName("RotationInterval"); field.IsValid() && field.CanInterface() {
+				if val, ok := field.Interface().(string); ok {
+					rotationIntervalStr = val
+				}
+			}
+		}
+		
+		if maxTotalSizeMB < 0 {
+			maxTotalSizeMB = 0 // 0 means unlimited
 		}
 
+		// Determine rotation strategy
+		rotationStrategy := RotationStrategy(strings.ToLower(rotationStrategyStr))
+		if rotationStrategy == "" {
+			rotationStrategy = RotationStrategySize // default
+		}
+		if rotationStrategy != RotationStrategySize && 
+		   rotationStrategy != RotationStrategyTime && 
+		   rotationStrategy != RotationStrategyBoth {
+			rotationStrategy = RotationStrategySize // fallback to size
+		}
+
+		rotationInterval := RotationInterval(strings.ToLower(rotationIntervalStr))
+		if rotationInterval == "" {
+			rotationInterval = RotationIntervalDaily // default
+		}
+		if rotationInterval != RotationIntervalHourly && 
+		   rotationInterval != RotationIntervalDaily && 
+		   rotationInterval != RotationIntervalWeekly {
+			rotationInterval = RotationIntervalDaily // fallback to daily
+		}
+
+		var fileWriter io.Writer
+		
+		// Use TimeRotationWriter if time-based rotation is needed
+		if rotationStrategy == RotationStrategyTime || rotationStrategy == RotationStrategyBoth {
+			fileWriter = NewTimeRotationWriter(
+				logConfig.GetFilePath(),
+				ms, mb, ma, logConfig.GetCompress(),
+				rotationStrategy,
+				rotationInterval,
+				maxTotalSizeMB,
+			)
+		} else {
+			// Use standard lumberjack for size-only rotation
+			fileWriter = &lumberjack.Logger{
+				Filename:   logConfig.GetFilePath(),
+				MaxSize:    ms, // MB
+				MaxBackups: mb, // files
+				MaxAge:     ma, // days
+				Compress:   logConfig.GetCompress(),
+			}
+		}
+
+		// Apply batch writing optimization (64KB batch, 100ms flush interval)
+		batchWriter := NewBatchWriter(fileWriter, 64*1024, 100*time.Millisecond)
+		
 		// Use async writer for file output to improve performance
-		asyncFile := NewAsyncLogWriter(fileWriter, 2000) // 2000 log queue size
+		asyncFile := NewAsyncLogWriter(batchWriter, 2000) // 2000 log queue size
 		asyncWriters["file"] = asyncFile
 		writers = append(writers, asyncFile)
 	}
