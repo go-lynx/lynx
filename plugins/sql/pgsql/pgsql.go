@@ -61,19 +61,25 @@ func NewPgsqlClient() *DBPgsqlClient {
 
 // InitializeResources loads protobuf configuration and initializes resources
 func (p *DBPgsqlClient) InitializeResources(rt plugins.Runtime) error {
-	// Load protobuf configuration
-	if err := rt.GetConfig().Value(confPrefix).Scan(p.pbConfig); err != nil {
+	// Load protobuf configuration to a temporary variable first
+	// This ensures we don't partially update p.pbConfig if loading fails
+	pbConfig := &conf.Pgsql{}
+	if err := rt.GetConfig().Value(confPrefix).Scan(pbConfig); err != nil {
 		return fmt.Errorf("failed to load PostgreSQL configuration: %w", err)
 	}
 
+	// Only update p.pbConfig after successful loading
+	p.pbConfig = pbConfig
+
 	// Update interfaces.Config from protobuf config
-	p.config.Driver = p.pbConfig.Driver
-	p.config.DSN = p.pbConfig.Source
-	if p.pbConfig.MinConn > 0 {
-		p.config.MaxIdleConns = int(p.pbConfig.MinConn)
+	// This ensures atomic update - either all fields are updated or none
+	p.config.Driver = pbConfig.Driver
+	p.config.DSN = pbConfig.Source
+	if pbConfig.MinConn > 0 {
+		p.config.MaxIdleConns = int(pbConfig.MinConn)
 	}
-	if p.pbConfig.MaxConn > 0 {
-		p.config.MaxOpenConns = int(p.pbConfig.MaxConn)
+	if pbConfig.MaxConn > 0 {
+		p.config.MaxOpenConns = int(pbConfig.MaxConn)
 	}
 
 	// Call parent initialization

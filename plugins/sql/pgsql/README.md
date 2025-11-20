@@ -68,9 +68,10 @@ import (
 )
 
 // Get database driver
-driver := pgsql.GetDriver()
-if driver == nil {
+driver, err := pgsql.GetDriver()
+if err != nil {
     // Handle error
+    log.Errorf("Failed to get database driver: %v", err)
     return
 }
 
