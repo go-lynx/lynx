@@ -27,6 +27,20 @@ message log {
   // Whether to compress rotated log files.
   bool compress = 7;
 
+  // Rotation strategy: "size" (default), "time", or "both"
+  // - "size": Rotate when file reaches max_size_mb
+  // - "time": Rotate based on rotation_interval
+  // - "both": Rotate when either condition is met
+  string rotation_strategy = 12;
+
+  // Time-based rotation interval: "hourly", "daily", "weekly"
+  // Only used when rotation_strategy is "time" or "both"
+  string rotation_interval = 13;
+
+  // Maximum total size of all log files in MB (0 = unlimited)
+  // When exceeded, oldest files will be deleted
+  int32 max_total_size_mb = 14;
+
   // Stack trace capture configuration.
   message Stack {
     // Whether to enable stack capture.
