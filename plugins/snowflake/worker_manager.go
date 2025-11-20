@@ -96,14 +96,47 @@ func (w *WorkerIDManager) heartbeatLoop(ctx context.Context) {
 	ticker := time.NewTicker(w.heartbeatInterval)
 	defer ticker.Stop()
 
+	consecutiveFailures := 0
+	maxConsecutiveFailures := 3
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			if err := w.sendHeartbeat(); err != nil {
-				// Log error but continue
-				log.Warnf("snowflake worker heartbeat failed: %v", err)
+				consecutiveFailures++
+				log.Warnf("snowflake worker heartbeat failed (attempt %d/%d): %v", 
+					consecutiveFailures, maxConsecutiveFailures, err)
+				
+				// Retry immediately if not too many failures
+				if consecutiveFailures < maxConsecutiveFailures {
+					// Quick retry with exponential backoff
+					retryDelay := time.Duration(consecutiveFailures) * 100 * time.Millisecond
+					time.Sleep(retryDelay)
+					
+					// Retry once more
+					if retryErr := w.sendHeartbeat(); retryErr == nil {
+						consecutiveFailures = 0 // Reset on success
+						// Don't continue here - let the ticker continue normally
+					} else {
+						// Retry also failed, increment counter
+						consecutiveFailures++
+					}
+				}
+				
+				// If too many failures, log error but continue
+				// The TTL will eventually expire and worker ID will be released
+				if consecutiveFailures >= maxConsecutiveFailures {
+					log.Errorf("snowflake worker heartbeat failed %d times consecutively, worker ID may be lost", 
+						consecutiveFailures)
+				}
+			} else {
+				// Reset failure counter on success
+				if consecutiveFailures > 0 {
+					log.Infof("snowflake worker heartbeat recovered after %d failures", consecutiveFailures)
+					consecutiveFailures = 0
+				}
 			}
 		}
 	}
@@ -127,9 +160,17 @@ func (w *WorkerIDManager) tryRegisterWorkerID(ctx context.Context, workerID int6
 		return false, nil // Lock not acquired, worker ID is being registered by another instance
 	}
 
-	// Ensure lock is released
+	// Use Lua script to safely release lock only if we own it
+	unlockScript := `
+		if redis.call("get", KEYS[1]) == ARGV[1] then
+			return redis.call("del", KEYS[1])
+		else
+			return 0
+		end
+	`
 	defer func() {
-		w.redisClient.Del(ctx, lockKey)
+		// Release lock only if we own it (ignore errors in defer)
+		_ = w.redisClient.Eval(ctx, unlockScript, []string{lockKey}, lockValue)
 	}()
 
 	// Check if worker ID is already registered

@@ -20,9 +20,10 @@ type BatchWriter struct {
 	closed     atomic.Bool
 	
 	// Metrics
-	totalWrites int64
-	totalBatches int64
-	totalFlushes int64
+	totalWrites  atomic.Int64
+	totalBatches atomic.Int64
+	totalFlushes atomic.Int64
+	errorCount   atomic.Int64
 }
 
 // NewBatchWriter creates a new batch writer
@@ -47,43 +48,84 @@ func (bw *BatchWriter) Write(p []byte) (int, error) {
 		return 0, io.ErrClosedPipe
 	}
 	
-	bw.batchMu.Lock()
-	defer bw.batchMu.Unlock()
-	
-	// If single write exceeds batch size, flush first
-	if len(bw.batch) > 0 && len(bw.batch)+len(p) > bw.batchSize {
-		if err := bw.flushLocked(); err != nil {
-			return 0, err
+	// If single write is larger than batch size, write directly without locking
+	if len(p) > bw.batchSize {
+		// Flush any pending data first (with lock)
+		bw.batchMu.Lock()
+		var flushErr error
+		if len(bw.batch) > 0 {
+			flushErr = bw.flushLocked()
 		}
+		bw.batchMu.Unlock()
+		
+		if flushErr != nil {
+			return 0, flushErr
+		}
+		
+		// Write large data directly (no lock needed)
+		n, err := bw.underlying.Write(p)
+		bw.totalWrites.Add(1)
+		if err != nil {
+			bw.errorCount.Add(1)
+		}
+		return n, err
 	}
 	
-	// If single write is larger than batch size, write directly
-	if len(p) > bw.batchSize {
-		// Flush any pending data first
-		if len(bw.batch) > 0 {
-			if err := bw.flushLocked(); err != nil {
-				return 0, err
-			}
-		}
-		// Write large data directly
-		n, err := bw.underlying.Write(p)
-		atomic.AddInt64(&bw.totalWrites, 1)
-		return n, err
+	// For normal writes, minimize lock holding time
+	var toFlush []byte
+	var needsFlush bool
+	
+	bw.batchMu.Lock()
+	// Check if we need to flush before adding
+	if len(bw.batch) > 0 && len(bw.batch)+len(p) > bw.batchSize {
+		// Copy batch for flushing outside lock
+		toFlush = make([]byte, len(bw.batch))
+		copy(toFlush, bw.batch)
+		bw.batch = bw.batch[:0] // Reset batch
+		needsFlush = true
 	}
 	
 	// Add to batch
 	bw.batch = append(bw.batch, p...)
-	atomic.AddInt64(&bw.totalWrites, 1)
+	batchFull := len(bw.batch) >= bw.batchSize
+	if batchFull {
+		// Copy batch for flushing outside lock
+		toFlush = make([]byte, len(bw.batch))
+		copy(toFlush, bw.batch)
+		bw.batch = bw.batch[:0] // Reset batch
+		needsFlush = true
+	}
+	bw.batchMu.Unlock()
 	
-	// Flush if batch is full
-	if len(bw.batch) >= bw.batchSize {
-		return len(p), bw.flushLocked()
+	bw.totalWrites.Add(1)
+	
+	// Flush outside lock to reduce contention
+	if needsFlush && len(toFlush) > 0 {
+		_, err := bw.underlying.Write(toFlush)
+		if err != nil {
+			// Write failed: need to restore data to batch to prevent data loss
+			// This is a best-effort recovery - if batch is full, data may still be lost
+			bw.batchMu.Lock()
+			// Try to restore if there's space (unlikely but possible if batch was reset)
+			if len(bw.batch)+len(toFlush) <= bw.batchSize*2 {
+				// Prepend toFlush to batch to maintain order
+				restored := make([]byte, len(toFlush), len(toFlush)+len(bw.batch))
+				copy(restored, toFlush)
+				bw.batch = append(restored, bw.batch...)
+			}
+			bw.batchMu.Unlock()
+			bw.errorCount.Add(1)
+			return len(p), err
+		}
+		bw.totalBatches.Add(1)
+		bw.totalFlushes.Add(1)
 	}
 	
 	return len(p), nil
 }
 
 // flushLocked flushes the batch (must be called with batchMu locked)
+// Note: This method is kept for backward compatibility but Write() now handles flushing outside lock
 func (bw *BatchWriter) flushLocked() error {
 	if len(bw.batch) == 0 {
 		return nil
@@ -99,8 +141,10 @@ func (bw *BatchWriter) flushLocked() error {
 	bw.batchMu.Lock()
 	
 	if err == nil {
-		atomic.AddInt64(&bw.totalBatches, 1)
-		atomic.AddInt64(&bw.totalFlushes, 1)
+		bw.totalBatches.Add(1)
+		bw.totalFlushes.Add(1)
+	} else {
+		bw.errorCount.Add(1)
 	}
 	
 	return err
@@ -150,9 +194,10 @@ func (bw *BatchWriter) Close() error {
 }
 
 // GetMetrics returns batch writer metrics
-func (bw *BatchWriter) GetMetrics() (writes, batches, flushes int64) {
-	return atomic.LoadInt64(&bw.totalWrites),
-		atomic.LoadInt64(&bw.totalBatches),
-		atomic.LoadInt64(&bw.totalFlushes)
+func (bw *BatchWriter) GetMetrics() (writes, batches, flushes, errors int64) {
+	return bw.totalWrites.Load(),
+		bw.totalBatches.Load(),
+		bw.totalFlushes.Load(),
+		bw.errorCount.Load()
 }
 

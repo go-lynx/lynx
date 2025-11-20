@@ -272,7 +272,7 @@ func TestBatchWriter_GetMetrics(t *testing.T) {
 	}
 
 	// Get metrics
-	writes, batches, flushes := bw.GetMetrics()
+	writes, batches, flushes, _ := bw.GetMetrics()
 
 	if writes < 1 {
 		t.Errorf("Expected at least 1 write, got %d", writes)

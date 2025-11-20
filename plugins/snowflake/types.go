@@ -55,7 +55,7 @@ type WorkerIDManager struct {
 	heartbeatCtx     context.Context
 	heartbeatCancel  context.CancelFunc
 	heartbeatRunning bool
-	mu                sync.RWMutex
+	mu               sync.RWMutex
 }
 
 // Generator generates snowflake IDs
@@ -414,14 +414,8 @@ func (p *PlugSnowflake) Start(plugin plugins.Plugin) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Start worker manager heartbeat
-	if p.workerManager != nil {
-		p.wg.Add(1)
-		go func() {
-			defer p.wg.Done()
-			// Worker manager heartbeat logic would go here
-		}()
-	}
+	// Note: Worker manager heartbeat is already started in RegisterWorkerID
+	// No additional goroutine needed here as heartbeat runs in workerManager
 
 	return nil
 }
@@ -432,7 +426,31 @@ func (p *PlugSnowflake) Stop(plugin plugins.Plugin) error {
 	defer p.mu.Unlock()
 
 	// Signal shutdown
-	close(p.shutdownCh)
+	select {
+	case <-p.shutdownCh:
+		// Already closed
+	default:
+		close(p.shutdownCh)
+	}
+
+	// Stop worker manager heartbeat and unregister
+	if p.workerManager != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := p.workerManager.UnregisterWorkerID(ctx); err != nil {
+			log.NewHelper(p.logger).Warnf("failed to unregister worker ID during stop: %v", err)
+		}
+	}
+
+	// Shutdown generator
+	if p.generator != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := p.generator.Shutdown(ctx); err != nil {
+			log.NewHelper(p.logger).Warnf("failed to shutdown generator: %v", err)
+		}
+	}
 
 	// Wait for goroutines to finish
 	p.wg.Wait()
@@ -461,13 +479,91 @@ func (p *PlugSnowflake) InitializeResources(rt plugins.Runtime) error {
 
 // StartupTasks performs startup tasks
 func (p *PlugSnowflake) StartupTasks() error {
-	// Startup tasks logic
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Auto-register worker ID if enabled and not already registered
+	if p.conf != nil && p.conf.AutoRegisterWorkerId && p.workerManager != nil && p.redisClient != nil {
+		// Check if worker ID is already set (manual configuration)
+		if p.conf.WorkerId > 0 {
+			// Try to register the specific worker ID
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := p.workerManager.RegisterSpecificWorkerID(ctx, int64(p.conf.WorkerId)); err != nil {
+				log.NewHelper(p.logger).Warnf("failed to register specific worker ID %d: %v, trying auto-register", p.conf.WorkerId, err)
+				// Fall back to auto-register
+				maxWorkerID := int64((1 << p.conf.WorkerIdBits) - 1)
+				if maxWorkerID == 0 {
+					maxWorkerID = 31 // Default max worker ID
+				}
+				workerID, err := p.workerManager.RegisterWorkerID(ctx, maxWorkerID)
+				if err != nil {
+					return fmt.Errorf("failed to auto-register worker ID: %w", err)
+				}
+				// Update generator with new worker ID (thread-safe)
+				if p.generator != nil {
+					p.generator.mu.Lock()
+					p.generator.workerID = workerID
+					p.generator.mu.Unlock()
+				}
+				log.NewHelper(p.logger).Infof("auto-registered worker ID: %d", workerID)
+			} else {
+				log.NewHelper(p.logger).Infof("registered specific worker ID: %d", p.conf.WorkerId)
+			}
+		} else {
+			// Auto-register worker ID
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			maxWorkerID := int64((1 << p.conf.WorkerIdBits) - 1)
+			if maxWorkerID == 0 {
+				maxWorkerID = 31 // Default max worker ID
+			}
+			workerID, err := p.workerManager.RegisterWorkerID(ctx, maxWorkerID)
+			if err != nil {
+				return fmt.Errorf("failed to auto-register worker ID: %w", err)
+			}
+			// Update generator with new worker ID (thread-safe)
+			if p.generator != nil {
+				p.generator.mu.Lock()
+				p.generator.workerID = workerID
+				p.generator.mu.Unlock()
+			}
+			log.NewHelper(p.logger).Infof("auto-registered worker ID: %d", workerID)
+		}
+	}
+
 	return nil
 }
 
 // CleanupTasks performs cleanup tasks
 func (p *PlugSnowflake) CleanupTasks() error {
-	// Cleanup tasks logic
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Unregister worker ID if registered
+	if p.workerManager != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := p.workerManager.UnregisterWorkerID(ctx); err != nil {
+			log.NewHelper(p.logger).Warnf("failed to unregister worker ID during cleanup: %v", err)
+			// Don't return error, as this is cleanup
+		} else {
+			log.NewHelper(p.logger).Infof("unregistered worker ID during cleanup")
+		}
+	}
+
+	// Shutdown generator
+	if p.generator != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := p.generator.Shutdown(ctx); err != nil {
+			log.NewHelper(p.logger).Warnf("failed to shutdown generator: %v", err)
+		}
+	}
+
 	return nil
 }
 

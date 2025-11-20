@@ -587,3 +587,35 @@ func (a *LynxApp) Close() error {
 func (a *LynxApp) Shutdown() error {
 	return a.Close()
 }
+
+// GetResourceStats returns resource statistics from the plugin manager
+func (a *LynxApp) GetResourceStats() map[string]any {
+	if a == nil {
+		return nil
+	}
+	if pm := a.GetPluginManager(); pm != nil {
+		return pm.GetResourceStats()
+	}
+	return nil
+}
+
+// GetUnloadFailures returns plugin unload failures for monitoring
+func (a *LynxApp) GetUnloadFailures() []UnloadFailureRecord {
+	if a == nil {
+		return nil
+	}
+	if pm := a.GetPluginManager(); pm != nil {
+		return pm.GetUnloadFailures()
+	}
+	return nil
+}
+
+// ClearUnloadFailures clears recorded unload failures
+func (a *LynxApp) ClearUnloadFailures() {
+	if a == nil {
+		return
+	}
+	if pm := a.GetPluginManager(); pm != nil {
+		pm.ClearUnloadFailures()
+	}
+}

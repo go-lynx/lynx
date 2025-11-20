@@ -411,11 +411,46 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		// Format configuration mainly affects console output
 		// This ensures log files remain parseable and searchable
 		
-		// Apply batch writing optimization (64KB batch, 100ms flush interval)
-		batchWriter := NewBatchWriter(fileWriter, 64*1024, 100*time.Millisecond)
+		// Get performance configuration with defaults
+		batchSize := 64 * 1024 // 64KB default
+		batchFlushInterval := 100 * time.Millisecond
+		asyncQueueSize := 2000 // default queue size
+		enableDynamicAdjust := false // default: disabled for stability
+		
+		// Try to get performance config using reflection
+		perfConfigVal := reflect.ValueOf(&logConfig).Elem()
+		if perfConfigVal.IsValid() {
+			if perfField := perfConfigVal.FieldByName("Performance"); perfField.IsValid() && perfField.CanInterface() {
+				perfPtr := perfField.Interface()
+				if perfPtr != nil {
+					perfReflect := reflect.ValueOf(perfPtr).Elem()
+					if perfReflect.IsValid() {
+						if batchSizeVal := perfReflect.FieldByName("BatchSizeBytes"); batchSizeVal.IsValid() && batchSizeVal.CanInterface() {
+							if bs, ok := batchSizeVal.Interface().(int32); ok && bs > 0 {
+								batchSize = int(bs)
+							}
+						}
+						if flushIntervalVal := perfReflect.FieldByName("BatchFlushIntervalMs"); flushIntervalVal.IsValid() && flushIntervalVal.CanInterface() {
+							if fi, ok := flushIntervalVal.Interface().(int32); ok && fi > 0 {
+								batchFlushInterval = time.Duration(fi) * time.Millisecond
+							}
+						}
+						if queueSizeVal := perfReflect.FieldByName("AsyncQueueSize"); queueSizeVal.IsValid() && queueSizeVal.CanInterface() {
+							if qs, ok := queueSizeVal.Interface().(int32); ok && qs > 0 {
+								asyncQueueSize = int(qs)
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		// Apply batch writing optimization
+		batchWriter := NewBatchWriter(fileWriter, batchSize, batchFlushInterval)
 		
 		// Use async writer for file output to improve performance
-		asyncFile := NewAsyncLogWriter(batchWriter, 2000) // 2000 log queue size
+		// Enable dynamic adjustment for production environments (can be configured)
+		asyncFile := NewAsyncLogWriter(batchWriter, asyncQueueSize, enableDynamicAdjust)
 		asyncWriters["file"] = asyncFile
 		writers = append(writers, asyncFile)
 	}
@@ -727,18 +762,48 @@ func CleanupLoggers() {
 		configWatchStopCh = nil
 	}
 
-	// Wait a bit for goroutines to stop
-	time.Sleep(100 * time.Millisecond)
+	// Wait for goroutines to stop with timeout
+	done := make(chan struct{})
+	go func() {
+		// Give goroutines time to see stop signals
+		time.Sleep(50 * time.Millisecond)
+		close(done)
+	}()
+	
+	select {
+	case <-done:
+		// Goroutines should have stopped
+	case <-time.After(2 * time.Second):
+		// Timeout: continue anyway to prevent deadlock
+		fmt.Fprintf(os.Stderr, "[lynx-log-warn] CleanupLoggers timeout waiting for goroutines\n")
+	}
 
 	writersMu.Lock()
 	defer writersMu.Unlock()
 
-	for _, bw := range bufferedWriters {
-		bw.Close()
-	}
+	// Close all writers with timeout protection
+	closeDone := make(chan struct{})
+	go func() {
+		for _, bw := range bufferedWriters {
+			if err := bw.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "[lynx-log-error] Failed to close buffered writer: %v\n", err)
+			}
+		}
 
-	for _, aw := range asyncWriters {
-		aw.Close()
+		for _, aw := range asyncWriters {
+			if err := aw.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "[lynx-log-error] Failed to close async writer: %v\n", err)
+			}
+		}
+		close(closeDone)
+	}()
+	
+	select {
+	case <-closeDone:
+		// All writers closed successfully
+	case <-time.After(5 * time.Second):
+		// Timeout: continue anyway
+		fmt.Fprintf(os.Stderr, "[lynx-log-warn] CleanupLoggers timeout closing writers\n")
 	}
 
 	bufferedWriters = make(map[string]*BufferedWriter)

@@ -104,4 +104,23 @@ message log {
 
   // Format configuration.
   Format format = 15;
+
+  // Performance optimization configuration.
+  message Performance {
+    // Async log writer queue size (default: 2000)
+    // Larger queue size reduces log drops but uses more memory
+    int32 async_queue_size = 1;
+
+    // Batch writer size in bytes (default: 64KB)
+    int32 batch_size_bytes = 2;
+
+    // Batch flush interval in milliseconds (default: 100ms)
+    int32 batch_flush_interval_ms = 3;
+
+    // Buffer size for console output in bytes (default: 32KB)
+    int32 console_buffer_size_bytes = 4;
+  }
+
+  // Performance optimization configuration.
+  Performance performance = 16;
 }

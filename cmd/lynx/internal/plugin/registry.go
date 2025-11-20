@@ -279,6 +279,34 @@ func (r *PluginRegistry) loadOfficialPlugins() {
 			Official:    true,
 		},
 
+		// Configuration Center plugins
+		{
+			Name:        "apollo",
+			Type:        TypeConfig,
+			Version:     "v2.0.0",
+			Description: "Apollo configuration center plugin with dynamic configuration management",
+			Repository:  "github.com/go-lynx/lynx/plugins/apollo",
+			ImportPath:  "github.com/go-lynx/lynx/plugins/apollo",
+			Author:      "go-lynx",
+			License:     "Apache-2.0",
+			Tags:        []string{"apollo", "config", "configuration"},
+			Compatible:  ">=v2.0.0",
+			Official:    true,
+		},
+		{
+			Name:        "nacos",
+			Type:        TypeConfig,
+			Version:     "v2.0.0",
+			Description: "Nacos configuration center and service discovery plugin",
+			Repository:  "github.com/go-lynx/lynx/plugins/nacos",
+			ImportPath:  "github.com/go-lynx/lynx/plugins/nacos",
+			Author:      "go-lynx",
+			License:     "Apache-2.0",
+			Tags:        []string{"nacos", "config", "discovery"},
+			Compatible:  ">=v2.0.0",
+			Official:    true,
+		},
+
 		// Other plugins
 		{
 			Name:        "polaris",
@@ -316,6 +344,32 @@ func (r *PluginRegistry) loadOfficialPlugins() {
 			Author:      "go-lynx",
 			License:     "Apache-2.0",
 			Tags:        []string{"swagger", "openapi", "documentation"},
+			Compatible:  ">=v2.0.0",
+			Official:    true,
+		},
+		{
+			Name:        "sentinel",
+			Type:        TypeOther,
+			Version:     "v2.0.0",
+			Description: "Sentinel traffic control and circuit breaker plugin",
+			Repository:  "github.com/go-lynx/lynx/plugins/sentinel",
+			ImportPath:  "github.com/go-lynx/lynx/plugins/sentinel",
+			Author:      "go-lynx",
+			License:     "Apache-2.0",
+			Tags:        []string{"sentinel", "rate-limit", "circuit-breaker", "traffic-control"},
+			Compatible:  ">=v2.0.0",
+			Official:    true,
+		},
+		{
+			Name:        "snowflake",
+			Type:        TypeOther,
+			Version:     "v2.0.0",
+			Description: "Snowflake distributed ID generator plugin",
+			Repository:  "github.com/go-lynx/lynx/plugins/snowflake",
+			ImportPath:  "github.com/go-lynx/lynx/plugins/snowflake",
+			Author:      "go-lynx",
+			License:     "Apache-2.0",
+			Tags:        []string{"snowflake", "id-generator", "distributed-id"},
 			Compatible:  ">=v2.0.0",
 			Official:    true,
 		},
@@ -359,7 +413,7 @@ func (r *PluginRegistry) GetPluginsByType(pluginType PluginType) []*PluginMetada
 func (r *PluginRegistry) SearchPlugins(keyword string) []*PluginMetadata {
 	keyword = strings.ToLower(keyword)
 	var plugins []*PluginMetadata
-	
+
 	for _, plugin := range r.plugins {
 		// Search in name, description, and tags
 		if strings.Contains(strings.ToLower(plugin.Name), keyword) ||
@@ -367,7 +421,7 @@ func (r *PluginRegistry) SearchPlugins(keyword string) []*PluginMetadata {
 			plugins = append(plugins, plugin)
 			continue
 		}
-		
+
 		// Search in tags
 		for _, tag := range plugin.Tags {
 			if strings.Contains(strings.ToLower(tag), keyword) {
@@ -376,7 +430,7 @@ func (r *PluginRegistry) SearchPlugins(keyword string) []*PluginMetadata {
 			}
 		}
 	}
-	
+
 	return plugins
 }
 

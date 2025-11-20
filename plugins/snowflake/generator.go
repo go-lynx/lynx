@@ -116,16 +116,33 @@ func (g *Generator) GenerateID() (int64, error) {
 
 	// Handle clock going backwards
 	if timestamp < g.lastTimestamp {
-		return 0, g.handleClockBackward(timestamp)
+		newTimestamp, err := g.handleClockBackward(timestamp)
+		if err != nil {
+			return 0, err
+		}
+		// Update timestamp after handling clock backward
+		timestamp = newTimestamp
 	}
 
 	// If same millisecond, increment sequence
 	if timestamp == g.lastTimestamp {
-		if g.enableSequenceCache && g.cacheIndex < len(g.sequenceCache) {
-			// Use cached sequence if available
-			g.sequence = g.sequenceCache[g.cacheIndex]
+		if g.enableSequenceCache && g.cacheIndex < len(g.sequenceCache) && g.cacheIndex >= 0 {
+			// Use cached sequence if available and valid
+			cachedSeq := g.sequenceCache[g.cacheIndex]
 			g.cacheIndex++
+			// Validate cached sequence is within bounds before using
+			if cachedSeq > 0 && cachedSeq <= g.maxSequence {
+				g.sequence = cachedSeq
+			} else {
+				// Invalid cached sequence, fall back to normal increment
+				g.sequence = (g.sequence + 1) & g.maxSequence
+				if g.sequence == 0 {
+					// Sequence overflow, wait for next millisecond
+					timestamp = g.waitForNextMillisecond(timestamp)
+				}
+			}
 		} else {
+			// Cache exhausted or disabled, use normal increment
 			g.sequence = (g.sequence + 1) & g.maxSequence
 			if g.sequence == 0 {
 				// Sequence overflow, wait for next millisecond
@@ -269,7 +286,15 @@ func (g *Generator) checkClockDrift(currentTimestamp int64) error {
 	}
 	g.lastClockCheck = now
 
-	drift := time.Duration(g.lastTimestamp-currentTimestamp) * time.Millisecond
+	// Calculate drift correctly: positive means clock moved forward too fast
+	// Negative means clock went backward (handled separately in handleClockBackward)
+	driftMs := currentTimestamp - g.lastTimestamp
+	if driftMs < 0 {
+		// Clock went backward, this is handled in handleClockBackward
+		return nil
+	}
+
+	drift := time.Duration(driftMs) * time.Millisecond
 	if drift > g.maxClockDrift {
 		switch g.clockDriftAction {
 		case ClockDriftActionError:
@@ -279,9 +304,8 @@ func (g *Generator) checkClockDrift(currentTimestamp int64) error {
 				Drift:         drift,
 			}
 		case ClockDriftActionWait:
-			// Wait for clock to catch up
-			waitTime := drift
-			time.Sleep(waitTime)
+			// Wait for clock to stabilize (not wait for drift, but wait a bit)
+			time.Sleep(10 * time.Millisecond)
 			return nil
 		case ClockDriftActionIgnore:
 			// Do nothing, just log
@@ -295,40 +319,77 @@ func (g *Generator) checkClockDrift(currentTimestamp int64) error {
 }
 
 // handleClockBackward handles the case when clock goes backward
-func (g *Generator) handleClockBackward(currentTimestamp int64) error {
-	drift := time.Duration(g.lastTimestamp-currentTimestamp) * time.Millisecond
+// Returns the new timestamp to use and any error
+func (g *Generator) handleClockBackward(currentTimestamp int64) (int64, error) {
+	driftMs := g.lastTimestamp - currentTimestamp
+	drift := time.Duration(driftMs) * time.Millisecond
 
 	// Update statistics
 	g.clockBackwardCount++
 
 	switch g.clockDriftAction {
 	case ClockDriftActionError:
-		return &ClockDriftError{
+		return 0, &ClockDriftError{
 			CurrentTime:   time.Unix(currentTimestamp/1000, (currentTimestamp%1000)*1000000),
 			LastTimestamp: time.Unix(g.lastTimestamp/1000, (g.lastTimestamp%1000)*1000000),
 			Drift:         drift,
 		}
 	case ClockDriftActionWait:
-		// Wait for clock to catch up
+		// Wait for clock to catch up, with maximum wait time limit
+		maxWaitTime := 5 * time.Second
 		waitTime := drift + time.Millisecond // Add 1ms buffer
+		if waitTime > maxWaitTime {
+			waitTime = maxWaitTime
+		}
 		time.Sleep(waitTime)
-		return nil
+		// Re-check timestamp after wait
+		newTimestamp := g.getCurrentTimestamp()
+		if newTimestamp < g.lastTimestamp {
+			// Still backward after wait, use last timestamp + 1 to avoid blocking
+			// Reset sequence when forcing timestamp increment
+			g.sequence = 0
+			return g.lastTimestamp + 1, nil
+		}
+		// Clock caught up, use the new timestamp
+		return newTimestamp, nil
 	case ClockDriftActionIgnore:
-		// Use last timestamp + 1
-		g.lastTimestamp++
-		return nil
+		// Use last timestamp + 1 to ensure monotonicity
+		// Reset sequence to avoid potential ID collisions
+		g.sequence = 0
+		return g.lastTimestamp + 1, nil
 	default:
-		return fmt.Errorf("unknown clock drift action: %s", g.clockDriftAction)
+		return 0, fmt.Errorf("unknown clock drift action: %s", g.clockDriftAction)
 	}
 }
 
-// waitForNextMillisecond waits until the next millisecond
+// waitForNextMillisecond waits until the next millisecond with improved precision
 func (g *Generator) waitForNextMillisecond(lastTimestamp int64) int64 {
 	timestamp := g.getCurrentTimestamp()
-	for timestamp <= lastTimestamp {
-		time.Sleep(time.Millisecond)
+	maxWaitIterations := 100 // Prevent infinite loop
+	iterations := 0
+	
+	for timestamp <= lastTimestamp && iterations < maxWaitIterations {
+		// Calculate remaining time more precisely
+		remainingNs := (lastTimestamp+1)*1000000 - time.Now().UnixNano()
+		if remainingNs > 0 {
+			// Sleep for the remaining time, but not more than 1ms
+			if remainingNs > 1000000 {
+				remainingNs = 1000000
+			}
+			time.Sleep(time.Duration(remainingNs))
+		} else {
+			// Small sleep to avoid busy waiting
+			time.Sleep(100 * time.Microsecond)
+		}
 		timestamp = g.getCurrentTimestamp()
+		iterations++
 	}
+	
+	// If still not advanced after max iterations, force increment
+	if timestamp <= lastTimestamp {
+		timestamp = lastTimestamp + 1
+	}
+	
 	return timestamp
 }
 
@@ -338,16 +399,37 @@ func (g *Generator) refillSequenceCache() {
 		return
 	}
 
-	// Fill cache with sequential numbers starting from current sequence
-	for i := 0; i < len(g.sequenceCache); i++ {
-		g.sequenceCache[i] = (g.sequence + int64(i) + 1) & g.maxSequence
-		// If we hit the max sequence, break to avoid overflow
-		if g.sequenceCache[i] == 0 {
-			// Resize cache to only include valid sequences
-			g.sequenceCache = g.sequenceCache[:i]
+	// Calculate how many valid sequences we can cache
+	// Start from sequence 1 (since 0 is already used)
+	validCount := 0
+	maxValidCount := int(g.maxSequence) // Maximum sequences per millisecond
+	
+	// Limit cache size to available sequence space
+	cacheSize := len(g.sequenceCache)
+	if cacheSize > maxValidCount {
+		cacheSize = maxValidCount
+	}
+
+	// Fill cache with sequential numbers starting from 1
+	// Note: sequence is already 0 at this point (new millisecond)
+	// Limit to actual available sequences
+	actualCacheSize := cacheSize
+	if actualCacheSize > maxValidCount {
+		actualCacheSize = maxValidCount
+	}
+	
+	for i := 0; i < actualCacheSize; i++ {
+		seq := int64(i + 1) // Start from 1, not 0
+		if seq > g.maxSequence {
+			// Should not happen if cacheSize is validated, but check anyway
 			break
 		}
+		g.sequenceCache[i] = seq
+		validCount = i + 1
 	}
+
+	// Note: We keep the original slice size, but only use validCount entries
+	// The cacheIndex check in GenerateID ensures we don't access beyond validCount
 
 	// Reset cache index
 	g.cacheIndex = 0

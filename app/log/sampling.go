@@ -24,39 +24,53 @@ type samplingConfig struct {
 var sconf atomic.Value // *samplingConfig
 
 // internal counters for rate limiting
+// Use atomic operations for better performance
 var (
-	rateMu     sync.Mutex
-	secWindow  int64
-	infoCount  int
-	debugCount int
+	rateMu     sync.Mutex // Only used for window reset, not for every check
+	secWindow  atomic.Int64
+	infoCount  atomic.Int64
+	debugCount atomic.Int64
 	// Fast path: atomic flag to check if sampling is enabled
 	samplingEnabled atomic.Bool
 )
 
-// rng is a package-local RNG for sampling. Methods on *rand.Rand are not
-// goroutine-safe, so we rely on rateMu to serialize access around uses.
-var rng *rand.Rand
+// rngPool is a pool of random number generators for lock-free sampling
+// Each goroutine can get its own RNG from the pool, avoiding lock contention
+var rngPool = sync.Pool{
+	New: func() interface{} {
+		var seed int64
+		var b [8]byte
+		if _, err := crand.Read(b[:]); err == nil {
+			seed = int64(binary.LittleEndian.Uint64(b[:]))
+		} else {
+			seed = time.Now().UnixNano()
+		}
+		return rand.New(rand.NewSource(seed))
+	},
+}
 
-// init initializes rng using a cryptographically secure seed; falls back to
-// time-based seed if crypto RNG is unavailable. It also sets default sampling config.
+// getRNG gets a random number generator from the pool
+// Callers should put it back after use for better performance
+func getRNG() *rand.Rand {
+	return rngPool.Get().(*rand.Rand)
+}
+
+// putRNG returns a random number generator to the pool
+func putRNG(r *rand.Rand) {
+	rngPool.Put(r)
+}
+
+// init initializes default sampling configuration
 func init() {
-	var seed int64
-	var b [8]byte
-	if _, err := crand.Read(b[:]); err == nil {
-		seed = int64(binary.LittleEndian.Uint64(b[:]))
-	} else {
-		seed = time.Now().UnixNano()
-	}
-	rng = rand.New(rand.NewSource(seed))
-
 	// default: disabled sampling, keep all info/debug, no rate limit
-	sconf.Store(&samplingConfig{
+	defaultConfig := &samplingConfig{
 		enabled:        false,
 		infoRatio:      1.0,
 		debugRatio:     1.0,
 		maxInfoPerSec:  0,
 		maxDebugPerSec: 0,
-	})
+	}
+	sconf.Store(defaultConfig)
 	samplingEnabled.Store(false)
 }
 
@@ -116,43 +130,122 @@ func allowLog(level log.Level) bool {
 	}
 
 	nowSec := time.Now().Unix()
-	rateMu.Lock()
-	if secWindow != nowSec {
-		secWindow = nowSec
-		infoCount = 0
-		debugCount = 0
-	}
-	defer rateMu.Unlock()
-
-	switch level {
-	case log.LevelDebug:
-		// ratio sampling
-		if cfg.debugRatio < 1.0 {
-			if rng.Float64() > cfg.debugRatio {
-				return false
+	currentWindow := secWindow.Load()
+	
+	// Fast path: if window hasn't changed, use atomic operations (lock-free)
+	if currentWindow == nowSec {
+		// Get RNG from pool for lock-free random number generation
+		rng := getRNG()
+		defer putRNG(rng)
+		
+		switch level {
+		case log.LevelDebug:
+			// ratio sampling
+			if cfg.debugRatio < 1.0 {
+				if rng.Float64() > cfg.debugRatio {
+					return false
+				}
 			}
-		}
-		// rate limit
-		if cfg.maxDebugPerSec > 0 {
-			if debugCount >= cfg.maxDebugPerSec {
-				return false
+			// rate limit using CAS to prevent race conditions
+			if cfg.maxDebugPerSec > 0 {
+				for {
+					current := debugCount.Load()
+					if current >= int64(cfg.maxDebugPerSec) {
+						return false
+					}
+					// Use CompareAndSwap to atomically increment
+					if debugCount.CompareAndSwap(current, current+1) {
+						// Successfully incremented, allow log
+						break
+					}
+					// CAS failed, retry (another goroutine modified the value)
+				}
 			}
-			debugCount++
-		}
-	case log.LevelInfo:
-		if cfg.infoRatio < 1.0 {
-			if rng.Float64() > cfg.infoRatio {
-				return false
+		case log.LevelInfo:
+			if cfg.infoRatio < 1.0 {
+				if rng.Float64() > cfg.infoRatio {
+					return false
+				}
 			}
-		}
-		if cfg.maxInfoPerSec > 0 {
-			if infoCount >= cfg.maxInfoPerSec {
-				return false
+			if cfg.maxInfoPerSec > 0 {
+				for {
+					current := infoCount.Load()
+					if current >= int64(cfg.maxInfoPerSec) {
+						return false
+					}
+					// Use CompareAndSwap to atomically increment
+					if infoCount.CompareAndSwap(current, current+1) {
+						// Successfully incremented, allow log
+						break
+					}
+					// CAS failed, retry (another goroutine modified the value)
+				}
 			}
-			infoCount++
+		default:
+			return true
 		}
-	default:
 		return true
 	}
+	
+	// Window changed: need to reset counters (requires lock)
+	rateMu.Lock()
+	// Double-check after acquiring lock (another goroutine might have reset it)
+	if secWindow.Load() != nowSec {
+		secWindow.Store(nowSec)
+		infoCount.Store(0)
+		debugCount.Store(0)
+	}
+	rateMu.Unlock()
+	
+	// Retry with updated window (use same logic as fast path, not recursive)
+	// This avoids potential stack overflow and is more efficient
+	currentWindow = secWindow.Load()
+	if currentWindow == nowSec {
+		// Get RNG from pool
+		rng := getRNG()
+		defer putRNG(rng)
+		
+		switch level {
+		case log.LevelDebug:
+			if cfg.debugRatio < 1.0 {
+				if rng.Float64() > cfg.debugRatio {
+					return false
+				}
+			}
+			if cfg.maxDebugPerSec > 0 {
+				for {
+					current := debugCount.Load()
+					if current >= int64(cfg.maxDebugPerSec) {
+						return false
+					}
+					if debugCount.CompareAndSwap(current, current+1) {
+						break
+					}
+				}
+			}
+		case log.LevelInfo:
+			if cfg.infoRatio < 1.0 {
+				if rng.Float64() > cfg.infoRatio {
+					return false
+				}
+			}
+			if cfg.maxInfoPerSec > 0 {
+				for {
+					current := infoCount.Load()
+					if current >= int64(cfg.maxInfoPerSec) {
+						return false
+					}
+					if infoCount.CompareAndSwap(current, current+1) {
+						break
+					}
+				}
+			}
+		default:
+			return true
+		}
+		return true
+	}
+	
+	// Should not reach here, but return true as fallback
 	return true
 }

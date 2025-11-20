@@ -36,27 +36,34 @@ func (m *DefaultPluginManager[T]) LoadPlugins(conf config.Config) error {
 		return err
 	}
 
-		if Lynx() != nil && Lynx().bootConfig != nil && Lynx().bootConfig.Lynx != nil && Lynx().bootConfig.Lynx.Subscriptions != nil {
-			disc := Lynx().GetControlPlane().NewServiceDiscovery()
-			if disc != nil {
-				routerFactory := func(service string) selector.NodeFilter {
-					return Lynx().GetControlPlane().NewNodeRouter(service)
-				}
-				conns, err := subscribe.BuildGrpcSubscriptions(Lynx().bootConfig.Lynx.Subscriptions, disc, routerFactory)
-				if err != nil {
-					return fmt.Errorf("build grpc subscriptions failed: %w", err)
-				}
-				// Use mutex to protect grpcSubs map
-				app := Lynx()
-				if app != nil {
-					app.grpcSubsMu.Lock()
-					app.grpcSubs = conns
-					app.grpcSubsMu.Unlock()
-				}
-			} else {
-				log.Warnf("service discovery is nil, skip building grpc subscriptions")
-			}
+	// Build gRPC subscriptions after plugins are loaded (control plane plugin must be started)
+	// This ensures service discovery is available
+	if Lynx() != nil && Lynx().bootConfig != nil && Lynx().bootConfig.Lynx != nil && Lynx().bootConfig.Lynx.Subscriptions != nil {
+		controlPlane := Lynx().GetControlPlane()
+		if controlPlane == nil {
+			log.Warnf("control plane is nil, skip building grpc subscriptions")
+			return nil
 		}
+		disc := controlPlane.NewServiceDiscovery()
+		if disc != nil {
+			routerFactory := func(service string) selector.NodeFilter {
+				return controlPlane.NewNodeRouter(service)
+			}
+			conns, err := subscribe.BuildGrpcSubscriptions(Lynx().bootConfig.Lynx.Subscriptions, disc, routerFactory)
+			if err != nil {
+				return fmt.Errorf("build grpc subscriptions failed: %w", err)
+			}
+			// Use mutex to protect grpcSubs map
+			app := Lynx()
+			if app != nil {
+				app.grpcSubsMu.Lock()
+				app.grpcSubs = conns
+				app.grpcSubsMu.Unlock()
+			}
+		} else {
+			log.Warnf("service discovery is nil, skip building grpc subscriptions")
+		}
+	}
 
 	return nil
 }
@@ -107,16 +114,25 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 		// Emit plugin unloading event
 		m.emitPluginUnloadEvent(p.ID(), p.Name())
 
+		var stopErr, cleanupErr error
 		if err := m.safeStopPlugin(p, timeout); err != nil {
+			stopErr = err
 			log.Errorf("Failed to unload plugin %s: %v", p.Name(), err)
 			// Emit error event
 			m.emitPluginErrorEvent(p.ID(), p.Name(), "unload", err)
 		}
 		if err := m.runtime.CleanupResources(p.ID()); err != nil {
+			cleanupErr = err
 			log.Errorf("Failed to cleanup resources for plugin %s: %v", p.Name(), err)
 			// Emit resource cleanup error event
 			m.emitResourceCleanupErrorEvent(p.ID(), p.Name(), err)
 		}
+		
+		// Record unload failure if either stop or cleanup failed
+		if stopErr != nil || cleanupErr != nil {
+			m.recordUnloadFailure(p, stopErr, cleanupErr)
+		}
+		
 		m.pluginInstances.Delete(p.Name())
 	}
 
@@ -232,16 +248,25 @@ func (m *DefaultPluginManager[T]) UnloadPluginsByName(names []string) {
 		// Emit plugin unloading event
 		m.emitPluginUnloadEvent(p.ID(), p.Name())
 
+		var stopErr, cleanupErr error
 		if err := m.safeStopPlugin(p, timeout); err != nil {
+			stopErr = err
 			log.Errorf("Failed to unload plugin %s: %v", p.Name(), err)
 			// Emit error event
 			m.emitPluginErrorEvent(p.ID(), p.Name(), "unload", err)
 		}
 		if err := m.runtime.CleanupResources(p.ID()); err != nil {
+			cleanupErr = err
 			log.Errorf("Failed to cleanup resources for plugin %s: %v", p.Name(), err)
 			// Emit resource cleanup error event
 			m.emitResourceCleanupErrorEvent(p.ID(), p.Name(), err)
 		}
+		
+		// Record unload failure if either stop or cleanup failed
+		if stopErr != nil || cleanupErr != nil {
+			m.recordUnloadFailure(p, stopErr, cleanupErr)
+		}
+		
 		m.pluginInstances.Delete(p.Name())
 	}
 
@@ -276,22 +301,33 @@ func (m *DefaultPluginManager[T]) StopPlugin(pluginName string) error {
 		return nil
 	}
 
-	// Emit plugin stopping event
-	m.emitPluginUnloadEvent(p.ID(), p.Name())
+		// Emit plugin stopping event
+		m.emitPluginUnloadEvent(p.ID(), p.Name())
 
-	timeout := m.getStopTimeout()
-	if err := m.safeStopPlugin(p, timeout); err != nil {
-		// Emit error event
-		m.emitPluginErrorEvent(p.ID(), p.Name(), "stop", err)
-		return fmt.Errorf("failed to stop plugin %s: %w", pluginName, err)
-	}
-	if err := m.runtime.CleanupResources(p.ID()); err != nil {
-		// Emit resource cleanup error event
-		m.emitResourceCleanupErrorEvent(p.ID(), p.Name(), err)
-		return fmt.Errorf("failed to cleanup resources for plugin %s: %w", pluginName, err)
-	}
-	m.pluginInstances.Delete(pluginName)
-	return nil
+		timeout := m.getStopTimeout()
+		var stopErr, cleanupErr error
+		if err := m.safeStopPlugin(p, timeout); err != nil {
+			stopErr = err
+			// Emit error event
+			m.emitPluginErrorEvent(p.ID(), p.Name(), "stop", err)
+		}
+		if err := m.runtime.CleanupResources(p.ID()); err != nil {
+			cleanupErr = err
+			// Emit resource cleanup error event
+			m.emitResourceCleanupErrorEvent(p.ID(), p.Name(), err)
+		}
+		
+		// Record unload failure if either stop or cleanup failed
+		if stopErr != nil || cleanupErr != nil {
+			m.recordUnloadFailure(p, stopErr, cleanupErr)
+			if stopErr != nil {
+				return fmt.Errorf("failed to stop plugin %s: %w", pluginName, stopErr)
+			}
+			return fmt.Errorf("failed to cleanup resources for plugin %s: %w", pluginName, cleanupErr)
+		}
+		
+		m.pluginInstances.Delete(pluginName)
+		return nil
 }
 
 // GetResourceStats Resource helpers.
@@ -418,4 +454,58 @@ func (m *DefaultPluginManager[T]) emitPluginManagerShutdownEvent() {
 	}
 
 	m.runtime.EmitEvent(pluginEvent)
+}
+
+// recordUnloadFailure records a plugin unload failure for monitoring
+func (m *DefaultPluginManager[T]) recordUnloadFailure(p plugins.Plugin, stopErr, cleanupErr error) {
+	if m == nil || p == nil {
+		return
+	}
+	
+	m.unloadFailuresMu.Lock()
+	defer m.unloadFailuresMu.Unlock()
+	
+	// Limit the number of stored failures to prevent unbounded growth
+	const maxFailures = 100
+	if len(m.unloadFailures) >= maxFailures {
+		// Remove oldest failure (FIFO)
+		m.unloadFailures = m.unloadFailures[1:]
+	}
+	
+	record := UnloadFailureRecord{
+		PluginName:   p.Name(),
+		PluginID:     p.ID(),
+		FailureTime:  time.Now(),
+		StopError:    stopErr,
+		CleanupError: cleanupErr,
+		RetryCount:   0, // Can be incremented if retry logic is added
+	}
+	
+	m.unloadFailures = append(m.unloadFailures, record)
+}
+
+// GetUnloadFailures returns all recorded plugin unload failures
+func (m *DefaultPluginManager[T]) GetUnloadFailures() []UnloadFailureRecord {
+	if m == nil {
+		return nil
+	}
+	
+	m.unloadFailuresMu.RLock()
+	defer m.unloadFailuresMu.RUnlock()
+	
+	// Return a copy to prevent external modification
+	result := make([]UnloadFailureRecord, len(m.unloadFailures))
+	copy(result, m.unloadFailures)
+	return result
+}
+
+// ClearUnloadFailures clears all recorded unload failures
+func (m *DefaultPluginManager[T]) ClearUnloadFailures() {
+	if m == nil {
+		return
+	}
+	
+	m.unloadFailuresMu.Lock()
+	defer m.unloadFailuresMu.Unlock()
+	m.unloadFailures = nil
 }
