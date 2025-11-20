@@ -28,6 +28,8 @@ type BufferedWriter struct {
 	mu      sync.Mutex
 	metrics LogPerformanceMetrics
 	closed  atomic.Bool
+	// Atomic metrics for thread-safe access
+	avgWriteTimeAtomic atomic.Int64 // nanoseconds
 }
 
 // NewBufferedWriter creates a buffered writer with the given buffer size.
@@ -58,13 +60,19 @@ func (b *BufferedWriter) Write(p []byte) (int, error) {
 	}
 	b.mu.Unlock()
 	dur := time.Since(start)
-	// Metrics (EMA for avg write time)
-	prev := b.metrics.AvgWriteTime
-	if prev == 0 {
+	
+	// Metrics (EMA for avg write time) - use atomic operations for thread safety
+	durNs := int64(dur)
+	prevNs := b.avgWriteTimeAtomic.Load()
+	if prevNs == 0 {
+		b.avgWriteTimeAtomic.Store(durNs)
 		b.metrics.AvgWriteTime = dur
 	} else {
-		b.metrics.AvgWriteTime = (prev + dur) / 2
+		newAvg := (prevNs + durNs) / 2
+		b.avgWriteTimeAtomic.Store(newAvg)
+		b.metrics.AvgWriteTime = time.Duration(newAvg)
 	}
+	
 	atomic.AddInt64(&b.metrics.TotalLogs, 1)
 	if err != nil {
 		atomic.AddInt64(&b.metrics.ErrorCount, 1)
@@ -105,10 +113,12 @@ func (b *BufferedWriter) Close() error {
 
 // GetMetrics returns a snapshot of metrics.
 func (b *BufferedWriter) GetMetrics() LogPerformanceMetrics {
+	// Use atomic value for avg write time
+	avgNs := b.avgWriteTimeAtomic.Load()
 	return LogPerformanceMetrics{
 		TotalLogs:         atomic.LoadInt64(&b.metrics.TotalLogs),
 		DroppedLogs:       atomic.LoadInt64(&b.metrics.DroppedLogs),
-		AvgWriteTime:      b.metrics.AvgWriteTime,
+		AvgWriteTime:      time.Duration(avgNs),
 		BufferUtilization: b.metrics.BufferUtilization,
 		FlushCount:        atomic.LoadInt64(&b.metrics.FlushCount),
 		ErrorCount:        atomic.LoadInt64(&b.metrics.ErrorCount),
@@ -132,6 +142,8 @@ type AsyncLogWriter struct {
 	qLen       int64 // current queue length
 	closed     atomic.Bool
 	dropWarned atomic.Int64 // track if we've warned about drops to avoid log spam
+	// Atomic metrics for thread-safe access
+	avgWriteTimeAtomic atomic.Int64 // nanoseconds
 }
 
 // NewAsyncLogWriter creates an async writer with queue size.
@@ -166,11 +178,16 @@ func (a *AsyncLogWriter) loop() {
 					start := time.Now()
 					_, err := a.writer.Write(data)
 					dur := time.Since(start)
-					prev := a.metrics.AvgWriteTime
-					if prev == 0 {
+					// Use atomic operations for thread-safe metrics update
+					durNs := int64(dur)
+					prevNs := a.avgWriteTimeAtomic.Load()
+					if prevNs == 0 {
+						a.avgWriteTimeAtomic.Store(durNs)
 						a.metrics.AvgWriteTime = dur
 					} else {
-						a.metrics.AvgWriteTime = (prev + dur) / 2
+						newAvg := (prevNs + durNs) / 2
+						a.avgWriteTimeAtomic.Store(newAvg)
+						a.metrics.AvgWriteTime = time.Duration(newAvg)
 					}
 					atomic.AddInt64(&a.metrics.TotalLogs, 1)
 					atomic.AddInt64(&a.qLen, -1)
@@ -185,11 +202,16 @@ func (a *AsyncLogWriter) loop() {
 			start := time.Now()
 			_, err := a.writer.Write(data)
 			dur := time.Since(start)
-			prev := a.metrics.AvgWriteTime
-			if prev == 0 {
+			// Use atomic operations for thread-safe metrics update
+			durNs := int64(dur)
+			prevNs := a.avgWriteTimeAtomic.Load()
+			if prevNs == 0 {
+				a.avgWriteTimeAtomic.Store(durNs)
 				a.metrics.AvgWriteTime = dur
 			} else {
-				a.metrics.AvgWriteTime = (prev + dur) / 2
+				newAvg := (prevNs + durNs) / 2
+				a.avgWriteTimeAtomic.Store(newAvg)
+				a.metrics.AvgWriteTime = time.Duration(newAvg)
 			}
 			atomic.AddInt64(&a.metrics.TotalLogs, 1)
 			atomic.AddInt64(&a.qLen, -1)
@@ -249,10 +271,12 @@ func (a *AsyncLogWriter) GetMetrics() LogPerformanceMetrics {
 	if capQ > 0 {
 		util = float64(atomic.LoadInt64(&a.qLen)) / float64(capQ) * 100
 	}
+	// Use atomic value for avg write time
+	avgNs := a.avgWriteTimeAtomic.Load()
 	return LogPerformanceMetrics{
 		TotalLogs:         atomic.LoadInt64(&a.metrics.TotalLogs),
 		DroppedLogs:       atomic.LoadInt64(&a.metrics.DroppedLogs),
-		AvgWriteTime:      a.metrics.AvgWriteTime,
+		AvgWriteTime:      time.Duration(avgNs),
 		BufferUtilization: util,
 		FlushCount:        atomic.LoadInt64(&a.metrics.FlushCount),
 		ErrorCount:        atomic.LoadInt64(&a.metrics.ErrorCount),

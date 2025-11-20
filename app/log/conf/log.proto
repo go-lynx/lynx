@@ -88,4 +88,20 @@ message log {
 
   // Sampling config.
   Sampling sampling = 11;
+
+  // Log format configuration.
+  message Format {
+    // Format type: "json" (default), "text", "pretty"
+    string type = 1;
+
+    // Console format (if different from file format)
+    // If empty, uses the same format as type
+    string console_format = 2;
+
+    // Enable color output for console (only for pretty/text format)
+    bool console_color = 3;
+  }
+
+  // Format configuration.
+  Format format = 15;
 }

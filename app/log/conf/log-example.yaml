@@ -21,6 +21,12 @@ lynx:
     # When exceeded, oldest files will be deleted
     max_total_size_mb: 1024     # 1GB total limit
 
+    # NEW: Log format configuration
+    format:
+      type: "json"              # "json" (default) | "text" | "pretty"
+      console_format: "pretty"   # Console format (can differ from file format)
+      console_color: true        # Enable color output for console (pretty/text only)
+
     timezone: Asia/Shanghai     # e.g. Asia/Shanghai, UTC; if not configured, use local timezone
     caller_skip: 5
 

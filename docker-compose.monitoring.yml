@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Prometheus - 指标收集
+  # Prometheus - metrics collection
   prometheus:
     image: prom/prometheus:latest
     container_name: lynx-prometheus
@@ -20,7 +20,7 @@ services:
     networks:
       - lynx-monitoring
 
-  # Grafana - 可视化
+  # Grafana - visualization
   grafana:
     image: grafana/grafana:latest
     container_name: lynx-grafana
@@ -38,7 +38,7 @@ services:
     depends_on:
       - prometheus
 
-  # Jaeger - 分布式追踪
+  # Jaeger - distributed tracing
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: lynx-jaeger
@@ -51,7 +51,7 @@ services:
     networks:
       - lynx-monitoring
 
-  # Loki - 日志聚合
+  # Loki - log aggregation
   loki:
     image: grafana/loki:latest
     container_name: lynx-loki
@@ -64,7 +64,7 @@ services:
     networks:
       - lynx-monitoring
 
-  # Promtail - 日志收集
+  # Promtail - log collection
   promtail:
     image: grafana/promtail:latest
     container_name: lynx-promtail
@@ -78,7 +78,7 @@ services:
     depends_on:
       - loki
 
-  # AlertManager - 告警管理
+  # AlertManager - alert management
   alertmanager:
     image: prom/alertmanager:latest
     container_name: lynx-alertmanager
@@ -94,7 +94,7 @@ services:
     networks:
       - lynx-monitoring
 
-  # Node Exporter - 系统指标
+  # Node Exporter - system metrics
   node-exporter:
     image: prom/node-exporter:latest
     container_name: lynx-node-exporter

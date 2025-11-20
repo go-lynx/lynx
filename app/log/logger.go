@@ -188,6 +188,7 @@ func applySamplingFromConfig(c *lconf.Log) {
 		int(sm.GetMaxInfoPerSec()),
 		int(sm.GetMaxDebugPerSec()),
 	)
+	// Note: setSamplingConfig already updates samplingEnabled flag
 }
 
 // rebuildLogger rebuilds Logger and Helper and stores helper atomically.
@@ -262,7 +263,47 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 
 	// Configure console output with optimizations
 	if logConfig.GetConsoleOutput() {
-		consoleWriter := NewOptimizedConsoleWriter(os.Stdout)
+		// Get format configuration
+		formatType := "json" // default
+		consoleFormat := formatType
+		consoleColor := true
+		
+		// Try to get format config using reflection (until proto is regenerated)
+		if formatVal := reflect.ValueOf(&logConfig).Elem(); formatVal.IsValid() {
+			if formatField := formatVal.FieldByName("Format"); formatField.IsValid() && formatField.CanInterface() {
+				formatPtr := formatField.Interface()
+				if formatPtr != nil {
+					formatReflect := reflect.ValueOf(formatPtr).Elem()
+					if formatReflect.IsValid() {
+						if formatTypeVal := formatReflect.FieldByName("Type"); formatTypeVal.IsValid() && formatTypeVal.CanInterface() {
+							if t, ok := formatTypeVal.Interface().(string); ok && t != "" {
+								formatType = t
+							}
+						}
+						if consoleFormatVal := formatReflect.FieldByName("ConsoleFormat"); consoleFormatVal.IsValid() && consoleFormatVal.CanInterface() {
+							if cf, ok := consoleFormatVal.Interface().(string); ok && cf != "" {
+								consoleFormat = cf
+							} else {
+								consoleFormat = formatType
+							}
+						}
+						if consoleColorVal := formatReflect.FieldByName("ConsoleColor"); consoleColorVal.IsValid() && consoleColorVal.CanInterface() {
+							if cc, ok := consoleColorVal.Interface().(bool); ok {
+								consoleColor = cc
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		// Create console writer based on format
+		consoleWriter := NewConsoleWriter(ConsoleWriterConfig{
+			Format:      consoleFormat,
+			ColorOutput: consoleColor,
+			NoColor:     !consoleColor,
+			TimeFormat:  "15:04:05.000",
+		})
 		
 		// Wrap with buffered writer for better performance
 		bufferedConsole := NewBufferedWriter(consoleWriter, 32*1024) // 32KB buffer for console
@@ -366,6 +407,10 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			}
 		}
 
+		// For file output, always use JSON format (structured logging)
+		// Format configuration mainly affects console output
+		// This ensures log files remain parseable and searchable
+		
 		// Apply batch writing optimization (64KB batch, 100ms flush interval)
 		batchWriter := NewBatchWriter(fileWriter, 64*1024, 100*time.Millisecond)
 		

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# time 时间单位对应的是 time.Duration(1)
+# Time unit corresponds to time.Duration(1)
 seata:
   enabled: true
   # application id
@@ -69,7 +69,7 @@ seata:
         enable: true
         # Compression type
         type: zip
-        #  Compression threshold Unit: k
+        # Compression threshold Unit: k
         threshold: 64k
     load-balance:
       type: RandomLoadBalance

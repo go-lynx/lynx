@@ -29,6 +29,8 @@ var (
 	secWindow  int64
 	infoCount  int
 	debugCount int
+	// Fast path: atomic flag to check if sampling is enabled
+	samplingEnabled atomic.Bool
 )
 
 // rng is a package-local RNG for sampling. Methods on *rand.Rand are not
@@ -55,6 +57,7 @@ func init() {
 		maxInfoPerSec:  0,
 		maxDebugPerSec: 0,
 	})
+	samplingEnabled.Store(false)
 }
 
 func getSamplingConfig() *samplingConfig {
@@ -89,11 +92,24 @@ func setSamplingConfig(enabled bool, infoRatio, debugRatio float64, maxInfoPerSe
 		maxInfoPerSec:  maxInfoPerSec,
 		maxDebugPerSec: maxDebugPerSec,
 	})
+	// Update fast path flag
+	samplingEnabled.Store(enabled)
 }
 
 // allowLog applies ratio sampling and per-second rate limiting for debug/info levels.
 // It returns true if the log should be emitted.
+// Optimized with fast path: if sampling is disabled, return immediately.
 func allowLog(level log.Level) bool {
+	// Fast path: if sampling is disabled, return immediately without any overhead
+	if !samplingEnabled.Load() {
+		return true
+	}
+
+	// Fast path: warn/error/fatal are never sampled
+	if level != log.LevelDebug && level != log.LevelInfo {
+		return true
+	}
+
 	cfg := getSamplingConfig()
 	if cfg == nil || !cfg.enabled {
 		return true

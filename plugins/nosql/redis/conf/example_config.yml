@@ -1,5 +1,5 @@
 lynx:
-    # Redis 插件配置（现有）
+    # Redis plugin configuration
   redis:
     addr: "localhost:6379"
     password: ""
