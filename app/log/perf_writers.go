@@ -2,7 +2,9 @@ package log
 
 import (
 	"bufio"
+	"fmt"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -121,14 +123,15 @@ func (b *BufferedWriter) ResetMetrics() {
 
 // AsyncLogWriter is a non-blocking writer that writes in background.
 type AsyncLogWriter struct {
-	writer  io.Writer
-	closer  io.Closer
-	queue   chan []byte
-	stopCh  chan struct{}
-	wg      sync.WaitGroup
-	metrics LogPerformanceMetrics
-	qLen    int64 // current queue length
-	closed  atomic.Bool
+	writer     io.Writer
+	closer     io.Closer
+	queue      chan []byte
+	stopCh     chan struct{}
+	wg         sync.WaitGroup
+	metrics    LogPerformanceMetrics
+	qLen       int64 // current queue length
+	closed     atomic.Bool
+	dropWarned atomic.Int64 // track if we've warned about drops to avoid log spam
 }
 
 // NewAsyncLogWriter creates an async writer with queue size.
@@ -198,6 +201,7 @@ func (a *AsyncLogWriter) loop() {
 }
 
 // Write enqueues data or drops if queue is full; never blocks caller for long.
+// Returns an error if the queue is full and log is dropped.
 func (a *AsyncLogWriter) Write(p []byte) (int, error) {
 	if a.closed.Load() {
 		return 0, io.ErrClosedPipe
@@ -210,9 +214,18 @@ func (a *AsyncLogWriter) Write(p []byte) (int, error) {
 		atomic.AddInt64(&a.qLen, 1)
 		return len(p), nil
 	default:
-		// queue full, drop
-		atomic.AddInt64(&a.metrics.DroppedLogs, 1)
-		return len(p), nil
+		// queue full, drop log and warn
+		dropped := atomic.AddInt64(&a.metrics.DroppedLogs, 1)
+		
+		// Warn periodically (every 100 drops) to avoid log spam
+		if dropped%100 == 1 {
+			// Use fmt.Fprintf to stderr as fallback since logger might be in deadlock
+			fmt.Fprintf(os.Stderr, "[lynx-log-warn] AsyncLogWriter queue full, dropped %d logs (queue_size=%d, capacity=%d)\n",
+				dropped, atomic.LoadInt64(&a.qLen), cap(a.queue))
+		}
+		
+		// Return error to indicate log was dropped
+		return len(p), fmt.Errorf("log queue full, dropped log (total dropped: %d)", dropped)
 	}
 }
 

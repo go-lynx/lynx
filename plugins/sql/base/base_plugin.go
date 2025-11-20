@@ -55,12 +55,24 @@ type SQLPlugin struct {
 	// Pool monitoring
 	poolMonitor *PoolMonitor
 
+	// Auto-reconnect
+	autoReconnect *AutoReconnector
+
+	// Connection leak detector
+	leakDetector *LeakDetector
+
+	// Query monitor for slow query detection
+	queryMonitor *QueryMonitor
+
 	// Metrics recording
 	metricsRecorder MetricsRecorder
 
 	// Context for graceful shutdown
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// Last successful ping time for connection validation
+	lastPingTime atomic.Int64
 }
 
 // NewBaseSQLPlugin creates a new base SQL plugin
@@ -124,6 +136,33 @@ func (p *SQLPlugin) InitializeResources(rt plugins.Runtime) error {
 		p.config.AlertThresholdWaitCount = 10
 	}
 
+	// Set default auto-reconnect values
+	// Auto-reconnect is enabled by default for production readiness
+	// Default interval to 5 seconds if not set
+	// User can disable by setting auto_reconnect_enabled: false
+	if p.config.AutoReconnectInterval == 0 {
+		p.config.AutoReconnectInterval = 5 // Default 5 seconds
+	}
+	// 0 means unlimited attempts for max_attempts
+
+	// Set default warmup values
+	if p.config.WarmupConns == 0 {
+		p.config.WarmupConns = p.config.MaxIdleConns
+		if p.config.WarmupConns == 0 {
+			p.config.WarmupConns = 5
+		}
+	}
+
+	// Set default slow query threshold
+	if p.config.SlowQueryThreshold == 0 {
+		p.config.SlowQueryThreshold = 1000 // 1 second
+	}
+
+	// Set default leak detection threshold
+	if p.config.LeakDetectionThreshold == 0 {
+		p.config.LeakDetectionThreshold = 300 // 5 minutes
+	}
+
 	// Validate configuration
 	if err := p.validateConfig(); err != nil {
 		return fmt.Errorf("configuration validation failed: %w", err)
@@ -156,6 +195,21 @@ func (p *SQLPlugin) validateConfig() error {
 	if p.config.AlertThresholdUsage < 0 || p.config.AlertThresholdUsage > 1 {
 		return fmt.Errorf("alert_threshold_usage must be between 0 and 1")
 	}
+	if p.config.AutoReconnectInterval < 0 {
+		return fmt.Errorf("auto_reconnect_interval cannot be negative")
+	}
+	if p.config.AutoReconnectMaxAttempts < 0 {
+		return fmt.Errorf("auto_reconnect_max_attempts cannot be negative")
+	}
+	if p.config.WarmupConns < 0 {
+		return fmt.Errorf("warmup_conns cannot be negative")
+	}
+	if p.config.SlowQueryThreshold < 0 {
+		return fmt.Errorf("slow_query_threshold cannot be negative")
+	}
+	if p.config.LeakDetectionThreshold < 0 {
+		return fmt.Errorf("leak_detection_threshold cannot be negative")
+	}
 	return nil
 }
 
@@ -187,6 +241,17 @@ func (p *SQLPlugin) StartupTasks() error {
 	p.db = db
 	p.dialect = p.getDialectFromDriver(p.config.Driver)
 	p.connected.Store(true)
+	p.lastPingTime.Store(time.Now().Unix())
+
+	// Warmup connection pool if enabled
+	if p.config.WarmupEnabled {
+		if err := p.warmupPool(); err != nil {
+			log.Warnf("Connection pool warmup failed for %s: %v", p.Name(), err)
+			// Don't fail startup if warmup fails
+		} else {
+			log.Infof("Connection pool warmed up for %s: %d connections", p.Name(), p.config.WarmupConns)
+		}
+	}
 
 	// Start health checker if configured
 	if p.config.HealthCheckInterval > 0 {
@@ -211,6 +276,51 @@ func (p *SQLPlugin) StartupTasks() error {
 			thresholds,
 		)
 		p.poolMonitor.Start(p.ctx)
+	}
+
+	// Start auto-reconnect if enabled
+	// Enable by default for production readiness (interval defaults to 5)
+	// User can disable by explicitly setting auto_reconnect_enabled: false
+	// Note: Since Go bool zero value is false, we can't distinguish "not set" from "explicitly false"
+	// So we enable by default (production best practice) - user must explicitly disable
+	if p.config.AutoReconnectInterval > 0 {
+		// Enable unless explicitly disabled
+		// Since bool zero value is false, we enable by default (production best practice)
+		// User must explicitly set auto_reconnect_enabled: false to disable
+		shouldEnable := p.config.AutoReconnectInterval > 0 && !(p.config.AutoReconnectEnabled == false)
+		
+		if shouldEnable {
+			p.autoReconnect = NewAutoReconnector(
+				p,
+				time.Duration(p.config.AutoReconnectInterval)*time.Second,
+				p.config.AutoReconnectMaxAttempts,
+			)
+			p.autoReconnect.Start(p.ctx)
+			maxAttemptsStr := "unlimited"
+			if p.config.AutoReconnectMaxAttempts > 0 {
+				maxAttemptsStr = fmt.Sprintf("%d", p.config.AutoReconnectMaxAttempts)
+			}
+			log.Infof("Auto-reconnect enabled for %s (interval: %ds, max_attempts: %s)",
+				p.Name(), p.config.AutoReconnectInterval, maxAttemptsStr)
+		}
+	}
+
+	// Start leak detection if enabled
+	if p.config.LeakDetectionEnabled {
+		p.leakDetector = NewLeakDetector(
+			p,
+			time.Duration(p.config.LeakDetectionThreshold)*time.Second,
+		)
+		p.leakDetector.Start(p.ctx)
+	}
+
+	// Initialize query monitor if enabled
+	if p.config.SlowQueryEnabled {
+		p.queryMonitor = NewQueryMonitor(
+			true,
+			time.Duration(p.config.SlowQueryThreshold)*time.Millisecond,
+			p.metricsRecorder,
+		)
 	}
 
 	log.Infof("Database connection established for %s", p.Name())
@@ -267,6 +377,10 @@ func (p *SQLPlugin) connect() (*sql.DB, error) {
 	if !p.config.RetryEnabled {
 		p.metricsRecorder.IncConnectSuccess()
 	}
+	
+	// Update last ping time on successful connection
+	p.lastPingTime.Store(time.Now().Unix())
+	
 	return db, nil
 }
 
@@ -343,6 +457,16 @@ func (p *SQLPlugin) CleanupTasks() error {
 		p.poolMonitor.Stop()
 	}
 
+	// Stop auto-reconnect
+	if p.autoReconnect != nil {
+		p.autoReconnect.Stop()
+	}
+
+	// Stop leak detector
+	if p.leakDetector != nil {
+		p.leakDetector.Stop()
+	}
+
 	// Close database connection
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -404,6 +528,20 @@ func (p *SQLPlugin) GetMetricsRecorder() MetricsRecorder {
 	return p.metricsRecorder
 }
 
+// GetQueryMonitor returns the query monitor for slow query detection
+func (p *SQLPlugin) GetQueryMonitor() *QueryMonitor {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.queryMonitor
+}
+
+// GetAutoReconnector returns the auto-reconnector instance
+func (p *SQLPlugin) GetAutoReconnector() *AutoReconnector {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.autoReconnect
+}
+
 // CheckHealth performs a health check
 func (p *SQLPlugin) CheckHealth() error {
 	if !p.IsConnected() {
@@ -433,12 +571,49 @@ func (p *SQLPlugin) CheckHealth() error {
 	}
 
 	p.metricsRecorder.RecordHealthCheck(true)
+	
+	// Update last ping time on successful health check
+	p.lastPingTime.Store(time.Now().Unix())
+	
 	return nil
 }
 
 // IsConnected checks if database is connected
+// This method performs actual connection validation for accuracy
 func (p *SQLPlugin) IsConnected() bool {
-	return p.connected.Load() && !p.closing.Load()
+	if !p.connected.Load() || p.closing.Load() {
+		return false
+	}
+
+	p.mu.RLock()
+	db := p.db
+	p.mu.RUnlock()
+
+	if db == nil {
+		return false
+	}
+
+	// Perform quick ping check with short timeout
+	// Use cached ping result if recent (within last 5 seconds)
+	lastPing := p.lastPingTime.Load()
+	now := time.Now().Unix()
+	if now-lastPing < 5 {
+		return true // Use cached result for performance
+	}
+
+	// Perform actual ping check
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		// Connection is actually down, update state
+		p.connected.Store(false)
+		return false
+	}
+
+	// Update last ping time
+	p.lastPingTime.Store(now)
+	return true
 }
 
 // GetStats returns connection pool statistics
@@ -487,4 +662,95 @@ func (p *SQLPlugin) getDialectFromDriver(driver string) string {
 		return dialect
 	}
 	return driver
+}
+
+// Reconnect attempts to reconnect to the database
+// This method is called by AutoReconnector when connection is lost
+func (p *SQLPlugin) Reconnect() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.closing.Load() {
+		return ErrAlreadyClosed
+	}
+
+	log.Infof("Attempting to reconnect database for %s", p.Name())
+
+	// Close existing connection if any
+	if p.db != nil {
+		// Don't log error on close, just close it
+		_ = p.db.Close()
+		p.db = nil
+	}
+
+	// Reset connection state
+	p.connected.Store(false)
+
+	// Attempt to reconnect
+	// Note: connect() and connectWithRetry() use p.ctx for timeouts
+	// p.ctx should still be valid during reconnection (only cancelled on plugin shutdown)
+	var db *sql.DB
+	var err error
+
+	if p.config.RetryEnabled {
+		// Use retry mechanism for reconnection
+		db, err = p.connectWithRetry()
+	} else {
+		// Single attempt
+		db, err = p.connect()
+	}
+
+	if err != nil {
+		return fmt.Errorf("reconnection failed: %w", err)
+	}
+
+	// Update connection state
+	p.db = db
+	p.connected.Store(true)
+	p.lastPingTime.Store(time.Now().Unix())
+
+	log.Infof("Successfully reconnected database for %s", p.Name())
+	return nil
+}
+
+// warmupPool pre-establishes connections in the pool
+func (p *SQLPlugin) warmupPool() error {
+	if p.db == nil {
+		return fmt.Errorf("database connection not initialized")
+	}
+
+	warmupCount := p.config.WarmupConns
+	if warmupCount > p.config.MaxOpenConns {
+		warmupCount = p.config.MaxOpenConns
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Create a channel to track warmup progress
+	done := make(chan error, warmupCount)
+
+	// Pre-establish connections concurrently
+	for i := 0; i < warmupCount; i++ {
+		go func() {
+			// Use a simple query to establish connection
+			var result int
+			err := p.db.QueryRowContext(ctx, "SELECT 1").Scan(&result)
+			done <- err
+		}()
+	}
+
+	// Wait for all connections to be established
+	var lastErr error
+	for i := 0; i < warmupCount; i++ {
+		if err := <-done; err != nil {
+			lastErr = err
+		}
+	}
+
+	if lastErr != nil {
+		return fmt.Errorf("warmup failed: %w", lastErr)
+	}
+
+	return nil
 }

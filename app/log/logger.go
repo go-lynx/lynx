@@ -52,6 +52,11 @@ var (
 	// Performance monitoring
 	globalMetrics *LogPerformanceMetrics
 	metricsEnabled bool
+	
+	// Logger initialization state
+	loggerInitialized atomic.Bool
+	monitorStopCh     chan struct{} // channel to stop performance monitor
+	configWatchStopCh chan struct{} // channel to stop config watch goroutine
 )
 
 // proxyLogger forwards Log calls to an inner logger stored atomically.
@@ -393,8 +398,15 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		pLogger.inner.Store(logger)
 	}
 
+	// Initialize stop channels for background goroutines
+	monitorStopCh = make(chan struct{})
+	configWatchStopCh = make(chan struct{})
+
 	// Start performance monitoring goroutine
 	go monitorLogPerformance()
+
+	// Mark logger as initialized
+	loggerInitialized.Store(true)
 
 	// Banner display has been decoupled from logger initialization (see app/banner)
 
@@ -471,17 +483,22 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			prevSig := signature(&logConfig)
 			ticker := time.NewTicker(2 * time.Second)
 			defer ticker.Stop()
-			for range ticker.C {
-				var nc lconf.Log
-				if err := cfg.Value("lynx.log").Scan(&nc); err != nil {
-					continue
+			for {
+				select {
+				case <-configWatchStopCh:
+					return
+				case <-ticker.C:
+					var nc lconf.Log
+					if err := cfg.Value("lynx.log").Scan(&nc); err != nil {
+						continue
+					}
+					sig := signature(&nc)
+					if sig == prevSig {
+						continue
+					}
+					prevSig = sig
+					apply(&nc)
 				}
-				sig := signature(&nc)
-				if sig == prevSig {
-					continue
-				}
-				prevSig = sig
-				apply(&nc)
 			}
 		}()
 	}
@@ -497,32 +514,37 @@ func monitorLogPerformance() {
 	ticker := time.NewTicker(30 * time.Second) // Report every 30 seconds
 	defer ticker.Stop()
 
-	for range ticker.C {
-		if !metricsEnabled {
-			continue
-		}
-
-		writersMu.RLock()
-		
-		// Collect metrics from buffered writers
-		for name, bw := range bufferedWriters {
-			metrics := bw.GetMetrics()
-			if metrics.TotalLogs > 0 {
-				fmt.Printf("[lynx-log-perf] BufferedWriter[%s]: logs=%d, avg_write=%v, buffer_util=%.1f%%, flushes=%d, errors=%d\n",
-					name, metrics.TotalLogs, metrics.AvgWriteTime, metrics.BufferUtilization, metrics.FlushCount, metrics.ErrorCount)
+	for {
+		select {
+		case <-monitorStopCh:
+			return
+		case <-ticker.C:
+			if !metricsEnabled {
+				continue
 			}
-		}
 
-		// Collect metrics from async writers
-		for name, aw := range asyncWriters {
-			metrics := aw.GetMetrics()
-			if metrics.TotalLogs > 0 {
-				fmt.Printf("[lynx-log-perf] AsyncWriter[%s]: logs=%d, dropped=%d, avg_write=%v, queue_util=%.1f%%, errors=%d\n",
-					name, metrics.TotalLogs, metrics.DroppedLogs, metrics.AvgWriteTime, metrics.BufferUtilization, metrics.ErrorCount)
+			writersMu.RLock()
+			
+			// Collect metrics from buffered writers
+			for name, bw := range bufferedWriters {
+				metrics := bw.GetMetrics()
+				if metrics.TotalLogs > 0 {
+					fmt.Printf("[lynx-log-perf] BufferedWriter[%s]: logs=%d, avg_write=%v, buffer_util=%.1f%%, flushes=%d, errors=%d\n",
+						name, metrics.TotalLogs, metrics.AvgWriteTime, metrics.BufferUtilization, metrics.FlushCount, metrics.ErrorCount)
+				}
 			}
+
+			// Collect metrics from async writers
+			for name, aw := range asyncWriters {
+				metrics := aw.GetMetrics()
+				if metrics.TotalLogs > 0 {
+					fmt.Printf("[lynx-log-perf] AsyncWriter[%s]: logs=%d, dropped=%d, avg_write=%v, queue_util=%.1f%%, errors=%d\n",
+						name, metrics.TotalLogs, metrics.DroppedLogs, metrics.AvgWriteTime, metrics.BufferUtilization, metrics.ErrorCount)
+				}
+			}
+			
+			writersMu.RUnlock()
 		}
-		
-		writersMu.RUnlock()
 	}
 }
 
@@ -566,6 +588,32 @@ func EnablePerformanceMonitoring(enabled bool) {
 
 // CleanupLoggers properly closes all writers and cleans up resources
 func CleanupLoggers() {
+	// Mark logger as not initialized
+	loggerInitialized.Store(false)
+
+	// Stop background goroutines safely
+	if monitorStopCh != nil {
+		select {
+		case <-monitorStopCh:
+			// already closed
+		default:
+			close(monitorStopCh)
+		}
+		monitorStopCh = nil
+	}
+	if configWatchStopCh != nil {
+		select {
+		case <-configWatchStopCh:
+			// already closed
+		default:
+			close(configWatchStopCh)
+		}
+		configWatchStopCh = nil
+	}
+
+	// Wait a bit for goroutines to stop
+	time.Sleep(100 * time.Millisecond)
+
 	writersMu.Lock()
 	defer writersMu.Unlock()
 

@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRabbitMQConnection 测试RabbitMQ连接
+// TestRabbitMQConnection tests RabbitMQ connection
 func TestRabbitMQConnection(t *testing.T) {
-	// 连接RabbitMQ
+	// Connect to RabbitMQ
 	conn, err := amqp.Dial("amqp://lynx:lynx123456@localhost:5672/")
 	if err != nil {
 		t.Skip("RabbitMQ is not available:", err)
@@ -22,27 +22,27 @@ func TestRabbitMQConnection(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// 创建通道
+	// Create channel
 	ch, err := conn.Channel()
 	require.NoError(t, err)
 	defer ch.Close()
 
-	// 测试基本发布和消费
+	// Test basic publish and consume
 	t.Run("BasicPublishConsume", func(t *testing.T) {
 		queueName := "test-queue"
 
-		// 声明队列
+		// Declare queue
 		q, err := ch.QueueDeclare(
-			queueName, // 名称
-			false,     // 持久化
-			true,      // 自动删除
-			false,     // 独占
-			false,     // 不等待
-			nil,       // 参数
+			queueName, // name
+			false,     // durable
+			true,      // auto-delete
+			false,     // exclusive
+			false,     // no-wait
+			nil,       // args
 		)
 		require.NoError(t, err)
 
-		// 发布消息
+		// Publish message
 		body := "Hello RabbitMQ!"
 		err = ch.Publish(
 			"",     // exchange
@@ -56,7 +56,7 @@ func TestRabbitMQConnection(t *testing.T) {
 		)
 		assert.NoError(t, err)
 
-		// 消费消息
+		// Consume message
 		msgs, err := ch.Consume(
 			q.Name, // queue
 			"",     // consumer
@@ -68,7 +68,7 @@ func TestRabbitMQConnection(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		// 验证消息
+		// Verify message
 		select {
 		case msg := <-msgs:
 			assert.Equal(t, body, string(msg.Body))
@@ -77,11 +77,11 @@ func TestRabbitMQConnection(t *testing.T) {
 		}
 	})
 
-	// 测试交换机和路由
+	// Test exchange and routing
 	t.Run("ExchangeRouting", func(t *testing.T) {
 		exchangeName := "test-exchange"
 
-		// 声明交换机
+		// Declare exchange
 		err := ch.ExchangeDeclare(
 			exchangeName, // name
 			"direct",     // type
@@ -93,21 +93,21 @@ func TestRabbitMQConnection(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		// 创建两个队列
+		// Create two queues
 		q1, err := ch.QueueDeclare("queue1", false, true, false, false, nil)
 		require.NoError(t, err)
 
 		q2, err := ch.QueueDeclare("queue2", false, true, false, false, nil)
 		require.NoError(t, err)
 
-		// 绑定队列到交换机
+		// Bind queues to exchange
 		err = ch.QueueBind(q1.Name, "route1", exchangeName, false, nil)
 		require.NoError(t, err)
 
 		err = ch.QueueBind(q2.Name, "route2", exchangeName, false, nil)
 		require.NoError(t, err)
 
-		// 发布消息到不同路由
+		// Publish messages to different routes
 		err = ch.Publish(
 			exchangeName, // exchange
 			"route1",     // routing key
@@ -132,7 +132,7 @@ func TestRabbitMQConnection(t *testing.T) {
 		)
 		assert.NoError(t, err)
 
-		// 验证消息路由正确
+		// Verify message routing is correct
 		msgs1, err := ch.Consume(q1.Name, "", true, false, false, false, nil)
 		require.NoError(t, err)
 
@@ -154,22 +154,22 @@ func TestRabbitMQConnection(t *testing.T) {
 		}
 	})
 
-	// 测试消息确认
+	// Test message acknowledgment
 	t.Run("MessageAcknowledgment", func(t *testing.T) {
 		queueName := "ack-queue"
 
 		q, err := ch.QueueDeclare(queueName, true, false, false, false, nil)
 		require.NoError(t, err)
 
-		// 发布消息
+		// Publish message
 		err = ch.Publish("", q.Name, false, false, amqp.Publishing{
 			ContentType:  "text/plain",
 			Body:         []byte("ack test message"),
-			DeliveryMode: amqp.Persistent, // 持久化消息
+			DeliveryMode: amqp.Persistent, // persistent message
 		})
 		require.NoError(t, err)
 
-		// 消费消息（手动确认）
+		// Consume message (manual acknowledgment)
 		msgs, err := ch.Consume(
 			q.Name,
 			"",
@@ -183,7 +183,7 @@ func TestRabbitMQConnection(t *testing.T) {
 
 		select {
 		case msg := <-msgs:
-			// 手动确认消息
+			// Manually acknowledge message
 			err := msg.Ack(false)
 			assert.NoError(t, err)
 			assert.Equal(t, "ack test message", string(msg.Body))
@@ -191,12 +191,12 @@ func TestRabbitMQConnection(t *testing.T) {
 			t.Fatal("Timeout waiting for message")
 		}
 
-		// 清理队列
+		// Clean up queue
 		ch.QueueDelete(queueName, false, false, false)
 	})
 }
 
-// TestRabbitMQPerformance 测试RabbitMQ性能
+// TestRabbitMQPerformance tests RabbitMQ performance
 func TestRabbitMQPerformance(t *testing.T) {
 	conn, err := amqp.Dial("amqp://lynx:lynx123456@localhost:5672/")
 	if err != nil {
@@ -209,15 +209,15 @@ func TestRabbitMQPerformance(t *testing.T) {
 	require.NoError(t, err)
 	defer ch.Close()
 
-	// 设置QoS
+	// Set QoS
 	err = ch.Qos(100, 0, false)
 	require.NoError(t, err)
 
-	// 批量发布性能测试
+	// Batch publish performance test
 	t.Run("BatchPublish", func(t *testing.T) {
 		queueName := "perf-queue"
 
-		// 声明持久化队列
+		// Declare durable queue
 		q, err := ch.QueueDeclare(queueName, true, false, false, false, nil)
 		require.NoError(t, err)
 		defer ch.QueueDelete(queueName, false, false, false)
@@ -225,7 +225,7 @@ func TestRabbitMQPerformance(t *testing.T) {
 		messageCount := 10000
 		start := time.Now()
 
-		// 批量发布
+		// Batch publish
 		for i := 0; i < messageCount; i++ {
 			err := ch.Publish(
 				"",
@@ -235,7 +235,7 @@ func TestRabbitMQPerformance(t *testing.T) {
 				amqp.Publishing{
 					ContentType:  "text/plain",
 					Body:         []byte(fmt.Sprintf("message-%d", i)),
-					DeliveryMode: amqp.Transient, // 非持久化以提高性能
+					DeliveryMode: amqp.Transient, // non-persistent for better performance
 				},
 			)
 			if err != nil {
@@ -249,18 +249,18 @@ func TestRabbitMQPerformance(t *testing.T) {
 		t.Logf("Batch publish performance: %d messages in %v (%.2f msg/sec)",
 			messageCount, elapsed, throughput)
 
-		// 验证性能阈值
+		// Verify performance threshold
 		assert.Greater(t, throughput, 1000.0, "Should achieve at least 1000 msg/sec")
 	})
 
-	// 并发消费性能测试
+	// Concurrent consume performance test
 	t.Run("ConcurrentConsume", func(t *testing.T) {
 		queueName := "concurrent-queue"
 
 		q, err := ch.QueueDeclare(queueName, false, true, false, false, nil)
 		require.NoError(t, err)
 
-		// 预先发布消息
+		// Pre-publish messages
 		messageCount := 1000
 		for i := 0; i < messageCount; i++ {
 			ch.Publish("", q.Name, false, false, amqp.Publishing{
@@ -269,7 +269,7 @@ func TestRabbitMQPerformance(t *testing.T) {
 			})
 		}
 
-		// 创建多个消费者
+		// Create multiple consumers
 		consumerCount := 5
 		var wg sync.WaitGroup
 		var consumed int32
@@ -281,7 +281,7 @@ func TestRabbitMQPerformance(t *testing.T) {
 			go func(consumerID int) {
 				defer wg.Done()
 
-				// 每个消费者使用独立的通道
+				// Each consumer uses an independent channel
 				ch, err := conn.Channel()
 				if err != nil {
 					t.Logf("Consumer %d: failed to create channel: %v", consumerID, err)
@@ -327,12 +327,12 @@ func TestRabbitMQPerformance(t *testing.T) {
 		t.Logf("Concurrent consume performance: %d messages consumed in %v (%.2f msg/sec)",
 			consumed, elapsed, throughput)
 
-		// 验证性能阈值
+		// Verify performance threshold
 		assert.Greater(t, throughput, 500.0, "Should achieve at least 500 msg/sec with concurrent consumers")
 	})
 }
 
-// TestRabbitMQReliability 测试RabbitMQ可靠性
+// TestRabbitMQReliability tests RabbitMQ reliability
 func TestRabbitMQReliability(t *testing.T) {
 	conn, err := amqp.Dial("amqp://lynx:lynx123456@localhost:5672/")
 	if err != nil {
@@ -345,11 +345,11 @@ func TestRabbitMQReliability(t *testing.T) {
 	require.NoError(t, err)
 	defer ch.Close()
 
-	// 测试消息持久化
+	// Test message persistence
 	t.Run("MessagePersistence", func(t *testing.T) {
 		queueName := "persistent-queue"
 
-		// 声明持久化队列
+		// Declare durable queue
 		q, err := ch.QueueDeclare(
 			queueName,
 			true,  // durable
@@ -361,7 +361,7 @@ func TestRabbitMQReliability(t *testing.T) {
 		require.NoError(t, err)
 		defer ch.QueueDelete(queueName, false, false, false)
 
-		// 发布持久化消息
+		// Publish persistent message
 		err = ch.Publish(
 			"",
 			q.Name,
@@ -375,15 +375,15 @@ func TestRabbitMQReliability(t *testing.T) {
 		)
 		assert.NoError(t, err)
 
-		// 获取队列状态
+		// Get queue status
 		q, err = ch.QueueInspect(queueName)
 		assert.NoError(t, err)
 		assert.Equal(t, 1, q.Messages, "Should have 1 message in queue")
 	})
 
-	// 测试发布确认
+	// Test publisher confirms
 	t.Run("PublisherConfirms", func(t *testing.T) {
-		// 启用发布确认模式
+		// Enable publisher confirm mode
 		err := ch.Confirm(false)
 		require.NoError(t, err)
 
@@ -391,7 +391,7 @@ func TestRabbitMQReliability(t *testing.T) {
 		q, err := ch.QueueDeclare(queueName, false, true, false, false, nil)
 		require.NoError(t, err)
 
-		// 发布消息并等待确认
+		// Publish message and wait for confirmation
 		confirms := ch.NotifyPublish(make(chan amqp.Confirmation, 1))
 
 		err = ch.Publish("", q.Name, false, false, amqp.Publishing{
@@ -400,7 +400,7 @@ func TestRabbitMQReliability(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// 等待确认
+		// Wait for confirmation
 		select {
 		case confirm := <-confirms:
 			assert.True(t, confirm.Ack, "Message should be acknowledged")
@@ -410,9 +410,9 @@ func TestRabbitMQReliability(t *testing.T) {
 		}
 	})
 
-	// 测试死信队列
+	// Test dead letter queue
 	t.Run("DeadLetterQueue", func(t *testing.T) {
-		// 创建死信交换机和队列
+		// Create dead letter exchange and queue
 		dlxName := "dlx-exchange"
 		dlqName := "dead-letter-queue"
 
@@ -426,7 +426,7 @@ func TestRabbitMQReliability(t *testing.T) {
 		err = ch.QueueBind(dlq.Name, "failed", dlxName, false, nil)
 		require.NoError(t, err)
 
-		// 创建带死信配置的主队列
+		// Create main queue with dead letter configuration
 		mainQueue := "main-queue-with-dlx"
 		q, err := ch.QueueDeclare(
 			mainQueue,
@@ -437,23 +437,23 @@ func TestRabbitMQReliability(t *testing.T) {
 			amqp.Table{
 				"x-dead-letter-exchange":    dlxName,
 				"x-dead-letter-routing-key": "failed",
-				"x-message-ttl":             1000, // 1秒过期
+				"x-message-ttl":             1000, // expire after 1 second
 			},
 		)
 		require.NoError(t, err)
 		defer ch.QueueDelete(mainQueue, false, false, false)
 
-		// 发送消息到主队列
+		// Send message to main queue
 		err = ch.Publish("", q.Name, false, false, amqp.Publishing{
 			ContentType: "text/plain",
 			Body:        []byte("message to expire"),
 		})
 		require.NoError(t, err)
 
-		// 等待消息过期并进入死信队列
+		// Wait for message to expire and enter dead letter queue
 		time.Sleep(2 * time.Second)
 
-		// 检查死信队列
+		// Check dead letter queue
 		dlqStatus, err := ch.QueueInspect(dlqName)
 		assert.NoError(t, err)
 		assert.Equal(t, 1, dlqStatus.Messages, "Should have 1 message in dead letter queue")

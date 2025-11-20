@@ -1,0 +1,196 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  pr-validation:
+    name: PR Validation
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        cache-dependency-path: go.mod
+    
+    - name: Get changed files
+      id: changed-files
+      uses: tj-actions/changed-files@v40
+      with:
+        files: |
+          **/*.go
+          go.mod
+          go.sum
+          .golangci.yml
+    
+    - name: Check if Go files changed
+      if: steps.changed-files.outputs.any_changed == 'true'
+      run: |
+        echo "Changed Go files:"
+        echo "${{ steps.changed-files.outputs.all_changed_files }}"
+    
+    - name: Validate Go module
+      if: steps.changed-files.outputs.any_changed == 'true'
+      run: |
+        echo "🔍 Validating Go module..."
+        go mod verify
+        go mod tidy
+        if [ -n "$(git diff go.mod go.sum)" ]; then
+          echo "❌ go.mod or go.sum needs to be updated. Please run 'go mod tidy'"
+          git diff go.mod go.sum
+          exit 1
+        fi
+        echo "✅ Go module is valid"
+    
+    - name: Check code formatting
+      if: steps.changed-files.outputs.any_changed == 'true'
+      run: |
+        echo "🔍 Checking code formatting for changed files..."
+        changed_go_files=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep '\.go$' | grep -v 'third_party\|vendor\|\.pb\.go$' || true)
+        if [ -z "$changed_go_files" ]; then
+          echo "No Go files to check (excluding third_party, vendor, and .pb.go files)"
+          exit 0
+        fi
+        
+        # Install goimports once
+        go install golang.org/x/tools/cmd/goimports@latest
+        
+        for file in $changed_go_files; do
+          if [ -f "$file" ]; then
+            echo "Checking: $file"
+            # Check gofmt - if file needs formatting, gofmt -l will output the filename
+            unformatted=$(gofmt -s -l "$file")
+            if [ -z "$unformatted" ]; then
+              echo "  ✅ gofmt: OK"
+            else
+              echo "  ❌ gofmt: FAILED"
+              gofmt -s -d "$file"
+              exit 1
+            fi
+            # Check goimports - if file needs formatting, goimports -l will output the filename
+            unformatted_imports=$(goimports -l "$file")
+            if [ -z "$unformatted_imports" ]; then
+              echo "  ✅ goimports: OK"
+            else
+              echo "  ❌ goimports: FAILED"
+              goimports -d "$file"
+              exit 1
+            fi
+          fi
+        done
+        echo "✅ All changed files are properly formatted"
+    
+    - name: Run linter on changed files
+      if: steps.changed-files.outputs.any_changed == 'true'
+      run: |
+        echo "🔍 Running linter on changed files..."
+        changed_go_files=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep '\.go$' | grep -v 'third_party\|vendor\|\.pb\.go$' || true)
+        if [ -z "$changed_go_files" ]; then
+          echo "No Go files to lint"
+          exit 0
+        fi
+        
+        # Install golangci-lint
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        
+        # Extract unique directories to lint (more efficient than linting individual files)
+        dirs=$(echo "$changed_go_files" | xargs -n1 dirname | sort -u | grep -v '^\.$' || true)
+        if [ -z "$dirs" ]; then
+          dirs="."
+        fi
+        
+        # Run linter on directories containing changed files
+        failed=false
+        for dir in $dirs; do
+          if [ -d "$dir" ]; then
+            echo "Linting directory: $dir"
+            if ! golangci-lint run --timeout=5m "$dir"; then
+              failed=true
+            fi
+          fi
+        done
+        
+        if [ "$failed" = true ]; then
+          echo "❌ Linter found issues in changed files"
+          exit 1
+        fi
+        echo "✅ All changed files passed linter checks"
+    
+    - name: Check for breaking changes
+      if: steps.changed-files.outputs.any_changed == 'true'
+      run: |
+        echo "🔍 Checking for potential breaking changes..."
+        # Check for exported function/type removals (simplified check)
+        base_branch="${{ github.base_ref || 'main' }}"
+        if git diff --name-status "origin/$base_branch"..HEAD | grep -q "^D.*\.go$"; then
+          echo "⚠️  Warning: Some Go files were deleted. Please verify this is intentional."
+        fi
+        echo "✅ Breaking changes check completed"
+    
+    - name: Check test coverage
+      if: steps.changed-files.outputs.any_changed == 'true'
+      run: |
+        echo "🔍 Checking test coverage for changed packages..."
+        changed_go_files=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep '\.go$' | grep -v 'third_party\|vendor\|\.pb\.go$' || true)
+        if [ -z "$changed_go_files" ]; then
+          echo "No Go files to check coverage for"
+          exit 0
+        fi
+        
+        # Extract unique packages
+        packages=$(echo "$changed_go_files" | xargs -n1 dirname | sort -u | grep -v '^\.$' || true)
+        if [ -z "$packages" ]; then
+          packages="."
+        fi
+        
+        for pkg in $packages; do
+          if [ -d "$pkg" ]; then
+            echo "Checking coverage for package: $pkg"
+            go test -coverprofile=coverage.out -covermode=atomic "$pkg" || true
+            if [ -f coverage.out ]; then
+              coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
+              echo "  Coverage: $coverage"
+              rm -f coverage.out
+            fi
+          fi
+        done
+        echo "✅ Test coverage check completed"
+    
+    - name: Comment PR
+      if: always() && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const summary = `## 🔍 Pull Request Code Quality Check
+          
+          ### ✅ Checks Completed:
+          - Code formatting validation
+          - Import formatting validation
+          - Go module validation
+          - Linter checks on changed files
+          - Breaking changes detection
+          - Test coverage analysis
+          
+          ### 📋 Next Steps:
+          Please ensure all checks pass before requesting review.
+          
+          **Note:** If any checks fail, please fix the issues and push again.
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: summary
+          });
+

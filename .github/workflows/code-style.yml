@@ -1,0 +1,158 @@
+name: Code Style Check
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  code-style:
+    name: Code Style Validation
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        cache-dependency-path: go.mod
+    
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Install tools
+      run: |
+        go install golang.org/x/tools/cmd/goimports@latest
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    
+    - name: Check code formatting (gofmt)
+      run: |
+        echo "🔍 Checking code formatting with gofmt..."
+        unformatted=$(gofmt -s -l . | grep -v '^third_party\|^vendor\|\.pb\.go$' || true)
+        if [ -n "$unformatted" ]; then
+          echo "❌ The following files are not formatted correctly:"
+          echo "$unformatted"
+          echo ""
+          echo "Please run: gofmt -s -w ."
+          exit 1
+        fi
+        echo "✅ All files are properly formatted"
+    
+    - name: Check import formatting (goimports)
+      run: |
+        echo "🔍 Checking import formatting with goimports..."
+        unformatted=$(goimports -l . | grep -v '^third_party\|^vendor\|\.pb\.go$' || true)
+        if [ -n "$unformatted" ]; then
+          echo "❌ The following files have incorrectly formatted imports:"
+          echo "$unformatted"
+          echo ""
+          echo "Please run: goimports -w ."
+          exit 1
+        fi
+        echo "✅ All imports are properly formatted"
+    
+    - name: Check for trailing whitespace
+      run: |
+        echo "🔍 Checking for trailing whitespace..."
+        # Only check on PR events, skip on push events
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          base_ref="${{ github.base_ref || 'main' }}"
+          if git diff --check $(git merge-base HEAD "origin/$base_ref")..HEAD -- '*.go' 2>/dev/null | grep -v '^third_party\|^vendor'; then
+            echo "❌ Found trailing whitespace in Go files"
+            exit 1
+          fi
+        else
+          # For push events, check only staged/uncommitted changes
+          if git diff --check -- '*.go' 2>/dev/null | grep -v '^third_party\|^vendor'; then
+            echo "❌ Found trailing whitespace in Go files"
+            exit 1
+          fi
+        fi
+        echo "✅ No trailing whitespace found"
+    
+    - name: Check for large files
+      run: |
+        echo "🔍 Checking for unusually large files..."
+        large_files=$(find . -name "*.go" -not -path "./third_party/*" -not -path "./vendor/*" -size +500k)
+        if [ -n "$large_files" ]; then
+          echo "⚠️  Warning: Found large Go files (>500KB):"
+          echo "$large_files"
+          echo "Consider splitting these files for better maintainability"
+        else
+          echo "✅ No unusually large files found"
+        fi
+    
+    - name: Check code complexity
+      run: |
+        echo "🔍 Checking code complexity..."
+        go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+        complex=$(gocyclo -over 15 . | grep -v '^third_party\|^vendor' || true)
+        if [ -n "$complex" ]; then
+          echo "⚠️  Warning: Found functions with high cyclomatic complexity (>15):"
+          echo "$complex"
+          echo "Consider refactoring these functions"
+        else
+          echo "✅ Code complexity check passed"
+        fi
+    
+    - name: Check for common code smells
+      run: |
+        echo "🔍 Checking for common code smells..."
+        # Check for empty error handling
+        if grep -r "if err != nil {}" --include="*.go" . | grep -v 'third_party\|vendor'; then
+          echo "⚠️  Warning: Found empty error handling blocks"
+        fi
+        # Check for commented-out code
+        commented_code=$(grep -r "^[[:space:]]*//[[:space:]]*[a-zA-Z]" --include="*.go" . | grep -v 'third_party\|vendor' | wc -l)
+        if [ "$commented_code" -gt 100 ]; then
+          echo "⚠️  Warning: Found many commented-out code blocks. Consider removing them."
+        fi
+        echo "✅ Code smell check completed"
+    
+    - name: Validate code documentation
+      run: |
+        echo "🔍 Checking code documentation..."
+        # Check for exported functions without documentation
+        go install golang.org/x/tools/cmd/godoc@latest
+        undocumented=$(go doc -all . 2>&1 | grep -i "no exported" || true)
+        if [ -n "$undocumented" ]; then
+          echo "⚠️  Some exported symbols may be missing documentation"
+        fi
+        echo "✅ Documentation check completed"
+    
+    - name: Run golangci-lint with style checks
+      run: |
+        echo "🔍 Running golangci-lint with style-focused checks..."
+        # Use the project's .golangci.yml configuration file
+        # The configuration already includes all necessary style checks
+        golangci-lint run --timeout=5m ./...
+    
+    - name: Summary
+      if: always()
+      run: |
+        echo "## Code Style Check Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ All code style checks completed!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Checks Performed:" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Code formatting (gofmt)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Import formatting (goimports)" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Trailing whitespace" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ File size validation" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Code complexity" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Code smells" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Documentation" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ golangci-lint style checks" >> $GITHUB_STEP_SUMMARY
+

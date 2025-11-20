@@ -5,7 +5,9 @@ package log
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
@@ -79,8 +81,24 @@ func GetLevel() Level {
 	}
 }
 
+// fallbackLogger provides a simple fallback logger when main logger is not initialized
+type fallbackLogger struct{}
+
+func (f *fallbackLogger) log(level, msg string, args ...any) {
+	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+	formatted := fmt.Sprintf("[%s] [%s] [lynx-log-fallback] ", timestamp, level)
+	if len(args) > 0 {
+		formatted += fmt.Sprintf(msg, args...)
+	} else {
+		formatted += fmt.Sprint(msg)
+	}
+	formatted += "\n"
+	os.Stderr.WriteString(formatted)
+}
+
 // helper returns the application's log helper instance.
 // The helper provides simplified logging methods.
+// If logger is not initialized, returns nil and logs will use fallback.
 func helper() *log.Helper {
 	if v := helperStore.Load(); v != nil {
 		if h, ok := v.(*log.Helper); ok && h != nil {
@@ -88,17 +106,22 @@ func helper() *log.Helper {
 		}
 	}
 	// Check if LHelper is properly initialized before returning
-	if Logger != nil {
+	if Logger != nil && loggerInitialized.Load() {
 		return &LHelper
 	}
-	// Return nil if logger is not initialized - this will be handled by calling code
+	// Return nil if logger is not initialized - will use fallback in logging functions
 	return nil
 }
+
+// fallbackLog provides fallback logging when logger is not initialized
+var fallback = &fallbackLogger{}
 
 // Debug uses the log helper to record debug-level log information.
 func Debug(a ...any) {
 	if h := helper(); h != nil {
 		h.Debug(a...)
+	} else {
+		fallback.log("DEBUG", fmt.Sprint(a...))
 	}
 }
 
@@ -112,6 +135,8 @@ func DebugCtx(ctx context.Context, a ...any) {
 func Debugf(format string, a ...any) {
 	if h := helper(); h != nil {
 		h.Debugf(format, a...)
+	} else {
+		fallback.log("DEBUG", format, a...)
 	}
 }
 
@@ -136,6 +161,8 @@ func DebugwCtx(ctx context.Context, keyvals ...any) {
 func Info(a ...any) {
 	if h := helper(); h != nil {
 		h.Info(a...)
+	} else {
+		fallback.log("INFO", fmt.Sprint(a...))
 	}
 }
 
@@ -148,6 +175,8 @@ func InfoCtx(ctx context.Context, a ...any) {
 func Infof(format string, a ...any) {
 	if h := helper(); h != nil {
 		h.Infof(format, a...)
+	} else {
+		fallback.log("INFO", format, a...)
 	}
 }
 
@@ -172,6 +201,8 @@ func InfowCtx(ctx context.Context, keyvals ...any) {
 func Warn(a ...any) {
 	if h := helper(); h != nil {
 		h.Warn(a...)
+	} else {
+		fallback.log("WARN", fmt.Sprint(a...))
 	}
 }
 
@@ -184,6 +215,8 @@ func WarnCtx(ctx context.Context, a ...any) {
 func Warnf(format string, a ...any) {
 	if h := helper(); h != nil {
 		h.Warnf(format, a...)
+	} else {
+		fallback.log("WARN", format, a...)
 	}
 }
 
@@ -208,6 +241,8 @@ func WarnwCtx(ctx context.Context, keyvals ...any) {
 func Error(a ...any) {
 	if h := helper(); h != nil {
 		h.Error(a...)
+	} else {
+		fallback.log("ERROR", fmt.Sprint(a...))
 	}
 }
 
@@ -220,6 +255,8 @@ func ErrorCtx(ctx context.Context, a ...any) {
 func Errorf(format string, a ...any) {
 	if h := helper(); h != nil {
 		h.Errorf(format, a...)
+	} else {
+		fallback.log("ERROR", format, a...)
 	}
 }
 
@@ -246,6 +283,9 @@ func Fatal(a ...any) {
 	// avoid double exit: zerolog's Fatal will exit once
 	if h := helper(); h != nil {
 		h.Fatal("msg", fmt.Sprint(a...))
+	} else {
+		fallback.log("FATAL", fmt.Sprint(a...))
+		os.Exit(1)
 	}
 }
 
@@ -260,6 +300,9 @@ func FatalCtx(ctx context.Context, a ...any) {
 func Fatalf(format string, a ...any) {
 	if h := helper(); h != nil {
 		h.Fatal("msg", fmt.Sprintf(format, a...))
+	} else {
+		fallback.log("FATAL", format, a...)
+		os.Exit(1)
 	}
 }
 

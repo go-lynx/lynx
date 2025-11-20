@@ -28,13 +28,13 @@ func createDefaultTestConfig(datacenterID, workerID int64) *pb.Snowflake {
 		DatacenterId:               int32(datacenterID),
 		WorkerId:                   int32(workerID),
 		CustomEpoch:                1640995200000, // 2022-01-01 00:00:00 UTC
-		WorkerIdBits:               5,             // 5位工作节点ID (0-31) - 配合5位数据中心ID
-		SequenceBits:               12,            // 12位序列号 (0-4095)
-		EnableClockDriftProtection: false,         // 禁用时钟漂移保护以简化测试
+		WorkerIdBits:               5,             // 5-bit worker node ID (0-31) - combined with 5-bit datacenter ID
+		SequenceBits:               12,            // 12-bit sequence number (0-4095)
+		EnableClockDriftProtection: false,         // Disable clock drift protection to simplify testing
 		ClockDriftAction:           ClockDriftActionWait,
 		EnableSequenceCache:        false,
 		SequenceCacheSize:          0,
-		AutoRegisterWorkerId:       false, // 禁用自动注册以简化测试
+		AutoRegisterWorkerId:       false, // Disable auto-registration to simplify testing
 		RedisKeyPrefix:             "test_worker:",
 		RedisPluginName:            "default",
 		RedisDb:                    0,
@@ -89,7 +89,7 @@ func (tc *TestConfig) Build() *pb.Snowflake {
 func (tc *TestConfig) CreateTestGenerator() (*Generator, error) {
 	genConfig := &GeneratorConfig{
 		CustomEpoch:                tc.Config.CustomEpoch,
-		DatacenterIDBits:           5, // 固定为5位数据中心ID (0-31)
+		DatacenterIDBits:           5, // Fixed to 5-bit datacenter ID (0-31)
 		WorkerIDBits:               int(tc.Config.WorkerIdBits),
 		SequenceBits:               int(tc.Config.SequenceBits),
 		EnableClockDriftProtection: tc.Config.EnableClockDriftProtection,

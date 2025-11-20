@@ -16,12 +16,12 @@ type Manager struct {
 	caches map[string]*Cache
 	mu     sync.RWMutex
 	
-	// 新增：缓存优化器
+	// New: cache optimizer
 	optimizer *resource.CacheOptimizer
 	logger    zerolog.Logger
 }
 
-// Config 缓存配置
+// Config cache configuration
 type Config struct {
 	MaxSize int
 	TTL     time.Duration
@@ -36,7 +36,7 @@ func NewManager() *Manager {
 
 // NewManagerWithLogger creates a new cache manager using the provided logger.
 func NewManagerWithLogger(logger zerolog.Logger) *Manager {
-    // 创建缓存优化器
+    // Create cache optimizer
     optimizer := resource.NewCacheOptimizer(
         resource.DefaultCacheOptimizerConfig(),
         logger.With().Str("component", "cache_optimizer").Logger(),
@@ -48,7 +48,7 @@ func NewManagerWithLogger(logger zerolog.Logger) *Manager {
         logger:    logger,
     }
 
-    // 启动缓存优化器
+    // Start cache optimizer
     if err := optimizer.Start(); err != nil {
         logger.Error().Err(err).Msg("Failed to start cache optimizer")
     }
@@ -135,7 +135,7 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// 关闭所有缓存
+	// Close all caches
 	for name, cache := range m.caches {
 		cache.Close()
 		m.logger.Debug().
@@ -143,7 +143,7 @@ func (m *Manager) Close() error {
 			Msg("Closed cache")
 	}
 
-	// 停止缓存优化器
+	// Stop cache optimizer
 	if err := m.optimizer.Stop(); err != nil {
 		m.logger.Error().Err(err).Msg("Failed to stop cache optimizer")
 		return err
@@ -179,7 +179,7 @@ func (m *Manager) Stats() map[string]*ristretto.Metrics {
 	return stats
 }
 
-// CreateOptimized 创建优化的缓存实例
+// CreateOptimized creates an optimized cache instance
 func (m *Manager) CreateOptimized(name string, config Config) (*OptimizedCacheWrapper, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -188,14 +188,14 @@ func (m *Manager) CreateOptimized(name string, config Config) (*OptimizedCacheWr
 		return nil, fmt.Errorf("cache %s already exists", name)
 	}
 
-	// 创建优化缓存
+	// Create optimized cache
 	optimizedCache := m.optimizer.CreateCache(
 		name,
 		int64(config.MaxSize),
 		config.TTL,
 	)
 
-	// 包装为Cache接口
+	// Wrap as Cache interface
 	wrapper := &OptimizedCacheWrapper{
 		cache:  optimizedCache,
 		config: config,
@@ -210,12 +210,12 @@ func (m *Manager) CreateOptimized(name string, config Config) (*OptimizedCacheWr
 	return wrapper, nil
 }
 
-// GetOptimizerMetrics 获取优化器指标
+// GetOptimizerMetrics gets optimizer metrics
 func (m *Manager) GetOptimizerMetrics() resource.CacheOptimizerMetrics {
 	return m.optimizer.GetMetrics()
 }
 
-// OptimizedCacheWrapper 优化缓存包装器
+// OptimizedCacheWrapper optimized cache wrapper
 type OptimizedCacheWrapper struct {
 	cache  *resource.OptimizedCache
 	config Config
@@ -233,7 +233,7 @@ func (w *OptimizedCacheWrapper) Get(key interface{}) (interface{}, error) {
 
 func (w *OptimizedCacheWrapper) Set(key interface{}, value interface{}, ttl time.Duration) error {
 	keyStr := fmt.Sprintf("%v", key)
-	// 估算值的大小（简化实现）
+	// Estimate value size (simplified implementation)
 	size := int64(len(fmt.Sprintf("%v", value)))
 	w.cache.Set(keyStr, value, size)
 	return nil
@@ -266,12 +266,12 @@ func (w *OptimizedCacheWrapper) Has(key interface{}) bool {
 }
 
 func (w *OptimizedCacheWrapper) Metrics() *ristretto.Metrics {
-	// 返回nil，因为优化缓存使用不同的指标系统
+	// Return nil because optimized cache uses a different metrics system
 	return nil
 }
 
 func (w *OptimizedCacheWrapper) Close() {
-	// 优化缓存由优化器管理，这里不需要特殊处理
+	// Optimized cache is managed by the optimizer, no special handling needed here
 }
 
 func (w *OptimizedCacheWrapper) Name() string {
@@ -304,20 +304,20 @@ func (w *OptimizedCacheWrapper) DeleteMulti(keys []interface{}) {
 }
 
 func (w *OptimizedCacheWrapper) GetOrSet(key interface{}, fn func() (interface{}, error), ttl time.Duration) (interface{}, error) {
-	// 先尝试获取
+	// Try to get first
 	if value, err := w.Get(key); err == nil {
 		return value, nil
 	}
 
-	// 如果不存在，调用函数获取值
+	// If not exists, call function to get value
 	value, err := fn()
 	if err != nil {
 		return nil, err
 	}
 
-	// 设置到缓存
+	// Set to cache
 	if err := w.Set(key, value, ttl); err != nil {
-		return value, err // 返回值但报告设置错误
+		return value, err // Return value but report set error
 	}
 
 	return value, nil
@@ -326,7 +326,7 @@ func (w *OptimizedCacheWrapper) GetOrSet(key interface{}, fn func() (interface{}
 // DefaultManager is the global cache manager instance
 var DefaultManager *Manager
 
-// 初始化默认管理器
+// Initialize default manager
 func init() {
     DefaultManager = NewManager()
 }
@@ -419,7 +419,7 @@ func TTLCache(name string, defaultTTL time.Duration) (*Cache, error) {
 	})
 }
 
-// CreateOptimizedCache 创建优化缓存的便捷函数
+// CreateOptimizedCache creates an optimized cache (convenience function)
 func CreateOptimizedCache(name string, maxSize int, ttl time.Duration) (*OptimizedCacheWrapper, error) {
 	return DefaultManager.CreateOptimized(name, Config{
 		MaxSize: maxSize,
@@ -427,7 +427,7 @@ func CreateOptimizedCache(name string, maxSize int, ttl time.Duration) (*Optimiz
 	})
 }
 
-// GetOptimizerMetrics 获取默认管理器的优化器指标
+// GetOptimizerMetrics gets optimizer metrics from the default manager
 func GetOptimizerMetrics() resource.CacheOptimizerMetrics {
 	return DefaultManager.GetOptimizerMetrics()
 }
