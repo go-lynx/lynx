@@ -90,8 +90,12 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 
 				initStart := time.Now()
 				if err := m.safeInitPlugin(p, rt, initTimeout); err != nil {
+					// Set plugin status to failed before cleanup
+					setPluginStatusIfSupported(p, plugins.StatusFailed)
 					// Cleanup any partially registered resources to avoid leaks on init failure
-					_ = m.runtime.CleanupResources(p.ID())
+					if cleanupErr := m.runtime.CleanupResources(p.ID()); cleanupErr != nil {
+						log.Warnf("Failed to cleanup resources for plugin %s after init failure: %v", p.ID(), cleanupErr)
+					}
 					// Emit error event
 					m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
 						"error":       err.Error(),
@@ -105,6 +109,8 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 					return
 				}
 
+				// Set plugin status to inactive after successful initialization
+				setPluginStatusIfSupported(p, plugins.StatusInactive)
 				// Emit plugin initialized event
 				m.emitPluginEvent(p.ID(), events.EventPluginInitialized, map[string]any{
 					"plugin_name": p.Name(),
@@ -131,7 +137,11 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 
 				startStart := time.Now()
 				if err := m.safeStartPlugin(p, startTimeout); err != nil {
-					_ = m.runtime.CleanupResources(p.ID())
+					// Set plugin status to failed before cleanup
+					setPluginStatusIfSupported(p, plugins.StatusFailed)
+					if cleanupErr := m.runtime.CleanupResources(p.ID()); cleanupErr != nil {
+						log.Warnf("Failed to cleanup resources for plugin %s after start failure: %v", p.ID(), cleanupErr)
+					}
 					// Emit error event
 					m.emitPluginEvent(p.ID(), events.EventErrorOccurred, map[string]any{
 						"error":       err.Error(),
@@ -145,6 +155,8 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 					return
 				}
 
+				// Set plugin status to active after successful start
+				setPluginStatusIfSupported(p, plugins.StatusActive)
 				// Emit plugin started event
 				m.emitPluginEvent(p.ID(), events.EventPluginStarted, map[string]any{
 					"plugin_name": p.Name(),
@@ -223,6 +235,7 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 				// Cleanup resources with timeout
 				cleanupStart := time.Now()
 				cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), timeout)
+				defer cleanupCancel() // Ensure cleanup
 				cleanupDone := make(chan error, 1)
 				go func() {
 					cleanupDone <- m.runtime.CleanupResources(p.ID())
@@ -244,7 +257,6 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 					log.Errorf("rollback cleanup timeout for plugin %s (%s) after %v", 
 						p.Name(), p.ID(), timeout)
 				}
-				cleanupCancel()
 
 				// Remove from plugin instances
 				m.pluginInstances.Delete(p.Name())
@@ -436,13 +448,30 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 			// Run in a separate goroutine and monitor context
 			errCh := make(chan error, 1)
 			innerDone := make(chan struct{}, 1)
+			innerCtx, innerCancel := context.WithCancel(ctx)
+			defer innerCancel() // Ensure cleanup on exit
+			
 			go func() {
 				defer func() {
+					// Signal completion
 					select {
 					case innerDone <- struct{}{}:
 					default:
 					}
+					// Ensure context is cancelled when goroutine exits
+					innerCancel()
 				}()
+				// Check if context is already cancelled before starting
+				select {
+				case <-innerCtx.Done():
+					select {
+					case errCh <- fmt.Errorf("initialize cancelled before start for plugin %s: %w", p.Name(), innerCtx.Err()):
+					default:
+					}
+					return
+				default:
+				}
+				// Execute initialization
 				errCh <- p.Initialize(p, rt)
 			}()
 			select {
@@ -451,8 +480,11 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 				select {
 				case <-innerDone:
 				case <-time.After(100 * time.Millisecond):
+					// Timeout waiting for completion signal, but result is already received
 				}
 			case <-ctx.Done():
+				// Cancel inner context to signal plugin to stop
+				innerCancel()
 				err = fmt.Errorf("initialize timeout for plugin %s: %w", p.Name(), context.DeadlineExceeded)
 				// Wait for inner goroutine to complete (with timeout)
 				select {
@@ -465,8 +497,8 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 					default:
 					}
 				case <-time.After(1 * time.Second):
-					log.Warnf("plugin %s (%s) inner initialize goroutine did not complete within timeout", 
-						p.Name(), p.ID())
+					log.Warnf("plugin %s (%s) inner initialize goroutine did not complete within timeout; "+
+						"plugin may not be respecting cancellation signals", p.Name(), p.ID())
 				}
 			}
 		}
@@ -647,13 +679,30 @@ func (m *DefaultPluginManager[T]) safeStartPlugin(p plugins.Plugin, timeout time
 			// Run in a separate goroutine and monitor context
 			errCh := make(chan error, 1)
 			innerDone := make(chan struct{}, 1)
+			innerCtx, innerCancel := context.WithCancel(ctx)
+			defer innerCancel() // Ensure cleanup on exit
+			
 			go func() {
 				defer func() {
+					// Signal completion
 					select {
 					case innerDone <- struct{}{}:
 					default:
 					}
+					// Ensure context is cancelled when goroutine exits
+					innerCancel()
 				}()
+				// Check if context is already cancelled before starting
+				select {
+				case <-innerCtx.Done():
+					select {
+					case errCh <- fmt.Errorf("start cancelled before execution for plugin %s: %w", p.Name(), innerCtx.Err()):
+					default:
+					}
+					return
+				default:
+				}
+				// Execute start
 				errCh <- p.Start(p)
 			}()
 			select {
@@ -662,8 +711,11 @@ func (m *DefaultPluginManager[T]) safeStartPlugin(p plugins.Plugin, timeout time
 				select {
 				case <-innerDone:
 				case <-time.After(100 * time.Millisecond):
+					// Timeout waiting for completion signal, but result is already received
 				}
 			case <-ctx.Done():
+				// Cancel inner context to signal plugin to stop
+				innerCancel()
 				err = fmt.Errorf("start timeout for plugin %s: %w", p.Name(), context.DeadlineExceeded)
 				// Wait for inner goroutine to complete (with timeout)
 				select {
@@ -676,8 +728,8 @@ func (m *DefaultPluginManager[T]) safeStartPlugin(p plugins.Plugin, timeout time
 					default:
 					}
 				case <-time.After(1 * time.Second):
-					log.Warnf("plugin %s (%s) inner start goroutine did not complete within timeout", 
-						p.Name(), p.ID())
+					log.Warnf("plugin %s (%s) inner start goroutine did not complete within timeout; "+
+						"plugin may not be respecting cancellation signals", p.Name(), p.ID())
 				}
 			}
 		}
@@ -811,13 +863,30 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 			// Run in a separate goroutine and monitor context
 			errCh := make(chan error, 1)
 			innerDone := make(chan struct{}, 1)
+			innerCtx, innerCancel := context.WithCancel(ctx)
+			defer innerCancel() // Ensure cleanup on exit
+			
 			go func() {
 				defer func() {
+					// Signal completion
 					select {
 					case innerDone <- struct{}{}:
 					default:
 					}
+					// Ensure context is cancelled when goroutine exits
+					innerCancel()
 				}()
+				// Check if context is already cancelled before starting
+				select {
+				case <-innerCtx.Done():
+					select {
+					case errCh <- fmt.Errorf("stop cancelled before execution for plugin %s: %w", p.Name(), innerCtx.Err()):
+					default:
+					}
+					return
+				default:
+				}
+				// Execute stop
 				errCh <- p.Stop(p)
 			}()
 			select {
@@ -826,8 +895,11 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 				select {
 				case <-innerDone:
 				case <-time.After(100 * time.Millisecond):
+					// Timeout waiting for completion signal, but result is already received
 				}
 			case <-ctx.Done():
+				// Cancel inner context to signal plugin to stop
+				innerCancel()
 				err = fmt.Errorf("stop timeout for plugin %s: %w", p.Name(), context.DeadlineExceeded)
 				// Wait for inner goroutine to complete (with timeout)
 				select {
@@ -840,8 +912,8 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 					default:
 					}
 				case <-time.After(1 * time.Second):
-					log.Warnf("plugin %s (%s) inner stop goroutine did not complete within timeout", 
-						p.Name(), p.ID())
+					log.Warnf("plugin %s (%s) inner stop goroutine did not complete within timeout; "+
+						"plugin may not be respecting cancellation signals", p.Name(), p.ID())
 				}
 			}
 		}

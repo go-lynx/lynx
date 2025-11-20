@@ -112,6 +112,12 @@ func (b *LynxEventBus) Close() error {
 		// Close done channel to signal all goroutines to stop
 		close(b.done)
 
+		// Use configurable timeout instead of hardcoded value
+		closeTimeout := b.config.CloseTimeout
+		if closeTimeout <= 0 {
+			closeTimeout = 30 * time.Second // Default timeout
+		}
+
 		// Wait for all goroutines to finish with timeout
 		done := make(chan struct{})
 		go func() {
@@ -122,10 +128,17 @@ func (b *LynxEventBus) Close() error {
 		select {
 		case <-done:
 			// All goroutines finished successfully
-		case <-time.After(10 * time.Second):
-			// Timeout: log warning but continue with cleanup
 			if b.logger != nil {
-				log.NewHelper(b.logger).Warnf("event bus close timeout: some goroutines may still be running")
+				log.NewHelper(b.logger).Infof("event bus closed successfully, all goroutines finished")
+			}
+		case <-time.After(closeTimeout):
+			// Timeout: log warning and attempt force cleanup
+			if b.logger != nil {
+				log.NewHelper(b.logger).Warnf("event bus close timeout after %v: some goroutines may still be running, forcing cleanup", closeTimeout)
+			}
+			// Force close dispatcher to prevent further event processing
+			if b.dispatcher != nil {
+				_ = b.dispatcher.Close()
 			}
 		}
 
@@ -795,11 +808,26 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 		b.history.Add(event)
 	}
 
-	// Check degradation before publishing (sampled to reduce overhead)
-	// Only check every 100ms or when queue is getting full
+	// Check degradation before publishing (adaptive sampling to reduce overhead)
+	// Use adaptive check interval based on queue usage:
+	// - Low usage (<50%): check every 500ms
+	// - Medium usage (50-80%): check every 100ms
+	// - High usage (>80%): check every 10ms
+	queueUsage := b.totalQueueSize() * 100 / max(b.totalQueueCap(), 1)
 	now := time.Now().UnixNano()
 	lastCheck := b.lastDegradationCheck.Load()
-	if now-lastCheck > 100*int64(time.Millisecond) || b.totalQueueSize()*100/b.totalQueueCap() > 50 {
+
+	var checkInterval int64
+	if queueUsage < 50 {
+		checkInterval = int64(500 * time.Millisecond)
+	} else if queueUsage < 80 {
+		checkInterval = int64(100 * time.Millisecond)
+	} else {
+		checkInterval = int64(10 * time.Millisecond)
+	}
+
+	// Always check if queue is getting full (>50%) or if interval has passed
+	if queueUsage > 50 || now-lastCheck > checkInterval {
 		if b.lastDegradationCheck.CompareAndSwap(lastCheck, now) {
 			b.checkDegradation()
 		}

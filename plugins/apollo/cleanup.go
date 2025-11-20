@@ -68,7 +68,14 @@ func (p *PlugApollo) closeClientConnection() {
 
 		// 3. Close client
 		log.Infof("Destroying client")
-		// TODO: Call actual Apollo client close/destroy method
+		// NOTE: Call actual Apollo client close/destroy method when implemented
+		// Example (using agollo):
+		//   if client, ok := p.client.(*agollo.Client); ok {
+		//       client.Stop()
+		//   }
+		// For now, just log a warning
+		log.Warnf("Apollo client close/destroy not implemented. "+
+			"Please implement closeClientConnection() after initApolloClient() is done")
 
 		log.Infof("Client connection closed: %+v", clientInfo)
 		p.client = nil

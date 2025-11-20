@@ -57,6 +57,9 @@ type BusConfig struct {
 	DropPolicy          DropPolicy    `yaml:"drop_policy" json:"drop_policy"`
 	ReserveForCritical  int           `yaml:"reserve_for_critical" json:"reserve_for_critical"`
 	EnqueueBlockTimeout time.Duration `yaml:"enqueue_block_timeout" json:"enqueue_block_timeout"`
+	
+	// Close timeout for graceful shutdown
+	CloseTimeout time.Duration `yaml:"close_timeout" json:"close_timeout"`
 }
 
 // DegradationMode represents the degradation strategy
@@ -91,6 +94,7 @@ func DefaultBusConfig() BusConfig {
 		DropPolicy:                  DropNewest,
 		ReserveForCritical:          0,
 		EnqueueBlockTimeout:         5 * time.Millisecond,
+		CloseTimeout:                30 * time.Second, // Default close timeout
 	}
 }
 
@@ -130,6 +134,7 @@ func DefaultBusConfigs() BusConfigs {
 			DropPolicy:                  DropNewest,
 			ReserveForCritical:          0,
 			EnqueueBlockTimeout:         5 * time.Millisecond,
+			CloseTimeout:                30 * time.Second,
 		},
 		System: BusConfig{
 			MaxQueue:                    5000,
@@ -152,6 +157,7 @@ func DefaultBusConfigs() BusConfigs {
 			DropPolicy:                  DropNewest,
 			ReserveForCritical:          0,
 			EnqueueBlockTimeout:         5 * time.Millisecond,
+			CloseTimeout:                30 * time.Second,
 		},
 		Business: BusConfig{
 			MaxQueue:                    20000,
@@ -174,6 +180,7 @@ func DefaultBusConfigs() BusConfigs {
 			DropPolicy:                  DropNewest,
 			ReserveForCritical:          0,
 			EnqueueBlockTimeout:         5 * time.Millisecond,
+			CloseTimeout:                30 * time.Second,
 		},
 		Health: BusConfig{
 			MaxQueue:                    1000,
@@ -196,6 +203,7 @@ func DefaultBusConfigs() BusConfigs {
 			DropPolicy:                  DropNewest,
 			ReserveForCritical:          0,
 			EnqueueBlockTimeout:         5 * time.Millisecond,
+			CloseTimeout:                30 * time.Second,
 		},
 		Config: BusConfig{
 			MaxQueue:                    2000,
@@ -218,6 +226,7 @@ func DefaultBusConfigs() BusConfigs {
 			DropPolicy:                  DropNewest,
 			ReserveForCritical:          0,
 			EnqueueBlockTimeout:         5 * time.Millisecond,
+			CloseTimeout:                30 * time.Second,
 		},
 		Resource: BusConfig{
 			MaxQueue:                    3000,
@@ -240,6 +249,7 @@ func DefaultBusConfigs() BusConfigs {
 			DropPolicy:                  DropNewest,
 			ReserveForCritical:          0,
 			EnqueueBlockTimeout:         5 * time.Millisecond,
+			CloseTimeout:                30 * time.Second,
 		},
 		Security: BusConfig{
 			MaxQueue:                    1000,
@@ -262,6 +272,7 @@ func DefaultBusConfigs() BusConfigs {
 			DropPolicy:                  DropNewest,
 			ReserveForCritical:          0,
 			EnqueueBlockTimeout:         5 * time.Millisecond,
+			CloseTimeout:                30 * time.Second,
 		},
 		Metrics: BusConfig{
 			MaxQueue:                    5000,
@@ -284,6 +295,7 @@ func DefaultBusConfigs() BusConfigs {
 			DropPolicy:                  DropNewest,
 			ReserveForCritical:          0,
 			EnqueueBlockTimeout:         5 * time.Millisecond,
+			CloseTimeout:                30 * time.Second,
 		},
 	}
 }

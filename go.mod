@@ -8,7 +8,7 @@ require (
 	github.com/IBM/sarama v1.46.0
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/dgraph-io/ristretto v0.2.0
-	github.com/go-kratos/kratos/v2 v2.8.4
+	github.com/go-kratos/kratos/v2 v2.9.1
 	github.com/go-lynx/lynx/plugins/nosql/redis v1.2.3
 	github.com/go-lynx/lynx/plugins/polaris v1.2.3
 	github.com/go-lynx/lynx/plugins/sql/mysql v1.2.3
@@ -25,7 +25,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.41.0
 	google.golang.org/grpc v1.73.0
-	google.golang.org/protobuf v1.36.6
+	google.golang.org/protobuf v1.36.10
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
@@ -52,7 +52,7 @@ require (
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/spec v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
-	github.com/go-playground/form/v4 v4.2.1 // indirect
+	github.com/go-playground/form/v4 v4.3.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -90,7 +90,7 @@ require (
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822 // indirect

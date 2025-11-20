@@ -180,14 +180,26 @@ func (p *PlugApollo) GetConfigValue(namespace, key string) (string, error) {
 }
 
 // getConfigValueFromApollo gets configuration value from Apollo client
-// This is a placeholder implementation - actual implementation depends on Apollo SDK
+// NOTE: This method requires initApolloClient() to be implemented first.
+//
+// Implementation steps:
+// 1. Cast p.client to the actual Apollo client type
+// 2. Call the client's GetConfigValue method with namespace and key
+// 3. Handle cache if enabled (check p.conf.CacheDir)
+// 4. Return the value or error
+//
+// Example structure (using agollo):
+//   client, ok := p.client.(*agollo.Client)
+//   if !ok {
+//       return "", fmt.Errorf("invalid Apollo client type")
+//   }
+//   return client.GetStringValue(key, ""), nil
 func (p *PlugApollo) getConfigValueFromApollo(namespace, key string) (string, error) {
-	// TODO: Implement actual Apollo client call
-	// This would typically involve:
-	// 1. Getting config from Apollo client
-	// 2. Handling cache if enabled
-	// 3. Returning the value
-	return "", fmt.Errorf("not implemented")
+	if p.client == nil {
+		return "", fmt.Errorf("Apollo client not initialized. Please implement initApolloClient() first")
+	}
+	return "", fmt.Errorf("getConfigValueFromApollo not implemented. "+
+		"Please complete the implementation after initApolloClient() is done")
 }
 
 // ApolloConfigSource implements config.Source for Apollo
@@ -209,22 +221,57 @@ func NewApolloConfigSource(client interface{}, appId, cluster, namespace string)
 }
 
 // Load implements config.Source interface
+// NOTE: This method requires initApolloClient() to be implemented first.
+//
+// Implementation steps:
+// 1. Cast s.client to the actual Apollo client type
+// 2. Get all configurations for the namespace (s.namespace)
+// 3. Convert Apollo config format to []*config.KeyValue
+// 4. Return the list
+//
+// Example structure (using agollo):
+//   client, ok := s.client.(*agollo.Client)
+//   if !ok {
+//       return nil, fmt.Errorf("invalid Apollo client type")
+//   }
+//   apolloConfig := client.GetConfig(s.namespace)
+//   var kvs []*config.KeyValue
+//   for key, value := range apolloConfig {
+//       kvs = append(kvs, &config.KeyValue{
+//           Key:   key,
+//           Value: []byte(value),
+//       })
+//   }
+//   return kvs, nil
 func (s *ApolloConfigSource) Load() ([]*config.KeyValue, error) {
-	// TODO: Implement actual Apollo config loading
-	// This would typically involve:
-	// 1. Getting all configs from Apollo for the namespace
-	// 2. Converting to config.KeyValue format
-	// 3. Returning the list
-	return nil, fmt.Errorf("not implemented")
+	if s.client == nil {
+		return nil, fmt.Errorf("Apollo client not initialized. Please implement initApolloClient() first")
+	}
+	return nil, fmt.Errorf("ApolloConfigSource.Load not implemented. "+
+		"Please complete the implementation after initApolloClient() is done")
 }
 
 // Watch implements config.Source interface
+// NOTE: This method requires initApolloClient() and ConfigWatcher to be implemented first.
+//
+// Implementation steps:
+// 1. Cast s.client to the actual Apollo client type
+// 2. Set up Apollo notification listener for the namespace
+// 3. Create a watcher that converts Apollo notifications to config.Watcher events
+// 4. Return the watcher
+//
+// Example structure (using agollo):
+//   client, ok := s.client.(*agollo.Client)
+//   if !ok {
+//       return nil, fmt.Errorf("invalid Apollo client type")
+//   }
+//   watcher := NewApolloConfigWatcher(client, s.namespace)
+//   return watcher, nil
 func (s *ApolloConfigSource) Watch() (config.Watcher, error) {
-	// TODO: Implement actual Apollo config watching
-	// This would typically involve:
-	// 1. Setting up Apollo notification listener
-	// 2. Creating a watcher that listens to changes
-	// 3. Returning the watcher
-	return nil, fmt.Errorf("not implemented")
+	if s.client == nil {
+		return nil, fmt.Errorf("Apollo client not initialized. Please implement initApolloClient() first")
+	}
+	return nil, fmt.Errorf("ApolloConfigSource.Watch not implemented. "+
+		"Please complete the implementation after initApolloClient() and ConfigWatcher are done")
 }
 
