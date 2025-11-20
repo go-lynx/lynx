@@ -41,24 +41,39 @@ func (w *ConfigWatcher) SetOnError(callback func(err error)) {
 }
 
 // Start starts watching configuration changes
+// NOTE: This method requires initApolloClient() to be implemented first.
+//
+// Implementation steps:
+// 1. Get Apollo client from plugin (needs to be passed to ConfigWatcher)
+// 2. Set up Apollo notification listener for the namespace
+// 3. Listen to configuration change notifications
+// 4. Call w.onChange callback when changes occur
+// 5. Call w.onError callback on errors
+//
+// Example structure (using agollo):
+//
+//	client.Start() // if not already started
+//	client.WatchUpdate(func(event *agollo.ChangeEvent) {
+//	    for key, change := range event.Changes {
+//	        if w.onChange != nil {
+//	            w.onChange(w.namespace, key, change.NewValue)
+//	        }
+//	    }
+//	})
 func (w *ConfigWatcher) Start() {
-	log.Infof("Starting config watcher for namespace: %s", w.namespace)
+	log.Warnf("Config watcher Start() is not yet implemented for namespace: %s. "+
+		"Please implement Start() after initApolloClient() is done", w.namespace)
 
-	// TODO: Implement actual Apollo notification listener
-	// This would typically involve:
-	// 1. Setting up Apollo notification listener
-	// 2. Listening to configuration changes
-	// 3. Calling onChange callback when changes occur
-
+	// Placeholder goroutine that does nothing but respects stop signal
 	go func() {
 		for {
 			select {
 			case <-w.stopCh:
 				log.Infof("Config watcher stopped for namespace: %s", w.namespace)
 				return
-			default:
-				// TODO: Listen to Apollo notifications
-				// This is a placeholder
+			case <-time.After(1 * time.Second):
+				// Placeholder: do nothing, just keep goroutine alive
+				// Remove this once actual implementation is added
 			}
 		}
 	}()
@@ -191,4 +206,3 @@ func (p *PlugApollo) retryConfigWatch(namespace string) {
 		log.Errorf("Failed to recreate config watcher for %s: %v", namespace, err)
 	}
 }
-

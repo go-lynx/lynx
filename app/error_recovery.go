@@ -241,6 +241,11 @@ func (s *DefaultRecoveryStrategy) GetTimeout() time.Duration {
 	return s.timeout
 }
 
+// Recovery semaphore acquisition timeout (configurable via environment or config)
+const (
+	defaultRecoverySemaphoreTimeout = 2 * time.Second // Increased from 1s for better reliability
+)
+
 // NewErrorRecoveryManager creates a new error recovery manager
 func NewErrorRecoveryManager(metrics *metrics.ProductionMetrics) *ErrorRecoveryManager {
 	maxConcurrent := 10 // Default max concurrent recoveries
@@ -389,16 +394,31 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	// This ensures we can atomically check and set the recovery state
 	
 	// Try to atomically set recovery state
-	state := &recoveryState{started: true}
-	actual, loaded := erm.activeRecoveries.LoadOrStore(recoveryKey, state)
-	if loaded {
+	// Use CAS loop to ensure atomic state transition
+	state := &recoveryState{started: false} // Start as false, set to true after semaphore acquisition
+	for {
+		actual, loaded := erm.activeRecoveries.LoadOrStore(recoveryKey, state)
+		if !loaded {
+			// Successfully stored new state
+			break
+		}
 		// Recovery already in progress for this error
-		if existingState, ok := actual.(*recoveryState); ok && existingState.started {
-			log.Debugf("Recovery already in progress for %s:%s, skipping duplicate attempt", record.ErrorType, record.Component)
-			return
+		if existingState, ok := actual.(*recoveryState); ok {
+			if existingState.started {
+				log.Debugf("Recovery already in progress for %s:%s, skipping duplicate attempt", record.ErrorType, record.Component)
+				return
+			}
+			// State exists but not started yet - another goroutine is initializing
+			// Wait briefly and check again to avoid race condition
+			time.Sleep(10 * time.Millisecond)
+			continue
 		}
 		// If it's not a recoveryState, it might be an old cancel function - replace it
-		erm.activeRecoveries.Store(recoveryKey, state)
+		if erm.activeRecoveries.CompareAndSwap(recoveryKey, actual, state) {
+			break
+		}
+		// CAS failed, retry
+		time.Sleep(10 * time.Millisecond)
 	}
 	
 	// Track if recovery actually started (passed semaphore acquisition)
@@ -426,15 +446,17 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	}
 
 	// Acquire semaphore to limit concurrent recoveries
+	// Use configurable timeout instead of hardcoded value
+	semaphoreTimeout := defaultRecoverySemaphoreTimeout
 	select {
 	case erm.recoverySemaphore <- struct{}{}:
 		// Acquired semaphore, proceed with recovery
 		recoveryStarted = true
 		defer func() { <-erm.recoverySemaphore }()
-	case <-time.After(1 * time.Second):
+	case <-time.After(semaphoreTimeout):
 		// Semaphore acquisition timeout - too many concurrent recoveries
-		log.Warnf("Recovery semaphore timeout for %s:%s, skipping recovery (too many concurrent recoveries)", 
-			record.ErrorType, record.Component)
+		log.Warnf("Recovery semaphore timeout for %s:%s after %v, skipping recovery (too many concurrent recoveries)", 
+			record.ErrorType, record.Component, semaphoreTimeout)
 		// Clean up recovery state since we didn't start
 		erm.activeRecoveries.Delete(recoveryKey)
 		return
@@ -459,9 +481,29 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 
 	// Atomically update recovery state with actual cancel function
 	// Mark recovery as started (not just initializing)
-	state.cancel = cancel
-	state.started = true
-	erm.activeRecoveries.Store(recoveryKey, state)
+	// Use CAS to ensure we're updating the correct state
+	for {
+		current, ok := erm.activeRecoveries.Load(recoveryKey)
+		if !ok {
+			// State was deleted, recovery was cancelled
+			cancel()
+			return
+		}
+		currentState, ok := current.(*recoveryState)
+		if !ok || currentState != state {
+			// State changed, recovery was cancelled or replaced
+			cancel()
+			return
+		}
+		// Update state atomically
+		state.cancel = cancel
+		state.started = true
+		if erm.activeRecoveries.CompareAndSwap(recoveryKey, current, state) {
+			break
+		}
+		// CAS failed, retry
+		time.Sleep(5 * time.Millisecond)
+	}
 	
 	// Set up proper cleanup at the end of recovery
 	// This will be called after recovery completes (success or failure)

@@ -452,14 +452,26 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 		if rt := pm.GetRuntime(); rt != nil {
 			// Inject config
 			rt.SetConfig(cfg)
-			// Increment configuration version with overflow detection
-			ver := atomic.AddUint64(&a.configVersion, 1)
-			// Check for overflow (unlikely but possible in extreme scenarios)
-			if ver == 0 {
-				// Overflow detected - reset to 1 and log warning
-				atomic.StoreUint64(&a.configVersion, 1)
-				log.Warnf("Configuration version overflow detected, resetting to 1. This should not happen in normal operation.")
-				ver = 1
+			// Increment configuration version with atomic overflow detection
+			// Use CAS loop to ensure atomicity and prevent race conditions
+			var ver uint64
+			for {
+				oldVer := atomic.LoadUint64(&a.configVersion)
+				newVer := oldVer + 1
+				// Skip 0 to avoid confusion (0 means uninitialized)
+				if newVer == 0 {
+					newVer = 1
+				}
+				// Atomically update if version hasn't changed
+				if atomic.CompareAndSwapUint64(&a.configVersion, oldVer, newVer) {
+					ver = newVer
+					// Log warning only if we actually wrapped around
+					if oldVer == ^uint64(0) {
+						log.Warnf("Configuration version overflow detected, resetting to 1. This should not happen in normal operation.")
+					}
+					break
+				}
+				// Version changed, retry
 			}
 			// Broadcast: configuration is changing (using the fixed system plugin ID)
 			rt.EmitPluginEvent(configEventPluginID, string(plugins.EventConfigurationChanged), map[string]any{

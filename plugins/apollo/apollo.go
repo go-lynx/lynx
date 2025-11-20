@@ -1,6 +1,7 @@
 package apollo
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -247,19 +248,39 @@ func (p *PlugApollo) StartupTasks() error {
 }
 
 // initApolloClient initializes Apollo client
-// This is a placeholder implementation - actual implementation depends on the Apollo Go SDK used
+// NOTE: This is a placeholder implementation that needs to be completed with an actual Apollo Go SDK.
+//
+// Recommended Apollo Go SDKs:
+//   - github.com/apolloconfig/apollo-go-sdk (official)
+//   - github.com/shima-park/agollo (community)
+//
+// Implementation steps:
+// 1. Add the chosen SDK to go.mod dependencies
+// 2. Create Apollo client configuration from p.conf
+// 3. Set up connection to Apollo Meta Server (p.conf.MetaServer)
+// 4. Configure cache if enabled (p.conf.CacheDir)
+// 5. Set up notification listener if enabled
+// 6. Return the configured client instance
+//
+// Example structure (using agollo):
+//   import "github.com/shima-park/agollo"
+//   client := agollo.NewClient(&agollo.Conf{
+//       AppID:          p.conf.AppId,
+//       Cluster:        p.conf.Cluster,
+//       NamespaceName:  p.conf.Namespace,
+//       IP:             p.conf.MetaServer,
+//       CacheDir:       p.conf.CacheDir,
+//   })
+//   return client, client.Start()
 func (p *PlugApollo) initApolloClient() (interface{}, error) {
-	// TODO: Initialize actual Apollo client based on the SDK being used
-	// For now, return a placeholder
-	log.Infof("Initializing Apollo client for app_id: %s, meta_server: %s", p.conf.AppId, p.conf.MetaServer)
+	log.Warnf("Apollo client initialization is not yet implemented. "+
+		"Please implement initApolloClient() using an Apollo Go SDK. "+
+		"AppID: %s, MetaServer: %s", p.conf.AppId, p.conf.MetaServer)
 	
-	// This would typically involve:
-	// 1. Creating Apollo client configuration
-	// 2. Setting up connection to Apollo Meta Server
-	// 3. Configuring cache if enabled
-	// 4. Setting up notification listener if enabled
-	
-	return struct{}{}, nil
+	// Return a placeholder that will cause errors if used
+	// This ensures the plugin fails fast rather than silently failing
+	return nil, fmt.Errorf("Apollo client initialization not implemented. "+
+		"Please complete the initApolloClient() implementation using an Apollo Go SDK")
 }
 
 // GetMetrics gets monitoring metrics
