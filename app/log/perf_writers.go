@@ -297,7 +297,7 @@ func (a *AsyncLogWriter) Write(p []byte) (int, error) {
 			a.mu.RLock()
 			currentQueue := a.queue
 			a.mu.RUnlock()
-			
+
 			if currentQueue == queue {
 				// Queue unchanged, send successful
 				atomic.AddInt64(&a.qLen, 1)
@@ -305,11 +305,10 @@ func (a *AsyncLogWriter) Write(p []byte) (int, error) {
 			}
 			// Queue changed during send - data was sent to old queue
 			// Background migration in resizeQueue will handle it, so data won't be lost
-			// But we should retry to send to the current queue to ensure immediate processing
-			// Create a new buffer for retry since the old one was already sent
-			buf = make([]byte, len(p))
-			copy(buf, p)
-			continue
+			// We don't retry to avoid duplicate data (old queue will be migrated to new queue)
+			// Count as success since data will be processed via migration
+			atomic.AddInt64(&a.qLen, 1)
+			return len(p), nil
 		default:
 			// queue full, drop log and warn
 			dropped := atomic.AddInt64(&a.metrics.DroppedLogs, 1)
@@ -328,7 +327,7 @@ func (a *AsyncLogWriter) Write(p []byte) (int, error) {
 			return len(p), fmt.Errorf("log queue full, dropped log (total dropped: %d)", dropped)
 		}
 	}
-	
+
 	// Should not reach here under normal circumstances
 	// If we exhausted retries, data was sent to old queue but will be migrated
 	atomic.AddInt64(&a.qLen, 1)

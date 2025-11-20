@@ -32,6 +32,8 @@ type PlugSnowflake struct {
 	securityManager *SecurityManager
 	// Shutdown channel
 	shutdownCh chan struct{}
+	// Ensure shutdown channel is closed only once
+	shutdownOnce sync.Once
 	// Wait group for goroutines
 	wg sync.WaitGroup
 	// Mutex for thread safety
@@ -425,13 +427,10 @@ func (p *PlugSnowflake) Stop(plugin plugins.Plugin) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Signal shutdown
-	select {
-	case <-p.shutdownCh:
-		// Already closed
-	default:
+	// Signal shutdown - use sync.Once to ensure idempotent closure
+	p.shutdownOnce.Do(func() {
 		close(p.shutdownCh)
-	}
+	})
 
 	// Stop worker manager heartbeat and unregister
 	if p.workerManager != nil {
