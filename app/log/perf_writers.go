@@ -282,32 +282,57 @@ func (a *AsyncLogWriter) Write(p []byte) (int, error) {
 	buf := make([]byte, len(p))
 	copy(buf, p)
 
-	// Use read lock for concurrent access to queue
-	a.mu.RLock()
-	queue := a.queue
-	a.mu.RUnlock()
+	// Retry loop to handle queue resize during write
+	maxRetries := 3
+	for retry := 0; retry < maxRetries; retry++ {
+		// Use read lock for concurrent access to queue
+		a.mu.RLock()
+		queue := a.queue
+		a.mu.RUnlock()
 
-	select {
-	case queue <- buf:
-		atomic.AddInt64(&a.qLen, 1)
-		return len(p), nil
-	default:
-		// queue full, drop log and warn
-		dropped := atomic.AddInt64(&a.metrics.DroppedLogs, 1)
-
-		// Warn periodically (every 100 drops) to avoid log spam
-		if dropped%100 == 1 {
-			// Use fmt.Fprintf to stderr as fallback since logger might be in deadlock
+		select {
+		case queue <- buf:
+			// Verify queue hasn't changed after successful send
+			// This prevents sending to a stale queue reference
 			a.mu.RLock()
-			capQ := cap(a.queue)
+			currentQueue := a.queue
 			a.mu.RUnlock()
-			fmt.Fprintf(os.Stderr, "[lynx-log-warn] AsyncLogWriter queue full, dropped %d logs (queue_size=%d, capacity=%d)\n",
-				dropped, atomic.LoadInt64(&a.qLen), capQ)
-		}
+			
+			if currentQueue == queue {
+				// Queue unchanged, send successful
+				atomic.AddInt64(&a.qLen, 1)
+				return len(p), nil
+			}
+			// Queue changed during send - data was sent to old queue
+			// Background migration in resizeQueue will handle it, so data won't be lost
+			// But we should retry to send to the current queue to ensure immediate processing
+			// Create a new buffer for retry since the old one was already sent
+			buf = make([]byte, len(p))
+			copy(buf, p)
+			continue
+		default:
+			// queue full, drop log and warn
+			dropped := atomic.AddInt64(&a.metrics.DroppedLogs, 1)
 
-		// Return error to indicate log was dropped
-		return len(p), fmt.Errorf("log queue full, dropped log (total dropped: %d)", dropped)
+			// Warn periodically (every 100 drops) to avoid log spam
+			if dropped%100 == 1 {
+				// Use fmt.Fprintf to stderr as fallback since logger might be in deadlock
+				a.mu.RLock()
+				capQ := cap(a.queue)
+				a.mu.RUnlock()
+				fmt.Fprintf(os.Stderr, "[lynx-log-warn] AsyncLogWriter queue full, dropped %d logs (queue_size=%d, capacity=%d)\n",
+					dropped, atomic.LoadInt64(&a.qLen), capQ)
+			}
+
+			// Return error to indicate log was dropped
+			return len(p), fmt.Errorf("log queue full, dropped log (total dropped: %d)", dropped)
+		}
 	}
+	
+	// Should not reach here under normal circumstances
+	// If we exhausted retries, data was sent to old queue but will be migrated
+	atomic.AddInt64(&a.qLen, 1)
+	return len(p), nil
 }
 
 // Close stops the background goroutine and closes the underlying writer if closable.
