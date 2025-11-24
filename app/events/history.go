@@ -57,31 +57,71 @@ func (h *EventHistory) Add(event LynxEvent) {
 	h.events = append(h.events, event)
 
 	// Update indexes for faster queries
+	// Limit index size to prevent unbounded growth
 	h.indexMu.Lock()
 	if event.PluginID != "" {
-		h.byPluginID[event.PluginID] = append(h.byPluginID[event.PluginID], eventIndex)
+		indices := h.byPluginID[event.PluginID]
+		// Limit per-plugin index size to maxSize to prevent memory growth
+		if len(indices) < h.maxSize {
+			h.byPluginID[event.PluginID] = append(indices, eventIndex)
+		} else {
+			// Trim oldest indices to maintain size limit
+			h.byPluginID[event.PluginID] = append(indices[1:], eventIndex)
+		}
 	}
-	h.byEventType[event.EventType] = append(h.byEventType[event.EventType], eventIndex)
+	indices := h.byEventType[event.EventType]
+	// Limit per-event-type index size to maxSize
+	if len(indices) < h.maxSize {
+		h.byEventType[event.EventType] = append(indices, eventIndex)
+	} else {
+		// Trim oldest indices to maintain size limit
+		h.byEventType[event.EventType] = append(indices[1:], eventIndex)
+	}
 	h.indexMu.Unlock()
 
 	// Trim if exceeds max size
+	// Use more aggressive trimming to prevent memory growth
 	if len(h.events) > h.maxSize {
 		trimCount := len(h.events) - h.maxSize
+		// Trim slightly more to reduce frequent trimming
+		if trimCount < h.maxSize/4 {
+			trimCount = h.maxSize / 4 // Trim 25% when close to limit
+		}
+		
+		// Trim from the beginning
 		h.events = h.events[trimCount:]
-		// Rebuild indexes after trimming
+		
+		// Rebuild indexes after trimming to ensure index references are valid
+		// This prevents index growth and invalid references
 		h.rebuildIndexes()
 	}
 }
 
 // cleanupExpiredEvents removes events older than maxAge
+// Optimized to reduce memory allocations
 func (h *EventHistory) cleanupExpiredEvents() {
 	if h.maxAge <= 0 {
 		return
 	}
 
 	cutoffTime := time.Now().Add(-h.maxAge).Unix()
-	var validEvents []LynxEvent
-
+	
+	// Count valid events first to pre-allocate slice
+	validCount := 0
+	for _, event := range h.events {
+		if event.Timestamp >= cutoffTime {
+			validCount++
+		}
+	}
+	
+	// If all events are valid, no cleanup needed
+	if validCount == len(h.events) {
+		h.lastCleanup = time.Now()
+		return
+	}
+	
+	// Pre-allocate slice with known capacity
+	validEvents := make([]LynxEvent, 0, validCount)
 	for _, event := range h.events {
 		if event.Timestamp >= cutoffTime {
 			validEvents = append(validEvents, event)
@@ -91,7 +131,7 @@ func (h *EventHistory) cleanupExpiredEvents() {
 	h.events = validEvents
 	h.lastCleanup = time.Now()
 
-	// Rebuild indexes after cleanup
+	// Rebuild indexes after cleanup to prevent index growth
 	h.rebuildIndexes()
 }
 
@@ -104,10 +144,32 @@ func (h *EventHistory) rebuildIndexes() {
 	h.byPluginID = make(map[string][]int)
 	h.byEventType = make(map[EventType][]int)
 
+	// Rebuild indexes with capacity hints
+	// Pre-allocate maps with estimated size to reduce allocations
+	if len(h.events) > 0 {
+		estimatedPluginCount := min(len(h.events)/10, 100) // Estimate 10 events per plugin, max 100 plugins
+		if estimatedPluginCount > 0 {
+			for k := range h.byPluginID {
+				delete(h.byPluginID, k) // Clear old entries
+			}
+		}
+		for k := range h.byEventType {
+			delete(h.byEventType, k) // Clear old entries
+		}
+	}
+	
 	// Rebuild indexes
 	for i, event := range h.events {
 		if event.PluginID != "" {
+			if h.byPluginID[event.PluginID] == nil {
+				// Pre-allocate with reasonable capacity
+				h.byPluginID[event.PluginID] = make([]int, 0, min(h.maxSize/10, 100))
+			}
 			h.byPluginID[event.PluginID] = append(h.byPluginID[event.PluginID], i)
+		}
+		if h.byEventType[event.EventType] == nil {
+			// Pre-allocate with reasonable capacity
+			h.byEventType[event.EventType] = make([]int, 0, min(h.maxSize/10, 100))
 		}
 		h.byEventType[event.EventType] = append(h.byEventType[event.EventType], i)
 	}

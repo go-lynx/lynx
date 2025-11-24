@@ -136,7 +136,16 @@ func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
 	lynxEvent := events.ConvertPluginEvent(event)
 	if err := r.eventManager.PublishEvent(lynxEvent); err != nil {
 		if logger := r.runtime.GetLogger(); logger != nil {
-			_ = logger.Log(log.LevelError, "msg", "failed to publish event", "type", event.Type, "plugin", event.PluginID, "error", err)
+			// Log error instead of ignoring it
+			if logErr := logger.Log(log.LevelError, "msg", "failed to publish event", "type", event.Type, "plugin", event.PluginID, "error", err); logErr != nil {
+				// Fallback to fmt if logger fails
+				fmt.Printf("[lynx-error] failed to publish event and log error: event_type=%s plugin=%s error=%v log_error=%v\n",
+					event.Type, event.PluginID, err, logErr)
+			}
+		} else {
+			// Fallback logging if logger is nil
+			fmt.Printf("[lynx-error] failed to publish event (no logger): event_type=%s plugin=%s error=%v\n",
+				event.Type, event.PluginID, err)
 		}
 	}
 }

@@ -96,6 +96,18 @@ func CloseGlobalEventBus() error {
 		shutdownDone := make(chan struct{})
 
 		go func() {
+			defer func() {
+				// Always close done channel to prevent goroutine leak
+				select {
+				case shutdownDone <- struct{}{}:
+				default:
+					close(shutdownDone)
+				}
+				if r := recover(); r != nil {
+					// Log panic but don't crash
+					fmt.Printf("[lynx-error] panic in shutdown event goroutine: %v\n", r)
+				}
+			}()
 			for busType := range globalManager.buses {
 				if bus := globalManager.GetBus(busType); bus != nil {
 					select {
@@ -106,7 +118,6 @@ func CloseGlobalEventBus() error {
 					}
 				}
 			}
-			close(shutdownDone)
 		}()
 
 		// Wait for shutdown event to be processed or timeout

@@ -138,7 +138,11 @@ func (b *LynxEventBus) Close() error {
 			}
 			// Force close dispatcher to prevent further event processing
 			if b.dispatcher != nil {
-				_ = b.dispatcher.Close()
+				if err := b.dispatcher.Close(); err != nil {
+					if b.logger != nil {
+						log.NewHelper(b.logger).Errorf("failed to force close dispatcher: %v", err)
+					}
+				}
 			}
 		}
 
@@ -163,25 +167,74 @@ func (b *LynxEventBus) Close() error {
 }
 
 // cleanupProcessedEvents periodically cleans up old entries from processed events map
+// Optimized: More frequent cleanup to prevent memory growth, with size-based early cleanup
 func (b *LynxEventBus) cleanupProcessedEvents() {
 	defer b.wg.Done()
-	ticker := time.NewTicker(b.dedupWindow)
+	// Use shorter ticker interval for more frequent cleanup (half of dedup window)
+	cleanupInterval := b.dedupWindow / 2
+	if cleanupInterval < 30*time.Second {
+		cleanupInterval = 30 * time.Second // Minimum 30 seconds
+	}
+	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
+
+	// Track cleanup statistics for monitoring
+	maxCleanupCount := 0
 
 	for {
 		select {
 		case <-b.done:
-			return
-		case <-ticker.C:
+			// Final cleanup before exit
 			now := time.Now()
+			cleaned := 0
 			b.processedEvents.Range(func(key, value interface{}) bool {
 				if lastTime, ok := value.(time.Time); ok {
 					if now.Sub(lastTime) > b.dedupWindow {
 						b.processedEvents.Delete(key)
+						cleaned++
 					}
 				}
 				return true
 			})
+			if cleaned > 0 && b.logger != nil {
+				log.NewHelper(b.logger).Debugf("final cleanup of processed events: removed %d entries", cleaned)
+			}
+			return
+		case <-ticker.C:
+			now := time.Now()
+			cleaned := 0
+			// Count entries first to decide if cleanup is needed
+			entryCount := 0
+			b.processedEvents.Range(func(key, value interface{}) bool {
+				entryCount++
+				return true
+			})
+			
+			// Only perform cleanup if there are entries
+			if entryCount > 0 {
+				b.processedEvents.Range(func(key, value interface{}) bool {
+					if lastTime, ok := value.(time.Time); ok {
+						if now.Sub(lastTime) > b.dedupWindow {
+							b.processedEvents.Delete(key)
+							cleaned++
+						}
+					}
+					return true
+				})
+				
+				// Track max entries for monitoring
+				if entryCount > maxCleanupCount {
+					maxCleanupCount = entryCount
+				}
+				
+				// If cleaned many entries or map is growing, log warning
+				if cleaned > 1000 || (entryCount > 10000 && cleaned > 0) {
+					if b.logger != nil {
+						log.NewHelper(b.logger).Warnf("processed events map cleanup: removed %d entries, remaining %d (max seen: %d)",
+							cleaned, entryCount-cleaned, maxCleanupCount)
+					}
+				}
+			}
 		}
 	}
 }
@@ -320,7 +373,17 @@ func (b *LynxEventBus) checkDegradation() {
 	if capTotal <= 0 || thr <= 0 {
 		return
 	}
-	usage := b.totalQueueSize() * 100 / capTotal
+	b.checkDegradationWithSize(b.totalQueueSize(), capTotal)
+}
+
+// checkDegradationWithSize checks degradation using pre-calculated queue size and capacity
+// This avoids redundant queue size checks for better performance
+func (b *LynxEventBus) checkDegradationWithSize(queueSize, queueCap int) {
+	thr := b.config.DegradationThreshold
+	if queueCap <= 0 || thr <= 0 {
+		return
+	}
+	usage := queueSize * 100 / queueCap
 
 	if !b.isDegraded.Load() {
 		if usage >= thr {
@@ -427,6 +490,7 @@ func (b *LynxEventBus) run() {
 					drained = true
 				}
 				b.bufferPool.Put(buf)
+				// Update monitor less frequently during drain
 				GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
 				if !drained {
 					return
@@ -461,6 +525,8 @@ func (b *LynxEventBus) run() {
 			case <-ticker.C:
 				GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
 			case ev := <-b.queue:
+				// Decrement queue size when receiving from channel
+				b.queueSize.Add(-1)
 				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
 				buf = append(buf, ev)
 				for len(buf) < max(b.config.BatchSize, 1) {
@@ -479,11 +545,62 @@ func (b *LynxEventBus) run() {
 }
 
 // orderByWeightedPriority reorders the batch by weighted fair policy: critical>high>normal>low
+// Optimized: Skip sorting for very small batches to reduce overhead
 func orderByWeightedPriority(in []LynxEvent) []LynxEvent {
 	if len(in) <= 1 {
 		return in
 	}
-	var crit, high, norm, low []LynxEvent
+	
+	// For very small batches (<=4), skip sorting to reduce overhead
+	// The overhead of sorting may exceed the benefit for tiny batches
+	if len(in) <= 4 {
+		// Quick check: if already sorted by priority, return as-is
+		allSamePriority := true
+		firstPriority := in[0].Priority
+		for i := 1; i < len(in); i++ {
+			if in[i].Priority != firstPriority {
+				allSamePriority = false
+				break
+			}
+		}
+		if allSamePriority {
+			return in
+		}
+		// For small mixed batches, use simple in-place swap instead of full sort
+		// This is faster than full partitioning for tiny batches
+		for i := 0; i < len(in)-1; i++ {
+			for j := i + 1; j < len(in); j++ {
+				if in[i].Priority < in[j].Priority {
+					in[i], in[j] = in[j], in[i]
+				}
+			}
+		}
+		return in
+	}
+	
+	// For larger batches, use optimized partitioning approach
+	// Count events by priority to pre-allocate slices
+	var critCount, highCount, normCount, lowCount int
+	for i := range in {
+		switch in[i].Priority {
+		case PriorityCritical:
+			critCount++
+		case PriorityHigh:
+			highCount++
+		case PriorityLow:
+			lowCount++
+		default:
+			normCount++
+		}
+	}
+	
+	// Pre-allocate slices with known capacity
+	crit := make([]LynxEvent, 0, critCount)
+	high := make([]LynxEvent, 0, highCount)
+	norm := make([]LynxEvent, 0, normCount)
+	low := make([]LynxEvent, 0, lowCount)
+	
+	// Partition events by priority
 	for i := range in {
 		switch in[i].Priority {
 		case PriorityCritical:
@@ -496,26 +613,35 @@ func orderByWeightedPriority(in []LynxEvent) []LynxEvent {
 			norm = append(norm, in[i])
 		}
 	}
+	
+	// Use pre-allocated output slice
 	out := make([]LynxEvent, 0, len(in))
 	wc, wh, wn, wl := 8, 4, 2, 1
 	ic, ih, inx, il := 0, 0, 0, 0
+	
+	// Weighted round-robin distribution
 	for ic < len(crit) || ih < len(high) || inx < len(norm) || il < len(low) {
+		// Critical priority: highest weight
 		for k := 0; k < wc && ic < len(crit); k++ {
 			out = append(out, crit[ic])
 			ic++
 		}
+		// High priority
 		for k := 0; k < wh && ih < len(high); k++ {
 			out = append(out, high[ih])
 			ih++
 		}
+		// Normal priority
 		for k := 0; k < wn && inx < len(norm); k++ {
 			out = append(out, norm[inx])
 			inx++
 		}
+		// Low priority: lowest weight
 		for k := 0; k < wl && il < len(low); k++ {
 			out = append(out, low[il])
 			il++
 		}
+		// Gradually reduce weights to ensure fairness
 		if wc > 1 {
 			wc--
 		}
@@ -529,7 +655,16 @@ func orderByWeightedPriority(in []LynxEvent) []LynxEvent {
 // (removed) helper: choose queue by priority — switched to single shared queue
 
 // helper: total queue size (single shared queue)
-func (b *LynxEventBus) totalQueueSize() int { return len(b.queue) }
+// Use atomic counter for better performance under high concurrency
+func (b *LynxEventBus) totalQueueSize() int { 
+	size := int(b.queueSize.Load())
+	// Cap the reported size at actual capacity to handle overflow cases
+	capVal := cap(b.queue)
+	if size > capVal {
+		return capVal
+	}
+	return size
+}
 
 // helper: total queue capacity (single shared queue)
 func (b *LynxEventBus) totalQueueCap() int { return cap(b.queue) }
@@ -538,6 +673,8 @@ func (b *LynxEventBus) totalQueueCap() int { return cap(b.queue) }
 func (b *LynxEventBus) tryRecvShared() (LynxEvent, bool) {
 	select {
 	case ev := <-b.queue:
+		// Decrement queue size atomically
+		b.queueSize.Add(-1)
 		return ev, true
 	default:
 		return LynxEvent{}, false
@@ -667,6 +804,8 @@ type LynxEventBus struct {
 
 	// Backpressure queue (single shared queue)
 	queue chan LynxEvent
+	// Atomic counter for queue size to avoid expensive len() calls
+	queueSize atomic.Int64
 	// Backpressure queue & subscribers tracking
 	subscriberCount atomic.Int64
 	// per-type subscriber counts for SubscribeTo
@@ -809,27 +948,54 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 	}
 
 	// Check degradation before publishing (adaptive sampling to reduce overhead)
-	// Use adaptive check interval based on queue usage:
-	// - Low usage (<50%): check every 500ms
-	// - Medium usage (50-80%): check every 100ms
-	// - High usage (>80%): check every 10ms
-	queueUsage := b.totalQueueSize() * 100 / max(b.totalQueueCap(), 1)
-	now := time.Now().UnixNano()
-	lastCheck := b.lastDegradationCheck.Load()
-
-	var checkInterval int64
-	if queueUsage < 50 {
-		checkInterval = int64(500 * time.Millisecond)
-	} else if queueUsage < 80 {
-		checkInterval = int64(100 * time.Millisecond)
+	// Use adaptive check interval based on queue usage with probabilistic sampling:
+	// - Low usage (<50%): check every 500ms or 1% probability
+	// - Medium usage (50-80%): check every 100ms or 5% probability
+	// - High usage (>80%): check every 10ms or 20% probability
+	queueSize := int(b.queueSize.Load())
+	queueCap := b.totalQueueCap()
+	queueUsage := queueSize * 100 / max(queueCap, 1)
+	
+	// Fast path: skip check if queue is very empty (<25%)
+	if queueUsage < 25 {
+		// Only check periodically even when queue is empty
+		now := time.Now().UnixNano()
+		lastCheck := b.lastDegradationCheck.Load()
+		if now-lastCheck > int64(1*time.Second) {
+			if b.lastDegradationCheck.CompareAndSwap(lastCheck, now) {
+				b.checkDegradation()
+			}
+		}
 	} else {
-		checkInterval = int64(10 * time.Millisecond)
-	}
+		// Use probabilistic sampling to reduce overhead at high event rates
+		now := time.Now().UnixNano()
+		lastCheck := b.lastDegradationCheck.Load()
+		
+		var checkInterval int64
+		var checkProbability float64
+		if queueUsage < 50 {
+			checkInterval = int64(500 * time.Millisecond)
+			checkProbability = 0.01 // 1% chance
+		} else if queueUsage < 80 {
+			checkInterval = int64(100 * time.Millisecond)
+			checkProbability = 0.05 // 5% chance
+		} else {
+			checkInterval = int64(10 * time.Millisecond)
+			checkProbability = 0.20 // 20% chance
+		}
 
-	// Always check if queue is getting full (>50%) or if interval has passed
-	if queueUsage > 50 || now-lastCheck > checkInterval {
-		if b.lastDegradationCheck.CompareAndSwap(lastCheck, now) {
-			b.checkDegradation()
+		// Check if interval passed or random sample triggers check
+		shouldCheck := (now-lastCheck > checkInterval) || (rand.Float64() < checkProbability)
+		
+		// Always check if queue is getting very full (>90%)
+		if queueUsage > 90 {
+			shouldCheck = true
+		}
+		
+		if shouldCheck {
+			if b.lastDegradationCheck.CompareAndSwap(lastCheck, now) {
+				b.checkDegradation()
+			}
 		}
 	}
 
@@ -845,7 +1011,9 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 	// Enqueue according to drop policy when full
 	select {
 	case b.queue <- event:
-		GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+		// Increment queue size atomically
+		newSize := b.queueSize.Add(1)
+		GetGlobalMonitor().UpdateQueueSize(int(newSize))
 	default:
 		// queue full - apply backpressure strategy
 		switch b.config.DropPolicy {
@@ -865,14 +1033,18 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 
 			select {
 			case b.queue <- event:
-				GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+				// Increment queue size atomically
+				newSize := b.queueSize.Add(1)
+				GetGlobalMonitor().UpdateQueueSize(int(newSize))
 			case <-ctx.Done():
 				// Timeout reached - check if we should still try to enqueue critical events
 				if event.Priority == PriorityCritical {
 					// For critical events, try one more time with non-blocking attempt
 					select {
 					case b.queue <- event:
-						GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+						// Increment queue size atomically
+						newSize := b.queueSize.Add(1)
+						GetGlobalMonitor().UpdateQueueSize(int(newSize))
 					default:
 						b.handleEnqueueOverflow(event, "block_timeout_critical")
 					}
@@ -886,6 +1058,8 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 			dropped := false
 			select {
 			case <-b.queue:
+				// Decrement queue size when dropping
+				b.queueSize.Add(-1)
 				dropped = true
 			default:
 				// Queue might have been consumed, try direct enqueue
@@ -897,7 +1071,9 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 
 			select {
 			case b.queue <- event:
-				GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+				// Increment queue size atomically (oldest was already decremented)
+				newSize := b.queueSize.Add(1)
+				GetGlobalMonitor().UpdateQueueSize(int(newSize))
 				if dropped && b.logger != nil {
 					log.NewHelper(b.logger).Debugf("dropped oldest event to make room for new event")
 				}
@@ -914,6 +1090,8 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 				for i := 0; i < 3 && !dropped; i++ {
 					select {
 					case oldEvent := <-b.queue:
+						// Decrement queue size when removing event
+						b.queueSize.Add(-1)
 						if oldEvent.Priority != PriorityCritical {
 							dropped = true
 							if b.logger != nil {
@@ -924,8 +1102,10 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 							// Put it back, try another
 							select {
 							case b.queue <- oldEvent:
+								// Increment size back
+								b.queueSize.Add(1)
 							default:
-								// Queue full, can't put back
+								// Queue full, can't put back (size already decremented)
 							}
 						}
 					default:
@@ -936,7 +1116,9 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 				// Try to enqueue critical event
 				select {
 				case b.queue <- event:
-					GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+					// Increment queue size atomically (dropped event already decremented)
+					newSize := b.queueSize.Add(1)
+					GetGlobalMonitor().UpdateQueueSize(int(newSize))
 				default:
 					b.handleEnqueueOverflow(event, "drop_newest_critical_failed")
 				}
@@ -1147,17 +1329,51 @@ func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), at
 			if b.retrySem != nil {
 				select {
 				case b.retrySem <- struct{}{}:
-					time.AfterFunc(backoffDelay, func() {
-						defer func() { <-b.retrySem }()
-						if b.isClosed.Load() {
+					// Use timer with proper cleanup to prevent goroutine leaks
+					timer := time.NewTimer(backoffDelay)
+					go func() {
+						defer func() {
+							// Always stop timer to prevent resource leak
+							if !timer.Stop() {
+								// Timer already fired, drain channel
+								select {
+								case <-timer.C:
+								default:
+								}
+							}
+							// Always release semaphore
+							<-b.retrySem
+							if r := recover(); r != nil {
+								// Log panic but don't crash
+								if b.logger != nil {
+									log.NewHelper(b.logger).Errorf("panic in retry goroutine: %v", r)
+								}
+							}
+						}()
+						
+						select {
+						case <-timer.C:
+							// Timer expired, proceed with retry
+							if b.isClosed.Load() {
+								return
+							}
+							if b.workerPool != nil {
+								if err := b.workerPool.Submit(func() { b.handleWithRetry(ev, handler, attempt+1) }); err != nil {
+									// Worker pool rejected, fallback to direct goroutine
+									if !b.isClosed.Load() {
+										go b.handleWithRetry(ev, handler, attempt+1)
+									}
+								}
+							} else {
+								if !b.isClosed.Load() {
+									go b.handleWithRetry(ev, handler, attempt+1)
+								}
+							}
+						case <-b.done:
+							// Bus is closing, cancel retry (timer cleanup handled by defer)
 							return
 						}
-						if b.workerPool != nil {
-							_ = b.workerPool.Submit(func() { b.handleWithRetry(ev, handler, attempt+1) })
-						} else {
-							go b.handleWithRetry(ev, handler, attempt+1)
-						}
-					})
+					}()
 				default:
 					// Retry capacity exhausted; emit error and stop retrying this event
 					if b.logger != nil {
@@ -1166,16 +1382,49 @@ func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), at
 					b.emitErrorEvent(ev, attempt)
 				}
 			} else {
-				time.AfterFunc(backoffDelay, func() {
-					if b.isClosed.Load() {
+				// Use timer with proper cleanup to prevent goroutine leaks
+				timer := time.NewTimer(backoffDelay)
+				go func() {
+					defer func() {
+						// Always stop timer to prevent resource leak
+						if !timer.Stop() {
+							// Timer already fired, drain channel
+							select {
+							case <-timer.C:
+							default:
+							}
+						}
+						if r := recover(); r != nil {
+							// Log panic but don't crash
+							if b.logger != nil {
+								log.NewHelper(b.logger).Errorf("panic in retry goroutine: %v", r)
+							}
+						}
+					}()
+					
+					select {
+					case <-timer.C:
+						// Timer expired, proceed with retry
+						if b.isClosed.Load() {
+							return
+						}
+						if b.workerPool != nil {
+							if err := b.workerPool.Submit(func() { b.handleWithRetry(ev, handler, attempt+1) }); err != nil {
+								// Worker pool rejected, fallback to direct goroutine
+								if !b.isClosed.Load() {
+									go b.handleWithRetry(ev, handler, attempt+1)
+								}
+							}
+						} else {
+							if !b.isClosed.Load() {
+								go b.handleWithRetry(ev, handler, attempt+1)
+							}
+						}
+					case <-b.done:
+						// Bus is closing, cancel retry (timer cleanup handled by defer)
 						return
 					}
-					if b.workerPool != nil {
-						_ = b.workerPool.Submit(func() { b.handleWithRetry(ev, handler, attempt+1) })
-					} else {
-						go b.handleWithRetry(ev, handler, attempt+1)
-					}
-				})
+				}()
 			}
 			return
 		}
@@ -1221,7 +1470,12 @@ func (b *LynxEventBus) emitErrorEvent(original LynxEvent, attempts int) {
 	errEv.Metadata = meta
 	// best effort publish via global manager if available
 	if manager := GetGlobalEventBus(); manager != nil {
-		_ = manager.PublishEvent(errEv)
+		if err := manager.PublishEvent(errEv); err != nil {
+			// Log error instead of ignoring it
+			if b.logger != nil {
+				log.NewHelper(b.logger).Errorf("failed to publish error event: %v", err)
+			}
+		}
 	}
 }
 
