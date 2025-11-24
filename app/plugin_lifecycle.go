@@ -390,6 +390,51 @@ func (m *DefaultPluginManager[T]) getStopTimeout() time.Duration {
 	return d
 }
 
+// getUnloadTotalTimeout returns total timeout for unloading all plugins, default 60s.
+// This prevents the entire shutdown process from hanging indefinitely.
+func (m *DefaultPluginManager[T]) getUnloadTotalTimeout() time.Duration {
+	d := 60 * time.Second
+	if m == nil || m.config == nil {
+		return d
+	}
+	var confStr string
+	if err := m.config.Value("lynx.plugins.unload_total_timeout").Scan(&confStr); err == nil {
+		if parsed, err2 := time.ParseDuration(confStr); err2 == nil {
+			// Add timeout range validation
+			if parsed < 10*time.Second {
+				log.Warnf("unload_total_timeout too short (%v), using minimum 10s", parsed)
+				return 10 * time.Second
+			}
+			if parsed > 300*time.Second {
+				log.Warnf("unload_total_timeout too long (%v), using maximum 300s", parsed)
+				return 300 * time.Second
+			}
+			return parsed
+		}
+	}
+	return d
+}
+
+// getUnloadParallelism returns parallelism for unloading plugins, default 4.
+// Lower than start parallelism to avoid overwhelming the system during shutdown.
+func (m *DefaultPluginManager[T]) getUnloadParallelism() int {
+	d := 4
+	if m == nil || m.config == nil {
+		return d
+	}
+	var v int
+	if err := m.config.Value("lynx.plugins.unload_parallelism").Scan(&v); err == nil {
+		if v > 0 && v <= 16 {
+			return v
+		}
+		if v > 16 {
+			log.Warnf("unload_parallelism too high (%d), using maximum 16", v)
+			return 16
+		}
+	}
+	return d
+}
+
 // safeInitPlugin safely calls Initialize with timeout and panic protection.
 // Fixed: Simplified goroutine nesting, using context for unified lifecycle management
 func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Runtime, timeout time.Duration) error {
@@ -482,6 +527,8 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 
 				// Wait for goroutine to complete with a short timeout
 				// This helps detect if the plugin respects cancellation signals
+				// Use a shorter timeout to prevent blocking shutdown
+				cleanupTimeout := 200 * time.Millisecond
 				select {
 				case <-goroutineDone:
 					// Check if there's a result (plugin completed after timeout)
@@ -491,11 +538,17 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 							p.Name(), p.ID(), lateErr)
 					default:
 					}
-				case <-time.After(500 * time.Millisecond):
+				case <-time.After(cleanupTimeout):
 					// Goroutine did not complete within timeout
 					// This indicates the plugin may not be respecting cancellation
-					log.Warnf("plugin %s (%s) initialize goroutine did not complete within cleanup timeout; "+
-						"plugin may not be respecting cancellation signals", p.Name(), p.ID())
+					log.Warnf("plugin %s (%s) initialize goroutine did not complete within cleanup timeout (%v); "+
+						"plugin may not be respecting cancellation signals. This may cause goroutine leak.",
+						p.Name(), p.ID(), cleanupTimeout)
+					// Force cleanup: try to drain the channel to prevent blocking
+					select {
+					case <-errCh:
+					default:
+					}
 				}
 			}
 		}
@@ -680,6 +733,8 @@ func (m *DefaultPluginManager[T]) safeStartPlugin(p plugins.Plugin, timeout time
 				log.Warnf("plugin %s (%s) start timed out; plugin may still be running", p.Name(), p.ID())
 
 				// Wait for goroutine to complete with a short timeout
+				// Use a shorter timeout to prevent blocking shutdown
+				cleanupTimeout := 200 * time.Millisecond
 				select {
 				case <-goroutineDone:
 					// Check if there's a result (plugin completed after timeout)
@@ -689,10 +744,16 @@ func (m *DefaultPluginManager[T]) safeStartPlugin(p plugins.Plugin, timeout time
 							p.Name(), p.ID(), lateErr)
 					default:
 					}
-				case <-time.After(500 * time.Millisecond):
+				case <-time.After(cleanupTimeout):
 					// Goroutine did not complete within timeout
-					log.Warnf("plugin %s (%s) start goroutine did not complete within cleanup timeout; "+
-						"plugin may not be respecting cancellation signals", p.Name(), p.ID())
+					log.Warnf("plugin %s (%s) start goroutine did not complete within cleanup timeout (%v); "+
+						"plugin may not be respecting cancellation signals. This may cause goroutine leak.",
+						p.Name(), p.ID(), cleanupTimeout)
+					// Force cleanup: try to drain the channel to prevent blocking
+					select {
+					case <-errCh:
+					default:
+					}
 				}
 			}
 		}
@@ -835,6 +896,8 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 				log.Warnf("plugin %s (%s) stop timed out; plugin may still be running", p.Name(), p.ID())
 
 				// Wait for goroutine to complete with a short timeout
+				// Use a shorter timeout to prevent blocking shutdown
+				cleanupTimeout := 200 * time.Millisecond
 				select {
 				case <-goroutineDone:
 					// Check if there's a result (plugin completed after timeout)
@@ -844,10 +907,16 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 							p.Name(), p.ID(), lateErr)
 					default:
 					}
-				case <-time.After(500 * time.Millisecond):
+				case <-time.After(cleanupTimeout):
 					// Goroutine did not complete within timeout
-					log.Warnf("plugin %s (%s) stop goroutine did not complete within cleanup timeout; "+
-						"plugin may not be respecting cancellation signals", p.Name(), p.ID())
+					log.Warnf("plugin %s (%s) stop goroutine did not complete within cleanup timeout (%v); "+
+						"plugin may not be respecting cancellation signals. This may cause goroutine leak.",
+						p.Name(), p.ID(), cleanupTimeout)
+					// Force cleanup: try to drain the channel to prevent blocking
+					select {
+					case <-errCh:
+					default:
+					}
 				}
 			}
 		}

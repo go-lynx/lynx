@@ -658,8 +658,9 @@ func (r *UnifiedRuntime) cleanupResourceGracefully(name string, resource any) er
 		}
 	}()
 
-	// Prefer context-aware graceful shutdown with a short timeout
-	cleanupTimeout := 3 * time.Second
+	// Prefer context-aware graceful shutdown with configurable timeout
+	// Default to 3 seconds, but allow configuration for resources that need more time
+	cleanupTimeout := r.getResourceCleanupTimeout()
 	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	defer cancel()
 
@@ -761,6 +762,36 @@ func (r *UnifiedRuntime) GetResourceStats() map[string]any {
 		"plugins_with_resources": len(pluginSet),
 		"runtime_closed":         r.isClosed(),
 	}
+}
+
+// getResourceCleanupTimeout returns the timeout for resource cleanup, default 3s.
+// Can be configured via "lynx.runtime.resource_cleanup_timeout" config key.
+func (r *UnifiedRuntime) getResourceCleanupTimeout() time.Duration {
+	defaultTimeout := 3 * time.Second
+	if r.config == nil {
+		return defaultTimeout
+	}
+
+	var confStr string
+	if err := r.config.Value("lynx.runtime.resource_cleanup_timeout").Scan(&confStr); err == nil {
+		if parsed, err2 := time.ParseDuration(confStr); err2 == nil {
+			// Validate timeout range: 1s to 30s
+			if parsed < 1*time.Second {
+				if r.logger != nil {
+					r.logger.Log(log.LevelWarn, "msg", "resource_cleanup_timeout too short, using minimum 1s", "configured", parsed)
+				}
+				return 1 * time.Second
+			}
+			if parsed > 30*time.Second {
+				if r.logger != nil {
+					r.logger.Log(log.LevelWarn, "msg", "resource_cleanup_timeout too long, using maximum 30s", "configured", parsed)
+				}
+				return 30 * time.Second
+			}
+			return parsed
+		}
+	}
+	return defaultTimeout
 }
 
 // ============================================================================

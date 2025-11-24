@@ -15,6 +15,7 @@ import (
 
 // Plugin metadata
 const (
+	pluginName        = "pgsql.client"
 	pluginVersion     = "v2.0.0"
 	pluginDescription = "pgsql client plugin for lynx framework"
 	confPrefix        = "lynx.pgsql"

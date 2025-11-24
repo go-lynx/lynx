@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"
@@ -317,11 +318,16 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 	context["memory_alloc"] = getMemoryStats()
 
 	// Add environment information
-	if env := os.Getenv("ENV"); env != "" {
-		context["environment"] = env
+	// Optimized: Cache environment variables to avoid repeated os.Getenv calls
+	envOnce.Do(func() {
+		cachedEnv = os.Getenv("ENV")
+		cachedVersion = os.Getenv("APP_VERSION")
+	})
+	if cachedEnv != "" {
+		context["environment"] = cachedEnv
 	}
-	if version := os.Getenv("APP_VERSION"); version != "" {
-		context["version"] = version
+	if cachedVersion != "" {
+		context["version"] = cachedVersion
 	}
 
 	// Safely extract environment and version with existence checks
@@ -353,9 +359,15 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 	}
 
 	// Add to history
-	erm.errorHistory = append(erm.errorHistory, record)
-	if len(erm.errorHistory) > erm.maxErrorHistory {
-		erm.errorHistory = erm.errorHistory[1:]
+	// Optimized: Use copy instead of slice operation to prevent memory leak
+	// Slice operation [1:] keeps the underlying array, causing memory leak
+	if len(erm.errorHistory) >= erm.maxErrorHistory {
+		// Use copy to move elements left, then overwrite last element
+		// This prevents keeping reference to old underlying array
+		copy(erm.errorHistory, erm.errorHistory[1:])
+		erm.errorHistory[len(erm.errorHistory)-1] = record
+	} else {
+		erm.errorHistory = append(erm.errorHistory, record)
 	}
 
 	// Update error count
@@ -568,9 +580,15 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	}
 
 	erm.mu.Lock()
-	erm.recoveryHistory = append(erm.recoveryHistory, recoveryRecord)
-	if len(erm.recoveryHistory) > erm.maxRecoveryHistory {
-		erm.recoveryHistory = erm.recoveryHistory[1:]
+	// Optimized: Use copy instead of slice operation to prevent memory leak
+	// Slice operation [1:] keeps the underlying array, causing memory leak
+	if len(erm.recoveryHistory) >= erm.maxRecoveryHistory {
+		// Use copy to move elements left, then overwrite last element
+		// This prevents keeping reference to old underlying array
+		copy(erm.recoveryHistory, erm.recoveryHistory[1:])
+		erm.recoveryHistory[len(erm.recoveryHistory)-1] = recoveryRecord
+	} else {
+		erm.recoveryHistory = append(erm.recoveryHistory, recoveryRecord)
 	}
 
 	// Update error record if recovery was successful
@@ -631,11 +649,71 @@ func getStackTrace() string {
 	return trace.String()
 }
 
-// getMemoryStats gets current memory statistics
-func getMemoryStats() uint64 {
+// Optimized: Cache memory stats to avoid stop-the-world pauses during error recording
+var (
+	cachedMemoryAlloc atomic.Uint64
+	memStatsOnce      sync.Once
+	memStatsStop      chan struct{}
+)
+
+// Optimized: Cache environment variables to avoid repeated os.Getenv calls
+var (
+	cachedEnv     string
+	cachedVersion string
+	envOnce       sync.Once
+)
+
+// initMemoryStatsCache initializes the background goroutine for memory stats updates
+func initMemoryStatsCache() {
+	memStatsOnce.Do(func() {
+		memStatsStop = make(chan struct{})
+		// Initial update
+		updateMemoryStats()
+		// Start background goroutine to update memory stats periodically
+		// Update every 1 second to balance accuracy and performance
+		go func() {
+			ticker := time.NewTicker(1 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					updateMemoryStats()
+				case <-memStatsStop:
+					return
+				}
+			}
+		}()
+	})
+}
+
+// cleanupMemoryStatsCache stops the background goroutine for memory stats updates
+// Fix Bug 2: Provides a way to gracefully shut down the memory stats goroutine
+// This should be called during application shutdown to prevent goroutine leaks
+func cleanupMemoryStatsCache() {
+	if memStatsStop != nil {
+		select {
+		case <-memStatsStop:
+			// Already closed
+		default:
+			close(memStatsStop)
+		}
+	}
+}
+
+// updateMemoryStats updates the cached memory statistics
+// This function performs the expensive ReadMemStats operation
+func updateMemoryStats() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	return m.Alloc
+	cachedMemoryAlloc.Store(m.Alloc)
+}
+
+// getMemoryStats gets current memory statistics from cache
+// Optimized: Returns cached value to avoid stop-the-world pauses
+func getMemoryStats() uint64 {
+	// Initialize cache if not already done
+	initMemoryStatsCache()
+	return cachedMemoryAlloc.Load()
 }
 
 // GetErrorStats returns error statistics
