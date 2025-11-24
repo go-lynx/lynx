@@ -425,15 +425,19 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		recoveryTimeout = 60 * time.Second // Cap at 60 seconds
 	}
 
-	// Create parent context that monitors stopChan
-	// This ensures the context is cancelled when recovery manager stops
+	// Create parent context that monitors stopChan with proper cleanup
+	// Use context.WithCancel with a timeout to ensure goroutines don't leak
 	parentCtx, parentCancel := context.WithCancel(context.Background())
-	defer parentCancel()
-
-	// Monitor stopChan in background - ensure goroutine exits when context is cancelled
+	
+	// Create timeout context from parent
+	ctx, timeoutCancel := context.WithTimeout(parentCtx, recoveryTimeout)
+	
+	// Monitor stopChan in background with proper context cancellation
+	// Use a single goroutine that monitors both stopChan and context cancellation
 	stopMonitorDone := make(chan struct{}, 1)
 	go func() {
 		defer func() {
+			// Always signal completion to prevent goroutine leak
 			select {
 			case stopMonitorDone <- struct{}{}:
 			default:
@@ -441,15 +445,26 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		}()
 		select {
 		case <-erm.stopChan:
+			// Recovery manager is stopping, cancel context
 			parentCancel()
-		case <-parentCtx.Done():
-			// Context already cancelled
+		case <-ctx.Done():
+			// Context cancelled (timeout or parent cancelled), exit cleanly
 		}
 	}()
-
-	// Apply timeout to parent context
-	ctx, timeoutCancel := context.WithTimeout(parentCtx, recoveryTimeout)
-	defer timeoutCancel()
+	
+	// Ensure cleanup happens
+	defer func() {
+		// Cancel parent context first to signal stop monitor
+		parentCancel()
+		timeoutCancel()
+		// Wait for stop monitor goroutine to exit (with timeout)
+		select {
+		case <-stopMonitorDone:
+			// Goroutine exited cleanly
+		case <-time.After(50 * time.Millisecond):
+			// Timeout - goroutine should exit on its own when context is cancelled
+		}
+	}()
 
 	// Acquire semaphore to limit concurrent recoveries
 	// Use configurable timeout instead of hardcoded value
@@ -462,23 +477,11 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		// Semaphore acquisition timeout - too many concurrent recoveries
 		log.Warnf("Recovery semaphore timeout for %s:%s after %v, skipping recovery (too many concurrent recoveries)",
 			record.ErrorType, record.Component, semaphoreTimeout)
-		// Cancel context to ensure stop monitor goroutine exits
-		parentCancel()
-		// Wait briefly for stop monitor to exit (non-blocking)
-		select {
-		case <-stopMonitorDone:
-		case <-time.After(50 * time.Millisecond):
-			// Timeout waiting, but continue anyway
-		}
+		// Cancel contexts to ensure goroutines exit (defer will handle cleanup)
 		return
 	case <-ctx.Done():
 		// Context cancelled before semaphore acquisition
-		// Ensure stop monitor goroutine exits
-		select {
-		case <-stopMonitorDone:
-		case <-time.After(50 * time.Millisecond):
-			// Timeout waiting, but continue anyway
-		}
+		// Defer will handle cleanup
 		return
 	}
 
@@ -490,26 +493,16 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	}
 	if _, loaded := erm.activeRecoveries.LoadOrStore(recoveryKey, state); loaded {
 		// Another goroutine started recovery, cleanup and return
-		// Ensure stop monitor goroutine exits
-		parentCancel()
-		select {
-		case <-stopMonitorDone:
-		case <-time.After(50 * time.Millisecond):
-			// Timeout waiting, but continue anyway
-		}
+		// Release semaphore since we're not proceeding
+		<-erm.recoverySemaphore
+		// Defer will handle context cleanup
 		return
 	}
 
 	// Set up proper cleanup at the end of recovery
 	defer func() {
 		erm.activeRecoveries.Delete(recoveryKey)
-		// Ensure stop monitor goroutine exits
-		parentCancel()
-		select {
-		case <-stopMonitorDone:
-		case <-time.After(50 * time.Millisecond):
-			// Timeout waiting, but continue anyway
-		}
+		// Context cleanup is handled by outer defer
 	}()
 
 	// Attempt recovery with timeout protection
