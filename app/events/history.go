@@ -65,8 +65,10 @@ func (h *EventHistory) Add(event LynxEvent) {
 		if len(indices) < h.maxSize {
 			h.byPluginID[event.PluginID] = append(indices, eventIndex)
 		} else {
-			// Trim oldest indices to maintain size limit
-			h.byPluginID[event.PluginID] = append(indices[1:], eventIndex)
+			// Optimized: Use copy instead of slice operation to prevent memory leak
+			// Slice operation [1:] keeps the underlying array, causing memory leak
+			copy(indices, indices[1:])
+			h.byPluginID[event.PluginID] = append(indices[:len(indices)-1], eventIndex)
 		}
 	}
 	indices := h.byEventType[event.EventType]
@@ -74,8 +76,10 @@ func (h *EventHistory) Add(event LynxEvent) {
 	if len(indices) < h.maxSize {
 		h.byEventType[event.EventType] = append(indices, eventIndex)
 	} else {
-		// Trim oldest indices to maintain size limit
-		h.byEventType[event.EventType] = append(indices[1:], eventIndex)
+		// Optimized: Use copy instead of slice operation to prevent memory leak
+		// Slice operation [1:] keeps the underlying array, causing memory leak
+		copy(indices, indices[1:])
+		h.byEventType[event.EventType] = append(indices[:len(indices)-1], eventIndex)
 	}
 	h.indexMu.Unlock()
 
@@ -88,12 +92,42 @@ func (h *EventHistory) Add(event LynxEvent) {
 			trimCount = h.maxSize / 4 // Trim 25% when close to limit
 		}
 		
+		// Optimized: Update indexes incrementally instead of full rebuild
+		// Remove indices for trimmed events and adjust remaining indices
+		h.indexMu.Lock()
+		// Remove indices for events that will be trimmed (indices 0 to trimCount-1)
+		for pluginID, indices := range h.byPluginID {
+			newIndices := make([]int, 0, len(indices))
+			for _, idx := range indices {
+				if idx >= trimCount {
+					// Adjust index by subtracting trimCount
+					newIndices = append(newIndices, idx-trimCount)
+				}
+			}
+			if len(newIndices) == 0 {
+				delete(h.byPluginID, pluginID)
+			} else {
+				h.byPluginID[pluginID] = newIndices
+			}
+		}
+		for eventType, indices := range h.byEventType {
+			newIndices := make([]int, 0, len(indices))
+			for _, idx := range indices {
+				if idx >= trimCount {
+					// Adjust index by subtracting trimCount
+					newIndices = append(newIndices, idx-trimCount)
+				}
+			}
+			if len(newIndices) == 0 {
+				delete(h.byEventType, eventType)
+			} else {
+				h.byEventType[eventType] = newIndices
+			}
+		}
+		h.indexMu.Unlock()
+		
 		// Trim from the beginning
 		h.events = h.events[trimCount:]
-		
-		// Rebuild indexes after trimming to ensure index references are valid
-		// This prevents index growth and invalid references
-		h.rebuildIndexes()
 	}
 }
 
@@ -128,11 +162,51 @@ func (h *EventHistory) cleanupExpiredEvents() {
 		}
 	}
 
+	// Optimized: Update indexes incrementally instead of full rebuild
+	// Build a mapping from old index to new index
+	oldToNewIndex := make(map[int]int, validCount)
+	newIdx := 0
+	for oldIdx, event := range h.events {
+		if event.Timestamp >= cutoffTime {
+			oldToNewIndex[oldIdx] = newIdx
+			newIdx++
+		}
+	}
+	
+	// Update indexes using the mapping
+	h.indexMu.Lock()
+	// Update byPluginID index
+	for pluginID, indices := range h.byPluginID {
+		newIndices := make([]int, 0, len(indices))
+		for _, oldIdx := range indices {
+			if newIdx, exists := oldToNewIndex[oldIdx]; exists {
+				newIndices = append(newIndices, newIdx)
+			}
+		}
+		if len(newIndices) == 0 {
+			delete(h.byPluginID, pluginID)
+		} else {
+			h.byPluginID[pluginID] = newIndices
+		}
+	}
+	// Update byEventType index
+	for eventType, indices := range h.byEventType {
+		newIndices := make([]int, 0, len(indices))
+		for _, oldIdx := range indices {
+			if newIdx, exists := oldToNewIndex[oldIdx]; exists {
+				newIndices = append(newIndices, newIdx)
+			}
+		}
+		if len(newIndices) == 0 {
+			delete(h.byEventType, eventType)
+		} else {
+			h.byEventType[eventType] = newIndices
+		}
+	}
+	h.indexMu.Unlock()
+	
 	h.events = validEvents
 	h.lastCleanup = time.Now()
-
-	// Rebuild indexes after cleanup to prevent index growth
-	h.rebuildIndexes()
 }
 
 // rebuildIndexes rebuilds all indexes from scratch

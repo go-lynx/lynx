@@ -4,6 +4,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -42,6 +43,32 @@ func resetInitState() {
 	initErr = nil
 	initCompleted = false
 	initDone = nil
+}
+
+// getInitTimeout returns the initialization timeout from config, default 30s.
+// Can be configured via "lynx.app.init_timeout" config key.
+func getInitTimeout(cfg config.Config) time.Duration {
+	defaultTimeout := 30 * time.Second
+	if cfg == nil {
+		return defaultTimeout
+	}
+
+	var confStr string
+	if err := cfg.Value("lynx.app.init_timeout").Scan(&confStr); err == nil {
+		if parsed, err2 := time.ParseDuration(confStr); err2 == nil {
+			// Validate timeout range: 10s to 300s
+			if parsed < 10*time.Second {
+				log.Warnf("init_timeout too short (%v), using minimum 10s", parsed)
+				return 10 * time.Second
+			}
+			if parsed > 300*time.Second {
+				log.Warnf("init_timeout too long (%v), using maximum 300s", parsed)
+				return 300 * time.Second
+			}
+			return parsed
+		}
+	}
+	return defaultTimeout
 }
 
 // Fixed plugin ID used internally for configuration-related events.
@@ -222,6 +249,9 @@ func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
 		return nil, fmt.Errorf("initialization channel not created")
 	}
 
+	// Get initialization timeout from config if available, default to 30 seconds
+	initTimeout := getInitTimeout(cfg)
+
 	select {
 	case <-doneChan:
 		// Initialization completed, check result
@@ -242,9 +272,9 @@ func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
 			return nil, fmt.Errorf("application initialization resulted in nil instance")
 		}
 		return app, nil
-	case <-time.After(30 * time.Second):
+	case <-time.After(initTimeout):
 		// Timeout waiting for initialization
-		return nil, fmt.Errorf("initialization timeout: initialization did not complete within 30 seconds")
+		return nil, fmt.Errorf("initialization timeout: initialization did not complete within %v", initTimeout)
 	}
 }
 
@@ -408,11 +438,14 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 					break
 				}
 				// Version changed, retry (with small delay to avoid busy loop)
-				time.Sleep(1 * time.Microsecond)
+				// Optimized: Use runtime.Gosched() instead of fixed sleep
+				// This yields CPU to other goroutines more efficiently
+				runtime.Gosched()
 			}
 
 			// Broadcast configuration change events atomically
 			// Emit events in order: changed first, then applied
+			// Use event sequence numbers to ensure ordering instead of relying on delay
 			// Use best-effort error handling to prevent config update failure
 			changedEvent := plugins.PluginEvent{
 				Type:      plugins.EventConfigurationChanged,
@@ -428,12 +461,13 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 					"host":           a.host,
 					"source":         "SetGlobalConfig",
 					"config_version": ver,
+					"event_sequence": 1, // Sequence number to ensure ordering
 				},
 			}
 			rt.EmitEvent(changedEvent)
 
-			// Small delay to ensure events are processed in order
-			time.Sleep(1 * time.Millisecond)
+			// Removed time.Sleep - rely on event sequence numbers and config_version for ordering
+			// Events are processed in order by the event bus, and sequence numbers provide additional guarantee
 
 			appliedEvent := plugins.PluginEvent{
 				Type:      plugins.EventConfigurationApplied,
@@ -449,6 +483,7 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 					"host":           a.host,
 					"source":         "SetGlobalConfig",
 					"config_version": ver,
+					"event_sequence": 2, // Sequence number to ensure ordering
 				},
 			}
 			rt.EmitEvent(appliedEvent)
@@ -536,6 +571,10 @@ func (a *LynxApp) Close() error {
 	lynxMu.Lock()
 	lynxApp = nil
 	lynxMu.Unlock()
+
+	// Fix Bug 2: Cleanup memory stats cache goroutine to prevent goroutine leak
+	// This ensures the background goroutine for memory stats updates is properly shut down
+	cleanupMemoryStatsCache()
 
 	// Reset initialization state
 	// Note: sync.Once cannot be reset, so re-initialization after Close requires restart

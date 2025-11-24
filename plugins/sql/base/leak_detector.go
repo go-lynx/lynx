@@ -3,7 +3,6 @@ package base
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-lynx/lynx/app/log"

@@ -762,26 +762,48 @@ func CleanupLoggers() {
 		configWatchStopCh = nil
 	}
 
-	// Wait for goroutines to stop with timeout
+	// Wait for goroutines to stop with configurable timeout
+	// Optimized: Make timeout configurable via environment variable or default
+	goroutineWaitTime := 50 * time.Millisecond
+	if envWait := os.Getenv("LYNX_LOG_GOROUTINE_WAIT_TIME"); envWait != "" {
+		if parsed, err := time.ParseDuration(envWait); err == nil {
+			goroutineWaitTime = parsed
+		}
+	}
+	goroutineTimeout := 2 * time.Second
+	if envTimeout := os.Getenv("LYNX_LOG_GOROUTINE_TIMEOUT"); envTimeout != "" {
+		if parsed, err := time.ParseDuration(envTimeout); err == nil {
+			goroutineTimeout = parsed
+		}
+	}
+	
 	done := make(chan struct{})
 	go func() {
 		// Give goroutines time to see stop signals
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(goroutineWaitTime)
 		close(done)
 	}()
 	
 	select {
 	case <-done:
 		// Goroutines should have stopped
-	case <-time.After(2 * time.Second):
+	case <-time.After(goroutineTimeout):
 		// Timeout: continue anyway to prevent deadlock
-		fmt.Fprintf(os.Stderr, "[lynx-log-warn] CleanupLoggers timeout waiting for goroutines\n")
+		fmt.Fprintf(os.Stderr, "[lynx-log-warn] CleanupLoggers timeout waiting for goroutines after %v\n", goroutineTimeout)
 	}
 
 	writersMu.Lock()
 	defer writersMu.Unlock()
 
-	// Close all writers with timeout protection
+	// Close all writers with configurable timeout protection
+	// Optimized: Make timeout configurable via environment variable or default
+	writerCloseTimeout := 5 * time.Second
+	if envTimeout := os.Getenv("LYNX_LOG_WRITER_CLOSE_TIMEOUT"); envTimeout != "" {
+		if parsed, err := time.ParseDuration(envTimeout); err == nil {
+			writerCloseTimeout = parsed
+		}
+	}
+	
 	closeDone := make(chan struct{})
 	go func() {
 		for _, bw := range bufferedWriters {
@@ -801,9 +823,9 @@ func CleanupLoggers() {
 	select {
 	case <-closeDone:
 		// All writers closed successfully
-	case <-time.After(5 * time.Second):
+	case <-time.After(writerCloseTimeout):
 		// Timeout: continue anyway
-		fmt.Fprintf(os.Stderr, "[lynx-log-warn] CleanupLoggers timeout closing writers\n")
+		fmt.Fprintf(os.Stderr, "[lynx-log-warn] CleanupLoggers timeout closing writers after %v\n", writerCloseTimeout)
 	}
 
 	bufferedWriters = make(map[string]*BufferedWriter)

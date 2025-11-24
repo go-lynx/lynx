@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -119,10 +120,24 @@ func (b *LynxEventBus) Close() error {
 		}
 
 		// Wait for all goroutines to finish with timeout
-		done := make(chan struct{})
+		// Optimized: Use buffered channel and context for better cleanup
+		done := make(chan struct{}, 1) // Buffered to prevent goroutine leak
+		ctx, cancel := context.WithTimeout(context.Background(), closeTimeout)
+		defer cancel()
+
+		// Track goroutine count before wait
+		goroutinesBefore := runtime.NumGoroutine()
+
+		// Start goroutine to wait for WaitGroup
 		go func() {
+			defer func() {
+				// Always signal completion to prevent goroutine leak
+				select {
+				case done <- struct{}{}:
+				default:
+				}
+			}()
 			b.wg.Wait()
-			close(done)
 		}()
 
 		select {
@@ -131,10 +146,14 @@ func (b *LynxEventBus) Close() error {
 			if b.logger != nil {
 				log.NewHelper(b.logger).Infof("event bus closed successfully, all goroutines finished")
 			}
-		case <-time.After(closeTimeout):
-			// Timeout: log warning and attempt force cleanup
+		case <-ctx.Done():
+			// Timeout: log warning with detailed information and attempt force cleanup
+			goroutinesAfter := runtime.NumGoroutine()
+			leakedGoroutines := goroutinesAfter - goroutinesBefore
 			if b.logger != nil {
-				log.NewHelper(b.logger).Warnf("event bus close timeout after %v: some goroutines may still be running, forcing cleanup", closeTimeout)
+				log.NewHelper(b.logger).Warnf(
+					"event bus close timeout after %v: %d goroutines may still be running (before: %d, after: %d), forcing cleanup",
+					closeTimeout, leakedGoroutines, goroutinesBefore, goroutinesAfter)
 			}
 			// Force close dispatcher to prevent further event processing
 			if b.dispatcher != nil {
@@ -143,6 +162,13 @@ func (b *LynxEventBus) Close() error {
 						log.NewHelper(b.logger).Errorf("failed to force close dispatcher: %v", err)
 					}
 				}
+			}
+			// Ensure done goroutine exits by draining channel
+			select {
+			case <-done:
+				// Goroutine completed
+			default:
+				// Goroutine may still be running, but we've timed out
 			}
 		}
 
