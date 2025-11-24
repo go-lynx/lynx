@@ -440,10 +440,10 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	// Create parent context that monitors stopChan with proper cleanup
 	// Use context.WithCancel with a timeout to ensure goroutines don't leak
 	parentCtx, parentCancel := context.WithCancel(context.Background())
-	
+
 	// Create timeout context from parent
 	ctx, timeoutCancel := context.WithTimeout(parentCtx, recoveryTimeout)
-	
+
 	// Monitor stopChan in background with proper context cancellation
 	// Use a single goroutine that monitors both stopChan and context cancellation
 	stopMonitorDone := make(chan struct{}, 1)
@@ -463,7 +463,7 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 			// Context cancelled (timeout or parent cancelled), exit cleanly
 		}
 	}()
-	
+
 	// Ensure cleanup happens
 	defer func() {
 		// Cancel parent context first to signal stop monitor
