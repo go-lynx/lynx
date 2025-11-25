@@ -2,9 +2,17 @@ package snowflake
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/go-lynx/lynx/app"
 	"github.com/go-lynx/lynx/app/factory"
+)
+
+var (
+	// fallbackPlugin is used when PluginManager is not available
+	fallbackPlugin     *PlugSnowflake
+	fallbackPluginOnce sync.Once
+	fallbackPluginErr  error
 )
 
 // GetSnowflakePlugin retrieves the snowflake plugin from the application
@@ -20,18 +28,28 @@ func GetSnowflakePlugin() (*PlugSnowflake, error) {
 		}
 	}
 
-	// Fallback to factory
-	plugin, err := factory.GlobalTypedFactory().CreatePlugin(PluginName)
-	if err != nil {
-		return nil, fmt.Errorf("snowflake plugin not found: %w", err)
+	// Fallback to factory with singleton pattern
+	fallbackPluginOnce.Do(func() {
+		plugin, err := factory.GlobalTypedFactory().CreatePlugin(PluginName)
+		if err != nil {
+			fallbackPluginErr = fmt.Errorf("snowflake plugin not found: %w", err)
+			return
+		}
+
+		snowflakePlugin, ok := plugin.(*PlugSnowflake)
+		if !ok {
+			fallbackPluginErr = fmt.Errorf("plugin is not a snowflake plugin instance")
+			return
+		}
+
+		fallbackPlugin = snowflakePlugin
+	})
+
+	if fallbackPluginErr != nil {
+		return nil, fallbackPluginErr
 	}
 
-	snowflakePlugin, ok := plugin.(*PlugSnowflake)
-	if !ok {
-		return nil, fmt.Errorf("plugin is not a snowflake plugin instance")
-	}
-
-	return snowflakePlugin, nil
+	return fallbackPlugin, nil
 }
 
 // GenerateID generates a new snowflake ID using the global plugin instance
