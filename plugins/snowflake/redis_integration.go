@@ -265,8 +265,8 @@ func NewRedisSnowflakePlugin(config *pb.Snowflake, redisConfig *RedisIntegration
 	// Create base snowflake plugin
 	basePlugin := NewSnowflakePlugin()
 
-	// Configure the plugin with the provided config
-	if err := basePlugin.Configure(config); err != nil {
+	// Set the configuration directly (UpdateConfiguration is the available method)
+	if err := basePlugin.UpdateConfiguration(config); err != nil {
 		return nil, fmt.Errorf("failed to configure snowflake plugin: %w", err)
 	}
 
@@ -288,7 +288,7 @@ func NewRedisSnowflakePlugin(config *pb.Snowflake, redisConfig *RedisIntegration
 				return nil, fmt.Errorf("failed to auto-register worker ID: %w", err)
 			}
 
-			fmt.Printf("Auto-registered worker ID: %d\n", workerID)
+			log.Infof("Auto-registered worker ID: %d", workerID)
 		}
 	}
 

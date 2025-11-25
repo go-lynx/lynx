@@ -51,6 +51,10 @@ func (m *Metrics) RecordIDGeneration(latency time.Duration, cacheHit bool) {
 	// Calculate generation rate (IDs per second)
 	if m.UptimeDuration.Seconds() > 0 {
 		m.IDGenerationRate = float64(m.IDsGenerated) / m.UptimeDuration.Seconds()
+		// Update peak generation rate if current rate is higher
+		if m.IDGenerationRate > m.PeakGenerationRate {
+			m.PeakGenerationRate = m.IDGenerationRate
+		}
 	}
 }
 
