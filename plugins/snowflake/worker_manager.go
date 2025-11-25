@@ -55,7 +55,7 @@ func NewWorkerIDManager(redisClient redis.UniversalClient, datacenterID int64, c
 }
 
 // RegisterWorkerID registers a worker ID
-// Flow: INCR to get unique number -> SetNX to verify availability -> retry with backoff on failure
+// Flow: INCR to get workerID -> if exceeds max, reset to 0 -> SetNX to verify -> retry until full cycle
 // Heartbeat maintains key TTL to ensure worker ID exclusivity during instance lifetime
 func (w *WorkerIDManager) RegisterWorkerID(ctx context.Context, maxWorkerID int64) (int64, error) {
 	w.mu.Lock()
@@ -66,11 +66,11 @@ func (w *WorkerIDManager) RegisterWorkerID(ctx context.Context, maxWorkerID int6
 	}
 
 	counterKey := w.getCounterKey()
-	retryCount := 0
-	maxRetries := int(maxWorkerID) + 1 // Max retry count is maxWorkerID+1
+	totalWorkerIDs := maxWorkerID + 1 // Total available worker IDs (0 to maxWorkerID)
+	maxRetries := int(totalWorkerIDs) // Try each worker ID at most once (full cycle)
 
 	// Loop to try acquiring an available worker ID
-	for retryCount < maxRetries {
+	for retryCount := 0; retryCount < maxRetries; retryCount++ {
 		// Check if context is cancelled
 		select {
 		case <-ctx.Done():
@@ -81,19 +81,26 @@ func (w *WorkerIDManager) RegisterWorkerID(ctx context.Context, maxWorkerID int6
 		// 1. INCR to get unique incrementing number
 		seq, err := w.redisClient.Incr(ctx, counterKey).Result()
 		if err != nil {
-			return -1, fmt.Errorf("failed to INCR worker ID: %w", err)
+			return -1, fmt.Errorf("failed to INCR worker ID counter: %w", err)
 		}
 
-		// worker ID = seq - 1 (0-based)
+		// 2. If exceeds max, reset counter to 0 and INCR again
+		if seq > totalWorkerIDs {
+			// Reset counter to 0
+			if err := w.redisClient.Set(ctx, counterKey, "0", 0).Err(); err != nil {
+				return -1, fmt.Errorf("failed to reset worker ID counter: %w", err)
+			}
+			// INCR again to get 1
+			seq, err = w.redisClient.Incr(ctx, counterKey).Result()
+			if err != nil {
+				return -1, fmt.Errorf("failed to INCR worker ID counter after reset: %w", err)
+			}
+		}
+
+		// 3. workerID = seq - 1 (0-based)
 		workerID := seq - 1
 
-		// Check if exceeded max range
-		if workerID > maxWorkerID {
-			atomic.StoreInt32(&w.healthy, 0) // Mark as unhealthy, cannot serve
-			return -1, fmt.Errorf("worker ID pool exhausted: got %d, max allowed %d", workerID, maxWorkerID)
-		}
-
-		// 2. SetNX to verify this worker ID is available
+		// 4. SetNX to verify this worker ID is available
 		now := time.Now()
 		w.instanceID = w.generateInstanceID()
 		workerInfo := WorkerInfo{
@@ -123,21 +130,21 @@ func (w *WorkerIDManager) RegisterWorkerID(ctx context.Context, maxWorkerID int6
 			atomic.StoreInt32(&w.healthy, 1)
 			w.startHeartbeatLocked() // Start heartbeat to maintain key TTL
 
-			log.Infof("successfully registered worker ID %d (datacenter: %d, retries: %d)", workerID, w.datacenterID, retryCount)
+			log.Infof("successfully registered worker ID %d (datacenter: %d, attempts: %d)", workerID, w.datacenterID, retryCount+1)
 			return workerID, nil
 		}
 
 		// SetNX failed, this worker ID is already taken
-		retryCount++
-		log.Debugf("worker ID %d is taken, retry %d", workerID, retryCount)
+		log.Debugf("worker ID %d is taken, attempt %d/%d", workerID, retryCount+1, maxRetries)
 
 		// Backoff sleep: random 10-50ms to prevent retry storm
 		backoff := time.Duration(10+rand.Intn(40)) * time.Millisecond
 		time.Sleep(backoff)
 	}
 
+	// All worker IDs are taken after a full cycle
 	atomic.StoreInt32(&w.healthy, 0)
-	return -1, fmt.Errorf("failed to register worker ID: exhausted %d retries", maxRetries)
+	return -1, fmt.Errorf("all %d worker IDs are occupied, registration failed", totalWorkerIDs)
 }
 
 // RegisterSpecificWorkerID registers a specific worker ID
