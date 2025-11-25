@@ -78,26 +78,16 @@ func (w *WorkerIDManager) RegisterWorkerID(ctx context.Context, maxWorkerID int6
 		default:
 		}
 
-		// 1. INCR to get unique incrementing number
-		seq, err := w.redisClient.Incr(ctx, counterKey).Result()
+		// 1. Atomic INCR with auto-reset using Lua script
+		// If counter exceeds max, reset to 1 and return 1
+		// This prevents race condition when multiple instances try to reset simultaneously
+		result, err := w.redisClient.Eval(ctx, LuaScriptIncrWithReset, []string{counterKey}, totalWorkerIDs).Result()
 		if err != nil {
-			return -1, fmt.Errorf("failed to INCR worker ID counter: %w", err)
+			return -1, fmt.Errorf("failed to execute INCR script: %w", err)
 		}
+		seq := result.(int64)
 
-		// 2. If exceeds max, reset counter to 0 and INCR again
-		if seq > totalWorkerIDs {
-			// Reset counter to 0
-			if err := w.redisClient.Set(ctx, counterKey, "0", 0).Err(); err != nil {
-				return -1, fmt.Errorf("failed to reset worker ID counter: %w", err)
-			}
-			// INCR again to get 1
-			seq, err = w.redisClient.Incr(ctx, counterKey).Result()
-			if err != nil {
-				return -1, fmt.Errorf("failed to INCR worker ID counter after reset: %w", err)
-			}
-		}
-
-		// 3. workerID = seq - 1 (0-based)
+		// 2. workerID = seq - 1 (0-based)
 		workerID := seq - 1
 
 		// 4. SetNX to verify this worker ID is available
@@ -323,26 +313,6 @@ func (w *WorkerIDManager) sendHeartbeat() error {
 
 	key := w.getWorkerKey(workerID)
 
-	// Lua script: verify instanceID matches before updating, prevent updating other instance's key
-	// WorkerInfo is stored as JSON
-	script := `
-		local current = redis.call('GET', KEYS[1])
-		if not current then
-			return -1  -- key does not exist, may have expired
-		end
-		-- Parse JSON to extract instance_id
-		local instanceId = string.match(current, '"instance_id":"([^"]+)"')
-		if not instanceId then
-			return -2  -- invalid JSON format
-		end
-		if instanceId ~= ARGV[2] then
-			return 0  -- instanceID mismatch, key taken by another instance
-		end
-		-- Update heartbeat time and refresh TTL
-		redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
-		return 1
-	`
-
 	workerInfo := WorkerInfo{
 		WorkerID:      workerID,
 		DatacenterID:  w.datacenterID,
@@ -352,7 +322,7 @@ func (w *WorkerIDManager) sendHeartbeat() error {
 		InstanceID:    instanceID,
 	}
 
-	result, err := w.redisClient.Eval(ctx, script, []string{key},
+	result, err := w.redisClient.Eval(ctx, LuaScriptHeartbeat, []string{key},
 		workerInfo.String(), instanceID, int64(w.ttl.Seconds())).Result()
 	if err != nil {
 		return fmt.Errorf("heartbeat script execution failed: %w", err)
