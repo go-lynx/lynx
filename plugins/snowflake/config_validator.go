@@ -301,10 +301,10 @@ func validateConfigConsistency(config *pb.Snowflake) error {
 		// For now, we'll allow this configuration
 	}
 
-	// If auto-registration is disabled but no worker ID is set, that's an error
-	if !config.AutoRegisterWorkerId && config.WorkerId == 0 {
-		return fmt.Errorf("worker ID must be specified when auto-registration is disabled")
-	}
+	// Note: WorkerId=0 is a valid value (first available worker ID)
+	// We only need to ensure that when auto-registration is disabled,
+	// the worker ID is explicitly configured (which it always is, even if 0)
+	// The validation in validateBasicConfig already ensures worker ID is within valid range
 
 	// If clock drift protection is enabled but no action is specified, use default
 	if config.EnableClockDriftProtection && config.ClockDriftAction == "" {

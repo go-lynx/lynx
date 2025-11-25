@@ -1,11 +1,14 @@
 package snowflake
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -71,6 +74,21 @@ func NewSecurityManager(config *SecurityConfig) (*SecurityManager, error) {
 	return sm, nil
 }
 
+// Stop stops the security manager and releases all resources
+func (sm *SecurityManager) Stop() {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Stop rate limiter cleanup goroutine
+	if sm.rateLimiter != nil {
+		sm.rateLimiter.Stop()
+		sm.rateLimiter = nil
+	}
+
+	// Clean up audit logger if needed
+	sm.auditLogger = nil
+}
+
 // ValidateAPIKey validates an API key
 func (sm *SecurityManager) ValidateAPIKey(apiKey string) bool {
 	if !sm.config.EnableAuthentication {
@@ -134,35 +152,87 @@ func (sm *SecurityManager) CheckRateLimit(clientID string) bool {
 	return sm.rateLimiter.Allow(clientID)
 }
 
-// EncryptData encrypts data if encryption is enabled
+// EncryptData encrypts data using AES-GCM if encryption is enabled
 func (sm *SecurityManager) EncryptData(data []byte) ([]byte, error) {
 	if !sm.config.EnableEncryption {
 		return data, nil // Encryption disabled
 	}
 
-	// Simple XOR encryption for demonstration
-	// In production, use proper encryption like AES
-	key := []byte(sm.config.EncryptionKey)
+	key := sm.deriveKey()
 	if len(key) == 0 {
 		return nil, fmt.Errorf("encryption key is empty")
 	}
 
-	encrypted := make([]byte, len(data))
-	for i, b := range data {
-		encrypted[i] = b ^ key[i%len(key)]
+	// Create AES cipher
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AES cipher: %w", err)
 	}
 
-	return encrypted, nil
+	// Create GCM mode
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	// Generate random nonce
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce: %w", err)
+	}
+
+	// Encrypt and prepend nonce
+	ciphertext := gcm.Seal(nonce, nonce, data, nil)
+	return ciphertext, nil
 }
 
-// DecryptData decrypts data if encryption is enabled
+// DecryptData decrypts data using AES-GCM if encryption is enabled
 func (sm *SecurityManager) DecryptData(encryptedData []byte) ([]byte, error) {
 	if !sm.config.EnableEncryption {
 		return encryptedData, nil // Encryption disabled
 	}
 
-	// Simple XOR decryption (same as encryption for XOR)
-	return sm.EncryptData(encryptedData)
+	key := sm.deriveKey()
+	if len(key) == 0 {
+		return nil, fmt.Errorf("encryption key is empty")
+	}
+
+	// Create AES cipher
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AES cipher: %w", err)
+	}
+
+	// Create GCM mode
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	// Extract nonce from beginning of ciphertext
+	nonceSize := gcm.NonceSize()
+	if len(encryptedData) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+
+	nonce, ciphertext := encryptedData[:nonceSize], encryptedData[nonceSize:]
+
+	// Decrypt
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt: %w", err)
+	}
+
+	return plaintext, nil
+}
+
+// deriveKey derives a 32-byte key from the configured encryption key using SHA-256
+func (sm *SecurityManager) deriveKey() []byte {
+	if sm.config.EncryptionKey == "" {
+		return nil
+	}
+	hash := sha256.Sum256([]byte(sm.config.EncryptionKey))
+	return hash[:]
 }
 
 // LogAuditEvent logs an audit event

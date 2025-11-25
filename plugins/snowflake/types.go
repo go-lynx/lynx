@@ -45,19 +45,26 @@ type PlugSnowflake struct {
 }
 
 // WorkerIDManager manages worker ID registration and heartbeat
+// Uses Redis INCR for lock-free worker ID allocation
 type WorkerIDManager struct {
 	redisClient       redis.UniversalClient
-	workerID          int64
 	datacenterID      int64
 	keyPrefix         string
 	ttl               time.Duration
 	heartbeatInterval time.Duration
-	shutdownCh        chan struct{}
+	// Worker state
+	workerID int64
 	// Heartbeat lifecycle management
 	heartbeatCtx     context.Context
 	heartbeatCancel  context.CancelFunc
 	heartbeatRunning bool
-	mu               sync.RWMutex
+	// Registration info preserved for heartbeat
+	registerTime time.Time
+	instanceID   string
+	// Health state - used to stop ID generation when heartbeat fails
+	healthy int32 // atomic: 1=healthy, 0=unhealthy
+	// Mutex for state management
+	mu sync.RWMutex
 }
 
 // Generator generates snowflake IDs
@@ -362,7 +369,6 @@ func (p *PlugSnowflake) Initialize(plugin plugins.Plugin, runtime plugins.Runtim
 		keyPrefix:         keyPrefix,
 		ttl:               ttl,
 		heartbeatInterval: heartbeatInterval,
-		shutdownCh:        make(chan struct{}),
 	}
 
 	// Initialize generator with proper configuration
@@ -729,10 +735,17 @@ func (p *PlugSnowflake) GenerateID() (int64, error) {
 	// Quick nil check with read lock
 	p.mu.RLock()
 	generator := p.generator
+	workerManager := p.workerManager
 	p.mu.RUnlock()
 
 	if generator == nil {
 		return 0, fmt.Errorf("snowflake generator not initialized")
+	}
+
+	// Check worker manager health to prevent ID duplication
+	// when heartbeat fails and worker ID may have been taken by another instance
+	if workerManager != nil && !workerManager.IsHealthy() {
+		return 0, fmt.Errorf("worker ID registration unhealthy, cannot generate ID safely")
 	}
 
 	// Generator.GenerateID() has its own mutex protection
@@ -744,10 +757,16 @@ func (p *PlugSnowflake) GenerateIDWithMetadata() (int64, *SID, error) {
 	// Quick nil check with read lock
 	p.mu.RLock()
 	generator := p.generator
+	workerManager := p.workerManager
 	p.mu.RUnlock()
 
 	if generator == nil {
 		return 0, nil, fmt.Errorf("snowflake generator not initialized")
+	}
+
+	// Check worker manager health to prevent ID duplication
+	if workerManager != nil && !workerManager.IsHealthy() {
+		return 0, nil, fmt.Errorf("worker ID registration unhealthy, cannot generate ID safely")
 	}
 
 	// Generator methods have their own mutex protection
