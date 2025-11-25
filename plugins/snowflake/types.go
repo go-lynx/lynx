@@ -61,6 +61,7 @@ type WorkerIDManager struct {
 	// Registration info preserved for heartbeat
 	registerTime time.Time
 	instanceID   string
+	localIP      string // Local IP address for troubleshooting
 	// Health state - used to stop ID generation when heartbeat fails
 	healthy int32 // atomic: 1=healthy, 0=unhealthy
 	// Mutex for state management
