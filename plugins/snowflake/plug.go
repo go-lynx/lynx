@@ -22,10 +22,31 @@ func init() {
 // GetSnowflakeGenerator function is used to get the Snowflake generator instance.
 // It gets the plugin manager through the global Lynx application instance, then gets the corresponding plugin instance by plugin name,
 // finally converts the plugin instance to *PlugSnowflake type and returns it.
+// Returns nil if the application, plugin manager, or plugin is not available.
 func GetSnowflakeGenerator() *PlugSnowflake {
-	plugin := app.Lynx().GetPluginManager().GetPlugin(PluginName)
+	// Check if Lynx application is initialized
+	lynxApp := app.Lynx()
+	if lynxApp == nil {
+		return nil
+	}
+
+	// Check if plugin manager is available
+	pluginManager := lynxApp.GetPluginManager()
+	if pluginManager == nil {
+		return nil
+	}
+
+	// Get the plugin
+	plugin := pluginManager.GetPlugin(PluginName)
 	if plugin == nil {
 		return nil
 	}
-	return plugin.(*PlugSnowflake)
+
+	// Safe type assertion
+	snowflakePlugin, ok := plugin.(*PlugSnowflake)
+	if !ok {
+		return nil
+	}
+
+	return snowflakePlugin
 }

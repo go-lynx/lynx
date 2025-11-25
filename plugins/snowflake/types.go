@@ -218,7 +218,7 @@ const (
 	DefaultEpoch            = 1609459200000 // 2021-01-01 00:00:00 UTC in milliseconds
 	DefaultMaxClockBackward = 5000          // 5 seconds in milliseconds
 
-	DefaultRedisKeyPrefix    = "snowflake"
+	DefaultRedisKeyPrefix    = "snowflake:"
 	DefaultWorkerIDTTL       = 30 * time.Second
 	DefaultHeartbeatInterval = 10 * time.Second
 )
@@ -723,39 +723,50 @@ func (p *PlugSnowflake) GetDependencies() []plugins.Dependency {
 // Snowflake specific methods
 
 // GenerateID generates a new snowflake ID
+// Note: Generator.GenerateID() is internally thread-safe with its own mutex,
+// so we only need to protect the nil check here to avoid double locking overhead.
 func (p *PlugSnowflake) GenerateID() (int64, error) {
+	// Quick nil check with read lock
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	generator := p.generator
+	p.mu.RUnlock()
 
-	if p.generator == nil {
+	if generator == nil {
 		return 0, fmt.Errorf("snowflake generator not initialized")
 	}
 
-	return p.generator.GenerateID()
+	// Generator.GenerateID() has its own mutex protection
+	return generator.GenerateID()
 }
 
 // GenerateIDWithMetadata generates a new snowflake ID with metadata
 func (p *PlugSnowflake) GenerateIDWithMetadata() (int64, *SID, error) {
+	// Quick nil check with read lock
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	generator := p.generator
+	p.mu.RUnlock()
 
-	if p.generator == nil {
+	if generator == nil {
 		return 0, nil, fmt.Errorf("snowflake generator not initialized")
 	}
 
-	return p.generator.GenerateIDWithMetadata()
+	// Generator methods have their own mutex protection
+	return generator.GenerateIDWithMetadata()
 }
 
 // ParseID parses a snowflake ID into its components
 func (p *PlugSnowflake) ParseID(id int64) (*SID, error) {
+	// Quick nil check with read lock
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	generator := p.generator
+	p.mu.RUnlock()
 
-	if p.generator == nil {
+	if generator == nil {
 		return nil, fmt.Errorf("snowflake generator not initialized")
 	}
 
-	return p.generator.ParseID(id)
+	// ParseID is read-only and safe
+	return generator.ParseID(id)
 }
 
 // GetGenerator returns the snowflake generator instance

@@ -262,11 +262,16 @@ func ValidateSecurityConfig(config *SecurityConfig) error {
 	return nil
 }
 
-// RateLimiter implements a simple token bucket rate limiter
+// RateLimiter implements a simple token bucket rate limiter with automatic cleanup
 type RateLimiter struct {
-	rate    int
-	buckets map[string]*TokenBucket
-	mu      sync.RWMutex
+	rate           int
+	buckets        map[string]*TokenBucket
+	mu             sync.RWMutex
+	cleanupTicker  *time.Ticker
+	stopCleanup    chan struct{}
+	bucketTTL      time.Duration // TTL for inactive buckets
+	lastCleanup    time.Time
+	cleanupRunning bool
 }
 
 // TokenBucket represents a token bucket for rate limiting
@@ -274,14 +279,94 @@ type TokenBucket struct {
 	tokens     int
 	capacity   int
 	lastRefill time.Time
+	lastAccess time.Time // Track last access time for cleanup
 	mu         sync.Mutex
 }
 
-// NewRateLimiter creates a new rate limiter
+// NewRateLimiter creates a new rate limiter with automatic cleanup
 func NewRateLimiter(rate int) *RateLimiter {
-	return &RateLimiter{
-		rate:    rate,
-		buckets: make(map[string]*TokenBucket),
+	rl := &RateLimiter{
+		rate:        rate,
+		buckets:     make(map[string]*TokenBucket),
+		bucketTTL:   10 * time.Minute, // Default TTL for inactive buckets
+		stopCleanup: make(chan struct{}),
+		lastCleanup: time.Now(),
+	}
+
+	// Start background cleanup goroutine
+	rl.startCleanup()
+
+	return rl
+}
+
+// NewRateLimiterWithTTL creates a new rate limiter with custom bucket TTL
+func NewRateLimiterWithTTL(rate int, bucketTTL time.Duration) *RateLimiter {
+	rl := &RateLimiter{
+		rate:        rate,
+		buckets:     make(map[string]*TokenBucket),
+		bucketTTL:   bucketTTL,
+		stopCleanup: make(chan struct{}),
+		lastCleanup: time.Now(),
+	}
+
+	// Start background cleanup goroutine
+	rl.startCleanup()
+
+	return rl
+}
+
+// startCleanup starts the background cleanup goroutine
+func (rl *RateLimiter) startCleanup() {
+	rl.mu.Lock()
+	if rl.cleanupRunning {
+		rl.mu.Unlock()
+		return
+	}
+	rl.cleanupRunning = true
+	rl.cleanupTicker = time.NewTicker(time.Minute) // Cleanup every minute
+	rl.mu.Unlock()
+
+	go func() {
+		for {
+			select {
+			case <-rl.cleanupTicker.C:
+				rl.cleanup()
+			case <-rl.stopCleanup:
+				rl.cleanupTicker.Stop()
+				return
+			}
+		}
+	}()
+}
+
+// Stop stops the rate limiter and its cleanup goroutine
+func (rl *RateLimiter) Stop() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if rl.cleanupRunning {
+		close(rl.stopCleanup)
+		rl.cleanupRunning = false
+	}
+}
+
+// cleanup removes expired buckets to prevent memory leaks
+func (rl *RateLimiter) cleanup() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	rl.lastCleanup = now
+
+	for clientID, bucket := range rl.buckets {
+		bucket.mu.Lock()
+		// Remove bucket if it hasn't been accessed for longer than TTL
+		if now.Sub(bucket.lastAccess) > rl.bucketTTL {
+			bucket.mu.Unlock()
+			delete(rl.buckets, clientID)
+		} else {
+			bucket.mu.Unlock()
+		}
 	}
 }
 
@@ -294,6 +379,7 @@ func (rl *RateLimiter) Allow(clientID string) bool {
 			tokens:     rl.rate,
 			capacity:   rl.rate,
 			lastRefill: time.Now(),
+			lastAccess: time.Now(),
 		}
 		rl.buckets[clientID] = bucket
 	}
@@ -302,12 +388,20 @@ func (rl *RateLimiter) Allow(clientID string) bool {
 	return bucket.consume()
 }
 
+// GetBucketCount returns the current number of tracked buckets (for monitoring)
+func (rl *RateLimiter) GetBucketCount() int {
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
+	return len(rl.buckets)
+}
+
 // consume consumes a token from the bucket
 func (tb *TokenBucket) consume() bool {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
 
 	now := time.Now()
+	tb.lastAccess = now // Update last access time
 	elapsed := now.Sub(tb.lastRefill)
 
 	// Refill tokens based on elapsed time

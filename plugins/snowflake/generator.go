@@ -3,6 +3,7 @@ package snowflake
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	pb "github.com/go-lynx/lynx/plugins/snowflake/conf"
@@ -165,8 +166,8 @@ func (g *Generator) GenerateID() (int64, error) {
 		(g.workerID << g.workerShift) |
 		g.sequence
 
-	// Update statistics
-	g.generatedCount++
+	// Update statistics using atomic operation to avoid data race
+	atomic.AddInt64(&g.generatedCount, 1)
 
 	// Record metrics
 	latency := time.Since(startTime)
@@ -199,8 +200,8 @@ func (g *Generator) GetStats() *GeneratorStats {
 	return &GeneratorStats{
 		WorkerID:           g.workerID,
 		DatacenterID:       g.datacenterID,
-		GeneratedCount:     g.generatedCount,
-		ClockBackwardCount: g.clockBackwardCount,
+		GeneratedCount:     atomic.LoadInt64(&g.generatedCount),
+		ClockBackwardCount: atomic.LoadInt64(&g.clockBackwardCount),
 		LastGeneratedTime:  g.lastTimestamp,
 	}
 }
@@ -324,8 +325,8 @@ func (g *Generator) handleClockBackward(currentTimestamp int64) (int64, error) {
 	driftMs := g.lastTimestamp - currentTimestamp
 	drift := time.Duration(driftMs) * time.Millisecond
 
-	// Update statistics
-	g.clockBackwardCount++
+	// Update statistics using atomic operation to avoid data race
+	atomic.AddInt64(&g.clockBackwardCount, 1)
 
 	switch g.clockDriftAction {
 	case ClockDriftActionError:
