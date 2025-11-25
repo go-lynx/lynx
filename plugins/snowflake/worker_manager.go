@@ -2,7 +2,10 @@ package snowflake
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math/rand"
+	"net"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -11,6 +14,22 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/redis/go-redis/v9"
 )
+
+// getLocalIP returns the local IP address of the machine
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "unknown"
+	}
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+			if ipNet.IP.To4() != nil {
+				return ipNet.IP.String()
+			}
+		}
+	}
+	return "unknown"
+}
 
 // NewWorkerIDManager creates a new worker ID manager
 // Uses Redis INCR for lock-free worker ID allocation
@@ -29,13 +48,15 @@ func NewWorkerIDManager(redisClient redis.UniversalClient, datacenterID int64, c
 		heartbeatCtx:      nil,
 		heartbeatCancel:   nil,
 		heartbeatRunning:  false,
+		localIP:           getLocalIP(), // Get local IP for troubleshooting
 	}
 	atomic.StoreInt32(&mgr.healthy, 1) // Initially healthy
 	return mgr
 }
 
-// RegisterWorkerID registers a worker ID using Redis INCR atomic operation
-// This is lock-free and highly efficient for multi-instance deployment
+// RegisterWorkerID registers a worker ID
+// Flow: INCR to get unique number -> SetNX to verify availability -> retry with backoff on failure
+// Heartbeat maintains key TTL to ensure worker ID exclusivity during instance lifetime
 func (w *WorkerIDManager) RegisterWorkerID(ctx context.Context, maxWorkerID int64) (int64, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -45,70 +66,82 @@ func (w *WorkerIDManager) RegisterWorkerID(ctx context.Context, maxWorkerID int6
 	}
 
 	counterKey := w.getCounterKey()
-	maxAttempts := maxWorkerID + 1 // Try each possible worker ID at most once
+	retryCount := 0
+	maxRetries := int(maxWorkerID) + 1 // Max retry count is maxWorkerID+1
 
-	for attempt := int64(0); attempt < maxAttempts; attempt++ {
-		// Atomic increment to get a unique sequence number
-		seq, err := w.redisClient.Incr(ctx, counterKey).Result()
-		if err != nil {
-			return -1, fmt.Errorf("failed to increment worker counter: %w", err)
+	// Loop to try acquiring an available worker ID
+	for retryCount < maxRetries {
+		// Check if context is cancelled
+		select {
+		case <-ctx.Done():
+			return -1, ctx.Err()
+		default:
 		}
 
-		// Calculate worker ID from sequence (modulo operation)
-		candidateWorkerID := (seq - 1) % (maxWorkerID + 1)
-
-		// Try to claim this worker ID using SetNX (atomic, no lock needed)
-		success, err := w.tryClaimWorkerID(ctx, candidateWorkerID)
+		// 1. INCR to get unique incrementing number
+		seq, err := w.redisClient.Incr(ctx, counterKey).Result()
 		if err != nil {
-			return -1, fmt.Errorf("failed to claim worker ID %d: %w", candidateWorkerID, err)
+			return -1, fmt.Errorf("failed to INCR worker ID: %w", err)
+		}
+
+		// worker ID = seq - 1 (0-based)
+		workerID := seq - 1
+
+		// Check if exceeded max range
+		if workerID > maxWorkerID {
+			atomic.StoreInt32(&w.healthy, 0) // Mark as unhealthy, cannot serve
+			return -1, fmt.Errorf("worker ID pool exhausted: got %d, max allowed %d", workerID, maxWorkerID)
+		}
+
+		// 2. SetNX to verify this worker ID is available
+		now := time.Now()
+		w.instanceID = w.generateInstanceID()
+		workerInfo := WorkerInfo{
+			WorkerID:      workerID,
+			DatacenterID:  w.datacenterID,
+			IP:            w.localIP,
+			RegisterTime:  now.Unix(),
+			LastHeartbeat: now.Unix(),
+			InstanceID:    w.instanceID,
+		}
+
+		key := w.getWorkerKey(workerID)
+		success, err := w.redisClient.SetNX(ctx, key, workerInfo.String(), w.ttl).Result()
+		if err != nil {
+			return -1, fmt.Errorf("failed to SetNX worker ID %d: %w", workerID, err)
 		}
 
 		if success {
-			w.workerID = candidateWorkerID
+			// Registration successful
+			w.workerID = workerID
+			w.registerTime = now
+
+			// Add to registry set (for monitoring)
+			registryKey := w.getRegistryKey()
+			_ = w.redisClient.SAdd(ctx, registryKey, fmt.Sprintf("%d:%d", w.datacenterID, workerID))
+
 			atomic.StoreInt32(&w.healthy, 1)
-			w.startHeartbeatLocked()
-			log.Infof("Successfully registered worker ID %d (datacenter: %d)", candidateWorkerID, w.datacenterID)
-			return candidateWorkerID, nil
+			w.startHeartbeatLocked() // Start heartbeat to maintain key TTL
+
+			log.Infof("successfully registered worker ID %d (datacenter: %d, retries: %d)", workerID, w.datacenterID, retryCount)
+			return workerID, nil
 		}
 
-		// This worker ID is taken, try next one
-		log.Debugf("Worker ID %d is already taken, trying next...", candidateWorkerID)
+		// SetNX failed, this worker ID is already taken
+		retryCount++
+		log.Debugf("worker ID %d is taken, retry %d", workerID, retryCount)
+
+		// Backoff sleep: random 10-50ms to prevent retry storm
+		backoff := time.Duration(10+rand.Intn(40)) * time.Millisecond
+		time.Sleep(backoff)
 	}
 
-	return -1, fmt.Errorf("no available worker ID found after %d attempts (max: %d)", maxAttempts, maxWorkerID)
-}
-
-// tryClaimWorkerID attempts to claim a specific worker ID using SetNX (atomic operation)
-func (w *WorkerIDManager) tryClaimWorkerID(ctx context.Context, workerID int64) (bool, error) {
-	key := w.getWorkerKey(workerID)
-
-	now := time.Now()
-	w.instanceID = w.generateInstanceID()
-	workerInfo := WorkerInfo{
-		WorkerID:      workerID,
-		DatacenterID:  w.datacenterID,
-		RegisterTime:  now,
-		LastHeartbeat: now,
-		InstanceID:    w.instanceID,
-	}
-
-	// SetNX is atomic - only succeeds if key doesn't exist
-	success, err := w.redisClient.SetNX(ctx, key, workerInfo.String(), w.ttl).Result()
-	if err != nil {
-		return false, err
-	}
-
-	if success {
-		w.registerTime = now
-		// Add to registry set for tracking
-		registryKey := w.getRegistryKey()
-		_ = w.redisClient.SAdd(ctx, registryKey, fmt.Sprintf("%d:%d", w.datacenterID, workerID))
-	}
-
-	return success, nil
+	atomic.StoreInt32(&w.healthy, 0)
+	return -1, fmt.Errorf("failed to register worker ID: exhausted %d retries", maxRetries)
 }
 
 // RegisterSpecificWorkerID registers a specific worker ID
+// Uses SetNX to verify worker ID availability, returns error if already taken
 func (w *WorkerIDManager) RegisterSpecificWorkerID(ctx context.Context, workerID int64) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -120,11 +153,25 @@ func (w *WorkerIDManager) RegisterSpecificWorkerID(ctx context.Context, workerID
 		return fmt.Errorf("already registered with worker ID %d", w.workerID)
 	}
 
-	success, err := w.tryClaimWorkerID(ctx, workerID)
+	now := time.Now()
+	w.instanceID = w.generateInstanceID()
+	workerInfo := WorkerInfo{
+		WorkerID:      workerID,
+		DatacenterID:  w.datacenterID,
+		IP:            w.localIP,
+		RegisterTime:  now.Unix(),
+		LastHeartbeat: now.Unix(),
+		InstanceID:    w.instanceID,
+	}
+
+	// SetNX to verify worker ID availability
+	key := w.getWorkerKey(workerID)
+	success, err := w.redisClient.SetNX(ctx, key, workerInfo.String(), w.ttl).Result()
 	if err != nil {
-		return fmt.Errorf("failed to register worker ID %d: %w", workerID, err)
+		return fmt.Errorf("failed to SetNX worker ID %d: %w", workerID, err)
 	}
 	if !success {
+		atomic.StoreInt32(&w.healthy, 0) // Mark as unhealthy
 		return &WorkerIDConflictError{
 			WorkerID:     workerID,
 			DatacenterID: w.datacenterID,
@@ -133,8 +180,15 @@ func (w *WorkerIDManager) RegisterSpecificWorkerID(ctx context.Context, workerID
 	}
 
 	w.workerID = workerID
+	w.registerTime = now
+
+	registryKey := w.getRegistryKey()
+	_ = w.redisClient.SAdd(ctx, registryKey, fmt.Sprintf("%d:%d", w.datacenterID, workerID))
+
 	atomic.StoreInt32(&w.healthy, 1)
 	w.startHeartbeatLocked()
+
+	log.Infof("successfully registered specific worker ID %d (datacenter: %d)", workerID, w.datacenterID)
 	return nil
 }
 
@@ -228,8 +282,9 @@ func (w *WorkerIDManager) tryReRegister(ctx context.Context) error {
 	workerInfo := WorkerInfo{
 		WorkerID:      workerID,
 		DatacenterID:  w.datacenterID,
-		RegisterTime:  w.registerTime,
-		LastHeartbeat: now,
+		IP:            w.localIP,
+		RegisterTime:  w.registerTime.Unix(),
+		LastHeartbeat: now.Unix(),
 		InstanceID:    w.instanceID,
 	}
 
@@ -238,12 +293,14 @@ func (w *WorkerIDManager) tryReRegister(ctx context.Context) error {
 	return w.redisClient.Set(timeoutCtx, key, workerInfo.String(), w.ttl).Err()
 }
 
-// sendHeartbeat sends a heartbeat to maintain worker ID registration
+// sendHeartbeat sends heartbeat to maintain worker ID key TTL
+// Uses Lua script to atomically verify instanceID and refresh TTL
 func (w *WorkerIDManager) sendHeartbeat() error {
 	w.mu.RLock()
 	workerID := w.workerID
 	registerTime := w.registerTime
 	instanceID := w.instanceID
+	localIP := w.localIP
 	w.mu.RUnlock()
 
 	if workerID == -1 {
@@ -259,22 +316,22 @@ func (w *WorkerIDManager) sendHeartbeat() error {
 
 	key := w.getWorkerKey(workerID)
 
-	// Verify we still own this worker ID before updating
-	// Use Lua script for atomic check-and-update
+	// Lua script: verify instanceID matches before updating, prevent updating other instance's key
+	// WorkerInfo is stored as JSON
 	script := `
 		local current = redis.call('GET', KEYS[1])
-		if current then
-			local parts = {}
-			for part in string.gmatch(current, "[^:]+") do
-				table.insert(parts, part)
-			end
-			-- Check if instance ID matches (parts[5] onwards)
-			local currentInstanceID = table.concat(parts, ":", 5)
-			if currentInstanceID ~= ARGV[2] then
-				return 0  -- Someone else owns this worker ID
-			end
+		if not current then
+			return -1  -- key does not exist, may have expired
 		end
-		-- Update with new heartbeat
+		-- Parse JSON to extract instance_id
+		local instanceId = string.match(current, '"instance_id":"([^"]+)"')
+		if not instanceId then
+			return -2  -- invalid JSON format
+		end
+		if instanceId ~= ARGV[2] then
+			return 0  -- instanceID mismatch, key taken by another instance
+		end
+		-- Update heartbeat time and refresh TTL
 		redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
 		return 1
 	`
@@ -282,22 +339,31 @@ func (w *WorkerIDManager) sendHeartbeat() error {
 	workerInfo := WorkerInfo{
 		WorkerID:      workerID,
 		DatacenterID:  w.datacenterID,
-		RegisterTime:  registerTime,
-		LastHeartbeat: time.Now(),
+		IP:            localIP,
+		RegisterTime:  registerTime.Unix(),
+		LastHeartbeat: time.Now().Unix(),
 		InstanceID:    instanceID,
 	}
 
 	result, err := w.redisClient.Eval(ctx, script, []string{key},
 		workerInfo.String(), instanceID, int64(w.ttl.Seconds())).Result()
 	if err != nil {
-		return fmt.Errorf("heartbeat script failed: %w", err)
+		return fmt.Errorf("heartbeat script execution failed: %w", err)
 	}
 
-	if result.(int64) == 0 {
+	code := result.(int64)
+	switch code {
+	case 1:
+		return nil // Success
+	case 0:
 		return fmt.Errorf("worker ID %d was taken by another instance", workerID)
+	case -1:
+		return fmt.Errorf("worker ID %d key has expired", workerID)
+	case -2:
+		return fmt.Errorf("worker ID %d has invalid JSON format", workerID)
+	default:
+		return fmt.Errorf("heartbeat returned unknown status: %d", code)
 	}
-
-	return nil
 }
 
 // UnregisterWorkerID unregisters the worker ID
@@ -407,59 +473,37 @@ func (w *WorkerIDManager) generateInstanceID() string {
 
 // WorkerInfo represents information about a registered worker
 type WorkerInfo struct {
-	WorkerID      int64     `json:"worker_id"`
-	DatacenterID  int64     `json:"datacenter_id"`
-	RegisterTime  time.Time `json:"register_time"`
-	LastHeartbeat time.Time `json:"last_heartbeat"`
-	InstanceID    string    `json:"instance_id"`
+	WorkerID      int64  `json:"worker_id"`
+	DatacenterID  int64  `json:"datacenter_id"`
+	IP            string `json:"ip"`
+	RegisterTime  int64  `json:"register_time"`
+	LastHeartbeat int64  `json:"last_heartbeat"`
+	InstanceID    string `json:"instance_id"`
 }
 
-// String returns a string representation of WorkerInfo
+// String returns JSON representation of WorkerInfo
 func (wi *WorkerInfo) String() string {
-	return fmt.Sprintf("%d:%d:%d:%d:%s",
-		wi.WorkerID,
-		wi.DatacenterID,
-		wi.RegisterTime.Unix(),
-		wi.LastHeartbeat.Unix(),
-		wi.InstanceID)
+	data, _ := json.Marshal(wi)
+	return string(data)
 }
 
-// ParseWorkerInfo parses a WorkerInfo from string
+// ParseWorkerInfo parses a WorkerInfo from JSON string
 func ParseWorkerInfo(s string) (*WorkerInfo, error) {
-	parts := strings.Split(s, ":")
-	if len(parts) < 5 {
-		return nil, fmt.Errorf("invalid worker info format")
+	var info WorkerInfo
+	if err := json.Unmarshal([]byte(s), &info); err != nil {
+		return nil, fmt.Errorf("invalid worker info JSON: %w", err)
 	}
+	return &info, nil
+}
 
-	workerID, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid worker ID: %w", err)
-	}
+// GetRegisterTime returns register time as time.Time
+func (wi *WorkerInfo) GetRegisterTime() time.Time {
+	return time.Unix(wi.RegisterTime, 0)
+}
 
-	datacenterID, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid datacenter ID: %w", err)
-	}
-
-	registerTime, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid register time: %w", err)
-	}
-
-	lastHeartbeat, err := strconv.ParseInt(parts[3], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid last heartbeat: %w", err)
-	}
-
-	instanceID := strings.Join(parts[4:], ":")
-
-	return &WorkerInfo{
-		WorkerID:      workerID,
-		DatacenterID:  datacenterID,
-		RegisterTime:  time.Unix(registerTime, 0),
-		LastHeartbeat: time.Unix(lastHeartbeat, 0),
-		InstanceID:    instanceID,
-	}, nil
+// GetLastHeartbeat returns last heartbeat as time.Time
+func (wi *WorkerInfo) GetLastHeartbeat() time.Time {
+	return time.Unix(wi.LastHeartbeat, 0)
 }
 
 // WorkerManagerConfig holds configuration for the worker manager
