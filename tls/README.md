@@ -15,14 +15,14 @@ This module provides enhanced TLS certificate management for the Lynx framework,
 - Configurable monitoring intervals
 - MD5 hash-based change detection for reliability
 
-### ⚙︁E**Advanced Configuration**
+### ⚙️ **Advanced Configuration**
 - Flexible TLS configuration options
 - Support for different authentication types
 - Configurable TLS versions and cipher suites
 - Session cache management
 - Hostname verification options
 
-### 🛡�E�E**Security & Validation**
+### 🛡️ **Security & Validation**
 - Comprehensive configuration validation
 - Certificate format validation
 - File accessibility checks
@@ -107,10 +107,10 @@ lynx:
 
 | Version | Description | Security |
 |---------|-------------|----------|
-| 1.0 | TLS 1.0 | ❁ENot recommended |
-| 1.1 | TLS 1.1 | ❁ENot recommended |
-| 1.2 | TLS 1.2 | ✁ERecommended minimum |
-| 1.3 | TLS 1.3 | ✁ERecommended, most secure |
+| 1.0 | TLS 1.0 | ❌ Not recommended |
+| 1.1 | TLS 1.1 | ❌ Not recommended |
+| 1.2 | TLS 1.2 | ✅ Recommended minimum |
+| 1.3 | TLS 1.3 | ✅ Recommended, most secure |
 
 > **Note**: These version strings are used directly in configuration and represent the minimum TLS version to support.
 
