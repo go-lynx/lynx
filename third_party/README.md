@@ -1,21 +1,37 @@
-# third_party
+# Third Party Protobuf Definitions
 
-This directory contains external dependencies and third-party libraries that are used by the Go-Lynx project. These dependencies are either vendored or modified to meet specific project requirements.
+This directory contains third-party Protocol Buffer definitions required for compiling the Lynx framework's proto files.
 
-## Directory Structure
+## Contents
 
-- `errors/`: Custom error handling and error types implementations
-- `google/`: Google API-related dependencies and protobuf definitions
-- `openapi/`: OpenAPI (Swagger) specifications and related utilities
-- `validate/`: Validation libraries and utilities for data validation
+### google/protobuf/
 
-## Purpose
+Contains Google's well-known Protocol Buffer types used by Lynx proto definitions:
 
-The third_party directory serves as a centralized location for managing external dependencies, ensuring version control and maintaining compatibility across the project. This approach helps in:
+| File | Description | Used By |
+|------|-------------|---------|
+| `duration.proto` | Duration type for time spans | `tls/conf/tls.proto` |
 
-1. Version stability and consistency
-2. Custom modifications tracking
-3. Dependency management
-4. Better control over external code
+## Why This Directory Exists
 
-Please ensure to review the respective subdirectories' documentation for specific usage and implementation details.
+The Lynx framework's proto files import Google's well-known types (e.g., `google/protobuf/duration.proto`). These imports require the proto definitions to be available during `protoc` compilation.
+
+This directory provides those definitions so that `make config` can successfully compile all proto files without requiring users to have protobuf installed system-wide or to locate the includes manually.
+
+## Usage
+
+The `Makefile` includes this directory in the protoc command:
+
+```makefile
+protoc --proto_path="$$DIR" -I ./third_party -I ./boot -I . --go_out=paths=source_relative:"$$DIR" "$$PROTO_FILE"
+```
+
+## Source
+
+The proto files in this directory are sourced from:
+- [Google Protocol Buffers](https://github.com/protocolbuffers/protobuf)
+
+## License
+
+The files in `google/protobuf/` are licensed under the BSD 3-Clause License by Google Inc.
+

@@ -1,417 +1,381 @@
-# Lynx Layered Runtime Architecture Design
+# Lynx Framework Architecture
 
-## Architecture Overview
+## Overview
 
-The Lynx framework adopts a layered Runtime design, providing unified resource management, event systems, and plugin lifecycle management. The entire architecture is divided into three main layers:
+Lynx is a plug-and-play microservice framework for Go, designed to simplify building robust, scalable, and observable cloud-native applications. The framework provides a unified runtime, plugin management, event system, and essential utilities.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Lynx Application Layer                      │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
-│  │ LynxApp     │  │ Boot        │  │ Control     │           │
-│  │             │  │             │  │ Plane       │           │
-│  └─────────────┘  └─────────────┘  └─────────────┘           │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  Plugin Management Layer                       │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
-│  │ Plugin      │  │ TypedPlugin │  │ Plugin      │           │
-│  │ Manager     │  │ Manager     │  │ Factory     │           │
-│  └─────────────┘  └─────────────┘  └─────────────┘           │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Runtime Layer                               │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
-│  │ Runtime     │  │ TypedRuntime│  │ Simple      │           │
-│  │ Interface   │  │ Impl        │  │ Runtime     │           │
-│  └─────────────┘  └─────────────┘  └─────────────┘           │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                Resource Management Layer                       │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
-│  │ Private     │  │ Shared      │  │ Resource    │           │
-│  │ Resources   │  │ Resources   │  │ Info        │           │
-│  └─────────────┘  └─────────────┘  └─────────────┘           │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Application Layer                                    │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
+│  │   LynxApp    │  │    Boot      │  │   Control    │  │  Certificate │   │
+│  │   (app.go)   │  │              │  │    Plane     │  │   Provider   │   │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Plugin Management Layer                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
+│  │   Manager    │  │  Lifecycle   │  │   Topology   │  │    Ops       │   │
+│  │ (manager.go) │  │              │  │              │  │              │   │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Runtime Layer                                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
+│  │   Runtime    │  │   Events     │  │   Config     │  │   Recovery   │   │
+│  │ (runtime.go) │  │   System     │  │              │  │              │   │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Plugin Ecosystem                                     │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                        Service Plugins                                  │ │
+│  │   lynx-http  │  lynx-grpc  │  lynx-swagger                             │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                       Database Plugins                                  │ │
+│  │   lynx-mysql  │  lynx-pgsql  │  lynx-mongodb  │  lynx-mssql            │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                         Cache Plugins                                   │ │
+│  │   lynx-redis  │  lynx-redis-lock  │  lynx-elasticsearch                │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                      Message Queue Plugins                              │ │
+│  │   lynx-kafka  │  lynx-pulsar  │  lynx-rabbitmq  │  lynx-rocketmq       │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                   Service Governance Plugins                            │ │
+│  │   lynx-polaris  │  lynx-nacos  │  lynx-apollo  │  lynx-sentinel        │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                     Observability Plugins                               │ │
+│  │   lynx-tracer  │  (metrics built-in)                                   │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                  Distributed Transaction Plugins                        │ │
+│  │   lynx-dtm  │  lynx-seata                                              │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                         Utility Plugins                                 │ │
+│  │   lynx-eon-id  │  lynx-openim  │  lynx-sql-sdk                         │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Detailed Architecture Diagram
+## Core Package Structure
 
-### 1. Runtime Interface Hierarchy
+### Root Package (`github.com/go-lynx/lynx`)
+
+The root package contains the core framework implementation:
+
+| File | Description |
+|------|-------------|
+| `doc.go` | Package documentation |
+| `app.go` | LynxApp core structure, initialization, and main API |
+| `manager.go` | Plugin manager interfaces and DefaultPluginManager implementation |
+| `lifecycle.go` | Plugin lifecycle operations (init/start/stop with safety) |
+| `ops.go` | Plugin loading/unloading operations and resource management |
+| `topology.go` | Plugin dependency resolution and topological sorting |
+| `runtime.go` | TypedRuntimePlugin for resource sharing and event handling |
+| `controlplane.go` | ControlPlane interfaces for service management |
+| `certificate.go` | CertificateProvider interface for TLS |
+| `config.go` | Plugin configuration preparation |
+| `recovery.go` | Error recovery and circuit breaker mechanisms |
+
+### Sub-packages
+
+| Package | Description |
+|---------|-------------|
+| `boot/` | Bootstrap helpers and config loading |
+| `cmd/` | CLI entrypoints (e.g., `lynx` tool) |
+| `conf/` | Configuration proto definitions |
+| `events/` | Event system for inter-plugin communication |
+| `log/` | Logging system with zerolog integration |
+| `tls/` | TLS certificate management and validation |
+| `cache/` | Caching abstractions and implementations |
+| `subscribe/` | Service subscription and dependency management |
+| `observability/` | Metrics and monitoring utilities |
+| `interfaces/` | Public interface definitions for adapters |
+| `pkg/` | Reusable utility packages (auth, cast, collection, etc.) |
+| `internal/` | Private implementation details |
+| `plugins/` | Plugin SDK with base implementations |
+
+## Plugin System Architecture
+
+### Plugin Interface Hierarchy
 
 ```mermaid
 graph TB
-    subgraph "Runtime Interface"
-        A[Runtime Interface]
-        B[TypedResourceManager]
-        C[ConfigProvider]
-        D[LogProvider]
-        E[EventEmitter]
-        
-        A --> B
-        A --> C
-        A --> D
-        A --> E
-    end
-    
-    subgraph "Runtime Implementation"
-        F[TypedRuntimeImpl]
-        G[simpleRuntime]
-        
-        F --> G
-    end
-    
-    subgraph "Resource Management"
-        H[Private Resources]
-        I[Shared Resources]
-        J[Resource Info]
-        K[Resource Stats]
-        
-        G --> H
-        G --> I
-        G --> J
-        G --> K
-    end
-    
-    subgraph "Event System"
-        L[Event Listeners]
-        M[Event History]
-        N[Event Filters]
-        O[Plugin Events]
-        
-        G --> L
-        G --> M
-        G --> N
-        G --> O
-    end
-    
-    subgraph "Plugin Context"
-        P[Plugin Context]
-        Q[Context Management]
-        
-        G --> P
-        G --> Q
-    end
-```
-
-### 2. Plugin Manager Architecture
-
-```mermaid
-graph TB
-    subgraph "Plugin Manager"
-        A[PluginManager Interface]
-        B[DefaultPluginManager]
-        C[TypedPluginManager]
-        
-        A --> B
-        A --> C
+    subgraph "Plugin Interface"
+        A[Plugin Interface]
+        B[Name/ID/Version]
+        C[Dependencies]
+        D[Lifecycle Methods]
+        E[Health Check]
     end
     
     subgraph "Plugin Lifecycle"
-        D[LoadPlugins]
-        E[Initialize]
-        F[Start]
-        G[Stop]
-        H[Cleanup]
-        
-        B --> D
-        B --> E
-        B --> F
-        B --> G
-        B --> H
+        F[Initialize]
+        G[Start]
+        H[Stop]
+        I[Cleanup]
     end
     
-    subgraph "Resource Management"
-        I[GetResourceStats]
-        J[ListResources]
-        K[CleanupResources]
-        
-        B --> I
-        B --> J
-        B --> K
-    end
-    
-    subgraph "Runtime Integration"
-        L[GetRuntime]
-        M[SetConfig]
-        N[WithPluginContext]
-        
-        B --> L
-        B --> M
-        B --> N
-    end
+    A --> B
+    A --> C
+    A --> D
+    A --> E
+    D --> F
+    D --> G
+    D --> H
+    D --> I
 ```
 
-### 3. Event System Architecture
+### Plugin Manager
 
-```mermaid
-graph TB
-    subgraph "Event System"
-        A[EventEmitter Interface]
-        B[EventListener Interface]
-        C[PluginEvent Struct]
-        D[EventFilter Struct]
-        
-        A --> B
-        A --> C
-        A --> D
-    end
-    
-    subgraph "Event Processing"
-        E[EmitEvent]
-        F[AddListener]
-        G[RemoveListener]
-        H[GetEventHistory]
-        
-        A --> E
-        A --> F
-        A --> G
-        A --> H
-    end
-    
-    subgraph "Event Storage"
-        I[Event History]
-        J[Event Listeners]
-        K[Event Filters]
-        
-        E --> I
-        F --> J
-        G --> J
-        H --> I
-    end
-    
-    subgraph "Plugin Events"
-        L[EmitPluginEvent]
-        M[AddPluginListener]
-        N[GetPluginEventHistory]
-        
-        A --> L
-        A --> M
-        A --> N
-    end
+The `DefaultPluginManager` handles:
+
+- Plugin registration and lookup
+- Dependency-aware plugin loading (topological sort)
+- Parallel plugin startup with rollback on failure
+- Graceful plugin shutdown in reverse order
+- Resource cleanup and statistics
+
+### Plugin Lifecycle
+
+```
+┌─────────┐    ┌────────────┐    ┌─────────┐    ┌─────────┐
+│  Load   │ -> │ Initialize │ -> │  Start  │ -> │ Running │
+└─────────┘    └────────────┘    └─────────┘    └─────────┘
+                                                     │
+                                                     ▼
+                                              ┌─────────┐
+                                              │  Stop   │
+                                              └─────────┘
+                                                     │
+                                                     ▼
+                                              ┌─────────┐
+                                              │ Cleanup │
+                                              └─────────┘
 ```
 
-### 4. Resource Management Architecture
+## Event System
 
-```mermaid
-graph TB
-    subgraph "Resource Management"
-        A[ResourceManager Interface]
-        B[TypedResourceManager]
-        C[ResourceInfo Struct]
-        
-        A --> B
-        A --> C
-    end
-    
-    subgraph "Resource Types"
-        D[Private Resources]
-        E[Shared Resources]
-        F[Typed Resources]
-        
-        A --> D
-        A --> E
-        A --> F
-    end
-    
-    subgraph "Resource Operations"
-        G[GetResource]
-        H[RegisterResource]
-        I[GetResourceInfo]
-        J[ListResources]
-        K[CleanupResources]
-        L[GetResourceStats]
-        
-        A --> G
-        A --> H
-        A --> I
-        A --> J
-        A --> K
-        A --> L
-    end
-    
-    subgraph "Resource Context"
-        M[Plugin Context]
-        N[Resource Isolation]
-        O[Resource Sharing]
-        
-        D --> M
-        E --> N
-        F --> O
-    end
-```
+### Event Types
 
-## Core Component Details
-
-### 1. Runtime Interface
+The framework supports a unified event system for inter-plugin communication:
 
 ```go
-type Runtime interface {
-    TypedResourceManager
-    ConfigProvider
-    LogProvider
-    EventEmitter
-    
-    // Logically separated resource management
-    GetPrivateResource(name string) (any, error)
-    RegisterPrivateResource(name string, resource any) error
-    GetSharedResource(name string) (any, error)
-    RegisterSharedResource(name string, resource any) error
-    
-    // Improved event system
-    EmitPluginEvent(pluginName string, eventType string, data map[string]any)
-    AddPluginListener(pluginName string, listener EventListener, filter *EventFilter)
-    GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent
-    
-    // Plugin context management
-    WithPluginContext(pluginName string) Runtime
-    GetCurrentPluginContext() string
-    
-    // Configuration management
-    SetConfig(conf config.Config)
+type PluginEvent struct {
+    Type      EventType       // Event type (started, stopped, config changed, etc.)
+    Priority  EventPriority   // Event priority
+    Source    string          // Event source
+    Category  string          // Event category
+    PluginID  string          // Plugin ID
+    Status    PluginStatus    // Plugin status
+    Timestamp int64           // Unix timestamp
+    Metadata  map[string]any  // Additional metadata
 }
 ```
 
-### 2. simpleRuntime Implementation
+### Event Bus Manager
+
+- Asynchronous event processing with configurable workers
+- Event filtering and history tracking
+- Plugin-specific listeners
+- Memory-optimized event handling with object pooling
+
+## Runtime System
+
+### TypedRuntimePlugin
+
+Provides:
+
+- Resource registration and retrieval (shared and private)
+- Configuration access
+- Event emission and listening
+- Plugin context management
+
+### Resource Management
+
+- **Private Resources**: Isolated per-plugin resources
+- **Shared Resources**: Cross-plugin shared resources
+- **Resource Info**: Lifecycle tracking and statistics
+
+## Control Plane Integration
+
+The framework supports control plane integration for:
+
+- Service discovery and registration
+- Configuration management (single and multi-config)
+- Rate limiting (HTTP and gRPC)
+- Circuit breaking
+- Load balancing
+
+Supported control planes:
+- **Polaris** (`lynx-polaris`)
+- **Nacos** (`lynx-nacos`)
+- **Apollo** (`lynx-apollo`)
+
+## Plugin Ecosystem
+
+### Service Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| `lynx-http` | HTTP server with TLS, middleware, metrics |
+| `lynx-grpc` | gRPC server/client with connection pooling, retry |
+| `lynx-swagger` | OpenAPI documentation generation |
+
+### Database Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| `lynx-mysql` | MySQL with connection pooling, health monitoring |
+| `lynx-pgsql` | PostgreSQL support |
+| `lynx-mongodb` | MongoDB integration |
+| `lynx-mssql` | Microsoft SQL Server support |
+| `lynx-elasticsearch` | Elasticsearch client |
+
+### Cache & NoSQL Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| `lynx-redis` | Redis UniversalClient (standalone/cluster/sentinel) |
+| `lynx-redis-lock` | Distributed locking with Redis |
+
+### Message Queue Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| `lynx-kafka` | Kafka producer/consumer with batching |
+| `lynx-pulsar` | Apache Pulsar integration |
+| `lynx-rabbitmq` | RabbitMQ with connection pooling |
+| `lynx-rocketmq` | Apache RocketMQ support |
+
+### Service Governance Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| `lynx-polaris` | Tencent Polaris service mesh |
+| `lynx-nacos` | Alibaba Nacos service discovery |
+| `lynx-apollo` | Apollo configuration center |
+| `lynx-sentinel` | Alibaba Sentinel flow control |
+
+### Observability Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| `lynx-tracer` | OpenTelemetry distributed tracing |
+
+### Distributed Transaction Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| `lynx-dtm` | DTM distributed transaction manager |
+| `lynx-seata` | Alibaba Seata transaction coordinator |
+
+### Utility Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| `lynx-eon-id` | Distributed ID generator |
+| `lynx-openim` | OpenIM instant messaging |
+| `lynx-sql-sdk` | SQL toolkit and utilities |
+
+## Configuration System
+
+### Configuration Sources
+
+- Local YAML/JSON files
+- Remote configuration centers (Polaris, Nacos, Apollo)
+- Environment variables
+- Command-line arguments
+
+### Multi-Configuration Support
+
+```yaml
+lynx:
+  polaris:
+    service_config:
+      group: DEFAULT_GROUP
+      filename: application.yaml
+      additional_configs:
+        - group: SHARED_GROUP
+          filename: shared-config.yaml
+          priority: 10
+        - group: ENV_GROUP
+          filename: env-specific.yaml
+          priority: 20
+          merge_strategy: override
+```
+
+## Usage Example
 
 ```go
-type simpleRuntime struct {
-    // Private resources: each plugin manages independently
-    privateResources map[string]map[string]any
-    // Shared resources: shared by all plugins
-    sharedResources map[string]any
-    // Resource info: track resource lifecycle
-    resourceInfo map[string]*ResourceInfo
-    // Configuration
-    config config.Config
-    // Mutex
-    mu sync.RWMutex
+package main
+
+import (
+    "github.com/go-lynx/lynx"
+    "github.com/go-lynx/lynx/boot"
+)
+
+func main() {
+    // Create and start application
+    app := boot.NewApplication(func(cfg config.Config) (*kratos.App, error) {
+        // Initialize your services here
+        return kratos.New(
+            kratos.Name(lynx.GetName()),
+            kratos.Version(lynx.GetVersion()),
+        ), nil
+    })
     
-    // Event system
-    listeners    map[string][]EventListener
-    eventHistory []PluginEvent
-    eventMu      sync.RWMutex
-    maxHistory   int
-    
-    // Plugin context
-    currentPluginContext string
-    contextMu           sync.RWMutex
+    if err := app.Run(); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
-### 3. Resource Info Structure
+## Design Principles
 
-```go
-type ResourceInfo struct {
-    Name        string
-    Type        string
-    PluginID    string
-    IsPrivate   bool
-    CreatedAt   time.Time
-    LastUsedAt  time.Time
-    AccessCount int64
-    Size        int64 // Resource size (bytes)
-    Metadata    map[string]any
-}
-```
+1. **Plugin-First**: Everything is a plugin, enabling modular and extensible architecture
+2. **Dependency-Aware**: Automatic dependency resolution and ordered startup/shutdown
+3. **Event-Driven**: Loosely coupled inter-plugin communication
+4. **Production-Ready**: Built-in health checks, metrics, and graceful shutdown
+5. **Cloud-Native**: Designed for Kubernetes and microservice architectures
+6. **Type-Safe**: Generic support for type-safe resource access
 
-## Design Advantages
+## Best Practices
 
-### 1. Layered Design Advantages
+### Plugin Development
 
-- **Separation of Concerns**: Each layer focuses on specific functionality
-- **Extensibility**: Easy to add new runtime implementations
-- **Testability**: Each layer can be tested independently
-- **Maintainability**: Clear hierarchical structure for easy maintenance
+1. Implement the `Plugin` interface completely
+2. Declare dependencies accurately
+3. Handle initialization failures gracefully
+4. Implement proper cleanup in Stop/Cleanup methods
+5. Emit events for significant state changes
 
-### 2. Resource Management Advantages
+### Configuration Management
 
-- **Logical Separation**: Private and shared resources are managed separately
-- **Lifecycle Management**: Complete resource tracking and cleanup
-- **Type Safety**: Generic support for type-safe resource access
-- **Performance Monitoring**: Resource statistics and size estimation
+1. Use environment-specific configurations
+2. Leverage remote configuration centers for dynamic updates
+3. Validate configurations before plugin startup
+4. Use secure practices for sensitive data
 
-### 3. Event System Advantages
+### Monitoring
 
-- **Plugin Isolation**: Plugin namespace events avoid conflicts
-- **Event Filtering**: Support for multiple filtering conditions
-- **History Records**: Complete event history queries
-- **Concurrency Safety**: Thread-safe event processing
-
-### 4. Plugin Context Advantages
-
-- **Resource Isolation**: Each plugin has independent resource context
-- **Flexible Sharing**: Support for cross-plugin resource sharing
-- **Hot Update Support**: Context isolation supports plugin hot updates
-- **Debug Friendly**: Clear resource ownership relationships
-
-## Usage Examples
-
-### 1. Basic Usage
-
-```go
-// Create plugin manager
-manager := app.NewPluginManager()
-
-// Get runtime
-runtime := manager.GetRuntime()
-
-// Register shared resources
-runtime.RegisterSharedResource("database", db)
-
-// Create context for plugin
-pluginRuntime := runtime.WithPluginContext("my-plugin")
-
-// Register private resources
-pluginRuntime.RegisterPrivateResource("config", config)
-```
-
-### 2. Event Handling
-
-```go
-// Add event listener
-listener := &MyEventListener{}
-runtime.AddListener(listener, nil)
-
-// Add plugin-specific listener
-runtime.AddPluginListener("my-plugin", listener, nil)
-
-// Emit events
-runtime.EmitPluginEvent("my-plugin", "started", map[string]any{
-    "timestamp": time.Now().Unix(),
-})
-```
-
-### 3. Resource Management
-
-```go
-// Get resource statistics
-stats := manager.GetResourceStats()
-
-// List all resources
-resources := manager.ListResources()
-
-// Clean up plugin resources
-manager.CleanupResources("my-plugin")
-```
+1. Export Prometheus metrics
+2. Implement health checks
+3. Use distributed tracing
+4. Monitor resource usage and connection pools
 
 ## Summary
 
-Lynx's layered Runtime design provides a powerful, flexible, and type-safe plugin system architecture. Through layered design, logically separated resource management, comprehensive event systems, and plugin context support, it provides a solid foundation for complex plugin systems.
-
-This architecture is particularly suitable for:
-- Plugin design in microservice architectures
-- Systems requiring hot update capabilities
-- Complex resource management scenarios
-- Systems requiring strict type safety
-- Systems requiring comprehensive monitoring and debugging capabilities
+Lynx provides a powerful, flexible, and type-safe plugin system architecture. Through layered design, unified event system, comprehensive plugin ecosystem, and production-ready features, it offers a solid foundation for building cloud-native microservices in Go.

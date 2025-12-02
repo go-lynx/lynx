@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package lynx.protobuf.plugin.db;
+
+option go_package = "github.com/go-lynx/lynx/log/conf";
+
+// Defines a message type for log system configuration.
+message log {
+  // The log level: debug, info, warn, error, etc.
+  string level = 1;
+
+  // The file path where logs should be written.
+  string file_path = 2;
+
+  // Whether to also output logs to the console.
+  bool console_output = 3;
+
+  // The maximum size of a single log file before rotation.
+  int32 max_size_mb = 4;
+
+  // The maximum number of backup log files to keep.
+  int32 max_backups = 5;
+
+  // The maximum number of days to retain old log files.
+  int32 max_age_days = 6;
+
+  // Whether to compress rotated log files.
+  bool compress = 7;
+
+  // Rotation strategy: "size" (default), "time", or "both"
+  // - "size": Rotate when file reaches max_size_mb
+  // - "time": Rotate based on rotation_interval
+  // - "both": Rotate when either condition is met
+  string rotation_strategy = 12;
+
+  // Time-based rotation interval: "hourly", "daily", "weekly"
+  // Only used when rotation_strategy is "time" or "both"
+  string rotation_interval = 13;
+
+  // Maximum total size of all log files in MB (0 = unlimited)
+  // When exceeded, oldest files will be deleted
+  int32 max_total_size_mb = 14;
+
+  // Stack trace capture configuration.
+  message Stack {
+    // Whether to enable stack capture.
+    bool enable = 1;
+
+    // Minimum level to capture stack: debug|info|warn|error|fatal
+    string level = 2;
+
+    // Number of frames to skip from the top of the stack.
+    int32 skip = 3;
+
+    // Maximum number of frames to capture.
+    int32 max_frames = 4;
+
+    // Frame prefixes to filter out (package/file prefixes).
+    repeated string filter_prefixes = 5;
+  }
+
+  // Stack trace config at top-level log config.
+  Stack stack = 8;
+
+  // Caller skip depth for caller() extraction.
+  int32 caller_skip = 9;
+
+  // Timezone name for logging timestamps, e.g. "Asia/Shanghai" or "UTC".
+  string timezone = 10;
+
+  // Sampling and rate limit configuration.
+  message Sampling {
+    // Enable sampling/ratelimiting.
+    bool enable = 1;
+
+    // Fraction 0..1 to keep info logs.
+    float info_ratio = 2;
+
+    // Fraction 0..1 to keep debug logs.
+    float debug_ratio = 3;
+
+    // Max info logs per second (0 = unlimited).
+    int32 max_info_per_sec = 4;
+
+    // Max debug logs per second (0 = unlimited).
+    int32 max_debug_per_sec = 5;
+  }
+
+  // Sampling config.
+  Sampling sampling = 11;
+
+  // Log format configuration.
+  message Format {
+    // Format type: "json" (default), "text", "pretty"
+    string type = 1;
+
+    // Console format (if different from file format)
+    // If empty, uses the same format as type
+    string console_format = 2;
+
+    // Enable color output for console (only for pretty/text format)
+    bool console_color = 3;
+  }
+
+  // Format configuration.
+  Format format = 15;
+
+  // Performance optimization configuration.
+  message Performance {
+    // Async log writer queue size (default: 2000)
+    // Larger queue size reduces log drops but uses more memory
+    int32 async_queue_size = 1;
+
+    // Batch writer size in bytes (default: 64KB)
+    int32 batch_size_bytes = 2;
+
+    // Batch flush interval in milliseconds (default: 100ms)
+    int32 batch_flush_interval_ms = 3;
+
+    // Buffer size for console output in bytes (default: 32KB)
+    int32 console_buffer_size_bytes = 4;
+  }
+
+  // Performance optimization configuration.
+  Performance performance = 16;
+}
