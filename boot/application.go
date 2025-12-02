@@ -12,14 +12,14 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/encoding/json"
-	"github.com/go-lynx/lynx/app/banner"
-	"github.com/go-lynx/lynx/app/log"
+	"github.com/go-lynx/lynx/internal/banner"
+	"github.com/go-lynx/lynx/log"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
 	kratoslog "github.com/go-kratos/kratos/v2/log"
-	lynxapp "github.com/go-lynx/lynx/app"
+	lynxapp "github.com/go-lynx/lynx"
 	"github.com/go-lynx/lynx/plugins"
 )
 

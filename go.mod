@@ -11,7 +11,10 @@ require (
 	github.com/go-kratos/kratos/v2 v2.9.1
 	github.com/go-lynx/lynx/plugins/nosql/redis v1.2.3
 	github.com/go-lynx/lynx/plugins/polaris v1.2.3
+	github.com/go-lynx/lynx/plugins/sql/base v1.2.3
+	github.com/go-lynx/lynx/plugins/sql/interfaces v1.2.3
 	github.com/go-lynx/lynx/plugins/sql/mysql v1.2.3
+	github.com/go-lynx/lynx/plugins/sql/pgsql v1.2.3
 	github.com/go-lynx/lynx/plugins/swagger v1.2.3
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/golang-jwt/jwt/v5 v5.2.2
@@ -46,8 +49,6 @@ require (
 	github.com/go-kratos/kratos/contrib/polaris/v2 v2.0.0-20250731084034-f7f150c3f139 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-lynx/lynx/plugins/sql/base v1.2.3 // indirect
-	github.com/go-lynx/lynx/plugins/sql/interfaces v1.2.3 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/spec v0.21.0 // indirect
@@ -59,6 +60,10 @@ require (
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.7.5 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
 	github.com/jcmturner/gofork v1.7.6 // indirect
