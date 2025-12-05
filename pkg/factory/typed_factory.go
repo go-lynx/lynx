@@ -26,7 +26,9 @@ func (f *TypedFactory) RegisterPlugin(name string, configPrefix string, creator 
 
 	// Check if already registered
 	if _, exists := f.creators[name]; exists {
-		panic(fmt.Errorf("plugin already registered: %s", name))
+		// Plugin already registered, skip silently to avoid duplicate registration
+		log.Debugf("plugin %s already registered, skipping", name)
+		return
 	}
 
 	// Cross-prefix duplicate name detection (defensive)
