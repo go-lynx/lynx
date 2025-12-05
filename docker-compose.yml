@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Redis service
   redis:
@@ -186,7 +184,7 @@ services:
     container_name: lynx-polaris
     restart: unless-stopped
     ports:
-      - "8080:8080"   # Console UI
+      - "8081:8080"   # Console UI (changed to avoid conflict)
       - "8090:8090"   # HTTP API
       - "8091:8091"   # gRPC API
       - "8093:8093"   # Config center HTTP
@@ -258,11 +256,11 @@ services:
 
   # Apache Pulsar service
   pulsar:
-    image: apache/pulsar:3.1.0
+    image: apachepulsar/pulsar:latest
     container_name: lynx-pulsar
     ports:
       - "6650:6650"   # Pulsar broker port
-      - "8080:8080"   # Pulsar HTTP port
+      - "8082:8080"   # Pulsar HTTP port (changed to avoid conflict)
     command: bin/pulsar standalone
     environment:
       PULSAR_MEM: "-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m"
@@ -357,8 +355,14 @@ services:
       - lynx-network
 
   # Apollo Config Service
+  # Note: If image pull fails due to network issues (TLS handshake timeout), you can:
+  # 1. Skip Apollo services: docker-compose up -d (without --profile apollo)
+  # 2. Configure Docker registry mirror (see DOCKER_NETWORK_FIX.md)
+  # 3. Manually pull images: docker pull apolloconfig/apollo-configservice:2.1.0
+  # To start with Apollo: docker-compose --profile apollo up -d
   apollo-configservice:
-    image: apolloconfig/apollo-configservice:v2.2.0
+    profiles: ["apollo"]
+    image: apolloconfig/apollo-configservice:2.1.0
     container_name: lynx-apollo-config
     ports:
       - "8080:8080"   # Apollo config service port
@@ -377,10 +381,13 @@ services:
       retries: 5
     networks:
       - lynx-network
+    restart: on-failure
 
   # Apollo Admin Service
+  # Note: If image pull fails, try configuring Docker registry mirror or use: docker pull apolloconfig/apollo-adminservice:2.1.0
   apollo-adminservice:
-    image: apolloconfig/apollo-adminservice:v2.2.0
+    profiles: ["apollo"]
+    image: apolloconfig/apollo-adminservice:2.1.0
     container_name: lynx-apollo-admin
     ports:
       - "8090:8090"   # Apollo admin service port
@@ -402,10 +409,13 @@ services:
       retries: 5
     networks:
       - lynx-network
+    restart: on-failure
 
   # Apollo Portal
+  # Note: If image pull fails, try configuring Docker registry mirror or use: docker pull apolloconfig/apollo-portal:2.1.0
   apollo-portal:
-    image: apolloconfig/apollo-portal:v2.2.0
+    profiles: ["apollo"]
+    image: apolloconfig/apollo-portal:2.1.0
     container_name: lynx-apollo-portal
     ports:
       - "8070:8070"   # Apollo portal port
@@ -430,6 +440,7 @@ services:
       retries: 5
     networks:
       - lynx-network
+    restart: on-failure
 
   # OpenTelemetry Collector (for tracer plugin)
   otel-collector:
