@@ -486,7 +486,7 @@ func (p *SlowPlugin) CheckHealth() error {
 	return nil
 }
 
-func (p *SlowPlugin) GetDependencies() []string {
+func (p *SlowPlugin) GetDependencies() []plugins.Dependency {
 	return nil
 }
 
@@ -554,7 +554,7 @@ func (p *FastPlugin) CheckHealth() error {
 	return nil
 }
 
-func (p *FastPlugin) GetDependencies() []string {
+func (p *FastPlugin) GetDependencies() []plugins.Dependency {
 	return nil
 }
 
@@ -615,7 +615,7 @@ func (p *ContextAwareSlowPlugin) CheckHealth() error {
 	return nil
 }
 
-func (p *ContextAwareSlowPlugin) GetDependencies() []string {
+func (p *ContextAwareSlowPlugin) GetDependencies() []plugins.Dependency {
 	return nil
 }
 
@@ -695,7 +695,7 @@ func (p *PanicPlugin) CheckHealth() error {
 	return nil
 }
 
-func (p *PanicPlugin) GetDependencies() []string {
+func (p *PanicPlugin) GetDependencies() []plugins.Dependency {
 	return nil
 }
 
