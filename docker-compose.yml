@@ -203,6 +203,271 @@ services:
     networks:
       - lynx-network
 
+  # Nacos service (service registry and config center)
+  # Using standalone mode with embedded Derby database (no MySQL required)
+  nacos:
+    image: nacos/nacos-server:v2.3.0
+    container_name: lynx-nacos
+    ports:
+      - "8848:8848"   # Nacos server port
+      - "9848:9848"   # Nacos gRPC port
+      - "9847:9847"   # Nacos client gRPC request server
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: false
+      NACOS_AUTH_IDENTITY_KEY: serverIdentity
+      NACOS_AUTH_IDENTITY_VALUE: security
+      PREFER_HOST_MODE: hostname
+    volumes:
+      - nacos-data:/home/nacos/data
+      - nacos-logs:/home/nacos/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # etcd service (config center)
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.9
+    container_name: lynx-etcd
+    ports:
+      - "2379:2379"   # Client port
+      - "2380:2380"   # Peer port
+    environment:
+      ETCD_NAME: lynx-etcd
+      ETCD_DATA_DIR: /etcd-data
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://localhost:2379
+      ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://localhost:2380
+      ETCD_INITIAL_CLUSTER: lynx-etcd=http://localhost:2380
+      ETCD_INITIAL_CLUSTER_TOKEN: lynx-etcd-cluster
+      ETCD_INITIAL_CLUSTER_STATE: new
+    volumes:
+      - etcd-data:/etcd-data
+    healthcheck:
+      test: ["CMD", "etcdctl", "--endpoints=http://localhost:2379", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # Apache Pulsar service
+  pulsar:
+    image: apache/pulsar:3.1.0
+    container_name: lynx-pulsar
+    ports:
+      - "6650:6650"   # Pulsar broker port
+      - "8080:8080"   # Pulsar HTTP port
+    command: bin/pulsar standalone
+    environment:
+      PULSAR_MEM: "-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m"
+    volumes:
+      - pulsar-data:/pulsar/data
+    healthcheck:
+      test: ["CMD", "bin/pulsar-admin", "brokers", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # DTM (Distributed Transaction Manager)
+  dtm:
+    image: yedf/dtm:latest
+    container_name: lynx-dtm
+    ports:
+      - "36789:36789"   # HTTP API port
+      - "36790:36790"   # gRPC port
+    environment:
+      STORE_DRIVER: redis
+      STORE_HOST: redis
+      STORE_PORT: 6379
+      STORE_PASSWORD: lynx123456
+      STORE_DB: 0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:36789/api/dtmsvr/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # Seata (Distributed Transaction Manager)
+  seata-server:
+    image: seataio/seata-server:1.8.0
+    container_name: lynx-seata
+    ports:
+      - "8091:8091"   # Seata server port
+    environment:
+      SEATA_PORT: 8091
+      STORE_MODE: file
+      SEATA_CONFIG_NAME: file:/root/seata-config/registry
+    volumes:
+      - seata-data:/root/seata/sessionStore
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 8091 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # Sentinel Dashboard (traffic control)
+  sentinel-dashboard:
+    image: bladex/sentinel-dashboard:1.8.6
+    container_name: lynx-sentinel
+    ports:
+      - "8719:8719"   # Sentinel dashboard port
+    environment:
+      JAVA_OPTS: "-Dserver.port=8719 -Dcsp.sentinel.dashboard.server=localhost:8719"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8719/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # Microsoft SQL Server
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: lynx-mssql
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Lynx123456!"
+      MSSQL_PID: "Developer"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Lynx123456!' -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # Apollo Config Service
+  apollo-configservice:
+    image: apolloconfig/apollo-configservice:v2.2.0
+    container_name: lynx-apollo-config
+    ports:
+      - "8080:8080"   # Apollo config service port
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/ApolloConfigDB?characterEncoding=utf8
+      SPRING_DATASOURCE_USERNAME: lynx
+      SPRING_DATASOURCE_PASSWORD: lynx123456
+      EUREKA_INSTANCE_IP_ADDRESS: apollo-configservice
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # Apollo Admin Service
+  apollo-adminservice:
+    image: apolloconfig/apollo-adminservice:v2.2.0
+    container_name: lynx-apollo-admin
+    ports:
+      - "8090:8090"   # Apollo admin service port
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/ApolloConfigDB?characterEncoding=utf8
+      SPRING_DATASOURCE_USERNAME: lynx
+      SPRING_DATASOURCE_PASSWORD: lynx123456
+      EUREKA_SERVICE_URL: http://apollo-configservice:8080/eureka/
+      EUREKA_INSTANCE_IP_ADDRESS: apollo-adminservice
+    depends_on:
+      mysql:
+        condition: service_healthy
+      apollo-configservice:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8090/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # Apollo Portal
+  apollo-portal:
+    image: apolloconfig/apollo-portal:v2.2.0
+    container_name: lynx-apollo-portal
+    ports:
+      - "8070:8070"   # Apollo portal port
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/ApolloPortalDB?characterEncoding=utf8
+      SPRING_DATASOURCE_USERNAME: lynx
+      SPRING_DATASOURCE_PASSWORD: lynx123456
+      APOLLO_PORTAL_ENVS: dev
+      DEV_META: http://apollo-configservice:8080
+      EUREKA_INSTANCE_IP_ADDRESS: apollo-portal
+    depends_on:
+      mysql:
+        condition: service_healthy
+      apollo-configservice:
+        condition: service_healthy
+      apollo-adminservice:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8070/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # OpenTelemetry Collector (for tracer plugin)
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: lynx-otel-collector
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "55679:55679" # zpages extension
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:55679"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
+  # Jaeger (for distributed tracing visualization)
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: lynx-jaeger
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "14268:14268"   # Jaeger collector HTTP
+      - "14250:14250"   # Jaeger collector gRPC
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lynx-network
+
 
 volumes:
   redis-data:
@@ -212,6 +477,13 @@ volumes:
   mongo-data:
   rabbitmq-data:
   polaris-data:
+  nacos-data:
+  nacos-logs:
+  etcd-data:
+  pulsar-data:
+  seata-data:
+  mssql-data:
+  apollo-data:
 
 networks:
   lynx-network:
