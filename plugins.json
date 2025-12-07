@@ -1,0 +1,135 @@
+{
+  "plugins": [
+    {
+      "name": "lynx-apollo",
+      "repo": "go-lynx/lynx-apollo",
+      "enabled": true
+    },
+    {
+      "name": "lynx-dtm",
+      "repo": "go-lynx/lynx-dtm",
+      "enabled": true
+    },
+    {
+      "name": "lynx-elasticsearch",
+      "repo": "go-lynx/lynx-elasticsearch",
+      "enabled": true
+    },
+    {
+      "name": "lynx-eon-id",
+      "repo": "go-lynx/lynx-eon-id",
+      "enabled": true
+    },
+    {
+      "name": "lynx-etcd",
+      "repo": "go-lynx/lynx-etcd",
+      "enabled": true
+    },
+    {
+      "name": "lynx-etcd-lock",
+      "repo": "go-lynx/lynx-etcd-lock",
+      "enabled": true
+    },
+    {
+      "name": "lynx-grpc",
+      "repo": "go-lynx/lynx-grpc",
+      "enabled": true
+    },
+    {
+      "name": "lynx-http",
+      "repo": "go-lynx/lynx-http",
+      "enabled": true
+    },
+    {
+      "name": "lynx-kafka",
+      "repo": "go-lynx/lynx-kafka",
+      "enabled": true
+    },
+    {
+      "name": "lynx-layout",
+      "repo": "go-lynx/lynx-layout",
+      "enabled": true
+    },
+    {
+      "name": "lynx-mongodb",
+      "repo": "go-lynx/lynx-mongodb",
+      "enabled": true
+    },
+    {
+      "name": "lynx-mssql",
+      "repo": "go-lynx/lynx-mssql",
+      "enabled": true
+    },
+    {
+      "name": "lynx-mysql",
+      "repo": "go-lynx/lynx-mysql",
+      "enabled": true
+    },
+    {
+      "name": "lynx-nacos",
+      "repo": "go-lynx/lynx-nacos",
+      "enabled": true
+    },
+    {
+      "name": "lynx-pgsql",
+      "repo": "go-lynx/lynx-pgsql",
+      "enabled": true
+    },
+    {
+      "name": "lynx-polaris",
+      "repo": "go-lynx/lynx-polaris",
+      "enabled": true
+    },
+    {
+      "name": "lynx-pulsar",
+      "repo": "go-lynx/lynx-pulsar",
+      "enabled": true
+    },
+    {
+      "name": "lynx-rabbitmq",
+      "repo": "go-lynx/lynx-rabbitmq",
+      "enabled": true
+    },
+    {
+      "name": "lynx-redis",
+      "repo": "go-lynx/lynx-redis",
+      "enabled": true
+    },
+    {
+      "name": "lynx-redis-lock",
+      "repo": "go-lynx/lynx-redis-lock",
+      "enabled": true
+    },
+    {
+      "name": "lynx-rocketmq",
+      "repo": "go-lynx/lynx-rocketmq",
+      "enabled": true
+    },
+    {
+      "name": "lynx-seata",
+      "repo": "go-lynx/lynx-seata",
+      "enabled": true
+    },
+    {
+      "name": "lynx-sentinel",
+      "repo": "go-lynx/lynx-sentinel",
+      "enabled": true
+    },
+    {
+      "name": "lynx-sql-sdk",
+      "repo": "go-lynx/lynx-sql-sdk",
+      "enabled": true
+    },
+    {
+      "name": "lynx-swagger",
+      "repo": "go-lynx/lynx-swagger",
+      "enabled": true
+    },
+    {
+      "name": "lynx-tracer",
+      "repo": "go-lynx/lynx-tracer",
+      "enabled": true
+    }
+  ]
+}
+
