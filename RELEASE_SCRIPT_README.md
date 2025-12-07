@@ -5,8 +5,8 @@ This script automatically tags and releases all `lynx-*` plugins on GitHub using
 ## Features
 
 - ✅ Reads plugin list from configuration file (`plugins.json`)
-- ✅ Supports different GitHub repositories for each plugin
-- ✅ Creates tags for each plugin (format: `plugin-name/version`, e.g., `lynx-redis/v1.0.0`)
+- ✅ Each plugin is an independent GitHub repository
+- ✅ Creates tags in each plugin's own repository (format: `version`, e.g., `v1.0.0`)
 - ✅ Automatically deletes existing tags and releases (if they exist)
 - ✅ Creates releases on GitHub for each plugin's repository
 - ✅ Supports dry-run mode for previewing operations
@@ -82,14 +82,17 @@ The script performs the following operations for **each plugin** in the configur
 
 1. **Load configuration**: Read plugin list from `plugins.json`
 2. **For each enabled plugin**:
+   - **Navigate to plugin directory**: Each plugin must be in its own git repository
    - **Check for existing GitHub release**: If exists, delete it first (in the plugin's repository)
-   - **Delete remote tag**: If exists, delete it first
-   - **Delete local tag**: If exists, delete it first
-   - **Create local tag**: Format is `plugin-name/version`
-   - **Push tag to remote**: Push to GitHub
+   - **Delete remote tag**: If exists, delete it first (from plugin's repository)
+   - **Delete local tag**: If exists, delete it first (in plugin's directory)
+   - **Create local tag**: Format is `version` (e.g., `v1.0.0`) in the plugin's repository
+   - **Push tag to remote**: Push tag to the plugin's GitHub repository
    - **Create GitHub release**: Create corresponding release in the plugin's GitHub repository
 
 All plugins are processed in sequence. The script will show progress for each plugin and provide a summary at the end.
+
+**Important**: Each plugin directory must be a separate git repository with its own remote configured.
 
 ## Notes
 
@@ -97,7 +100,7 @@ All plugins are processed in sequence. The script will show progress for each pl
    - `repo` permission (for creating and deleting releases in all plugin repositories)
    - Or at least `public_repo` permission (if repositories are public)
 
-2. **Git Repository**: The script must be run in a git repository with `origin` remote configured. Tags are created in the current repository.
+2. **Git Repository**: Each plugin directory must be a separate git repository with `origin` remote configured. The script will navigate to each plugin directory and perform git operations there.
 
 3. **Version Format**: Recommended to use semantic versioning, e.g.:
    - `v1.0.0`
@@ -119,11 +122,12 @@ All plugins are processed in sequence. The script will show progress for each pl
 
 Processing plugin: lynx-redis
 Repository: go-lynx/lynx-redis
-Tag: lynx-redis/v1.0.0
-✅ Deleted local tag: lynx-redis/v1.0.0
-✅ Created local tag: lynx-redis/v1.0.0
-✅ Pushed tag to remote: lynx-redis/v1.0.0
-✅ Created GitHub release: lynx-redis/v1.0.0
+Plugin directory: /path/to/lynx-redis
+Tag: v1.0.0
+✅ Deleted local tag: v1.0.0
+✅ Created local tag: v1.0.0
+✅ Pushed tag to remote: v1.0.0
+✅ Created GitHub release: v1.0.0
 ✅ Plugin lynx-redis processed successfully
 
 ============================================================
@@ -164,12 +168,26 @@ Success: 26/26
 2. Click **"Generate new token"** → **"Generate new token (classic)"**
 3. Give it a name (e.g., "Lynx Plugin Release")
 4. Select expiration (recommend: 90 days or custom)
-5. **Select scopes** (required permissions):
-   - ✅ `repo` (Full control of private repositories)
-     - This includes: `repo:status`, `repo_deployment`, `public_repo`, `repo:invite`, `security_events`
-6. Click **"Generate token"**
-7. **Copy the token immediately** (you won't be able to see it again!)
-   - Token format: `ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+
+5. **Repository access** (IMPORTANT):
+   - Select **"All repositories"** (recommended)
+   - OR **"Only select repositories"** and select all your plugin repositories
+   
+6. **Repository permissions** (scroll down to find this section):
+   - Expand **"Repository permissions"** section
+   - Under **"Contents"**: Select **"Read and write"**
+   - Under **"Metadata"**: Select **"Read-only"** (usually selected by default)
+   - Under **"Pull requests"**: Not required, but can be "Read-only" if needed
+   - **Most importantly**: Look for **"Releases"** permission and select **"Write"**
+     - This is required to create and delete releases!
+
+7. Click **"Generate token"** at the bottom
+8. **Copy the token immediately** (you won't be able to see it again!)
+   - Token format: `ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` or `github_pat_...`
+
+**Note**: If you don't see "Releases" permission, make sure you:
+- Selected "All repositories" or specific repositories in "Repository access"
+- Scrolled down to the "Repository permissions" section (not "Account permissions")
 
 ### Step 2: Set the Token
 
