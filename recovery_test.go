@@ -63,12 +63,12 @@ func TestErrorRecoveryManager_ConcurrentRecovery(t *testing.T) {
 	t.Logf("Total recovery attempts: %d", recoveryCount)
 }
 
-// TestErrorRecoveryManager_RecoveryKeyCollision 测试恢复键冲突E
+// TestErrorRecoveryManager_RecoveryKeyCollision tests recovery key collision
 func TestErrorRecoveryManager_RecoveryKeyCollision(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
-	// 创建相同时间戳皁E��同错误�E�可能产生相同的 recoveryKey�E�E
+	// Creating records with the same timestamp and error type may produce the same recoveryKey
 	now := time.Now()
 	record1 := ErrorRecord{
 		ErrorType: "transient",
@@ -83,7 +83,7 @@ func TestErrorRecoveryManager_RecoveryKeyCollision(t *testing.T) {
 		Severity:  ErrorSeverityLow,
 	}
 
-	// 同时触发两个恢复操佁E
+	// Trigger two recovery operations simultaneously
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -99,10 +99,10 @@ func TestErrorRecoveryManager_RecoveryKeyCollision(t *testing.T) {
 
 	wg.Wait()
 
-	// 等征E��复完�E
+	// Wait for recovery to complete
 	time.Sleep(200 * time.Millisecond)
 
-	// 验证恢复键皁E��一性�E�通迁E��查 activeRecoveries�E�E
+	// Verify recovery key uniqueness by checking activeRecoveries
 	activeCount := 0
 	erm.activeRecoveries.Range(func(key, value interface{}) bool {
 		activeCount++
@@ -114,7 +114,7 @@ func TestErrorRecoveryManager_RecoveryKeyCollision(t *testing.T) {
 	}
 }
 
-// TestErrorRecoveryManager_ConcurrentRecordError 测试并发记录错误
+// TestErrorRecoveryManager_ConcurrentRecordError tests concurrent error recording
 func TestErrorRecoveryManager_ConcurrentRecordError(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
@@ -132,7 +132,7 @@ func TestErrorRecoveryManager_ConcurrentRecordError(t *testing.T) {
 
 	wg.Wait()
 
-	// 验证E��误计数正确性
+	// Verify error count correctness
 	stats := erm.GetErrorStats()
 	count, ok := stats["test-error"].(int64)
 	if !ok {
@@ -143,14 +143,14 @@ func TestErrorRecoveryManager_ConcurrentRecordError(t *testing.T) {
 		t.Errorf("Expected error count %d, got %d", numGoroutines, count)
 	}
 
-	// 验证E��误厁E��记彁E
+	// Verify error history records
 	history := erm.GetErrorHistory()
 	if len(history) != numGoroutines {
 		t.Errorf("Expected error history length %d, got %d", numGoroutines, len(history))
 	}
 }
 
-// TestErrorRecoveryManager_GoroutineLeak 测证Egoroutine 況E��E
+// TestErrorRecoveryManager_GoroutineLeak tests goroutine leak
 func TestErrorRecoveryManager_GoroutineLeak(t *testing.T) {
 	before := runtime.NumGoroutine()
 
@@ -163,24 +163,24 @@ func TestErrorRecoveryManager_GoroutineLeak(t *testing.T) {
 		Severity:  ErrorSeverityLow,
 	}
 
-	// 启动恢复操佁E
+	// Start recovery operation
 	go erm.attemptRecovery(record)
 
-	// 立即停止管琁E��
+	// Stop manager immediately
 	erm.Stop()
 
-	// 等征Egoroutine 退出
+	// Wait for goroutine to exit
 	time.Sleep(500 * time.Millisecond)
 
 	after := runtime.NumGoroutine()
 
-	// 允许一些系绁Egoroutine�E�佁E��该接近�E始值
+	// Allow some system goroutines, should be close to initial value
 	if after > before+5 {
 		t.Errorf("Possible goroutine leak: before=%d, after=%d", before, after)
 	}
 }
 
-// TestErrorRecoveryManager_StopMonitorGoroutineExit 测试停止监控 goroutine 退出
+// TestErrorRecoveryManager_StopMonitorGoroutineExit tests stop monitor goroutine exit
 func TestErrorRecoveryManager_StopMonitorGoroutineExit(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
@@ -194,8 +194,8 @@ func TestErrorRecoveryManager_StopMonitorGoroutineExit(t *testing.T) {
 		Severity:  ErrorSeverityLow,
 	}
 
-	// 启动恢复操作（会在获叁Esemaphore 前返回�E�E
-	// 通迁E��满信号量来触发趁E��
+	// Start recovery operation (will return before acquiring semaphore)
+	// Trigger timeout by filling the semaphore
 	for i := 0; i < 10; i++ {
 		select {
 		case erm.recoverySemaphore <- struct{}{}:
@@ -203,13 +203,13 @@ func TestErrorRecoveryManager_StopMonitorGoroutineExit(t *testing.T) {
 		}
 	}
 
-	// 尝试恢复（应该因为信号量满而趁E���E�E
+	// Attempt recovery (should timeout because semaphore is full)
 	go erm.attemptRecovery(record)
 
-	// 等征E��E��和渁E��
+	// Wait for timeout and cleanup
 	time.Sleep(300 * time.Millisecond)
 
-	// 释放信号釁E
+	// Release semaphore
 	for i := 0; i < 10; i++ {
 		select {
 		case <-erm.recoverySemaphore:
@@ -217,7 +217,7 @@ func TestErrorRecoveryManager_StopMonitorGoroutineExit(t *testing.T) {
 		}
 	}
 
-	// 等征Egoroutine 退出
+	// Wait for goroutine to exit
 	time.Sleep(200 * time.Millisecond)
 
 	after := runtime.NumGoroutine()
@@ -227,14 +227,14 @@ func TestErrorRecoveryManager_StopMonitorGoroutineExit(t *testing.T) {
 	}
 }
 
-// TestErrorRecoveryManager_SemaphoreTimeoutGoroutineCleanup 测试信号量趁E��时皁Egoroutine 渁E��
+// TestErrorRecoveryManager_SemaphoreTimeoutGoroutineCleanup tests goroutine cleanup on semaphore timeout
 func TestErrorRecoveryManager_SemaphoreTimeoutGoroutineCleanup(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
 	before := runtime.NumGoroutine()
 
-	// 填满信号釁E
+	// Fill semaphore
 	for i := 0; i < 10; i++ {
 		select {
 		case erm.recoverySemaphore <- struct{}{}:
@@ -249,13 +249,13 @@ func TestErrorRecoveryManager_SemaphoreTimeoutGoroutineCleanup(t *testing.T) {
 		Severity:  ErrorSeverityLow,
 	}
 
-	// 尝试恢复（应该因为信号量满而趁E���E�E
+	// Attempt recovery (should timeout because semaphore is full)
 	go erm.attemptRecovery(record)
 
-	// 等征E��E��和渁E��
+	// Wait for timeout and cleanup
 	time.Sleep(300 * time.Millisecond)
 
-	// 释放信号釁E
+	// Release semaphore
 	for i := 0; i < 10; i++ {
 		select {
 		case <-erm.recoverySemaphore:
@@ -263,7 +263,7 @@ func TestErrorRecoveryManager_SemaphoreTimeoutGoroutineCleanup(t *testing.T) {
 		}
 	}
 
-	// 等征Egoroutine 退出
+	// Wait for goroutine to exit
 	time.Sleep(200 * time.Millisecond)
 
 	after := runtime.NumGoroutine()
@@ -273,15 +273,15 @@ func TestErrorRecoveryManager_SemaphoreTimeoutGoroutineCleanup(t *testing.T) {
 	}
 }
 
-// TestErrorRecoveryManager_RecoveryTimeout 测试恢复趁E��
+// TestErrorRecoveryManager_RecoveryTimeout tests recovery timeout
 func TestErrorRecoveryManager_RecoveryTimeout(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
-	// 创建一个会趁E��皁E��复策略
+	// Create a recovery strategy that will timeout
 	slowStrategy := &slowRecoveryStrategy{
 		timeout: 100 * time.Millisecond,
-		delay:   200 * time.Millisecond, // 比趁E��时间长
+		delay:   200 * time.Millisecond, // Longer than timeout
 	}
 	erm.RegisterRecoveryStrategy("slow", slowStrategy)
 
@@ -294,20 +294,20 @@ func TestErrorRecoveryManager_RecoveryTimeout(t *testing.T) {
 
 	before := runtime.NumGoroutine()
 
-	// 触发恢复操佁E
+	// Trigger recovery operation
 	go erm.attemptRecovery(record)
 
-	// 等征E��E��
+	// Wait for timeout
 	time.Sleep(300 * time.Millisecond)
 
 	after := runtime.NumGoroutine()
 
-	// 验证趁E��后正确渁E��
+	// Verify proper cleanup after timeout
 	if after > before+5 {
 		t.Errorf("Possible goroutine leak after timeout: before=%d, after=%d", before, after)
 	}
 
-	// 验证活跁E��复被渁E��
+	// Verify active recoveries are cleaned up
 	activeCount := 0
 	erm.activeRecoveries.Range(func(key, value interface{}) bool {
 		activeCount++
@@ -319,14 +319,14 @@ func TestErrorRecoveryManager_RecoveryTimeout(t *testing.T) {
 	}
 }
 
-// TestErrorRecoveryManager_SemaphoreTimeout 测试信号量获取趁E��
+// TestErrorRecoveryManager_SemaphoreTimeout tests semaphore acquisition timeout
 func TestErrorRecoveryManager_SemaphoreTimeout(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
 	before := runtime.NumGoroutine()
 
-	// 填满信号釁E
+	// Fill semaphore
 	for i := 0; i < 10; i++ {
 		select {
 		case erm.recoverySemaphore <- struct{}{}:
@@ -341,13 +341,13 @@ func TestErrorRecoveryManager_SemaphoreTimeout(t *testing.T) {
 		Severity:  ErrorSeverityLow,
 	}
 
-	// 尝试恢复（应该因为信号量满而趁E���E�E
+	// Attempt recovery (should timeout because semaphore is full)
 	go erm.attemptRecovery(record)
 
-	// 等征E��E��
+	// Wait for timeout
 	time.Sleep(300 * time.Millisecond)
 
-	// 释放信号釁E
+	// Release semaphore
 	for i := 0; i < 10; i++ {
 		select {
 		case <-erm.recoverySemaphore:
@@ -355,7 +355,7 @@ func TestErrorRecoveryManager_SemaphoreTimeout(t *testing.T) {
 		}
 	}
 
-	// 等征E��E��
+	// Wait for cleanup
 	time.Sleep(200 * time.Millisecond)
 
 	after := runtime.NumGoroutine()
@@ -365,7 +365,7 @@ func TestErrorRecoveryManager_SemaphoreTimeout(t *testing.T) {
 	}
 }
 
-// TestErrorRecoveryManager_ContextCancellation 测证Econtext 取涁E
+// TestErrorRecoveryManager_ContextCancellation tests context cancellation
 func TestErrorRecoveryManager_ContextCancellation(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 
@@ -378,13 +378,13 @@ func TestErrorRecoveryManager_ContextCancellation(t *testing.T) {
 
 	before := runtime.NumGoroutine()
 
-	// 启动恢复操佁E
+	// Start recovery operation
 	go erm.attemptRecovery(record)
 
-	// 立即停止管琁E���E�取消所有恢复！E
+	// Stop manager immediately, cancel all recoveries
 	erm.Stop()
 
-	// 等征E��E��
+	// Wait for cleanup
 	time.Sleep(300 * time.Millisecond)
 
 	after := runtime.NumGoroutine()
@@ -393,7 +393,7 @@ func TestErrorRecoveryManager_ContextCancellation(t *testing.T) {
 		t.Errorf("Possible goroutine leak: before=%d, after=%d", before, after)
 	}
 
-	// 验证活跁E��复被渁E��
+	// Verify active recoveries are cleaned up
 	activeCount := 0
 	erm.activeRecoveries.Range(func(key, value interface{}) bool {
 		activeCount++
@@ -405,12 +405,12 @@ func TestErrorRecoveryManager_ContextCancellation(t *testing.T) {
 	}
 }
 
-// TestErrorRecoveryManager_NilStrategy 测试空策略
+// TestErrorRecoveryManager_NilStrategy tests nil strategy
 func TestErrorRecoveryManager_NilStrategy(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
-	// 记录一个没有对应策略皁E��误�E�应该使用默认策略�E�E
+	// Record an error without a corresponding strategy, should use default strategy
 	record := ErrorRecord{
 		ErrorType: "unknown-error",
 		Component: "test-component",
@@ -418,21 +418,21 @@ func TestErrorRecoveryManager_NilStrategy(t *testing.T) {
 		Severity:  ErrorSeverityLow,
 	}
 
-	// 应该使用默认皁E"transient" 策略
+	// Should use default "transient" strategy
 	erm.attemptRecovery(record)
 
-	// 等征E���E
+	// Wait for completion
 	time.Sleep(200 * time.Millisecond)
 
-	// 验证没朁Epanic
+	// Verify no panic
 }
 
-// TestErrorRecoveryManager_StrategyCannotRecover 测试策略无法恢夁E
+// TestErrorRecoveryManager_StrategyCannotRecover tests strategy that cannot recover
 func TestErrorRecoveryManager_StrategyCannotRecover(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
-	// 创建一个无法恢复的策略
+	// Create a strategy that cannot recover
 	cannotRecoverStrategy := &cannotRecoverStrategy{
 		timeout: 100 * time.Millisecond,
 	}
@@ -442,16 +442,16 @@ func TestErrorRecoveryManager_StrategyCannotRecover(t *testing.T) {
 		ErrorType: "cannot-recover",
 		Component: "test-component",
 		Timestamp: time.Now(),
-		Severity:  ErrorSeverityHigh, // 高严重性�E�策略无法恢夁E
+		Severity:  ErrorSeverityHigh, // High severity, strategy cannot recover
 	}
 
-	// 触发恢复操佁E
+	// Trigger recovery operation
 	erm.attemptRecovery(record)
 
-	// 等征E���E
+	// Wait for completion
 	time.Sleep(200 * time.Millisecond)
 
-	// 验证没有活跁E��夁E
+	// Verify no active recovery
 	activeCount := 0
 	erm.activeRecoveries.Range(func(key, value interface{}) bool {
 		activeCount++
@@ -463,15 +463,15 @@ func TestErrorRecoveryManager_StrategyCannotRecover(t *testing.T) {
 	}
 }
 
-// TestErrorRecoveryManager_RecoveryTimeoutCap 测试恢复趁E��上限
+// TestErrorRecoveryManager_RecoveryTimeoutCap tests recovery timeout cap
 func TestErrorRecoveryManager_RecoveryTimeoutCap(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
-	// 创建一个趁E��时间 > 60s 皁E��略
+	// Create a strategy with timeout > 60s
 	longTimeoutStrategy := &DefaultRecoveryStrategy{
 		name:    "long-timeout",
-		timeout: 120 * time.Second, // 趁E��E60s 上限
+		timeout: 120 * time.Second, // Exceeds 60s cap
 	}
 	erm.RegisterRecoveryStrategy("long-timeout", longTimeoutStrategy)
 
@@ -484,27 +484,27 @@ func TestErrorRecoveryManager_RecoveryTimeoutCap(t *testing.T) {
 
 	start := time.Now()
 
-	// 触发恢复操佁E
+	// Trigger recovery operation
 	go erm.attemptRecovery(record)
 
-	// 等征E��段时间
+	// Wait for a while
 	time.Sleep(200 * time.Millisecond)
 
-	// 停止管琁E��
+	// Stop manager
 	erm.Stop()
 
-	// 等征E��E��
+	// Wait for cleanup
 	time.Sleep(200 * time.Millisecond)
 
 	duration := time.Since(start)
 
-	// 验证趁E��时间被限制在 60s�E�实际测试中应该很快完�E�E�E
+	// Verify timeout is capped at 60s, should complete quickly in actual test
 	if duration > 70*time.Second {
 		t.Errorf("Recovery timeout was not capped: duration=%v", duration)
 	}
 }
 
-// slowRecoveryStrategy 是一个会延迟的恢复策略�E�用于测试趁E���E�E
+// slowRecoveryStrategy is a recovery strategy that delays, used for testing timeout
 type slowRecoveryStrategy struct {
 	timeout time.Duration
 	delay   time.Duration
@@ -531,7 +531,7 @@ func (s *slowRecoveryStrategy) GetTimeout() time.Duration {
 	return s.timeout
 }
 
-// cannotRecoverStrategy 是一个无法恢复的策略�E�用于测试！E
+// cannotRecoverStrategy is a strategy that cannot recover, used for testing
 type cannotRecoverStrategy struct {
 	timeout time.Duration
 }
@@ -541,7 +541,7 @@ func (s *cannotRecoverStrategy) Name() string {
 }
 
 func (s *cannotRecoverStrategy) CanRecover(errorType string, severity ErrorSeverity) bool {
-	// 只对低严重性错误可以恢夁E
+	// Only recoverable for low severity errors
 	return severity <= ErrorSeverityLow
 }
 
@@ -558,23 +558,23 @@ func (s *cannotRecoverStrategy) GetTimeout() time.Duration {
 	return s.timeout
 }
 
-// TestErrorRecoveryManager_StopMultipleTimes 测试多次谁E�� Stop
+// TestErrorRecoveryManager_StopMultipleTimes tests calling Stop multiple times
 func TestErrorRecoveryManager_StopMultipleTimes(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 
-	// 多次谁E�� Stop�E�应该只执行一次�E�E
+	// Call Stop multiple times, should only execute once
 	erm.Stop()
 	erm.Stop()
 	erm.Stop()
 
-	// 验证没朁Epanic
+	// Verify no panic
 }
 
-// TestErrorRecoveryManager_WithMetrics 测试带 metrics 皁E��复管琁E��
+// TestErrorRecoveryManager_WithMetrics tests recovery manager with metrics
 func TestErrorRecoveryManager_WithMetrics(t *testing.T) {
-	// 创建 metrics�E�如果可用�E�E
+	// Create metrics, if available
 	var m *metrics.ProductionMetrics
-	// 注意：这里可能需要根据实际皁Emetrics 初始化方式谁E��
+	// Note: This may need to be adjusted based on actual metrics initialization
 	erm := NewErrorRecoveryManager(m)
 	defer erm.Stop()
 
@@ -585,11 +585,11 @@ func TestErrorRecoveryManager_WithMetrics(t *testing.T) {
 		Severity:  ErrorSeverityLow,
 	}
 
-	// 触发恢复操佁E
+	// Trigger recovery operation
 	go erm.attemptRecovery(record)
 
-	// 等征E���E
+	// Wait for completion
 	time.Sleep(200 * time.Millisecond)
 
-	// 验证没朁Epanic
+	// Verify no panic
 }
