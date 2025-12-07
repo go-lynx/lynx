@@ -354,7 +354,7 @@ def process_plugin(plugin_name: str, plugin_repo: str, version: str,
     # 6. Create GitHub release
     if github_api:
         print_info("Step 6: Creating GitHub release...")
-        release_name = f"{plugin_name} {version}"
+        release_name = version  # Only version number, no plugin name prefix
         release_body = f"Release {version} for {plugin_name}"
         if not github_api.create_release(tag, release_name, release_body, dry_run=dry_run):
             return False
