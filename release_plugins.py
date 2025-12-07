@@ -68,14 +68,15 @@ except ImportError:
     sys.exit(1)
 
 
-def run_cmd(cmd: List[str], check: bool = True, capture_output: bool = False) -> Tuple[int, str, str]:
+def run_cmd(cmd: List[str], check: bool = True, capture_output: bool = False, cwd: Optional[str] = None) -> Tuple[int, str, str]:
     """Execute shell command"""
     try:
         result = subprocess.run(
             cmd,
             check=check,
             capture_output=capture_output,
-            text=True
+            text=True,
+            cwd=cwd
         )
         stdout = result.stdout.strip() if capture_output else ""
         stderr = result.stderr.strip() if capture_output else ""
@@ -148,13 +149,13 @@ def check_tag_exists(tag: str) -> bool:
     return code == 0
 
 
-def delete_local_tag(tag: str, dry_run: bool = False) -> bool:
-    """Delete local tag"""
+def delete_local_tag(tag: str, plugin_dir: Path, dry_run: bool = False) -> bool:
+    """Delete local tag in plugin directory"""
     if dry_run:
         print_info(f"[DRY-RUN] Would delete local tag: {tag}")
         return True
     
-    code, _, _ = run_cmd(["git", "tag", "-d", tag], check=False)
+    code, _, _ = run_cmd(["git", "tag", "-d", tag], check=False, cwd=str(plugin_dir))
     if code == 0:
         print_success(f"Deleted local tag: {tag}")
         return True
@@ -163,13 +164,13 @@ def delete_local_tag(tag: str, dry_run: bool = False) -> bool:
         return False
 
 
-def create_local_tag(tag: str, dry_run: bool = False) -> bool:
-    """Create local tag"""
+def create_local_tag(tag: str, plugin_dir: Path, dry_run: bool = False) -> bool:
+    """Create local tag in plugin directory"""
     if dry_run:
         print_info(f"[DRY-RUN] Would create local tag: {tag}")
         return True
     
-    code, _, _ = run_cmd(["git", "tag", tag], check=False)
+    code, _, _ = run_cmd(["git", "tag", tag], check=False, cwd=str(plugin_dir))
     if code == 0:
         print_success(f"Created local tag: {tag}")
         return True
@@ -178,13 +179,13 @@ def create_local_tag(tag: str, dry_run: bool = False) -> bool:
         return False
 
 
-def push_tag(tag: str, dry_run: bool = False) -> bool:
-    """Push tag to remote"""
+def push_tag(tag: str, plugin_dir: Path, dry_run: bool = False) -> bool:
+    """Push tag to remote from plugin directory"""
     if dry_run:
         print_info(f"[DRY-RUN] Would push tag to remote: {tag}")
         return True
     
-    code, _, _ = run_cmd(["git", "push", "origin", tag], check=False)
+    code, _, _ = run_cmd(["git", "push", "origin", tag], check=False, cwd=str(plugin_dir))
     if code == 0:
         print_success(f"Pushed tag to remote: {tag}")
         return True
@@ -193,13 +194,13 @@ def push_tag(tag: str, dry_run: bool = False) -> bool:
         return False
 
 
-def delete_remote_tag(tag: str, dry_run: bool = False) -> bool:
-    """Delete remote tag"""
+def delete_remote_tag(tag: str, plugin_dir: Path, dry_run: bool = False) -> bool:
+    """Delete remote tag from plugin directory"""
     if dry_run:
         print_info(f"[DRY-RUN] Would delete remote tag: {tag}")
         return True
     
-    code, _, _ = run_cmd(["git", "push", "origin", "--delete", tag], check=False)
+    code, _, _ = run_cmd(["git", "push", "origin", "--delete", tag], check=False, cwd=str(plugin_dir))
     if code == 0:
         print_success(f"Deleted remote tag: {tag}")
         return True
@@ -216,8 +217,15 @@ class GitHubAPI:
         self.owner = owner
         self.repo = repo
         self.base_url = "https://api.github.com"
+        # Support both classic tokens (ghp_...) and fine-grained tokens (github_pat_...)
+        # Classic tokens use "token", fine-grained tokens use "Bearer"
+        if token.startswith("github_pat_"):
+            auth_header = f"Bearer {token}"
+        else:
+            auth_header = f"token {token}"
+        
         self.headers = {
-            "Authorization": f"token {token}",
+            "Authorization": auth_header,
             "Accept": "application/vnd.github.v3+json",
         }
     
@@ -272,18 +280,41 @@ class GitHubAPI:
             print_success(f"Created GitHub release: {tag}")
             return True
         else:
-            print_error(f"Failed to create GitHub release: {response.status_code} - {response.text}")
+            error_msg = response.text
+            if response.status_code == 403:
+                print_error(f"Failed to create GitHub release: 403 Forbidden")
+                print_error(f"  Repository: {self.owner}/{self.repo}")
+                print_error(f"  Error: {error_msg}")
+                print_warning("  Possible causes:")
+                print_warning("    1. Token does not have 'repo' permission")
+                print_warning("    2. Token does not have access to this repository")
+                print_warning("    3. Repository is private and token lacks private repo access")
+                print_warning("  Solution: Create a new token with 'repo' scope at:")
+                print_warning("    https://github.com/settings/tokens")
+            else:
+                print_error(f"Failed to create GitHub release: {response.status_code} - {error_msg}")
             return False
 
 
 def process_plugin(plugin_name: str, plugin_repo: str, version: str, 
-                   github_api: Optional[GitHubAPI], dry_run: bool = False) -> bool:
-    """Process a single plugin: tag and create release"""
-    tag = f"{plugin_name}/{version}"
+                   plugin_dir: Path, github_api: Optional[GitHubAPI], dry_run: bool = False) -> bool:
+    """Process a single plugin: tag and create release in its own repository"""
+    # Tag is just the version (e.g., v1.5.0), not plugin-name/version
+    tag = version
     
     print_info(f"\nProcessing plugin: {plugin_name}")
     print_info(f"Repository: {plugin_repo}")
+    print_info(f"Plugin directory: {plugin_dir}")
     print_info(f"Tag: {tag}")
+    
+    # Check if plugin directory exists and is a git repository
+    if not plugin_dir.exists():
+        print_error(f"Plugin directory does not exist: {plugin_dir}")
+        return False
+    
+    if not (plugin_dir / ".git").exists():
+        print_error(f"Plugin directory is not a git repository: {plugin_dir}")
+        return False
     
     if not github_api:
         print_warning("⚠️  GitHub API not available - will skip release operations")
@@ -304,20 +335,20 @@ def process_plugin(plugin_name: str, plugin_repo: str, version: str,
     
     # 2. Delete remote tag (if exists)
     print_info("Step 2: Deleting remote tag (if exists)...")
-    delete_remote_tag(tag, dry_run=dry_run)
+    delete_remote_tag(tag, plugin_dir, dry_run=dry_run)
     
     # 3. Delete local tag (if exists)
     print_info("Step 3: Deleting local tag (if exists)...")
-    delete_local_tag(tag, dry_run=dry_run)
+    delete_local_tag(tag, plugin_dir, dry_run=dry_run)
     
     # 4. Create local tag
     print_info("Step 4: Creating local tag...")
-    if not create_local_tag(tag, dry_run=dry_run):
+    if not create_local_tag(tag, plugin_dir, dry_run=dry_run):
         return False
     
     # 5. Push tag to remote
     print_info("Step 5: Pushing tag to remote...")
-    if not push_tag(tag, dry_run=dry_run):
+    if not push_tag(tag, plugin_dir, dry_run=dry_run):
         return False
     
     # 6. Create GitHub release
@@ -404,6 +435,13 @@ Examples:
         plugin_name = plugin_config['name']
         plugin_repo = plugin_config['repo']
         
+        # Get plugin directory (parent directory of lynx folder)
+        plugin_dir = root_dir.parent / plugin_name
+        if not plugin_dir.exists():
+            print_error(f"Plugin directory not found: {plugin_dir}")
+            failed_plugins.append(plugin_name)
+            continue
+        
         # Create GitHub API for this plugin's repository
         github_api = None
         if token:
@@ -416,7 +454,7 @@ Examples:
                 continue
         
         try:
-            if process_plugin(plugin_name, plugin_repo, version, github_api, args.dry_run):
+            if process_plugin(plugin_name, plugin_repo, version, plugin_dir, github_api, args.dry_run):
                 success_count += 1
             else:
                 failed_plugins.append(plugin_name)
