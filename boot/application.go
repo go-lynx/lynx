@@ -18,7 +18,6 @@ import (
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
-	kratoslog "github.com/go-kratos/kratos/v2/log"
 	lynxapp "github.com/go-lynx/lynx"
 	"github.com/go-lynx/lynx/plugins"
 )
@@ -104,7 +103,7 @@ func isTestEnvironment() bool {
 }
 
 // wireApp is a function type used to initialize and return a Kratos application instance
-type wireApp func(logger kratoslog.Logger) (*kratos.App, error)
+type wireApp func() (*kratos.App, error)
 
 // Run starts the Lynx application and manages its lifecycle with enhanced production features
 func (app *Application) Run() error {
@@ -172,7 +171,7 @@ func (app *Application) Run() error {
 	}
 
 	// Initialize Kratos application with proxy logger (hot-swappable inner)
-	kratosApp, err := app.wire(log.GetProxyLogger())
+	kratosApp, err := app.wire()
 	if err != nil {
 		log.Error(err)
 		return fmt.Errorf("failed to initialize Kratos application: %w", err)

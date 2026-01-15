@@ -133,7 +133,7 @@ When adding new internal packages:
 | `internal/adapters` | `plugins/` (Plugin SDK) |
 | `internal/banner` | `boot/` (Application startup) |
 | `internal/config` | `conf/` (Configuration) |
-| `internal/kratos` | Root `lynx` package |
+| `kratos` | Root `lynx` package (moved from internal/kratos) |
 | `internal/resource` | `cache/` (Cache abstractions) |
 
 ## License
