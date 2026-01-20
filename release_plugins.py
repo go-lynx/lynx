@@ -367,7 +367,7 @@ def process_plugin(plugin_name: str, plugin_repo: str, version: str,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Tag and release all lynx plugins on GitHub",
+        description="Tag and release lynx plugins on GitHub (all plugins or a single plugin)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -376,6 +376,9 @@ Examples:
   
   # Specify GitHub token
   python3 release_plugins.py v1.0.0 --token ghp_xxxxx
+  
+  # Release a single plugin
+  python3 release_plugins.py v1.0.0 --plugin lynx-redis
   
   # Use custom configuration file
   python3 release_plugins.py v1.0.0 --config my-plugins.json
@@ -388,6 +391,7 @@ Examples:
     parser.add_argument("version", help="Version number, e.g.: v1.0.0")
     parser.add_argument("--token", help="GitHub token (or set GITHUB_TOKEN environment variable)")
     parser.add_argument("--config", default="plugins.json", help="Path to plugins configuration file (default: plugins.json)")
+    parser.add_argument("--plugin", help="Process only a specific plugin by name (e.g., lynx-redis)")
     parser.add_argument("--dry-run", action="store_true", help="Dry-run mode, do not execute actual operations")
     
     args = parser.parse_args()
@@ -412,14 +416,28 @@ Examples:
     config_path = root_dir / args.config
     plugins_config = load_plugins_config(config_path)
     
-    print_info(f"\nLoaded {len(plugins_config)} plugins from configuration:")
+    # Filter to single plugin if specified
+    if args.plugin:
+        plugin_name = args.plugin
+        matching_plugins = [p for p in plugins_config if p['name'] == plugin_name]
+        if not matching_plugins:
+            print_error(f"Plugin '{plugin_name}' not found in configuration")
+            print_info("Available plugins:")
+            for plugin in plugins_config:
+                print(f"  - {plugin['name']}")
+            sys.exit(1)
+        plugins_config = matching_plugins
+        print_info(f"\nFiltered to single plugin: {plugin_name}")
+    
+    print_info(f"\nLoaded {len(plugins_config)} plugin(s) from configuration:")
     for plugin in plugins_config:
         status = "✅" if plugin.get('enabled', True) else "❌"
         print(f"  {status} {plugin['name']} -> {plugin['repo']}")
     
     # Confirmation
     if not args.dry_run:
-        print(f"\n{Colors.WARNING}About to create tag {version} for all {len(plugins_config)} plugins and release on GitHub")
+        plugin_text = "plugin" if len(plugins_config) == 1 else "plugins"
+        print(f"\n{Colors.WARNING}About to create tag {version} for {len(plugins_config)} {plugin_text} and release on GitHub")
         print(f"{Colors.WARNING}Press Enter to continue, or Ctrl+C to cancel...{Colors.ENDC}")
         try:
             input()
