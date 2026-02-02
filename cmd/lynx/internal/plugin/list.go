@@ -71,6 +71,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		return plugins[i].Name < plugins[j].Name
 	})
 
+	// When listing all available plugins, fetch latest version from Go proxy for each
+	if listAll && len(plugins) > 0 {
+		EnrichPluginsLatestVersion(plugins)
+	}
+
 	// Output based on format
 	switch listFormat {
 	case "json":

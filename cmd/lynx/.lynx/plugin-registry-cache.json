@@ -1,0 +1,455 @@
+{
+  "plugins": [
+    {
+      "name": "mysql",
+      "type": "sql",
+      "version": "latest",
+      "description": "Relational Database MySQL",
+      "repository": "https://github.com/go-lynx/lynx-mysql.git",
+      "import_path": "github.com/go-lynx/lynx-mysql",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "mysql"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "pgsql",
+      "type": "sql",
+      "version": "latest",
+      "description": "Relational Database PostgreSQL",
+      "repository": "https://github.com/go-lynx/lynx-pgsql.git",
+      "import_path": "github.com/go-lynx/lynx-pgsql",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "pgsql"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "mssql",
+      "type": "sql",
+      "version": "latest",
+      "description": "Relational Database Microsoft SQL Server",
+      "repository": "https://github.com/go-lynx/lynx-mssql.git",
+      "import_path": "github.com/go-lynx/lynx-mssql",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "mssql"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "redis",
+      "type": "nosql",
+      "version": "latest",
+      "description": "Redis Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-redis.git",
+      "import_path": "github.com/go-lynx/lynx-redis",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "redis"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "redis-lock",
+      "type": "nosql",
+      "version": "latest",
+      "description": "Redis Distributed Lock Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-redis-lock.git",
+      "import_path": "github.com/go-lynx/lynx-redis-lock",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "redis-lock"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "mongodb",
+      "type": "nosql",
+      "version": "latest",
+      "description": "MongoDB Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-mongodb.git",
+      "import_path": "github.com/go-lynx/lynx-mongodb",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "mongodb"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "elasticsearch",
+      "type": "nosql",
+      "version": "latest",
+      "description": "Elasticsearch Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-elasticsearch.git",
+      "import_path": "github.com/go-lynx/lynx-elasticsearch",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "elasticsearch"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "kafka",
+      "type": "mq",
+      "version": "latest",
+      "description": "Kafka Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-kafka.git",
+      "import_path": "github.com/go-lynx/lynx-kafka",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "kafka"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "rabbitmq",
+      "type": "mq",
+      "version": "latest",
+      "description": "RabbitMQ Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-rabbitmq.git",
+      "import_path": "github.com/go-lynx/lynx-rabbitmq",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "rabbitmq"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "rocketmq",
+      "type": "mq",
+      "version": "latest",
+      "description": "RocketMQ Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-rocketmq.git",
+      "import_path": "github.com/go-lynx/lynx-rocketmq",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "rocketmq"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "polaris",
+      "type": "other",
+      "version": "latest",
+      "description": "Polaris Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-polaris.git",
+      "import_path": "github.com/go-lynx/lynx-polaris",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "polaris"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "nacos",
+      "type": "config",
+      "version": "latest",
+      "description": "Nacos Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-nacos.git",
+      "import_path": "github.com/go-lynx/lynx-nacos",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "nacos"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "sentinel",
+      "type": "other",
+      "version": "latest",
+      "description": "Sentinel Plugin for Lynx",
+      "repository": "https://github.com/go-lynx/lynx-sentinel.git",
+      "import_path": "github.com/go-lynx/lynx-sentinel",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "sentinel"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "tracer",
+      "type": "tracer",
+      "version": "latest",
+      "description": "Lynx Tracer Plugin",
+      "repository": "https://github.com/go-lynx/lynx-tracer.git",
+      "import_path": "github.com/go-lynx/lynx-tracer",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "tracer"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "swagger",
+      "type": "other",
+      "version": "latest",
+      "description": "Swagger Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-swagger.git",
+      "import_path": "github.com/go-lynx/lynx-swagger",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "swagger"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "seata",
+      "type": "dtx",
+      "version": "latest",
+      "description": "Seata Distributed Transaction Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-seata.git",
+      "import_path": "github.com/go-lynx/lynx-seata",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "seata"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "dtm",
+      "type": "dtx",
+      "version": "latest",
+      "description": "DTM Distributed Transaction Manager Plugin",
+      "repository": "https://github.com/go-lynx/lynx-dtm.git",
+      "import_path": "github.com/go-lynx/lynx-dtm",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "dtm"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "sql-sdk",
+      "type": "sql",
+      "version": "latest",
+      "description": "SQL Base SDK for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-sql-sdk.git",
+      "import_path": "github.com/go-lynx/lynx-sql-sdk",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "sql-sdk"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "apollo",
+      "type": "config",
+      "version": "latest",
+      "description": "Apollo Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-apollo.git",
+      "import_path": "github.com/go-lynx/lynx-apollo",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "apollo"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "eon-id",
+      "type": "other",
+      "version": "latest",
+      "description": "Lynx Eon-ID Plugin",
+      "repository": "https://github.com/go-lynx/lynx-eon-id.git",
+      "import_path": "github.com/go-lynx/lynx-eon-id",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "eon-id"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "grpc",
+      "type": "service",
+      "version": "latest",
+      "description": "GRPC Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-grpc.git",
+      "import_path": "github.com/go-lynx/lynx-grpc",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "grpc"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "http",
+      "type": "service",
+      "version": "latest",
+      "description": "HTTP Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-http.git",
+      "import_path": "github.com/go-lynx/lynx-http",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "http"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "pulsar",
+      "type": "mq",
+      "version": "latest",
+      "description": "Apache Pulsar Lynx Plugin",
+      "repository": "https://github.com/go-lynx/lynx-pulsar.git",
+      "import_path": "github.com/go-lynx/lynx-pulsar",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "pulsar"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "etcd",
+      "type": "other",
+      "version": "latest",
+      "description": "ETCD Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-etcd.git",
+      "import_path": "github.com/go-lynx/lynx-etcd",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "etcd"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    },
+    {
+      "name": "etcd-lock",
+      "type": "other",
+      "version": "latest",
+      "description": "ETCD Distributed Lock Plugin for Lynx Framework",
+      "repository": "https://github.com/go-lynx/lynx-etcd-lock.git",
+      "import_path": "github.com/go-lynx/lynx-etcd-lock",
+      "author": "go-lynx",
+      "license": "Apache-2.0",
+      "dependencies": null,
+      "tags": [
+        "etcd-lock"
+      ],
+      "compatible": "",
+      "status": "not_installed",
+      "enabled": false,
+      "official": true
+    }
+  ],
+  "cached_at": "2026-02-02T18:45:35.1241522+09:00"
+}
