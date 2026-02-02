@@ -35,59 +35,49 @@ type PluginManager struct {
 	installedList []InstalledPlugin
 }
 
-// NewPluginManager creates a new plugin manager
+// NewPluginManager creates a new plugin manager. Requires running from a project root (with go.mod).
 func NewPluginManager() (*PluginManager, error) {
-	// Find project root
 	projectRoot, err := findProjectRoot()
 	if err != nil {
 		return nil, fmt.Errorf("failed to find project root: %w", err)
 	}
 
+	registry := NewPluginRegistry()
+	if err := registry.LoadFromGitHub(projectRoot); err != nil {
+		return nil, fmt.Errorf("failed to load plugin list from GitHub: %w (check network or set GITHUB_TOKEN)", err)
+	}
+
 	manager := &PluginManager{
-		registry:    NewPluginRegistry(),
+		registry:    registry,
 		projectRoot: projectRoot,
 		configFile:  filepath.Join(projectRoot, ".lynx", "plugins.yaml"),
 		pluginsDir:  filepath.Join(projectRoot, "plugins"),
 	}
 
-	// Load installed plugins configuration
-	if err := manager.loadInstalledPlugins(); err != nil {
-		// It's OK if the config doesn't exist yet
-		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("failed to load plugin config: %w", err)
-		}
+	if err := manager.loadInstalledPlugins(); err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("failed to load plugin config: %w", err)
 	}
-
-	// Scan actual installed plugins
 	manager.scanInstalledPlugins()
-
 	return manager, nil
 }
 
-// findProjectRoot finds the project root directory
+// findProjectRoot finds the project root directory (directory containing go.mod).
+// Returns error if no go.mod found, so plugin commands must be run from a Go project root.
 func findProjectRoot() (string, error) {
-	// Start from current directory
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-
-	// Look for go.mod file
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 			return dir, nil
 		}
-
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			// Reached root directory
-			break
+			return "", fmt.Errorf("no go.mod found in current or parent directories: plugin commands must be run from a Lynx/Go project root")
 		}
 		dir = parent
 	}
-
-	// If no go.mod found, use current directory
-	return os.Getwd()
 }
 
 // loadInstalledPlugins loads the installed plugins configuration
@@ -126,14 +116,18 @@ func (m *PluginManager) saveInstalledPlugins() error {
 	return os.WriteFile(m.configFile, data, 0644)
 }
 
-// scanInstalledPlugins scans the plugins directory for installed plugins
+// scanInstalledPlugins scans the plugins directory for installed plugins and updates registry status.
+// Resets all plugins to NotInstalled first so that cached list does not carry over status from another project.
 func (m *PluginManager) scanInstalledPlugins() {
-	// Check if plugins directory exists
+	// Reset status for all plugins (cache may hold previous run's status from another project)
+	for _, p := range m.registry.GetAllPlugins() {
+		_ = m.registry.UpdatePluginStatus(p.Name, StatusNotInstalled, "")
+	}
+
 	if _, err := os.Stat(m.pluginsDir); os.IsNotExist(err) {
 		return
 	}
 
-	// Scan plugin directories
 	entries, err := os.ReadDir(m.pluginsDir)
 	if err != nil {
 		return
@@ -183,8 +177,8 @@ func (m *PluginManager) ListPlugins(showAll bool, pluginType string) ([]*PluginM
 	var plugins []*PluginMetadata
 
 	if pluginType != "" {
-		// Filter by type
-		plugins = m.registry.GetPluginsByType(PluginType(pluginType))
+		// Filter by type (normalize to lowercase to match TypeService etc.)
+		plugins = m.registry.GetPluginsByType(PluginType(strings.ToLower(pluginType)))
 	} else if showAll {
 		// Show all plugins
 		plugins = m.registry.GetAllPlugins()
@@ -288,8 +282,8 @@ func (m *PluginManager) RemovePlugin(name string, keepConfig bool) error {
 		return fmt.Errorf("plugin %s is not installed", name)
 	}
 
-	// Check dependencies
-	if err := m.checkDependencies(name); err != nil {
+	// Check dependencies (use normalized plugin name; installed list stores by plugin.Name)
+	if err := m.checkDependencies(plugin.Name); err != nil {
 		return fmt.Errorf("cannot remove plugin: %w", err)
 	}
 
@@ -301,8 +295,8 @@ func (m *PluginManager) RemovePlugin(name string, keepConfig bool) error {
 		return fmt.Errorf("failed to remove plugin directory: %w", err)
 	}
 
-	// Remove from installed list
-	m.removeInstalledPlugin(name)
+	// Remove from installed list (installed list key is plugin.Name, e.g. "redis" not "lynx-redis")
+	m.removeInstalledPlugin(plugin.Name)
 
 	// Save configuration
 	if err := m.saveInstalledPlugins(); err != nil {
@@ -333,24 +327,66 @@ func (m *PluginManager) RemovePlugin(name string, keepConfig bool) error {
 // Helper functions
 
 func (m *PluginManager) clonePlugin(repo, dir, version string) error {
-	// Remove existing directory if it exists
-	os.RemoveAll(dir)
+	// Clone to temp dir first; only replace target on success to avoid losing existing dir on clone failure
+	tmpDir, err := os.MkdirTemp("", "lynx-plugin-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
 
-	// Clone repository
-	cmd := exec.Command("git", "clone", repo, dir)
-	if err := cmd.Run(); err != nil {
-		return err
+	cloneCmd := exec.Command("git", "clone", repo, tmpDir)
+	cloneCmd.Stdout = os.Stdout
+	cloneCmd.Stderr = os.Stderr
+	if err := cloneCmd.Run(); err != nil {
+		return fmt.Errorf("git clone failed: %w", err)
 	}
 
-	// Checkout specific version if provided
+	// Checkout tag/branch only when not "latest" (latest = use default branch)
 	if version != "" && version != "latest" {
-		cmd = exec.Command("git", "checkout", version)
-		cmd.Dir = dir
-		if err := cmd.Run(); err != nil {
-			return err
+		checkoutCmd := exec.Command("git", "checkout", version)
+		checkoutCmd.Dir = tmpDir
+		checkoutCmd.Stdout = os.Stdout
+		checkoutCmd.Stderr = os.Stderr
+		if err := checkoutCmd.Run(); err != nil {
+			return fmt.Errorf("git checkout %s: %w", version, err)
 		}
 	}
 
+	// Success: replace target with cloned content
+	_ = os.RemoveAll(dir)
+	if err := os.Rename(tmpDir, dir); err != nil {
+		// Cross-filesystem: copy then remove temp
+		if err := copyDir(tmpDir, dir); err != nil {
+			return fmt.Errorf("move clone to target: %w", err)
+		}
+	}
+	return nil
+}
+
+func copyDir(src, dst string) error {
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		s, d := filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())
+		if e.IsDir() {
+			if err := copyDir(s, d); err != nil {
+				return err
+			}
+			continue
+		}
+		data, err := os.ReadFile(s)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(d, data, 0644); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -360,34 +396,59 @@ func (m *PluginManager) downloadPlugin(importPath, version string) error {
 	} else if !strings.HasPrefix(version, "@") {
 		version = "@" + version
 	}
-
 	cmd := exec.Command("go", "get", importPath+version)
 	cmd.Dir = m.projectRoot
+	cmd.Env = os.Environ()
 	return cmd.Run()
 }
 
 func (m *PluginManager) installFromURL(url, version string, force bool) error {
 	fmt.Printf("Installing plugin from: %s\n", url)
-	
-	// Extract plugin name from URL
-	parts := strings.Split(url, "/")
-	name := parts[len(parts)-1]
-	name = strings.TrimSuffix(name, ".git")
 
-	// Create custom plugin metadata
+	cloneURL := toCloneURL(url)
+	importPath := importPathFromCloneURL(cloneURL)
+	parts := strings.Split(strings.TrimSuffix(cloneURL, ".git"), "/")
+	repoName := parts[len(parts)-1]
+	name := repoName
+	if strings.HasPrefix(name, "lynx-") {
+		name = strings.TrimPrefix(name, "lynx-")
+	}
+
 	plugin := &PluginMetadata{
 		Name:       name,
 		Type:       TypeOther,
-		Repository: url,
-		ImportPath: url,
+		Repository: cloneURL,
+		ImportPath: importPath,
 		Official:   false,
 	}
-
-	// Add to registry
+	InvalidatePluginCache()
 	m.registry.AddCustomPlugin(plugin)
-
-	// Install using the same process
 	return m.InstallPlugin(name, version, force)
+}
+
+// toCloneURL normalizes a repo reference to a clone URL (HTTPS or git@)
+func toCloneURL(url string) string {
+	s := strings.TrimSpace(url)
+	s = strings.TrimSuffix(s, ".git")
+	if strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "git@") {
+		return s + ".git"
+	}
+	if strings.HasPrefix(s, "github.com/") {
+		return "https://" + s + ".git"
+	}
+	return s + ".git"
+}
+
+// importPathFromCloneURL extracts Go import path from clone URL (e.g. https://github.com/user/repo.git -> github.com/user/repo)
+func importPathFromCloneURL(cloneURL string) string {
+	s := strings.TrimSuffix(cloneURL, ".git")
+	if idx := strings.Index(s, "github.com"); idx >= 0 {
+		s = s[idx:]
+		// git@github.com:user/repo -> github.com/user/repo
+		s = strings.Replace(s, "github.com:", "github.com/", 1)
+		return s
+	}
+	return s
 }
 
 func (m *PluginManager) generateConfigTemplate(plugin *PluginMetadata, configFile string) error {
@@ -542,7 +603,7 @@ func (m *PluginManager) getSQLPluginConfig(name string) map[string]interface{} {
 			"conn_max_lifetime": "5m",
 			"enable_metrics":    true,
 		}
-	case "postgresql":
+	case "postgresql", "pgsql":
 		return map[string]interface{}{
 			"dsn":               "host=localhost user=username password=password dbname=mydb port=5432 sslmode=disable TimeZone=Asia/Shanghai",
 			"max_open_conns":    25,

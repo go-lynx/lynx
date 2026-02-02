@@ -12,9 +12,10 @@ import (
 )
 
 var (
-	listAll    bool
-	listType   string
-	listFormat string
+	listAll     bool
+	listType    string
+	listFormat  string
+	listNoCache bool
 )
 
 // cmdList represents the list command
@@ -43,10 +44,14 @@ func init() {
 	cmdList.Flags().BoolVarP(&listAll, "all", "a", false, "Show all available plugins")
 	cmdList.Flags().StringVarP(&listType, "type", "t", "", "Filter by plugin type (service/mq/sql/nosql/tracer/dtx/other)")
 	cmdList.Flags().StringVarP(&listFormat, "format", "f", "table", "Output format (table/json/yaml)")
+	cmdList.Flags().BoolVar(&listNoCache, "no-cache", false, "Force refresh plugin list from GitHub (ignore cache)")
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	// Create plugin manager
+	if listNoCache {
+		InvalidatePluginCache()
+		SetForceRefreshPluginList(true)
+	}
 	manager, err := NewPluginManager()
 	if err != nil {
 		return fmt.Errorf("failed to initialize plugin manager: %w", err)

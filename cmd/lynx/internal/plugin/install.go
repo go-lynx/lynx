@@ -19,10 +19,10 @@ var cmdInstall = &cobra.Command{
 	Short: "Install a plugin",
 	Long: `Install a plugin from the official registry or a custom repository.
 You can specify a version or use the latest version by default.`,
-	Example: `  # Install latest version of a plugin
+	Example: `  # Install plugin (uses default branch; run from project root)
   lynx plugin install redis
   
-  # Install specific version
+  # Install specific tag/branch
   lynx plugin install redis --version v2.0.0
   
   # Force reinstall

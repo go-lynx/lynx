@@ -3,6 +3,7 @@ package plugin
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // PluginType represents the type of plugin
@@ -57,332 +58,50 @@ type PluginMetadata struct {
 	ExtraInfo    map[string]string `json:"extra_info,omitempty" yaml:"extra_info,omitempty"`
 }
 
-// PluginRegistry manages available plugins
+// PluginRegistry manages available plugins (loaded from GitHub go-lynx org).
 type PluginRegistry struct {
+	mu      sync.RWMutex
 	plugins map[string]*PluginMetadata
 }
 
-// NewPluginRegistry creates a new plugin registry
+// NewPluginRegistry creates a new empty plugin registry. Call LoadFromGitHub to fill from GitHub.
 func NewPluginRegistry() *PluginRegistry {
-	registry := &PluginRegistry{
+	return &PluginRegistry{
 		plugins: make(map[string]*PluginMetadata),
 	}
-	registry.loadOfficialPlugins()
-	return registry
 }
 
-// loadOfficialPlugins loads the official plugin list
-func (r *PluginRegistry) loadOfficialPlugins() {
-	officialPlugins := []*PluginMetadata{
-		// Service plugins
-		{
-			Name:        "http",
-			Type:        TypeService,
-			Version:     "v2.0.0",
-			Description: "HTTP service plugin with middleware support",
-			Repository:  "github.com/go-lynx/lynx/plugins/service/http",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/service/http",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"http", "rest", "api"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "grpc",
-			Type:        TypeService,
-			Version:     "v2.0.0",
-			Description: "gRPC service plugin with interceptor support",
-			Repository:  "github.com/go-lynx/lynx/plugins/service/grpc",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/service/grpc",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"grpc", "rpc", "protobuf"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "openim",
-			Type:        TypeService,
-			Version:     "v2.0.0",
-			Description: "OpenIM instant messaging service plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/service/openim",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/service/openim",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"im", "chat", "messaging"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-
-		// Message Queue plugins
-		{
-			Name:        "kafka",
-			Type:        TypeMQ,
-			Version:     "v2.0.0",
-			Description: "Apache Kafka message queue plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/mq/kafka",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/mq/kafka",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"kafka", "streaming", "mq"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "rabbitmq",
-			Type:        TypeMQ,
-			Version:     "v2.0.0",
-			Description: "RabbitMQ message queue plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/mq/rabbitmq",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/mq/rabbitmq",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"rabbitmq", "amqp", "mq"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "rocketmq",
-			Type:        TypeMQ,
-			Version:     "v2.0.0",
-			Description: "Apache RocketMQ message queue plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/mq/rocketmq",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/mq/rocketmq",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"rocketmq", "mq"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "pulsar",
-			Type:        TypeMQ,
-			Version:     "v2.0.0",
-			Description: "Apache Pulsar message queue plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/mq/pulsar",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/mq/pulsar",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"pulsar", "streaming", "mq"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-
-		// SQL Database plugins
-		{
-			Name:        "mysql",
-			Type:        TypeSQL,
-			Version:     "v2.0.0",
-			Description: "MySQL database plugin with connection pooling",
-			Repository:  "github.com/go-lynx/lynx/plugins/sql/mysql",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/sql/mysql",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"mysql", "sql", "database"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "postgresql",
-			Type:        TypeSQL,
-			Version:     "v2.0.0",
-			Description: "PostgreSQL database plugin with advanced features",
-			Repository:  "github.com/go-lynx/lynx/plugins/sql/pgsql",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/sql/pgsql",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"postgresql", "pgsql", "sql", "database"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "mssql",
-			Type:        TypeSQL,
-			Version:     "v2.0.0",
-			Description: "Microsoft SQL Server plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/sql/mssql",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/sql/mssql",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"mssql", "sqlserver", "sql", "database"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-
-		// NoSQL Database plugins
-		{
-			Name:        "redis",
-			Type:        TypeNoSQL,
-			Version:     "v2.0.0",
-			Description: "Redis cache and NoSQL database plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/nosql/redis",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/nosql/redis",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"redis", "cache", "nosql"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "mongodb",
-			Type:        TypeNoSQL,
-			Version:     "v2.0.0",
-			Description: "MongoDB NoSQL database plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/nosql/mongodb",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/nosql/mongodb",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"mongodb", "nosql", "document"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "elasticsearch",
-			Type:        TypeNoSQL,
-			Version:     "v2.0.0",
-			Description: "Elasticsearch search engine plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/nosql/elasticsearch",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/nosql/elasticsearch",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"elasticsearch", "search", "nosql"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-
-		// Distributed Transaction plugins
-		{
-			Name:        "seata",
-			Type:        TypeDTX,
-			Version:     "v2.0.0",
-			Description: "Seata distributed transaction plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/dtx/seata",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/dtx/seata",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"seata", "dtx", "transaction"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "dtm",
-			Type:        TypeDTX,
-			Version:     "v2.0.0",
-			Description: "DTM distributed transaction plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/dtx/dtm",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/dtx/dtm",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"dtm", "dtx", "transaction"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-
-		// Configuration Center plugins
-		{
-			Name:        "apollo",
-			Type:        TypeConfig,
-			Version:     "v2.0.0",
-			Description: "Apollo configuration center plugin with dynamic configuration management",
-			Repository:  "github.com/go-lynx/lynx/plugins/apollo",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/apollo",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"apollo", "config", "configuration"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "nacos",
-			Type:        TypeConfig,
-			Version:     "v2.0.0",
-			Description: "Nacos configuration center and service discovery plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/nacos",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/nacos",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"nacos", "config", "discovery"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-
-		// Other plugins
-		{
-			Name:        "polaris",
-			Type:        TypeOther,
-			Version:     "v2.0.0",
-			Description: "Polaris service discovery and governance plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/polaris",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/polaris",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"polaris", "discovery", "governance"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "tracer",
-			Type:        TypeTracer,
-			Version:     "v2.0.0",
-			Description: "Distributed tracing plugin with OpenTelemetry",
-			Repository:  "github.com/go-lynx/lynx/plugins/tracer",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/tracer",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"tracing", "opentelemetry", "observability"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "swagger",
-			Type:        TypeOther,
-			Version:     "v2.0.0",
-			Description: "Swagger API documentation generator plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/swagger",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/swagger",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"swagger", "openapi", "documentation"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "sentinel",
-			Type:        TypeOther,
-			Version:     "v2.0.0",
-			Description: "Sentinel traffic control and circuit breaker plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/sentinel",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/sentinel",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"sentinel", "rate-limit", "circuit-breaker", "traffic-control"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
-		{
-			Name:        "snowflake",
-			Type:        TypeOther,
-			Version:     "v2.0.0",
-			Description: "Snowflake distributed ID generator plugin",
-			Repository:  "github.com/go-lynx/lynx/plugins/snowflake",
-			ImportPath:  "github.com/go-lynx/lynx/plugins/snowflake",
-			Author:      "go-lynx",
-			License:     "Apache-2.0",
-			Tags:        []string{"snowflake", "id-generator", "distributed-id"},
-			Compatible:  ">=v2.0.0",
-			Official:    true,
-		},
+// LoadFromGitHub fetches the plugin list from GitHub (go-lynx org) and fills the registry.
+// Optional projectRoot is used for file cache. On failure returns error (no built-in fallback).
+func (r *PluginRegistry) LoadFromGitHub(projectRoot string) error {
+	plugins, err := FetchPluginsFromGitHub(projectRoot)
+	if err != nil {
+		return err
 	}
-
-	for _, plugin := range officialPlugins {
-		r.plugins[plugin.Name] = plugin
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.plugins = make(map[string]*PluginMetadata)
+	for _, p := range plugins {
+		r.plugins[p.Name] = p
 	}
+	return nil
 }
 
-// GetPlugin returns a plugin by name
+// normalizePluginName returns the registry key: "lynx-redis" -> "redis", "redis" -> "redis"
+func normalizePluginName(name string) string {
+	s := strings.TrimSpace(name)
+	if strings.HasPrefix(s, "lynx-") {
+		return strings.TrimPrefix(s, "lynx-")
+	}
+	return s
+}
+
+// GetPlugin returns a plugin by name (supports "redis" or "lynx-redis")
 func (r *PluginRegistry) GetPlugin(name string) (*PluginMetadata, error) {
-	plugin, exists := r.plugins[name]
+	key := normalizePluginName(name)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	plugin, exists := r.plugins[key]
 	if !exists {
 		return nil, fmt.Errorf("plugin %s not found", name)
 	}
@@ -391,6 +110,8 @@ func (r *PluginRegistry) GetPlugin(name string) (*PluginMetadata, error) {
 
 // GetAllPlugins returns all plugins
 func (r *PluginRegistry) GetAllPlugins() []*PluginMetadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	plugins := make([]*PluginMetadata, 0, len(r.plugins))
 	for _, plugin := range r.plugins {
 		plugins = append(plugins, plugin)
@@ -400,6 +121,8 @@ func (r *PluginRegistry) GetAllPlugins() []*PluginMetadata {
 
 // GetPluginsByType returns plugins filtered by type
 func (r *PluginRegistry) GetPluginsByType(pluginType PluginType) []*PluginMetadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	var plugins []*PluginMetadata
 	for _, plugin := range r.plugins {
 		if plugin.Type == pluginType {
@@ -411,18 +134,16 @@ func (r *PluginRegistry) GetPluginsByType(pluginType PluginType) []*PluginMetada
 
 // SearchPlugins searches plugins by keyword
 func (r *PluginRegistry) SearchPlugins(keyword string) []*PluginMetadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	keyword = strings.ToLower(keyword)
 	var plugins []*PluginMetadata
-
 	for _, plugin := range r.plugins {
-		// Search in name, description, and tags
 		if strings.Contains(strings.ToLower(plugin.Name), keyword) ||
 			strings.Contains(strings.ToLower(plugin.Description), keyword) {
 			plugins = append(plugins, plugin)
 			continue
 		}
-
-		// Search in tags
 		for _, tag := range plugin.Tags {
 			if strings.Contains(strings.ToLower(tag), keyword) {
 				plugins = append(plugins, plugin)
@@ -430,12 +151,13 @@ func (r *PluginRegistry) SearchPlugins(keyword string) []*PluginMetadata {
 			}
 		}
 	}
-
 	return plugins
 }
 
 // GetOfficialPlugins returns only official plugins
 func (r *PluginRegistry) GetOfficialPlugins() []*PluginMetadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	var plugins []*PluginMetadata
 	for _, plugin := range r.plugins {
 		if plugin.Official {
@@ -445,15 +167,20 @@ func (r *PluginRegistry) GetOfficialPlugins() []*PluginMetadata {
 	return plugins
 }
 
-// AddCustomPlugin adds a custom plugin to the registry
+// AddCustomPlugin adds a custom plugin to the registry (e.g. from URL install)
 func (r *PluginRegistry) AddCustomPlugin(plugin *PluginMetadata) {
 	plugin.Official = false
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.plugins[plugin.Name] = plugin
 }
 
 // UpdatePluginStatus updates the status of a plugin
 func (r *PluginRegistry) UpdatePluginStatus(name string, status PluginStatus, installedVersion string) error {
-	plugin, exists := r.plugins[name]
+	key := normalizePluginName(name)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	plugin, exists := r.plugins[key]
 	if !exists {
 		return fmt.Errorf("plugin %s not found", name)
 	}
