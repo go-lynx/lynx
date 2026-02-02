@@ -14,6 +14,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/go-lynx/lynx/cmd/lynx/internal/base"
+	"github.com/go-lynx/lynx/cmd/lynx/internal/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -42,6 +43,10 @@ var (
 	postTidy bool
 	// concurrency stores the concurrency limit.
 	concurrency int
+	// pluginsComma is comma-separated plugin names (e.g. "http,grpc,redis"); when set, skip interactive selection.
+	pluginsComma string
+	// skipPlugins when true, skip plugin selection and do not add any plugins.
+	skipPlugins bool
 )
 
 // init initializes defaults and command-line flags.
@@ -75,6 +80,9 @@ func init() {
 	}
 	concurrency = defaultConc
 	CmdNew.Flags().IntVarP(&concurrency, "concurrency", "c", concurrency, "max concurrent project creations")
+	// Plugin selection: --plugins for comma-separated names (no interactive), --skip-plugins to skip entirely
+	CmdNew.Flags().StringVarP(&pluginsComma, "plugins", "p", "", "comma-separated plugin names to add (e.g. http,grpc,redis); skips interactive selection")
+	CmdNew.Flags().BoolVar(&skipPlugins, "skip-plugins", false, "skip plugin selection and do not add any plugins")
 }
 
 // run executes the `new` command and creates Lynx service projects.
@@ -121,6 +129,31 @@ func run(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("no valid project names after de-duplication")
 	}
 
+	// Resolve plugin selection once: avoid interactive prompt in concurrent goroutines.
+	// When --skip-plugins: use empty; when --plugins: parse and resolve; when single project: pass nil (interactive in New); else prompt once and apply to all.
+	var preSelectedPlugins *[]*plugin.PluginMetadata
+	if skipPlugins {
+		empty := []*plugin.PluginMetadata(nil)
+		preSelectedPlugins = &empty
+	} else if strings.TrimSpace(pluginsComma) != "" {
+		resolved, err := ResolvePluginNames(pluginsComma)
+		if err != nil {
+			base.Warnf("Resolve plugins failed: %v (continue without plugins)\n", err)
+			empty := []*plugin.PluginMetadata(nil)
+			preSelectedPlugins = &empty
+		} else {
+			preSelectedPlugins = &resolved
+		}
+	} else if len(names) > 1 {
+		// Multiple projects: prompt once so we don't run multiple interactive prompts concurrently
+		selected, err := selectPlugins()
+		if err != nil {
+			base.Warnf("Plugin selection failed: %v\n", err)
+		}
+		preSelectedPlugins = &selected
+	}
+	// When len(names)==1 and no --plugins/--skip-plugins: preSelectedPlugins stays nil → interactive inside New()
+
 	// Create multiple projects concurrently.
 	done := make(chan error, len(names))
 	var wg sync.WaitGroup
@@ -147,11 +180,11 @@ func run(_ *cobra.Command, args []string) error {
 		p := &Project{Name: projectName}
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(p *Project, workingDir string) {
+		go func(p *Project, workingDir string, plugins *[]*plugin.PluginMetadata) {
 			// Call Project.New to create the project and send the result to the 'done' channel.
 			defer func() { <-sem; wg.Done() }()
-			done <- p.New(ctx, workingDir, repoURL, effectiveRef, force, module, postTidy)
-		}(p, workingDir)
+			done <- p.New(ctx, workingDir, repoURL, effectiveRef, force, module, postTidy, plugins)
+		}(p, workingDir, preSelectedPlugins)
 	}
 
 	wg.Wait()   // Wait for all goroutines to complete

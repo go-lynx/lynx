@@ -94,6 +94,12 @@ lynx new my-service --force
 
 # Run go mod tidy after creation
 lynx new my-service --post-tidy
+
+# Add plugins by name (skip interactive selection)
+lynx new my-service --plugins http,grpc,redis
+
+# Skip plugin selection (no plugins added)
+lynx new my-service --skip-plugins
 ```
 
 #### New Command Flags
@@ -108,6 +114,8 @@ lynx new my-service --post-tidy
 | `--force` | `-f` | Overwrite existing directory without prompt | `false` |
 | `--post-tidy` | | Run 'go mod tidy' after creation | `false` |
 | `--concurrency` | `-c` | Max concurrent project creations | `min(4, NumCPU*2)` |
+| `--plugins` | `-p` | Comma-separated plugin names (e.g. http,grpc,redis); skips interactive selection | (interactive) |
+| `--skip-plugins` | | Skip plugin selection and do not add any plugins | `false` |
 
 ## 🔧 Configuration
 
