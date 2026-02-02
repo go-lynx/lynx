@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/go-lynx/lynx/cmd/lynx/internal/doctor"
+	"github.com/go-lynx/lynx/cmd/lynx/internal/git"
 	"github.com/go-lynx/lynx/cmd/lynx/internal/plugin"
 	"github.com/go-lynx/lynx/cmd/lynx/internal/project"
 	"github.com/go-lynx/lynx/cmd/lynx/internal/run"
@@ -56,6 +57,7 @@ func init() {
 	// Add subcommands to root command
 	rootCmd.AddCommand(project.CmdNew)
 	rootCmd.AddCommand(doctor.CmdDoctor)
+	rootCmd.AddCommand(git.CmdGit)
 	rootCmd.AddCommand(plugin.CmdPlugin)
 	rootCmd.AddCommand(run.CmdRun)
 	// Global log level flags
