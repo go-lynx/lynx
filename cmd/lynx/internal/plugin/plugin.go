@@ -8,8 +8,9 @@ import (
 var CmdPlugin = &cobra.Command{
 	Use:   "plugin",
 	Short: "Manage Lynx plugins",
-	Long: `The plugin command provides a complete plugin management system for Lynx projects.
-It allows you to list, search, install, remove, and get information about plugins.`,
+	Long: `The plugin command manages Lynx plugins for your project.
+Plugin list is loaded from GitHub (go-lynx organization). Run from a project root (directory with go.mod).
+Commands: list, search, install, remove, info.`,
 	Example: `  # List all available plugins
   lynx plugin list --all
   
