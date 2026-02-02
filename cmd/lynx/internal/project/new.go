@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"
@@ -22,15 +23,8 @@ type Project struct {
 }
 
 // New creates a new project from a remote repository.
-// ctx: Context for controlling the lifecycle of the operation.
-// dir: Target directory for project creation.
-// layout: Remote repository address for project layout.
-// branch: Remote repository branch to use.
-// force: Whether to force overwrite existing project directory.
-// module: If provided, replaces the module in template go.mod.
-// postTidy: Whether to execute go mod tidy command.
-// Returns: Returns corresponding error information if an error occurs during operation; otherwise returns nil.
-func (p *Project) New(ctx context.Context, dir string, layout string, branch string, force bool, module string, postTidy bool) error {
+// preSelectedPlugins: when nil, run interactive plugin selection; when non-nil, use the slice (may be empty) and skip prompt.
+func (p *Project) New(ctx context.Context, dir string, layout string, branch string, force bool, module string, postTidy bool, preSelectedPlugins *[]*plugin.PluginMetadata) error {
 	// Calculate the complete path where the project will be created
 	to := filepath.Join(dir, p.Name)
 
@@ -77,11 +71,18 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	// Print project directory structure
 	base.Tree(to, dir)
 
-	// Ask user to select plugins
-	selectedPlugins, err := selectPlugins()
-	if err != nil {
-		base.Warnf("Plugin selection failed: %v\n", err)
-	} else if len(selectedPlugins) > 0 {
+	// Resolve plugin list: interactive when preSelectedPlugins==nil, otherwise use pre-selected (or empty)
+	var selectedPlugins []*plugin.PluginMetadata
+	if preSelectedPlugins != nil {
+		selectedPlugins = *preSelectedPlugins
+	} else {
+		var err error
+		selectedPlugins, err = selectPlugins()
+		if err != nil {
+			base.Warnf("Plugin selection failed: %v\n", err)
+		}
+	}
+	if len(selectedPlugins) > 0 {
 		// Add selected plugins to go.mod
 		if err := addPluginsToProject(ctx, to, selectedPlugins); err != nil {
 			base.Warnf("Failed to add plugin dependencies: %v\n", err)
@@ -116,12 +117,16 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	return nil
 }
 
-// selectPlugins prompts the user to select plugins interactively
+// selectPlugins prompts the user to select plugins interactively.
+// Loads plugin list from GitHub (with cache). Returns nil, nil when no plugins available or user cancels.
 func selectPlugins() ([]*plugin.PluginMetadata, error) {
-	// Create plugin registry to get available plugins
 	registry := plugin.NewPluginRegistry()
+	// Load from GitHub; use empty projectRoot for "lynx new" (no project yet), still uses in-memory cache
+	if err := registry.LoadFromGitHub(""); err != nil {
+		base.Warnf("Load plugin list failed: %v (skip plugin selection)\n", err)
+		return nil, nil
+	}
 	allPlugins := registry.GetAllPlugins()
-
 	if len(allPlugins) == 0 {
 		return nil, nil
 	}
@@ -219,6 +224,34 @@ func formatPluginType(t plugin.PluginType) string {
 	}
 
 	return string(t)
+}
+
+// ResolvePluginNames parses comma-separated plugin names and returns plugin metadata slice.
+// Loads registry from GitHub. Unknown names are skipped with a warning.
+func ResolvePluginNames(commaSeparated string) ([]*plugin.PluginMetadata, error) {
+	commaSeparated = strings.TrimSpace(commaSeparated)
+	if commaSeparated == "" {
+		return nil, nil
+	}
+	registry := plugin.NewPluginRegistry()
+	if err := registry.LoadFromGitHub(""); err != nil {
+		return nil, err
+	}
+	names := strings.Split(commaSeparated, ",")
+	var out []*plugin.PluginMetadata
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		p, err := registry.GetPlugin(name)
+		if err != nil {
+			base.Warnf("Plugin %q not found, skip: %v\n", name, err)
+			continue
+		}
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 // getPluginModulePath returns the correct Go module path for a plugin
