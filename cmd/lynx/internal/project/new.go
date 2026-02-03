@@ -43,8 +43,11 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 				return e
 			}
 			if !override {
-				return err
+				return fmt.Errorf("directory %s already exists and overwrite was declined", p.Name)
 			}
+		}
+		if force {
+			base.Warnf("--force: removing existing directory %s", to)
 		}
 		if e := os.RemoveAll(to); e != nil {
 			return e
@@ -60,11 +63,12 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	if err := repo.CopyToV2(ctx, to, module, []string{".git", ".github"}, nil); err != nil {
 		return err
 	}
-	// Rename the user directory under cmd directory to project name
-	e := os.Rename(
-		filepath.Join(to, "cmd", "user"),
-		filepath.Join(to, "cmd", p.Name),
-	)
+	// Rename the user directory under cmd directory to project name (layout must provide cmd/user)
+	cmdUser := filepath.Join(to, "cmd", "user")
+	if _, err := os.Stat(cmdUser); os.IsNotExist(err) {
+		return fmt.Errorf("template layout must contain cmd/user directory (not found in %s); check repo branch or layout structure", to)
+	}
+	e := os.Rename(cmdUser, filepath.Join(to, "cmd", p.Name))
 	if e != nil {
 		return e
 	}

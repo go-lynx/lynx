@@ -177,11 +177,13 @@ func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
 		return nil, fmt.Errorf("configuration cannot be nil")
 	}
 
-	// Fast path: check if already initialized successfully
+	// Fast path: check if already initialized successfully (singleton).
+	// Second call returns the existing instance; new cfg and plugins are ignored.
 	lynxMu.RLock()
 	existing := lynxApp
 	lynxMu.RUnlock()
 	if existing != nil {
+		log.Warnf("Lynx application already initialized, returning existing instance. New configuration and plugins are ignored.")
 		return existing, nil
 	}
 

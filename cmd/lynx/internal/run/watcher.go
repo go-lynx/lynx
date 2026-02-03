@@ -238,16 +238,17 @@ func NewDebouncer(duration time.Duration) *Debouncer {
 	}
 }
 
-// Trigger triggers the debounced function
+// Trigger triggers the debounced function. If the previous timer already fired,
+// the callback may be running; we do not schedule again to avoid double invocation.
 func (d *Debouncer) Trigger(fn func()) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	// Cancel existing timer
 	if d.timer != nil {
-		d.timer.Stop()
+		if !d.timer.Stop() {
+			// Timer already fired or is firing; skip this trigger to avoid racing with callback
+			return
+		}
 	}
-
-	// Set new timer
 	d.timer = time.AfterFunc(d.duration, fn)
 }
