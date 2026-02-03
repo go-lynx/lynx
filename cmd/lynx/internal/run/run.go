@@ -121,22 +121,29 @@ func validateProject(path string) error {
 		return fmt.Errorf("no go.mod found in %s - not a Go project", path)
 	}
 
-	// Check for main.go or cmd directory
+	// Check for root main.go
 	mainPath := filepath.Join(path, "main.go")
-	cmdPath := filepath.Join(path, "cmd")
-	
-	mainExists := false
 	if _, err := os.Stat(mainPath); err == nil {
-		mainExists = true
-	}
-	
-	if _, err := os.Stat(cmdPath); err == nil {
-		mainExists = true
-	}
-	
-	if !mainExists {
-		return fmt.Errorf("no main.go or cmd/ directory found in %s", path)
+		return nil
 	}
 
-	return nil
+	// Check for cmd/<subdir>/main.go (Lynx layout)
+	cmdPath := filepath.Join(path, "cmd")
+	cmdInfo, err := os.Stat(cmdPath)
+	if err != nil || !cmdInfo.IsDir() {
+		return fmt.Errorf("no main.go or cmd/ directory found in %s", path)
+	}
+	entries, err := os.ReadDir(cmdPath)
+	if err != nil {
+		return fmt.Errorf("cannot read cmd/ in %s: %w", path, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			mainGo := filepath.Join(cmdPath, e.Name(), "main.go")
+			if _, err := os.Stat(mainGo); err == nil {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("no main.go in project root or under cmd/ in %s", path)
 }

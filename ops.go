@@ -49,29 +49,33 @@ func (m *DefaultPluginManager[T]) LoadPlugins(conf config.Config) error {
 	// Build gRPC subscriptions after plugins are loaded (control plane plugin must be started)
 	// This ensures service discovery is available
 	if Lynx() != nil && Lynx().bootConfig != nil && Lynx().bootConfig.Lynx != nil && Lynx().bootConfig.Lynx.Subscriptions != nil {
-		controlPlane := Lynx().GetControlPlane()
-		if controlPlane == nil {
-			log.Warnf("control plane is nil, skip building grpc subscriptions")
-			return nil
-		}
-		disc := controlPlane.NewServiceDiscovery()
-		if disc != nil {
+		subs := Lynx().bootConfig.Lynx.Subscriptions
+		hasGrpcSubs := subs != nil && len(subs.Grpc) > 0
+		if hasGrpcSubs {
+			controlPlane := Lynx().GetControlPlane()
+			if controlPlane == nil {
+				m.UnloadPlugins()
+				return fmt.Errorf("grpc subscriptions configured but control plane is not available (install a control plane plugin)")
+			}
+			disc := controlPlane.NewServiceDiscovery()
+			if disc == nil {
+				m.UnloadPlugins()
+				return fmt.Errorf("grpc subscriptions configured but service discovery is not available")
+			}
 			routerFactory := func(service string) selector.NodeFilter {
 				return controlPlane.NewNodeRouter(service)
 			}
 			conns, err := subscribe.BuildGrpcSubscriptions(Lynx().bootConfig.Lynx.Subscriptions, disc, routerFactory)
 			if err != nil {
+				m.UnloadPlugins()
 				return fmt.Errorf("build grpc subscriptions failed: %w", err)
 			}
-			// Use mutex to protect grpcSubs map
 			app := Lynx()
 			if app != nil {
 				app.grpcSubsMu.Lock()
 				app.grpcSubs = conns
 				app.grpcSubsMu.Unlock()
 			}
-		} else {
-			log.Warnf("service discovery is nil, skip building grpc subscriptions")
 		}
 	}
 
@@ -440,6 +444,7 @@ func (m *DefaultPluginManager[T]) StopPlugin(pluginName string) error {
 		return fmt.Errorf("invalid plugin instance for %s", pluginName)
 	}
 	if p == nil {
+		// Instance is nil; cleanup by plugin name. Plugins should use consistent Name/ID so resources are findable.
 		_ = m.runtime.CleanupResources(pluginName)
 		m.pluginInstances.Delete(pluginName)
 		return nil

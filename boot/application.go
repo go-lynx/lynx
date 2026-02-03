@@ -588,22 +588,18 @@ func (hc *HealthChecker) IsHealthy() bool {
 
 // CircuitBreaker methods
 
-// CanExecute checks if the circuit breaker allows execution
+// CanExecute checks if the circuit breaker allows execution.
+// Open->HalfOpen transition is done under exclusive lock to avoid multiple goroutines allowing execution.
 func (cb *CircuitBreaker) CanExecute() bool {
-	cb.mu.RLock()
-	defer cb.mu.RUnlock()
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
 
 	switch cb.state {
 	case CircuitStateClosed:
 		return true
 	case CircuitStateOpen:
-		// Check if timeout has passed
 		if time.Since(cb.lastFailure) >= cb.timeout {
-			cb.mu.RUnlock()
-			cb.mu.Lock()
 			cb.state = CircuitStateHalfOpen
-			cb.mu.Unlock()
-			cb.mu.RLock()
 			return true
 		}
 		return false

@@ -256,17 +256,30 @@ func processProjectParams(projectName string, workingDir string) (projectNameRes
 }
 
 // checkDuplicates removes duplicate project names and validates their format.
+// Path-like names (containing "/") are allowed and kept as-is; simple names must match [A-Za-z0-9_-]+.
 func checkDuplicates(names []string) []string {
 	encountered := map[string]bool{}
 	var result []string
 
-	// Define the valid character pattern for project names.
+	// Valid character pattern for simple project names (no path).
 	pattern := `^[A-Za-z0-9_-]+$`
 	regex := regexp.MustCompile(pattern)
 
 	for _, name := range names {
-		// If the name matches the pattern and hasn't been seen, add it to the results.
-		if regex.MatchString(name) && !encountered[name] {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if encountered[name] {
+			continue
+		}
+		// Allow path-like names (e.g. "foo/bar/svc"); only validate simple names with regex.
+		if strings.Contains(name, "/") {
+			encountered[name] = true
+			result = append(result, name)
+			continue
+		}
+		if regex.MatchString(name) {
 			encountered[name] = true
 			result = append(result, name)
 		}

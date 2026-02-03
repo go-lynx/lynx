@@ -316,7 +316,7 @@ func outputText(report DiagnosticReport) error {
 	checksByCategory := groupChecksByCategory(report.Checks)
 	
 	for category, checks := range checksByCategory {
-		fmt.Printf("\n📁 %s:\n", strings.Title(category))
+		fmt.Printf("\n📁 %s:\n", titleCase(category))
 		for _, check := range checks {
 			statusIcon := getStatusIcon(check.Status)
 			fmt.Printf("  %s %s: %s\n", statusIcon, check.Name, check.Message)
@@ -392,9 +392,9 @@ func outputMarkdown(report DiagnosticReport) error {
 	
 	checksByCategory := groupChecksByCategory(report.Checks)
 	for category, checks := range checksByCategory {
-		fmt.Printf("### %s\n\n", strings.Title(category))
+		fmt.Printf("### %s\n\n", titleCase(category))
 		fmt.Printf("| Check | Status | Message |\n")
-		fmt.Printf("|-------|--------|---------||\n")
+		fmt.Printf("|-------|--------|----------|\n")
 		
 		for _, check := range checks {
 			status := string(check.Status)
@@ -423,6 +423,14 @@ func outputMarkdown(report DiagnosticReport) error {
 }
 
 // Helper functions
+
+// titleCase returns s with first letter uppercased (replaces deprecated strings.Title for single-word use).
+func titleCase(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
 
 func getStatusIcon(status Status) string {
 	switch status {

@@ -218,6 +218,14 @@ func formatPluginType(pluginType PluginType) string {
 	case TypeOther:
 		return "Other"
 	default:
-		return strings.Title(string(pluginType))
+		return titleCasePlugin(string(pluginType))
 	}
+}
+
+// titleCasePlugin uppercases the first letter (replaces deprecated strings.Title).
+func titleCasePlugin(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

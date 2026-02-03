@@ -92,9 +92,9 @@ func (r *Runner) build(ctx context.Context) error {
 	// Prepare build command
 	args := []string{"build", "-o", r.binaryPath}
 	
-	// Add custom build arguments
+	// Add custom build arguments (parseBuildArgs respects quoted strings, e.g. -ldflags="-s -w")
 	if r.config.BuildArgs != "" {
-		customArgs := strings.Fields(r.config.BuildArgs)
+		customArgs := parseBuildArgs(r.config.BuildArgs)
 		args = append(args, customArgs...)
 	}
 
@@ -271,6 +271,39 @@ func (r *Runner) restart(ctx context.Context) {
 		fmt.Printf("❌ Restart failed: %v\n", err)
 		return
 	}
+}
+
+// parseBuildArgs splits s into arguments, respecting double-quoted strings
+// (e.g. `-ldflags="-s -w"` stays one argument so go build receives it correctly).
+func parseBuildArgs(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	var args []string
+	for len(s) > 0 {
+		s = strings.TrimLeft(s, " \t")
+		if len(s) == 0 {
+			break
+		}
+		if s[0] == '"' {
+			end := strings.Index(s[1:], `"`)
+			if end == -1 {
+				args = append(args, s[1:])
+				break
+			}
+			args = append(args, s[1:end+1])
+			s = s[end+2:]
+			continue
+		}
+		i := 0
+		for i < len(s) && s[i] != ' ' && s[i] != '\t' && s[i] != '"' {
+			i++
+		}
+		args = append(args, s[:i])
+		s = s[i:]
+	}
+	return args
 }
 
 // watchFiles monitors file changes and triggers restart

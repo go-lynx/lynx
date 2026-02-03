@@ -448,14 +448,11 @@ func (c *ProjectStructureCheck) Check() CheckResult {
 		Details:  make(map[string]interface{}),
 	}
 
-	// Expected directories
+	// Expected directories (aligned with "lynx new" layout: cmd/, configs/, internal/)
 	expectedDirs := []string{
-		"app",
-		"boot",
-		"plugins",
 		"cmd",
-		"docs",
-		"examples",
+		"configs",
+		"internal",
 	}
 
 	missingDirs := []string{}
