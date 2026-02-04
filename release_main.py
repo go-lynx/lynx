@@ -90,6 +90,38 @@ def parse_github_repo(url: str) -> tuple:
     return None, None
 
 
+def sync_banner_version(version: str, dry_run: bool = False) -> bool:
+    """
+    Update the version in internal/banner/banner.txt to match the release version.
+    The last line of banner.txt contains the version (e.g. "... v1.5.0").
+    Returns True if file was updated (or would be in dry-run), False if no change needed.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    banner_path = os.path.join(script_dir, "internal", "banner", "banner.txt")
+    if not os.path.isfile(banner_path):
+        print_warning(f"Banner file not found: {banner_path}, skipping version sync")
+        return False
+
+    with open(banner_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Replace version on the last line (e.g. "... v1.5.0" -> "... v1.5.1")
+    # Match trailing version pattern: optional space + v + semver + optional whitespace
+    new_content = re.sub(r"\s+v[\d.]+\s*$", f" {version}\n", content, count=1)
+    if new_content == content:
+        print_info("Banner version already matches, no change needed")
+        return False
+
+    if dry_run:
+        print_info(f"[DRY-RUN] Would update banner version to {version} in internal/banner/banner.txt")
+        return True
+
+    with open(banner_path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    print_success(f"Updated banner version to {version} in internal/banner/banner.txt")
+    return True
+
+
 class GitHubAPI:
     """GitHub API client"""
     
@@ -205,7 +237,17 @@ Examples:
     
     if args.dry_run:
         print_warning("⚠️  DRY-RUN mode: No actual operations will be performed")
-    
+
+    # Ensure we run from repository root (so git add/commit and paths are correct)
+    code, git_root, _ = run_cmd(
+        ["git", "rev-parse", "--show-toplevel"],
+        check=False,
+        capture_output=True,
+    )
+    if code == 0 and git_root:
+        os.chdir(git_root)
+        print_info(f"Working directory: {git_root}")
+
     # Get git repository info
     print_info("Checking git repository...")
     remote_url = get_git_remote_url()
@@ -252,7 +294,18 @@ Examples:
             if response.lower() != 'y':
                 print("Release cancelled")
                 sys.exit(0)
-    
+
+    # Sync banner version so that startup banner matches the release version
+    print_info("Syncing banner version...")
+    banner_updated = sync_banner_version(version, dry_run=args.dry_run)
+    if banner_updated and not args.dry_run:
+        run_cmd(["git", "add", "internal/banner/banner.txt"], check=True)
+        run_cmd(
+            ["git", "commit", "-m", f"chore: bump banner version to {version}"],
+            check=True,
+        )
+        print_success("Committed banner version update (tag will point to this commit)")
+
     # Check if tag exists locally
     code, _, _ = run_cmd(["git", "rev-parse", version], check=False, capture_output=True)
     if code == 0:
