@@ -18,4 +18,5 @@ var CmdGit = &cobra.Command{
 
 func init() {
 	CmdGit.AddCommand(cmdCloneAll)
+	CmdGit.AddCommand(cmdRemoteToSSH)
 }
