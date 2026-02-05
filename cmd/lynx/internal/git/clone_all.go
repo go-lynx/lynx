@@ -23,7 +23,8 @@ const (
 
 type repoInfo struct {
 	Name     string `json:"name"`
-	CloneURL string `json:"clone_url"`
+	CloneURL string `json:"clone_url"` // HTTPS
+	SSHURL   string `json:"ssh_url"`   // SSH，clone 时优先使用
 	Private  bool   `json:"private"`
 }
 
@@ -81,13 +82,17 @@ func runCloneAll(cmd *cobra.Command, args []string) error {
 			failed = append(failed, r.Name)
 			continue
 		}
-		if r.CloneURL == "" {
-			color.Red("[%d/%d] %s has no clone_url, skip\n", i+1, len(repos), r.Name)
+		cloneURL := r.SSHURL
+		if cloneURL == "" {
+			cloneURL = r.CloneURL
+		}
+		if cloneURL == "" {
+			color.Red("[%d/%d] %s has no clone_url/ssh_url, skip\n", i+1, len(repos), r.Name)
 			failed = append(failed, r.Name)
 			continue
 		}
 		color.Cyan("[%d/%d] Cloning %s ...\n", i+1, len(repos), r.Name)
-		if err := cloneRepo(r.CloneURL, dest); err != nil {
+		if err := cloneRepo(cloneURL, dest); err != nil {
 			color.Red("  failed: %v\n", err)
 			failed = append(failed, r.Name)
 			continue
