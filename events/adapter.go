@@ -61,8 +61,8 @@ func SetupPluginEventBusAdapter() {
 	plugins.SetGlobalEventBusAdapter(adapter)
 }
 
-// AddListener bridges a generic listener registration from plugins runtime into the unified event system
-// Signature matches the dynamic assertion used by plugins.simpleRuntime
+// AddListener bridges a generic listener registration from plugins runtime into the unified event system.
+// Signature matches the dynamic assertion used by plugins runtime (UnifiedRuntime).
 func (a *PluginEventBusAdapter) AddListener(id string, filter *plugins.EventFilter, handler func(interface{}), bus string) error {
 	if a == nil || a.eventManager == nil {
 		return fmt.Errorf("event manager not initialized")
@@ -77,14 +77,14 @@ func (a *PluginEventBusAdapter) AddListener(id string, filter *plugins.EventFilt
 	return AddGlobalListener(id, ef, lynxHandler, busType)
 }
 
-// RemoveListener removes a previously added listener by ID
-// Signature matches the dynamic assertion used by plugins.simpleRuntime
+// RemoveListener removes a previously added listener by ID.
+// Signature matches the dynamic assertion used by plugins runtime (UnifiedRuntime).
 func (a *PluginEventBusAdapter) RemoveListener(id string) error {
 	return RemoveGlobalListener(id)
 }
 
-// AddPluginListener registers a listener bound to a specific plugin namespace
-// Signature matches the dynamic assertion used by plugins.simpleRuntime
+// AddPluginListener registers a listener bound to a specific plugin namespace.
+// Signature matches the dynamic assertion used by plugins runtime (UnifiedRuntime).
 func (a *PluginEventBusAdapter) AddPluginListener(pluginName string, id string, filter *plugins.EventFilter, handler func(interface{})) error {
 	if a == nil || a.eventManager == nil {
 		return fmt.Errorf("event manager not initialized")

@@ -4,12 +4,15 @@ package plugins
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
 
-// TypedBasePlugin provides a generic base plugin with type-safe plugin foundation implementation
+// TypedBasePlugin provides a generic base plugin with type-safe plugin foundation implementation.
+// All reads and writes to status are protected by statusMu for concurrent safety (e.g. health checks
+// and lifecycle operations from different goroutines).
 type TypedBasePlugin[T any] struct {
 	// Basic plugin metadata
 	id          string // Unique identifier for the plugin
@@ -18,10 +21,11 @@ type TypedBasePlugin[T any] struct {
 	confPrefix  string // Configuration prefix
 	version     string // Semantic version number
 
-	// Operational state
-	status  PluginStatus // Current plugin status
-	runtime Runtime      // Runtime environment reference
-	logger  log.Logger   // Plugin-specific logger
+	// Operational state (status is guarded by statusMu for concurrency safety)
+	status   PluginStatus // Current plugin status
+	statusMu sync.RWMutex // protects status
+	runtime  Runtime      // Runtime environment reference
+	logger   log.Logger   // Plugin-specific logger
 
 	// Event handling
 	eventFilters []EventFilter // List of active event filters
@@ -40,8 +44,24 @@ type TypedBasePlugin[T any] struct {
 	instance T
 }
 
-// StartContext provides a context-aware Start with timeout monitoring
-// Plugins can override for true context awareness
+// getStatus returns the current plugin status in a concurrency-safe way.
+func (p *TypedBasePlugin[T]) getStatus() PluginStatus {
+	p.statusMu.RLock()
+	defer p.statusMu.RUnlock()
+	return p.status
+}
+
+// setStatus sets the plugin status in a concurrency-safe way.
+func (p *TypedBasePlugin[T]) setStatus(s PluginStatus) {
+	p.statusMu.Lock()
+	defer p.statusMu.Unlock()
+	p.status = s
+}
+
+// StartContext provides a context-aware Start with timeout monitoring.
+// The default implementation only wraps Start in a goroutine and returns on ctx.Done();
+// the underlying Start is not cancelled. For real cancellation, implement LifecycleWithContext
+// on your plugin and check ctx.Done() inside Start (or StartContext).
 func (p *TypedBasePlugin[T]) StartContext(ctx context.Context, plugin Plugin) error {
 	// Check if context is already canceled
 	if err := ctx.Err(); err != nil {
@@ -69,8 +89,9 @@ func (p *TypedBasePlugin[T]) StartContext(ctx context.Context, plugin Plugin) er
 	}
 }
 
-// StopContext provides a context-aware Stop with timeout monitoring
-// Plugins can override for true context awareness
+// StopContext provides a context-aware Stop with timeout monitoring.
+// The default implementation only wraps Stop in a goroutine and returns on ctx.Done();
+// the underlying Stop is not cancelled. Override and honor ctx in cleanup for real cancellation.
 func (p *TypedBasePlugin[T]) StopContext(ctx context.Context, plugin Plugin) error {
 	// Check if context is already canceled
 	if err := ctx.Err(); err != nil {
@@ -98,8 +119,9 @@ func (p *TypedBasePlugin[T]) StopContext(ctx context.Context, plugin Plugin) err
 	}
 }
 
-// InitializeContext provides a context-aware Initialize with timeout monitoring
-// Plugins can override for true context awareness
+// InitializeContext provides a context-aware Initialize with timeout monitoring.
+// The default implementation only wraps Initialize in a goroutine and returns on ctx.Done();
+// the underlying Initialize is not cancelled. Override and check ctx.Err() for real cancellation.
 func (p *TypedBasePlugin[T]) InitializeContext(ctx context.Context, plugin Plugin, rt Runtime) error {
 	// Check if context is already canceled
 	if err := ctx.Err(); err != nil {
@@ -170,7 +192,7 @@ func (p *TypedBasePlugin[T]) Initialize(plugin Plugin, rt Runtime) error {
 
 	p.runtime = rt
 	p.logger = rt.GetLogger()
-	p.status = StatusInitializing
+	p.setStatus(StatusInitializing)
 
 	// Emit event indicating plugin is initializing
 	p.EmitEvent(PluginEvent{
@@ -182,11 +204,11 @@ func (p *TypedBasePlugin[T]) Initialize(plugin Plugin, rt Runtime) error {
 
 	// Call InitializeResources for custom initialization
 	if err := plugin.InitializeResources(rt); err != nil {
-		p.status = StatusFailed
+		p.setStatus(StatusFailed)
 		return NewPluginError(p.id, "Initialize", "Failed to initialize resources", err)
 	}
 
-	p.status = StatusInactive
+	p.setStatus(StatusInactive)
 	// Emit event indicating plugin has been initialized
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginInitialized,
@@ -201,7 +223,7 @@ func (p *TypedBasePlugin[T]) Initialize(plugin Plugin, rt Runtime) error {
 // Start activates the plugin and begins its main operations.
 // The plugin must be initialized before it can be started.
 func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
-	if p.status == StatusActive {
+	if p.getStatus() == StatusActive {
 		return ErrPluginAlreadyActive
 	}
 
@@ -209,7 +231,7 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 		return ErrPluginNotInitialized
 	}
 
-	p.status = StatusInitializing
+	p.setStatus(StatusInitializing)
 	// Emit event indicating plugin is starting
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStarting,
@@ -220,11 +242,11 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 
 	// Call StartupTasks for custom startup logic
 	if err := plugin.StartupTasks(); err != nil {
-		p.status = StatusFailed
+		p.setStatus(StatusFailed)
 		return NewPluginError(p.id, "Start", "Failed to perform startup tasks", err)
 	}
 
-	p.status = StatusActive
+	p.setStatus(StatusActive)
 	// Emit event indicating plugin has started
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStarted,
@@ -245,11 +267,11 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 // Stop gracefully terminates the plugin's operations.
 // This method should release all resources and perform cleanup.
 func (p *TypedBasePlugin[T]) Stop(plugin Plugin) error {
-	if p.status != StatusActive {
+	if p.getStatus() != StatusActive {
 		return NewPluginError(p.id, "Stop", "Plugin must be active to stop", ErrPluginNotActive)
 	}
 
-	p.status = StatusStopping
+	p.setStatus(StatusStopping)
 	// Emit event indicating plugin is stopping
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStopping,
@@ -260,11 +282,11 @@ func (p *TypedBasePlugin[T]) Stop(plugin Plugin) error {
 
 	// Call CleanupTasks for custom cleanup logic
 	if err := plugin.CleanupTasks(); err != nil {
-		p.status = StatusFailed
+		p.setStatus(StatusFailed)
 		return NewPluginError(p.id, "Stop", "Failed to perform cleanup tasks", err)
 	}
 
-	p.status = StatusTerminated
+	p.setStatus(StatusTerminated)
 	// Emit event indicating plugin has stopped
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStopped,
@@ -279,7 +301,7 @@ func (p *TypedBasePlugin[T]) Stop(plugin Plugin) error {
 // Status returns the current operational status of the plugin.
 // This method is thread-safe and can be called at any time.
 func (p *TypedBasePlugin[T]) Status(plugin Plugin) PluginStatus {
-	return p.status
+	return p.getStatus()
 }
 
 // InitializeResources sets up the plugin's required resources.
@@ -326,13 +348,15 @@ func (p *TypedBasePlugin[T]) Description() string {
 // Version returns the semantic version of the plugin.
 // Version format should follow semver conventions (MAJOR.MINOR.PATCH).
 func (p *TypedBasePlugin[T]) Version() string {
+	p.statusMu.RLock()
+	defer p.statusMu.RUnlock()
 	return p.version
 }
 
 // SetStatus sets the current operational status of the plugin.
 // This method is thread-safe and should be used to update plugin status.
 func (p *TypedBasePlugin[T]) SetStatus(status PluginStatus) {
-	p.status = status
+	p.setStatus(status)
 }
 
 // GetHealth performs a health check and returns a detailed health report.
@@ -353,7 +377,7 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 	})
 
 	// Check if plugin is in a valid state for health check
-	switch p.status {
+	switch p.getStatus() {
 	case StatusTerminated, StatusFailed:
 		report.Status = "unhealthy"
 		report.Message = "Plugin is not operational"
@@ -434,7 +458,6 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 	default:
 		report.Status = "unhealthy"
 		report.Message = "Plugin status is unknown"
-
 	}
 
 	// Emit event indicating health check is running
@@ -521,14 +544,24 @@ func (p *TypedBasePlugin[T]) Configure(conf any) error {
 	return nil
 }
 
-// GetDependencies returns the list of plugin dependencies.
-// This includes both required and optional dependencies.
+// GetDependencies returns a copy of the plugin dependencies so callers cannot
+// mutate the slice and to avoid races with concurrent AddDependency.
+// For correct load order: the framework calls this before initializing plugins
+// (during TopologicalSort). Required dependencies that affect load order should
+// be added in the plugin constructor so they are available here.
 func (p *TypedBasePlugin[T]) GetDependencies() []Dependency {
-	return p.dependencies
+	if len(p.dependencies) == 0 {
+		return nil
+	}
+	out := make([]Dependency, len(p.dependencies))
+	copy(out, p.dependencies)
+	return out
 }
 
 // AddDependency adds a new dependency to the plugin.
 // The dependency will be validated during plugin initialization.
+// For load-order resolution, add required dependencies in the plugin constructor
+// so GetDependencies() is complete before the manager runs topological sort.
 func (p *TypedBasePlugin[T]) AddDependency(dep Dependency) {
 	p.dependencies = append(p.dependencies, dep)
 	// Emit event indicating dependency status has changed
@@ -585,15 +618,18 @@ func (p *TypedBasePlugin[T]) EmitEvent(event PluginEvent) {
 
 // EmitEventInternal emits an event to the unified event bus system.
 // This method adds standard fields to the event before emission.
+// Safe to call before Initialize: if runtime is nil, the event is dropped to avoid panic.
 func (p *TypedBasePlugin[T]) EmitEventInternal(event PluginEvent) {
+	if p.runtime == nil {
+		return
+	}
 	// Add standard fields
 	event.PluginID = p.id
-	event.Status = p.status
+	event.Status = p.getStatus()
 	event.Timestamp = time.Now().Unix()
 
 	// Apply filters
 	if p.ShouldEmitEvent(event) {
-		// Use runtime's EmitEvent which now delegates to unified event bus
 		p.runtime.EmitEvent(event)
 	}
 }
@@ -640,8 +676,8 @@ func (p *TypedBasePlugin[T]) EventMatchesFilter(event PluginEvent, filter EventF
 	// Check priority
 	if len(filter.Priorities) > 0 {
 		priorityMatch := false
-		for _, p := range filter.Priorities {
-			if event.Priority == p {
+		for _, pri := range filter.Priorities {
+			if event.Priority == pri {
 				priorityMatch = true
 				break
 			}
@@ -738,11 +774,11 @@ func (p *TypedBasePlugin[T]) HandleDefaultEvent(event PluginEvent) {
 // Suspend temporarily suspends the plugin.
 // This method checks if the plugin is in the active state.
 func (p *TypedBasePlugin[T]) Suspend() error {
-	if p.status != StatusActive {
+	if p.getStatus() != StatusActive {
 		return NewPluginError(p.id, "Suspend", "Plugin must be active to suspend", ErrPluginNotActive)
 	}
 
-	p.status = StatusStopping
+	p.setStatus(StatusStopping)
 	// Emit event indicating plugin is stopping
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStopping,
@@ -752,14 +788,14 @@ func (p *TypedBasePlugin[T]) Suspend() error {
 	})
 
 	// Perform any suspension tasks here if needed
-	p.status = StatusSuspended
+	p.setStatus(StatusSuspended)
 	return nil
 }
 
 // Resume resumes the plugin from suspended state.
 // This method checks if the plugin is in the suspended state.
 func (p *TypedBasePlugin[T]) Resume() error {
-	if p.status != StatusSuspended {
+	if p.getStatus() != StatusSuspended {
 		return NewPluginError(p.id, "Resume", "Plugin must be suspended to resume", ErrPluginNotActive)
 	}
 
@@ -771,7 +807,7 @@ func (p *TypedBasePlugin[T]) Resume() error {
 		Category: "lifecycle",
 	})
 
-	p.status = StatusActive
+	p.setStatus(StatusActive)
 
 	// Emit event indicating plugin has started
 	p.EmitEvent(PluginEvent{
@@ -791,7 +827,7 @@ func (p *TypedBasePlugin[T]) PrepareUpgrade(targetVersion string) error {
 		return NewPluginError(p.id, "PrepareUpgrade", "Upgrade not supported", ErrPluginUpgradeNotSupported)
 	}
 
-	if p.status != StatusActive {
+	if p.getStatus() != StatusActive {
 		return NewPluginError(p.id, "PrepareUpgrade", "Plugin must be active to upgrade", ErrPluginNotActive)
 	}
 
@@ -807,14 +843,14 @@ func (p *TypedBasePlugin[T]) PrepareUpgrade(targetVersion string) error {
 		},
 	})
 
-	p.status = StatusUpgrading
+	p.setStatus(StatusUpgrading)
 	return nil
 }
 
 // ExecuteUpgrade performs the plugin upgrade.
 // This method checks if the plugin is in the upgrading state.
 func (p *TypedBasePlugin[T]) ExecuteUpgrade(targetVersion string) error {
-	if p.status != StatusUpgrading {
+	if p.getStatus() != StatusUpgrading {
 		return NewPluginError(p.id, "ExecuteUpgrade", "Plugin must be in upgrading state", ErrPluginNotActive)
 	}
 
@@ -836,16 +872,18 @@ func (p *TypedBasePlugin[T]) ExecuteUpgrade(targetVersion string) error {
 		// Attempt automatic rollback
 		if rollbackErr := p.RollbackUpgrade(p.version); rollbackErr != nil {
 			// If rollback fails, plugin is in an inconsistent state
-			p.status = StatusFailed
+			p.setStatus(StatusFailed)
 			return NewPluginError(p.id, "ExecuteUpgrade", "Upgrade and rollback failed", err)
 		}
 
 		return NewPluginError(p.id, "ExecuteUpgrade", "Upgrade failed, rolled back", err)
 	}
 
-	// Update version and restore active state
+	// Update version and restore active state under same lock to avoid race with Version()
+	p.statusMu.Lock()
 	p.version = targetVersion
 	p.status = StatusActive
+	p.statusMu.Unlock()
 
 	// Emit event indicating upgrade has been completed
 	p.EmitEvent(PluginEvent{
@@ -864,11 +902,11 @@ func (p *TypedBasePlugin[T]) ExecuteUpgrade(targetVersion string) error {
 // RollbackUpgrade rolls back the plugin upgrade.
 // This method checks if the plugin is in the upgrading or failed state.
 func (p *TypedBasePlugin[T]) RollbackUpgrade(previousVersion string) error {
-	if p.status != StatusUpgrading && p.status != StatusFailed {
+	if p.getStatus() != StatusUpgrading && p.getStatus() != StatusFailed {
 		return NewPluginError(p.id, "RollbackUpgrade", "Plugin must be in upgrading or failed state", ErrPluginNotActive)
 	}
 
-	p.status = StatusRollback
+	p.setStatus(StatusRollback)
 	// Emit event indicating rollback has been initiated
 	p.EmitEvent(PluginEvent{
 		Type:     EventRollbackInitiated,
@@ -883,7 +921,7 @@ func (p *TypedBasePlugin[T]) RollbackUpgrade(previousVersion string) error {
 
 	// Perform rollback tasks
 	if err := p.PerformRollback(previousVersion); err != nil {
-		p.status = StatusFailed
+		p.setStatus(StatusFailed)
 		// Emit event indicating rollback failed
 		p.EmitEvent(PluginEvent{
 			Type:     EventRollbackFailed,
@@ -899,9 +937,11 @@ func (p *TypedBasePlugin[T]) RollbackUpgrade(previousVersion string) error {
 		return NewPluginError(p.id, "RollbackUpgrade", "Rollback failed", err)
 	}
 
-	// Restore version and active state
+	// Restore version and active state under same lock to avoid race with Version()
+	p.statusMu.Lock()
 	p.version = previousVersion
 	p.status = StatusActive
+	p.statusMu.Unlock()
 
 	// Emit event indicating rollback has been completed
 	p.EmitEvent(PluginEvent{

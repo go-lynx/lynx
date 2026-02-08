@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+// Package id provides plugin ID format helpers. The format validated by ValidatePluginID
+// (org.plugin.name.vX or org.plugin.name.vX.Y.Z) is recommended for new plugins; existing
+// plugins that use other IDs (e.g. "my-plugin-v1") can skip calling ValidatePluginID if needed.
+
 // ID format constants
 const (
 	// DefaultOrg is the default organization identifier
@@ -63,7 +67,8 @@ func GeneratePluginID(org, name, version string) string {
 	return fmt.Sprintf("%s.%s.%s.%s", org, ComponentType, name, version)
 }
 
-// ValidatePluginID validates the format of a plugin ID
+// ValidatePluginID validates the recommended plugin ID format (org.plugin.name.vX[.Y.Z]).
+// Non-standard IDs used by existing plugins may not pass; use only when enforcing the standard format.
 func ValidatePluginID(id string) error {
 	// Regular expression pattern explanation:
 	// ^                     String start

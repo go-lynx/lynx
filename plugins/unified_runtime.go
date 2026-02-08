@@ -72,6 +72,11 @@ func (r *UnifiedRuntime) GetSharedResource(name string) (any, error) {
 	if r.isClosed() {
 		return nil, fmt.Errorf("runtime is closed")
 	}
+	select {
+	case <-r.shutdownCtx.Done():
+		return nil, fmt.Errorf("runtime is closed")
+	default:
+	}
 
 	if name == "" {
 		return nil, fmt.Errorf("resource name cannot be empty")
@@ -82,16 +87,21 @@ func (r *UnifiedRuntime) GetSharedResource(name string) (any, error) {
 		return nil, fmt.Errorf("resource not found: %s", name)
 	}
 
-	// Update access statistics
 	r.updateAccessStats(name)
 
 	return value, nil
 }
 
-// RegisterSharedResource registers a shared resource
+// RegisterSharedResource registers a shared resource.
+// If the name already exists, the previous resource is closed before being replaced to avoid leaks.
 func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error {
 	if r.isClosed() {
 		return fmt.Errorf("runtime is closed")
+	}
+	select {
+	case <-r.shutdownCtx.Done():
+		return fmt.Errorf("runtime is closed")
+	default:
 	}
 
 	if name == "" {
@@ -102,10 +112,16 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 		return fmt.Errorf("resource cannot be nil")
 	}
 
-	// Store resource
+	// On overwrite, cleanup old resource first to avoid leak
+	if old, loaded := r.resources.LoadAndDelete(name); loaded && old != nil {
+		_ = r.cleanupResourceGracefully(name, old)
+	}
+	if oldInfo, loaded := r.resourceInfo.LoadAndDelete(name); loaded {
+		_ = oldInfo // discard old info
+	}
+
 	r.resources.Store(name, resource)
 
-	// Create resource info with size estimation
 	now := time.Now()
 	info := &ResourceInfo{
 		Name:        name,
@@ -115,7 +131,7 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 		CreatedAt:   now,
 		LastUsedAt:  now,
 		AccessCount: 0,
-		Size:        0, // Will be calculated asynchronously
+		Size:        0,
 		Metadata:    make(map[string]any),
 	}
 
@@ -160,10 +176,16 @@ func (r *UnifiedRuntime) GetPrivateResource(name string) (any, error) {
 	return r.GetSharedResource(privateKey)
 }
 
-// RegisterPrivateResource registers a private (plugin-scoped) resource
+// RegisterPrivateResource registers a private (plugin-scoped) resource.
+// If the key already exists, the previous resource is closed before being replaced.
 func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) error {
 	if r.isClosed() {
 		return fmt.Errorf("runtime is closed")
+	}
+	select {
+	case <-r.shutdownCtx.Done():
+		return fmt.Errorf("runtime is closed")
+	default:
 	}
 
 	pluginID := r.getCurrentPluginContext()
@@ -181,7 +203,13 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 
 	privateKey := fmt.Sprintf("%s:%s", pluginID, name)
 
-	// Store resource
+	if old, loaded := r.resources.LoadAndDelete(privateKey); loaded && old != nil {
+		_ = r.cleanupResourceGracefully(privateKey, old)
+	}
+	if _, loaded := r.resourceInfo.LoadAndDelete(privateKey); loaded {
+		// old info discarded
+	}
+
 	r.resources.Store(privateKey, resource)
 
 	// Create resource info with size estimation
@@ -297,8 +325,8 @@ func (r *UnifiedRuntime) WithPluginContext(pluginName string) Runtime {
 			eventManager:         r.eventManager,
 			closed:               false,
 			mu:                   sync.RWMutex{}, // new mutex for this instance's state
-			shutdownCtx:           r.shutdownCtx, // share shutdown context
-			shutdownCancel:        nil,           // only root instance has cancel function
+			shutdownCtx:          r.shutdownCtx,  // share shutdown context
+			shutdownCancel:       nil,            // only root instance has cancel function
 		}
 		return contextRuntime
 	}
@@ -536,7 +564,7 @@ func (r *UnifiedRuntime) GetEventStats() map[string]any {
 // Resource info and statistics
 // ============================================================================
 
-// GetResourceInfo returns resource info
+// GetResourceInfo returns a copy of resource info so callers cannot mutate internal state.
 func (r *UnifiedRuntime) GetResourceInfo(name string) (*ResourceInfo, error) {
 	if name == "" {
 		return nil, fmt.Errorf("resource name cannot be empty")
@@ -552,16 +580,16 @@ func (r *UnifiedRuntime) GetResourceInfo(name string) (*ResourceInfo, error) {
 		return nil, fmt.Errorf("invalid resource info type for: %s", name)
 	}
 
-	return info, nil
+	return copyResourceInfo(info), nil
 }
 
-// ListResources lists all resources
+// ListResources returns copies of all resource infos so callers cannot mutate internal state.
 func (r *UnifiedRuntime) ListResources() []*ResourceInfo {
 	var resources []*ResourceInfo
 
 	r.resourceInfo.Range(func(key, value interface{}) bool {
 		if info, ok := value.(*ResourceInfo); ok {
-			resources = append(resources, info)
+			resources = append(resources, copyResourceInfo(info))
 		}
 		return true
 	})
@@ -569,10 +597,21 @@ func (r *UnifiedRuntime) ListResources() []*ResourceInfo {
 	return resources
 }
 
-// CleanupResources cleans up resources for a plugin
+// CleanupResources cleans up resources for a plugin.
+// Permission: only the plugin that owns the resources (current plugin context), the "system" context,
+// or empty context (e.g. during system shutdown) may call this for a given pluginID.
 func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	if pluginID == "" {
 		return fmt.Errorf("plugin ID cannot be empty")
+	}
+
+	caller := r.getCurrentPluginContext()
+	if caller != "" {
+		if caller != pluginID && caller != "system" {
+			return fmt.Errorf("permission denied: plugin %q cannot cleanup resources of plugin %q (only owner or system can cleanup)", caller, pluginID)
+		}
+	} else {
+		caller = "system-shutdown"
 	}
 
 	// Collect resources to be deleted with their actual resource objects
@@ -594,6 +633,12 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 		}
 		return true
 	})
+
+	if len(toDelete) > 0 {
+		if logger := r.GetLogger(); logger != nil {
+			logger.Log(log.LevelInfo, "msg", "resource cleanup initiated", "plugin_id", pluginID, "caller", caller)
+		}
+	}
 
 	// Phase 2: cleanup resources outside lock to avoid holding lock during cleanup
 	var errors []error
@@ -827,6 +872,30 @@ func (r *UnifiedRuntime) Shutdown() {
 	r.closed = true
 }
 
+// copyResourceInfo returns a shallow copy of ResourceInfo with Metadata and atomic fields snapshotted.
+func copyResourceInfo(info *ResourceInfo) *ResourceInfo {
+	if info == nil {
+		return nil
+	}
+	c := &ResourceInfo{
+		Name:        info.Name,
+		Type:        info.Type,
+		PluginID:    info.PluginID,
+		IsPrivate:   info.IsPrivate,
+		CreatedAt:   info.CreatedAt,
+		LastUsedAt:  info.LastUsedAt,
+		AccessCount: atomic.LoadInt64(&info.AccessCount),
+		Size:        atomic.LoadInt64(&info.Size),
+	}
+	if info.Metadata != nil {
+		c.Metadata = make(map[string]any, len(info.Metadata))
+		for k, v := range info.Metadata {
+			c.Metadata[k] = v
+		}
+	}
+	return c
+}
+
 // updateAccessStats updates access statistics for a resource
 // Uses atomic operations for thread-safe updates
 // Note: sync.Map only protects the map itself, not the values stored in it.
@@ -968,5 +1037,4 @@ func (r *UnifiedRuntime) isClosed() bool {
 // Backward-compatible constructors
 // ============================================================================
 
-// Note: NewSimpleRuntime and NewTypedRuntime are defined in plugin.go
-// They are not redefined here to avoid conflicts
+// NewSimpleRuntime and NewTypedRuntime are defined in plugin.go and delegate to NewUnifiedRuntime.

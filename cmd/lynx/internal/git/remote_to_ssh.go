@@ -18,38 +18,38 @@ var (
 
 var cmdRemoteToSSH = &cobra.Command{
 	Use:   "remote-to-ssh",
-	Short: "将指定目录下所有 Git 仓库的 origin 从 HTTPS 改为 SSH",
-	Long: `扫描指定目录下的所有子目录，对包含 .git 的仓库执行：
-  若 origin 当前为 HTTPS 地址，则改为对应的 SSH 地址并执行 git remote set-url。
-例如：https://github.com/go-lynx/lynx.git -> git@github.com:go-lynx/lynx.git`,
-	Example: `  # 将当前目录下所有仓库的 remote 改为 SSH
+	Short: "Change origin from HTTPS to SSH for all Git repos under a directory",
+	Long: `Scan subdirectories under the given path; for each directory containing .git:
+  If origin is currently an HTTPS URL, convert it to the corresponding SSH URL and run git remote set-url.
+Example: https://github.com/go-lynx/lynx.git -> git@github.com:go-lynx/lynx.git`,
+	Example: `  # Change remote to SSH for all repos in current directory
   lynx git remote-to-ssh
 
-  # 指定要扫描的目录
+  # Specify directory to scan
   lynx git remote-to-ssh --dir ./go-lynx-repos`,
 	RunE: runRemoteToSSH,
 }
 
 func init() {
-	cmdRemoteToSSH.Flags().StringVarP(&remoteToSSHDir, "dir", "d", ".", "要扫描的目录（包含各仓库子目录）")
+	cmdRemoteToSSH.Flags().StringVarP(&remoteToSSHDir, "dir", "d", ".", "Directory to scan (containing repo subdirectories)")
 }
 
-// httpsURLToSSH 将 GitHub/GitLab 等 HTTPS clone 地址转为 SSH 地址。
-// 例如 https://github.com/owner/repo.git -> git@github.com:owner/repo.git
+// httpsURLToSSH converts GitHub/GitLab etc. HTTPS clone URLs to SSH.
+// Example: https://github.com/owner/repo.git -> git@github.com:owner/repo.git
 func httpsURLToSSH(httpsURL string) (sshURL string, ok bool) {
 	s := strings.TrimSpace(httpsURL)
 	if s == "" {
 		return "", false
 	}
 	if strings.HasPrefix(s, "git@") && strings.Contains(s, ":") {
-		return s, true // 已是 SSH
+		return s, true // already SSH
 	}
-	// https://github.com/owner/repo 或 https://github.com/owner/repo.git
+	// https://github.com/owner/repo or https://github.com/owner/repo.git
 	if !strings.HasPrefix(s, "https://") {
 		return "", false
 	}
 	s = strings.TrimPrefix(s, "https://")
-	// 去掉可能的 user:pass@
+	// Strip optional user:pass@
 	if idx := strings.Index(s, "@"); idx != -1 {
 		s = s[idx+1:]
 	}
@@ -101,7 +101,7 @@ func runRemoteToSSH(cmd *cobra.Command, args []string) error {
 		}
 		sshURL, ok := httpsURLToSSH(origin)
 		if !ok {
-			color.Yellow("  %s: origin 已是 SSH 或非 HTTPS，跳过: %s\n", e.Name(), origin)
+			color.Yellow("  %s: origin is already SSH or not HTTPS, skip: %s\n", e.Name(), origin)
 			skipped = append(skipped, e.Name())
 			continue
 		}
@@ -118,7 +118,7 @@ func runRemoteToSSH(cmd *cobra.Command, args []string) error {
 		updated = append(updated, e.Name())
 	}
 
-	color.Cyan("remote-to-ssh 完成: 已改为 SSH %d, 跳过 %d, 失败 %d\n",
+	color.Cyan("remote-to-ssh done: updated %d, skipped %d, failed %d\n",
 		len(updated), len(skipped), len(failed))
 	if len(failed) > 0 {
 		return fmt.Errorf("failed: %s", strings.Join(failed, ", "))

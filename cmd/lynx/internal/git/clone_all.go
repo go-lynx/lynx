@@ -24,7 +24,7 @@ const (
 type repoInfo struct {
 	Name     string `json:"name"`
 	CloneURL string `json:"clone_url"` // HTTPS
-	SSHURL   string `json:"ssh_url"`   // SSH，clone 时优先使用
+	SSHURL   string `json:"ssh_url"`   // SSH URL; preferred for clone
 	Private  bool   `json:"private"`
 }
 

@@ -107,16 +107,13 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 	var ordered []plugins.Plugin
 	sorted, err := m.TopologicalSort(m.pluginList)
 	if err != nil {
-		// Topological sort failed - provide detailed error information
+		// Topological sort failed - use dependency-aware unload order (best effort)
 		log.Errorf("topological sort failed during unload: %v", err)
-		log.Errorf("This may indicate circular dependencies or missing dependencies")
-		log.Errorf("Attempting to unload plugins in reverse order as fallback")
-		// Still try to unload in reverse order, but log the error
-		ordered = make([]plugins.Plugin, len(m.pluginList))
-		copy(ordered, m.pluginList)
-		// Reverse the order
-		for i, j := 0, len(ordered)-1; i < j; i, j = i+1, j-1 {
-			ordered[i], ordered[j] = ordered[j], ordered[i]
+		log.Errorf("Using best-effort unload order (dependents before dependencies)")
+		ordered = m.UnloadOrder(m.pluginList)
+		if len(ordered) == 0 {
+			ordered = make([]plugins.Plugin, len(m.pluginList))
+			copy(ordered, m.pluginList)
 		}
 	} else {
 		tmp := make([]plugins.Plugin, 0, len(sorted))
@@ -364,17 +361,11 @@ func (m *DefaultPluginManager[T]) UnloadPluginsByName(names []string) {
 	var ordered []plugins.Plugin
 	sorted, err := m.TopologicalSort(subset)
 	if err != nil {
-		// Topological sort failed - provide detailed error information
 		log.Errorf("topological sort failed for subset unload: %v", err)
-		log.Errorf("This may indicate circular dependencies or missing dependencies")
-		log.Errorf("Attempting to unload plugins in given order as fallback")
-		// Fallback to given order, but log the error
-		for _, n := range names {
-			if obj, ok := m.pluginInstances.Load(n); ok {
-				if p, ok2 := obj.(plugins.Plugin); ok2 && p != nil {
-					ordered = append(ordered, p)
-				}
-			}
+		log.Errorf("Using best-effort unload order for subset")
+		ordered = m.UnloadOrder(subset)
+		if len(ordered) == 0 {
+			ordered = subset
 		}
 	} else {
 		tmp := make([]plugins.Plugin, 0, len(sorted))
