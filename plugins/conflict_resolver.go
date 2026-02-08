@@ -6,15 +6,20 @@ import (
 	"strings"
 )
 
-// ConflictResolver dependency conflict resolver interface
+// ConflictResolver dependency conflict resolver interface.
+//
+// ResolveConflicts only produces a ConflictResolution (suggested actions); it does not modify
+// the DependencyGraph. Callers must apply the chosen actions (e.g. change plugin set or versions)
+// and then re-build or update the graph. ValidateResolution checks the current graph state after
+// those changes; it does not apply the resolution itself.
 type ConflictResolver interface {
 	// DetectConflicts detects all dependency conflicts
 	DetectConflicts(graph *DependencyGraph) ([]DependencyConflict, error)
-	// ResolveConflicts resolves dependency conflicts
+	// ResolveConflicts returns suggested actions to resolve conflicts; it does not modify the graph
 	ResolveConflicts(conflicts []DependencyConflict) (*ConflictResolution, error)
 	// SuggestAlternatives suggests alternative solutions
 	SuggestAlternatives(conflict DependencyConflict, availablePlugins map[string][]Plugin) []ConflictAlternative
-	// ValidateResolution validates conflict resolution
+	// ValidateResolution validates that the current graph has no conflicts (e.g. after applying resolution elsewhere)
 	ValidateResolution(resolution *ConflictResolution, graph *DependencyGraph) error
 }
 

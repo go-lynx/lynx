@@ -199,6 +199,8 @@ func (p *MyTypedPlugin) GetConfig() *MyConfig {
 
 ### Context-Aware Plugin
 
+The default `TypedBasePlugin` implementations of `StartContext`, `StopContext`, and `InitializeContext` only run the non-context method in a goroutine and return when the context is done; they do **not** cancel the running Initialize/Start/Stop. For real cancellation, implement `LifecycleWithContext` on your plugin and check `ctx.Done()` inside your logic.
+
 For plugins that need to respect context cancellation and timeouts:
 
 ```go
@@ -235,30 +237,41 @@ func (p *ContextAwarePlugin) IsContextAware() bool {
 
 ## Dependencies
 
+### Dependency declaration timing
+
+**Important:** The framework resolves load order by calling `GetDependencies()` on each plugin *before* any plugin is initialized. Therefore:
+
+- Declare **required** dependencies in your plugin's **constructor** (e.g. in `NewMyPlugin()`), or in a method that runs before the plugin list is passed to `TopologicalSort`.
+- Do **not** rely on adding dependencies only inside `InitializeResources(rt)` for load-order resolution; by then the sort has already been done. You may still call `AddDependency` in `InitializeResources` for optional/bookkeeping purposes, but required dependencies used for ordering must be available from `GetDependencies()` as soon as the plugin is created.
+
+This ensures the dependency graph is complete when the manager builds the topological order for initialization and start.
+
 ### Declaring Dependencies
 
 ```go
-func (p *MyPlugin) InitializeResources(rt plugins.Runtime) error {
-    // Add required dependency
+// Recommended: declare required dependencies in constructor so GetDependencies() is complete before TopologicalSort.
+func NewMyPlugin() *MyPlugin {
+    p := &MyPlugin{
+        BasePlugin: plugins.NewBasePlugin(...),
+    }
     p.AddDependency(plugins.Dependency{
-        ID:       "database-plugin-v1",
-        Name:     "database-plugin",
-        Type:     plugins.DependencyTypeRequired,
+        ID: "database-plugin-v1",
+        Name: "database-plugin",
+        Type: plugins.DependencyTypeRequired,
         Required: true,
-        VersionConstraint: &plugins.VersionConstraint{
-            MinVersion: "1.0.0",
-            MaxVersion: "2.0.0",
-        },
+        VersionConstraint: &plugins.VersionConstraint{MinVersion: "1.0.0", MaxVersion: "2.0.0"},
     })
-    
-    // Add optional dependency
+    return p
+}
+
+func (p *MyPlugin) InitializeResources(rt plugins.Runtime) error {
+    // Optional: add more dependencies here only if they are not needed for load order
     p.AddDependency(plugins.Dependency{
         ID:       "cache-plugin-v1",
         Name:     "cache-plugin",
         Type:     plugins.DependencyTypeOptional,
         Required: false,
     })
-    
     return nil
 }
 ```

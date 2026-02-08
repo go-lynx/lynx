@@ -31,13 +31,15 @@ type VersionConstraint struct {
 	ExcludeVersions []string `json:"exclude_versions"` // Excluded versions
 }
 
-// Dependency describes dependency relationships between plugins
+// Dependency describes dependency relationships between plugins.
+// Type is the source of truth for semantics; Required is redundant with Type (Required should be true
+// when Type is DependencyTypeRequired). Prefer setting Type and keep Required consistent for JSON/API.
 type Dependency struct {
 	ID                string             `json:"id"`                 // Unique identifier of the dependent plugin
 	Name              string             `json:"name"`               // Name of the dependent plugin
-	Type              DependencyType     `json:"type"`               // Dependency type
+	Type              DependencyType     `json:"type"`               // Dependency type (source of truth)
 	VersionConstraint *VersionConstraint `json:"version_constraint"` // Version constraint
-	Required          bool               `json:"required"`           // Whether it's a required dependency
+	Required          bool               `json:"required"`           // Whether it's a required dependency; should be true when Type == DependencyTypeRequired
 	Checker           DependencyChecker  `json:"-"`                  // Dependency validator
 	Metadata          map[string]any     `json:"metadata"`           // Additional dependency information
 	Description       string             `json:"description"`        // Dependency description

@@ -317,7 +317,9 @@ type EventListener interface {
 	// Implementation should handle the event according to its type and priority.
 	HandleEvent(event PluginEvent)
 
-	// GetListenerID returns a unique identifier for the listener.
-	// Used for listener management and filtering.
+	// GetListenerID returns a stable unique identifier for this listener.
+	// The same logical listener must return the same ID on every call so that RemoveListener
+	// can correctly unregister it. Avoid using pointer addresses (e.g. fmt.Sprintf("%p", l))
+	// if the listener struct is recreated between Add and Remove.
 	GetListenerID() string
 }

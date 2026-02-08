@@ -26,6 +26,11 @@ type PluginWithLevel struct {
 // It performs a topological sort on the plugin dependency graph and assigns
 // each plugin a level based on the maximum depth of its dependencies.
 //
+// Dependency timing: GetDependencies() is called on each plugin before any
+// plugin is initialized. Required dependencies that affect load order must
+// therefore be declared in the plugin constructor (or before this sort runs),
+// not only in InitializeResources. See plugins package README "Dependency declaration timing".
+//
 // Parameters:
 //   - plugs: slice of plugins to sort and calculate levels for
 //
@@ -265,4 +270,80 @@ func (m *DefaultPluginManager[T]) TopologicalSort(plugs []plugins.Plugin) ([]Plu
 	}
 
 	return result, nil
+}
+
+// UnloadOrder returns a best-effort unload order (dependents first, then dependencies).
+// Only considers required dependencies that exist in plugs; ignores missing deps.
+// Used when TopologicalSort fails so unload order is still dependency-aware.
+// Builds load-order graph (dep -> dependent), runs Kahn; unload order = reverse(load order).
+func (m *DefaultPluginManager[T]) UnloadOrder(plugs []plugins.Plugin) []plugins.Plugin {
+	if len(plugs) == 0 {
+		return nil
+	}
+	id2plugin := make(map[string]plugins.Plugin)
+	for _, p := range plugs {
+		if p == nil {
+			continue
+		}
+		id2plugin[p.ID()] = p
+	}
+	if len(id2plugin) == 0 {
+		return plugs
+	}
+	// Graph: dependency -> dependents. Load order = deps first; unload = reverse.
+	graph := make(map[string][]string)
+	inDegree := make(map[string]int)
+	for id := range id2plugin {
+		inDegree[id] = 0
+	}
+	for _, p := range id2plugin {
+		deps := p.GetDependencies()
+		for _, dep := range deps {
+			if dep.Type != plugins.DependencyTypeRequired {
+				continue
+			}
+			if _, ok := id2plugin[dep.ID]; !ok {
+				continue
+			}
+			graph[dep.ID] = append(graph[dep.ID], p.ID())
+			inDegree[p.ID()]++
+		}
+	}
+	var loadOrder []string
+	queue := make([]string, 0)
+	for id, d := range inDegree {
+		if d == 0 {
+			queue = append(queue, id)
+		}
+	}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		loadOrder = append(loadOrder, current)
+		for _, next := range graph[current] {
+			inDegree[next]--
+			if inDegree[next] == 0 {
+				queue = append(queue, next)
+			}
+		}
+	}
+	// Append any remaining (cycle or disconnected) in deterministic order
+	for id, d := range inDegree {
+		if d > 0 {
+			loadOrder = append(loadOrder, id)
+		}
+	}
+	// Unload order = reverse load order (dependents first)
+	unloadIDs := make([]string, 0, len(loadOrder))
+	for i := len(loadOrder) - 1; i >= 0; i-- {
+		unloadIDs = append(unloadIDs, loadOrder[i])
+	}
+	// Map back to plugins; preserve order
+	order := make([]plugins.Plugin, 0, len(unloadIDs))
+	for _, id := range unloadIDs {
+		if p, ok := id2plugin[id]; ok {
+			order = append(order, p)
+		}
+	}
+	return order
 }

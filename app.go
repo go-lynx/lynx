@@ -538,9 +538,12 @@ func (a *LynxApp) Close() error {
 		"reason":      "application_close",
 	})
 
-	// Close plugin manager
+	// Close plugin manager (unload plugins) then shutdown runtime
 	if a.pluginManager != nil {
 		a.pluginManager.UnloadPlugins()
+		if rt := a.pluginManager.GetRuntime(); rt != nil {
+			rt.Shutdown()
+		}
 	}
 
 	// Close gRPC connections to prevent resource leaks
