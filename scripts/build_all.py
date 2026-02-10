@@ -72,6 +72,15 @@ def build_module(root: Path, module_rel: str, timeout_sec: int = 300) -> dict:
         }
     start = time.perf_counter()
     go_cmd = "go"
+    # 对 lynx-layout/api 先执行 go mod tidy，确保 go.sum 包含所有间接依赖
+    if module_rel == "lynx-layout/api":
+        subprocess.run(
+            [go_cmd, "mod", "tidy"],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
     try:
         result = subprocess.run(
             [go_cmd, "build", "./..."],
