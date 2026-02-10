@@ -484,7 +484,7 @@ const file_tls_proto_rawDesc = "" +
 	"\x04Cert\x12\x10\n" +
 	"\x03crt\x18\x01 \x01(\tR\x03crt\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x16\n" +
-	"\x06rootCA\x18\x03 \x01(\tR\x06rootCAB+Z)github.com/go-lynx/lynx/app/tls/conf;confb\x06proto3"
+	"\x06rootCA\x18\x03 \x01(\tR\x06rootCAB'Z%github.com/go-lynx/lynx/tls/conf;confb\x06proto3"
 
 var (
 	file_tls_proto_rawDescOnce sync.Once

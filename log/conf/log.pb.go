@@ -560,7 +560,7 @@ const file_log_proto_rawDesc = "" +
 	"\x10async_queue_size\x18\x01 \x01(\x05R\x0easyncQueueSize\x12(\n" +
 	"\x10batch_size_bytes\x18\x02 \x01(\x05R\x0ebatchSizeBytes\x125\n" +
 	"\x17batch_flush_interval_ms\x18\x03 \x01(\x05R\x14batchFlushIntervalMs\x129\n" +
-	"\x19console_buffer_size_bytes\x18\x04 \x01(\x05R\x16consoleBufferSizeBytesB&Z$github.com/go-lynx/lynx/app/log/confb\x06proto3"
+	"\x19console_buffer_size_bytes\x18\x04 \x01(\x05R\x16consoleBufferSizeBytesB\"Z github.com/go-lynx/lynx/log/confb\x06proto3"
 
 var (
 	file_log_proto_rawDescOnce sync.Once

@@ -5,10 +5,9 @@ Lynx 一键构建脚本
 构建 lynx 主库、CLI、layout 及所有插件，并输出详细结果。
 
 依赖：本机已安装 Python 3、Go，且 go 在 PATH 中。
-用法：脚本位于 lynx/ 目录下，以仓库根（lynx 的上一级）为项目根扫描并构建所有模块。
-  在任意目录执行均可，例如：
-  python build_all.py
-  python3 lynx/build_all.py
+用法：脚本位于 lynx/script/ 下，以仓库根（lynx 的上一级）为项目根扫描并构建所有模块。
+  在仓库根目录执行，例如：
+  python3 lynx/script/build_all.py
 退出码：全部通过为 0，有失败为 1。
 """
 
@@ -18,8 +17,8 @@ import sys
 import time
 from pathlib import Path
 
-# 项目根 = 脚本所在目录的上一级（脚本在 lynx/build_all.py 时，根为仓库根，可发现 lynx 与所有 lynx-* 插件）
-ROOT = Path(__file__).resolve().parent.parent
+# 项目根 = 脚本所在目录的上两级（lynx/script/build_all.py -> script -> lynx -> 仓库根）
+ROOT = Path(__file__).resolve().parent.parent.parent
 
 # 期望的模块顺序：先主库和 CLI，再 layout，其余按字母序
 PREFERRED_ORDER = [

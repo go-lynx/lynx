@@ -7,11 +7,10 @@
 github.com/go-lynx/lynx 的模块的 go.mod 中的版本号改为指定版本，无需逐个手工修改。
 
 依赖：Python 3，本机 Go 可选（若使用 --tidy）。
-用法：
-  在仓库根或 lynx 目录下执行均可，例如：
-  python lynx/update_lynx_deps.py 1.5.4
-  python lynx/update_lynx_deps.py v1.5.4 --dry-run
-  python lynx/update_lynx_deps.py v1.5.4 --tidy   # 更新后在各模块执行 go mod tidy
+用法（在仓库根目录执行）：
+  python3 lynx/script/update_lynx_deps.py 1.5.4
+  python3 lynx/script/update_lynx_deps.py v1.5.4 --dry-run
+  python3 lynx/script/update_lynx_deps.py v1.5.4 --tidy   # 更新后在各模块执行 go mod tidy
 """
 
 import os
@@ -20,8 +19,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-# 项目根 = 脚本所在目录的上一级（与 build_all.py 一致）
-ROOT = Path(__file__).resolve().parent.parent
+# 项目根 = 脚本所在目录的上两级（lynx/script/update_lynx_deps.py -> 仓库根）
+ROOT = Path(__file__).resolve().parent.parent.parent
 
 # 匹配 go.mod 中的 github.com/go-lynx/lynx 依赖行（保留缩进与 // indirect 等注释）
 LYNX_REQUIRE_RE = re.compile(

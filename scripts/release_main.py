@@ -96,8 +96,9 @@ def sync_banner_version(version: str, dry_run: bool = False) -> bool:
     The last line of banner.txt contains the version (e.g. "... v1.5.0").
     Returns True if file was updated (or would be in dry-run), False if no change needed.
     """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    banner_path = os.path.join(script_dir, "internal", "banner", "banner.txt")
+    # 脚本在 lynx/script/ 下，banner 在 lynx/internal/banner/
+    _lynx_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    banner_path = os.path.join(_lynx_root, "internal", "banner", "banner.txt")
     if not os.path.isfile(banner_path):
         print_warning(f"Banner file not found: {banner_path}, skipping version sync")
         return False
