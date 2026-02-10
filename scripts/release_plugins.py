@@ -411,8 +411,9 @@ Examples:
     if args.dry_run:
         print_warning("⚠️  DRY-RUN mode: No actual operations will be performed")
     
-    # Load plugins configuration
-    root_dir = Path(__file__).parent
+    # 脚本在 lynx/script/ 下，plugins.json 在 lynx/ 下
+    lynx_root = Path(__file__).resolve().parent.parent
+    root_dir = lynx_root
     config_path = root_dir / args.config
     plugins_config = load_plugins_config(config_path)
     
