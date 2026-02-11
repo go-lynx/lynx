@@ -15,14 +15,15 @@ import (
 func BuildGrpcSubscriptionsWithPlugin(cfg *conf.Subscriptions, discovery registry.Discovery, routerFactory func(string) selector.NodeFilter, pluginManager interface{}) (map[string]*ggrpc.ClientConn, error) {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, fall back to legacy method to avoid circular dependency
+	// TLS providers are nil in this path; TLS-enabled subscriptions may fail
 	log.Warnf("gRPC client plugin integration temporarily disabled due to circular dependency refactoring")
-	return BuildGrpcSubscriptions(cfg, discovery, routerFactory)
+	return BuildGrpcSubscriptions(cfg, discovery, routerFactory, nil)
 }
 
-// BuildGrpcSubscriptionsLegacy builds gRPC subscription connections using the legacy method
-// This is kept for backward compatibility
+// BuildGrpcSubscriptionsLegacy builds gRPC subscription connections using the legacy method.
+// Does not pass TLS providers; TLS-enabled subscriptions will fail. Use BuildGrpcSubscriptions with ClientTLSProviders for TLS support.
 func BuildGrpcSubscriptionsLegacy(cfg *conf.Subscriptions, discovery registry.Discovery, routerFactory func(string) selector.NodeFilter) (map[string]*ggrpc.ClientConn, error) {
-	return BuildGrpcSubscriptions(cfg, discovery, routerFactory)
+	return BuildGrpcSubscriptions(cfg, discovery, routerFactory, nil)
 }
 
 // GetGrpcConnection gets a gRPC connection for a specific service using the plugin

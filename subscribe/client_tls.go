@@ -9,9 +9,10 @@ import (
 	"github.com/go-lynx/lynx/tls/conf"
 )
 
-// tlsLoad method is used to load TLS configuration. Returns nil if TLS is not enabled.
-// This method attempts to obtain the root certificate and add it to the certificate pool, ultimately returning a configured tls.Config instance.
-func (g *GrpcSubscribe) tlsLoad() (*tls.Config, error) {
+// buildClientTLSConfig builds TLS configuration for gRPC client connections.
+// It loads the root CA and returns a tls.Config for verifying upstream server certificates.
+// Returns nil if TLS is not enabled.
+func (g *GrpcSubscribe) buildClientTLSConfig() (*tls.Config, error) {
 	// Check if TLS is enabled, return nil if not enabled
 	if !g.tls {
 		return nil, nil
@@ -48,14 +49,14 @@ func (g *GrpcSubscribe) tlsLoad() (*tls.Config, error) {
 			return nil, err
 		}
 		// Define a Cert struct variable for storing certificate information scanned from configuration
-		var t conf.Cert
+		var cert conf.Cert
 		// Scan configuration information into Cert struct variable
-		if err := c.Scan(&t); err != nil {
+		if err := c.Scan(&cert); err != nil {
 			// If scanning configuration information fails, return error
 			return nil, err
 		}
 		// Convert root CA certificate information obtained from configuration to byte slice
-		rootCA = []byte(t.GetRootCA())
+		rootCA = []byte(cert.GetRootCA())
 	} else {
 		// Use the root certificate of the current application directly
 		// If root CA certificate name is not specified, get it through injected defaultRootCA

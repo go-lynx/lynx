@@ -1,7 +1,6 @@
 package tls
 
 import (
-	_ "database/sql"
 	"fmt"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -9,6 +8,15 @@ import (
 	"github.com/go-lynx/lynx/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/tls/conf"
+)
+
+// Plugin metadata constants
+const (
+	tlsPluginID          = "lynx.tls"
+	tlsPluginName        = "tls"
+	tlsPluginDescription = "TLS certificate loader plugin for Lynx framework"
+	tlsPluginVersion     = "v2.0.0"
+	tlsConfPrefix        = "lynx.tls"
 )
 
 // LoaderTls represents the TLS certificate loader plugin
@@ -163,5 +171,6 @@ func NewTlsLoader(opts ...Option) plugins.Plugin {
 	for _, opt := range opts {
 		opt(t)
 	}
+	t.BasePlugin = plugins.NewBasePlugin(tlsPluginID, tlsPluginName, tlsPluginDescription, tlsPluginVersion, tlsConfPrefix, t.weight)
 	return t
 }
