@@ -8,30 +8,11 @@ The `internal` package contains private implementation details for the Lynx fram
 
 ```
 internal/
-├── adapters/       # Interface adapters for external integrations
 ├── banner/         # Startup banner display
-├── config/         # Configuration validation utilities
-├── kratos/         # Kratos framework integration
 └── resource/       # Resource optimization utilities
 ```
 
 ## Sub-packages
-
-### adapters/
-
-Provides interface adapters to bridge the Lynx framework with external components.
-
-| File | Description |
-|------|-------------|
-| `interfaces.go` | Interface definitions for adapters |
-| `grpc_adapter.go` | gRPC service provider adapter |
-
-**Key Interfaces:**
-
-- `GrpcServiceProvider` - gRPC server access
-- `CertificateProvider` - TLS certificate access
-- `ControlPlane` - Control plane integration
-- `DependencyInjector` - Dependency injection support
 
 ### banner/
 
@@ -47,35 +28,6 @@ Handles the display of the Lynx startup banner.
 - Customizable banner display
 - Version and application info
 - Can be disabled via configuration
-
-### config/
-
-Configuration validation utilities.
-
-| File | Description |
-|------|-------------|
-| `validation.go` | Configuration validation logic |
-
-**Features:**
-
-- Schema validation
-- Required field checking
-- Type validation
-- Custom validation rules
-
-### kratos/
-
-Integration layer with the Kratos framework.
-
-| File | Description |
-|------|-------------|
-| `kratos.go` | Kratos adapter and utilities |
-
-**Features:**
-
-- Kratos application integration
-- Service registration helpers
-- Middleware adapters
 
 ### resource/
 
@@ -99,8 +51,8 @@ These packages can be freely used within the Lynx framework:
 
 ```go
 import (
-    "github.com/go-lynx/lynx/internal/adapters"
     "github.com/go-lynx/lynx/internal/banner"
+    "github.com/go-lynx/lynx/internal/resource"
 )
 ```
 
@@ -130,13 +82,11 @@ When adding new internal packages:
 
 | Internal Package | Related Public Package |
 |------------------|------------------------|
-| `internal/adapters` | `plugins/` (Plugin SDK) |
 | `internal/banner` | `boot/` (Application startup) |
-| `internal/config` | `conf/` (Configuration) |
-| `kratos` | Root `lynx` package (moved from internal/kratos) |
 | `internal/resource` | `cache/` (Cache abstractions) |
+
+For configuration validation, use the public `lynx/pkg/config` package instead of internal packages.
 
 ## License
 
 Apache License 2.0
-
