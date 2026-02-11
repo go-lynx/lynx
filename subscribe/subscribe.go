@@ -122,7 +122,7 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 	// Prepare TLS config if needed
 	var tlsConf *tls.Config
 	if g.tls {
-		conf, err := g.tlsLoad()
+		conf, err := g.buildClientTLSConfig()
 		if err != nil {
 			// Log error and return nil (handled by caller for required case)
 			log.Error(err)

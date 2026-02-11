@@ -3,6 +3,7 @@ package subscribe
 import (
 	"fmt"
 
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-kratos/kratos/v2/selector"
 	"github.com/go-lynx/lynx/conf"
@@ -10,9 +11,20 @@ import (
 	ggrpc "google.golang.org/grpc"
 )
 
-// BuildGrpcSubscriptions builds gRPC subscription connections based on configuration
-// Returns map where key is service name, value is reusable gRPC ClientConn
-func BuildGrpcSubscriptions(cfg *conf.Subscriptions, discovery registry.Discovery, routerFactory func(string) selector.NodeFilter) (map[string]*ggrpc.ClientConn, error) {
+// ClientTLSProviders provides TLS-related dependencies for gRPC client connections.
+// Pass to BuildGrpcSubscriptions when subscriptions use TLS.
+// - ConfigProvider: loads CA certificate from control plane by name/group (used when caName is configured)
+// - DefaultRootCA: returns application's root CA (used when caName is not set)
+type ClientTLSProviders struct {
+	ConfigProvider func(name, group string) (config.Source, error)
+	DefaultRootCA  func() []byte
+}
+
+// BuildGrpcSubscriptions builds gRPC subscription connections based on configuration.
+// When subscriptions use TLS, pass tlsProviders from control plane and certificate provider.
+// tlsProviders can be nil if no subscription uses TLS.
+// Returns map where key is service name, value is reusable gRPC ClientConn.
+func BuildGrpcSubscriptions(cfg *conf.Subscriptions, discovery registry.Discovery, routerFactory func(string) selector.NodeFilter, tlsProviders *ClientTLSProviders) (map[string]*ggrpc.ClientConn, error) {
 	// Initialize the connection map to store gRPC connections
 	conns := make(map[string]*ggrpc.ClientConn)
 
@@ -46,6 +58,15 @@ func BuildGrpcSubscriptions(cfg *conf.Subscriptions, discovery registry.Discover
 		// Enable TLS if configured
 		if item.GetTls() {
 			opts = append(opts, EnableTls())
+			// Inject TLS providers when available
+			if tlsProviders != nil {
+				if tlsProviders.ConfigProvider != nil {
+					opts = append(opts, WithConfigProvider(tlsProviders.ConfigProvider))
+				}
+				if tlsProviders.DefaultRootCA != nil {
+					opts = append(opts, WithDefaultRootCA(tlsProviders.DefaultRootCA))
+				}
+			}
 		}
 
 		// Add root CA file name if configured

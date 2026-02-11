@@ -19,7 +19,7 @@ This package handles:
 | `subscribe.go` | Core `GrpcSubscribe` struct and connection management |
 | `loader.go` | Configuration-based subscription loading |
 | `loader_integrated.go` | Integrated loader with framework support |
-| `tls.go` | TLS configuration and certificate handling |
+| `client_tls.go` | Client-side TLS configuration for verifying upstream server certificates |
 
 ## Usage
 
@@ -49,6 +49,9 @@ client := pb.NewUserServiceClient(conn)
 
 ### With TLS
 
+TLS requires either `WithConfigProvider` (when caName is set) or `WithDefaultRootCA` (when using app's root CA).
+`BuildGrpcSubscriptions` accepts `*ClientTLSProviders` to inject these automatically:
+
 ```go
 sub := subscribe.NewGrpcSubscribe(
     subscribe.WithServiceName("secure-service"),
@@ -56,9 +59,16 @@ sub := subscribe.NewGrpcSubscribe(
     subscribe.EnableTls(),
     subscribe.WithRootCAFileName("ca.crt"),
     subscribe.WithRootCAFileGroup("certificates"),
+    subscribe.WithConfigProvider(controlPlane.GetConfig),
+    subscribe.WithDefaultRootCA(func() []byte {
+        if app := lynx.Lynx(); app != nil && app.Certificate() != nil {
+            return app.Certificate().GetRootCACertificate()
+        }
+        return nil
+    }),
 )
 
-conn, err := sub.NewGrpcConn()
+conn := sub.Subscribe()
 ```
 
 ### Required Dependencies
@@ -129,8 +139,8 @@ message GrpcSubscription {
 | `WithRootCAFileGroup(group)` | Set the CA certificate file group |
 | `Required()` | Mark as required dependency |
 | `WithRouterFactory(factory)` | Set custom node routing |
-| `WithConfigProvider(provider)` | Set configuration source provider |
-| `WithDefaultRootCA(provider)` | Set default root CA provider |
+| `WithConfigProvider(provider)` | Set configuration source provider (for loading CA from control plane) |
+| `WithDefaultRootCA(provider)` | Set default root CA provider (uses app certificate when caName not set) |
 
 ## Connection States
 

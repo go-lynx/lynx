@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kratos/kratos/v2/config"
+	lynxapp "github.com/go-lynx/lynx"
 	"github.com/go-lynx/lynx/log"
 	"github.com/go-lynx/lynx/tls/conf"
 )
@@ -144,11 +146,40 @@ func (cm *CertificateManager) loadFromLocalFiles() error {
 	return nil
 }
 
-// loadFromControlPlane loads certificates from control plane (existing logic)
+// loadFromControlPlane loads certificates from control plane via Lynx GetConfig
 func (cm *CertificateManager) loadFromControlPlane() error {
-	// This will be implemented to maintain backward compatibility
-	// For now, return an error indicating this needs to be implemented
-	return fmt.Errorf("control plane loading not yet implemented")
+	app := lynxapp.Lynx()
+	if app == nil {
+		return fmt.Errorf("lynx application not initialized")
+	}
+	cp := app.GetControlPlane()
+	if cp == nil {
+		return fmt.Errorf("control plane not available")
+	}
+	if cm.config.GetFileName() == "" {
+		return fmt.Errorf("file name is required for control plane source")
+	}
+	group := cm.config.GetGroup()
+	if group == "" {
+		group = cm.config.GetFileName()
+	}
+	cfgSource, err := cp.GetConfig(cm.config.GetFileName(), group)
+	if err != nil {
+		return fmt.Errorf("failed to get config from control plane: %w", err)
+	}
+	c := config.New(config.WithSource(cfgSource))
+	if err := c.Load(); err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+	var cert conf.Cert
+	if err := c.Scan(&cert); err != nil {
+		return fmt.Errorf("failed to scan cert config: %w", err)
+	}
+	cm.certificate = []byte(cert.GetCrt())
+	cm.privateKey = []byte(cert.GetKey())
+	cm.rootCA = []byte(cert.GetRootCA())
+	log.Infof("Certificates loaded from control plane: file=%s group=%s", cm.config.GetFileName(), group)
+	return nil
 }
 
 // loadFromMemory loads certificates from memory content
@@ -397,19 +428,26 @@ func (cm *CertificateManager) IsInitialized() bool {
 	return cm.initialized
 }
 
-// Stop stops the certificate manager and cleans up resources
+// Stop stops the certificate manager and cleans up resources.
+// Safe to call multiple times; subsequent calls are no-ops.
 func (cm *CertificateManager) Stop() {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
+	if !cm.initialized {
+		return
+	}
+
 	// Stop file monitoring
 	if cm.stopChan != nil {
 		close(cm.stopChan)
+		cm.stopChan = nil
 	}
 
 	if cm.watcher != nil {
 		cm.watcher.Stop()
 		cm.watcher.Close()
+		cm.watcher = nil
 	}
 
 	cm.initialized = false

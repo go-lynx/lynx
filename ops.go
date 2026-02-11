@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/selector"
+	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/log"
 	"github.com/go-lynx/lynx/plugins"
 	"github.com/go-lynx/lynx/subscribe"
@@ -65,7 +66,15 @@ func (m *DefaultPluginManager[T]) LoadPlugins(conf config.Config) error {
 			routerFactory := func(service string) selector.NodeFilter {
 				return controlPlane.NewNodeRouter(service)
 			}
-			conns, err := subscribe.BuildGrpcSubscriptions(Lynx().bootConfig.Lynx.Subscriptions, disc, routerFactory)
+			// Build TLS providers for subscriptions that use TLS
+			var tlsProviders *subscribe.ClientTLSProviders
+			if hasTLSSubscription(subs) {
+				tlsProviders = &subscribe.ClientTLSProviders{
+					ConfigProvider: controlPlane.GetConfig,
+					DefaultRootCA:  defaultRootCAProvider(),
+				}
+			}
+			conns, err := subscribe.BuildGrpcSubscriptions(Lynx().bootConfig.Lynx.Subscriptions, disc, routerFactory, tlsProviders)
 			if err != nil {
 				m.UnloadPlugins()
 				return fmt.Errorf("build grpc subscriptions failed: %w", err)
@@ -80,6 +89,29 @@ func (m *DefaultPluginManager[T]) LoadPlugins(conf config.Config) error {
 	}
 
 	return nil
+}
+
+// hasTLSSubscription returns true if any gRPC subscription has TLS enabled
+func hasTLSSubscription(subs *conf.Subscriptions) bool {
+	if subs == nil || len(subs.Grpc) == 0 {
+		return false
+	}
+	for _, g := range subs.Grpc {
+		if g.GetTls() {
+			return true
+		}
+	}
+	return false
+}
+
+// defaultRootCAProvider returns a function that fetches the application's root CA from the certificate provider
+func defaultRootCAProvider() func() []byte {
+	return func() []byte {
+		if Lynx() != nil && Lynx().Certificate() != nil {
+			return Lynx().Certificate().GetRootCACertificate()
+		}
+		return nil
+	}
 }
 
 // UnloadPlugins stops and unloads all plugins with overall timeout protection.
