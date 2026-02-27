@@ -45,6 +45,7 @@ var SupportedSourceTypes = []string{
 	SourceTypeControlPlane,
 	SourceTypeLocalFile,
 	SourceTypeMemory,
+	SourceTypeAuto,
 }
 
 // Supported certificate formats

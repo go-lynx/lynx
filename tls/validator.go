@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/go-lynx/lynx/tls/conf"
 )
@@ -35,6 +36,8 @@ func (v *ConfigValidator) Validate(config *conf.Tls) error {
 		return v.validateControlPlaneConfig(config)
 	case conf.SourceTypeMemory:
 		return v.validateMemoryConfig(config)
+	case conf.SourceTypeAuto:
+		return nil // Auto source uses optional AutoConfig, validated at runtime
 	default:
 		return fmt.Errorf("unsupported source type: %s", config.SourceType)
 	}
@@ -171,5 +174,59 @@ func (v *ConfigValidator) ValidateCompleteConfig(config *conf.Tls) error {
 		return fmt.Errorf("common configuration validation failed: %w", err)
 	}
 
+	return nil
+}
+
+// ValidateAutoConfig validates optional auto certificate configuration.
+// Returns nil if autoConfig is nil.
+func (v *ConfigValidator) ValidateAutoConfig(autoConfig *conf.AutoConfig) error {
+	if autoConfig == nil {
+		return nil
+	}
+	if autoConfig.RotationInterval != "" {
+		d, err := time.ParseDuration(autoConfig.RotationInterval)
+		if err != nil {
+			return fmt.Errorf("invalid rotation_interval: %w", err)
+		}
+		if d < conf.MinAutoRotationInterval || d > conf.MaxAutoRotationInterval {
+			return fmt.Errorf("rotation_interval must be between %v and %v", conf.MinAutoRotationInterval, conf.MaxAutoRotationInterval)
+		}
+	}
+	if err := v.ValidateSharedCAConfig(autoConfig.SharedCA); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ValidateSharedCAConfig validates shared CA configuration when present.
+// Returns nil if shared is nil.
+func (v *ConfigValidator) ValidateSharedCAConfig(shared *conf.SharedCAConfig) error {
+	if shared == nil {
+		return nil
+	}
+	if shared.From == "" {
+		return fmt.Errorf("shared_ca.from is required (file or control_plane)")
+	}
+	switch shared.From {
+	case conf.SharedCAFromFile:
+		if shared.CertFile == "" {
+			return fmt.Errorf("shared_ca.cert_file is required when from=file")
+		}
+		if shared.KeyFile == "" {
+			return fmt.Errorf("shared_ca.key_file is required when from=file")
+		}
+		if err := v.validateFilePath(shared.CertFile, "shared_ca cert"); err != nil {
+			return err
+		}
+		if err := v.validateFilePath(shared.KeyFile, "shared_ca key"); err != nil {
+			return err
+		}
+	case conf.SharedCAFromControlPlane:
+		if shared.ConfigName == "" {
+			return fmt.Errorf("shared_ca.config_name is required when from=control_plane")
+		}
+	default:
+		return fmt.Errorf("shared_ca.from must be %q or %q", conf.SharedCAFromFile, conf.SharedCAFromControlPlane)
+	}
 	return nil
 }

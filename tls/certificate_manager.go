@@ -22,6 +22,9 @@ type CertificateManager struct {
 	// Configuration
 	config *conf.Tls
 
+	// AutoConfig is used when source_type is "auto" for generating and rotating certificates
+	autoConfig *conf.AutoConfig
+
 	// Current certificates
 	certificate []byte
 	privateKey  []byte
@@ -48,6 +51,15 @@ func NewCertificateManager(config *conf.Tls) *CertificateManager {
 	}
 }
 
+// NewCertificateManagerWithAuto creates a certificate manager with auto-generated certificate support.
+// When config.SourceType is conf.SourceTypeAuto, autoConfig is used for rotation interval and SANs.
+// autoConfig may be nil to use defaults.
+func NewCertificateManagerWithAuto(config *conf.Tls, autoConfig *conf.AutoConfig) *CertificateManager {
+	cm := NewCertificateManager(config)
+	cm.autoConfig = autoConfig
+	return cm
+}
+
 // Initialize initializes the certificate manager and loads certificates
 func (cm *CertificateManager) Initialize() error {
 	cm.mu.Lock()
@@ -68,6 +80,12 @@ func (cm *CertificateManager) Initialize() error {
 		cm.lastError = err
 		return fmt.Errorf("configuration validation failed: %w", err)
 	}
+	if cm.config.SourceType == conf.SourceTypeAuto {
+		if err := validator.ValidateAutoConfig(cm.autoConfig); err != nil {
+			cm.lastError = err
+			return fmt.Errorf("auto config validation failed: %w", err)
+		}
+	}
 
 	// Load certificates based on source type
 	var err error
@@ -78,6 +96,8 @@ func (cm *CertificateManager) Initialize() error {
 		err = cm.loadFromControlPlane()
 	case conf.SourceTypeMemory:
 		err = cm.loadFromMemory()
+	case conf.SourceTypeAuto:
+		err = cm.loadFromAuto()
 	default:
 		return fmt.Errorf("unsupported source type: %s", cm.config.SourceType)
 	}
@@ -98,6 +118,11 @@ func (cm *CertificateManager) Initialize() error {
 		cm.config.LocalFile != nil &&
 		cm.config.LocalFile.WatchFiles {
 		cm.startFileMonitoring()
+	}
+
+	// Start auto certificate rotation if source is auto
+	if cm.config.SourceType == conf.SourceTypeAuto {
+		cm.startAutoRotation()
 	}
 
 	cm.initialized = true
@@ -206,6 +231,146 @@ func (cm *CertificateManager) loadFromMemory() error {
 	return nil
 }
 
+// loadFromAuto generates server certificate in-process. When SharedCA is set, uses that CA to sign the server cert
+// so the mesh shares one root CA; otherwise generates a new CA and server cert per process.
+func (cm *CertificateManager) loadFromAuto() error {
+	cfg := cm.autoConfig
+	if cfg == nil {
+		cfg = &conf.AutoConfig{}
+	}
+	var serviceName, hostname string
+	if lynxapp.Lynx() != nil {
+		serviceName = lynxapp.GetName()
+		hostname = lynxapp.GetHost()
+	}
+	if serviceName == "" && cfg.ServiceName != "" {
+		serviceName = cfg.ServiceName
+	}
+	if hostname == "" && cfg.Hostname != "" {
+		hostname = cfg.Hostname
+	}
+	if hostname == "" {
+		h, err := os.Hostname()
+		if err != nil {
+			hostname = "localhost"
+		} else {
+			hostname = h
+		}
+	}
+
+	var result *CertGenResult
+	var err error
+	if cfg.SharedCA != nil {
+		caCertPEM, caKeyPEM, loadErr := cm.loadSharedCA(cfg.SharedCA)
+		if loadErr != nil {
+			return fmt.Errorf("load shared CA: %w", loadErr)
+		}
+		validity := cfg.ParseAutoCertValidity()
+		result, err = GenerateServerCertFromCA(caCertPEM, caKeyPEM, serviceName, hostname, cfg.SANs, validity)
+		if err != nil {
+			return fmt.Errorf("generate server cert from shared CA: %w", err)
+		}
+		log.Infof("Auto server certificate generated from shared CA: service=%s hostname=%s", serviceName, hostname)
+	} else {
+		result, err = GenerateAutoCertificatesFromConfig(cfg, serviceName, hostname)
+		if err != nil {
+			return fmt.Errorf("generate auto certificates: %w", err)
+		}
+		log.Infof("Auto certificates generated: service=%s hostname=%s", serviceName, hostname)
+	}
+
+	cm.certificate = result.CertPEM
+	cm.privateKey = result.KeyPEM
+	cm.rootCA = result.RootCAPEM
+	return nil
+}
+
+// loadSharedCA loads the shared root CA cert and key from file or control plane.
+func (cm *CertificateManager) loadSharedCA(shared *conf.SharedCAConfig) (caCertPEM, caKeyPEM []byte, err error) {
+	if shared == nil || shared.From == "" {
+		return nil, nil, fmt.Errorf("shared_ca.from is required")
+	}
+	switch shared.From {
+	case conf.SharedCAFromFile:
+		if shared.CertFile == "" || shared.KeyFile == "" {
+			return nil, nil, fmt.Errorf("shared_ca cert_file and key_file are required when from=file")
+		}
+		caCertPEM, err = cm.readFile(shared.CertFile)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read shared CA cert file: %w", err)
+		}
+		caKeyPEM, err = cm.readFile(shared.KeyFile)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read shared CA key file: %w", err)
+		}
+		return caCertPEM, caKeyPEM, nil
+	case conf.SharedCAFromControlPlane:
+		if shared.ConfigName == "" {
+			return nil, nil, fmt.Errorf("shared_ca config_name is required when from=control_plane")
+		}
+		app := lynxapp.Lynx()
+		if app == nil {
+			return nil, nil, fmt.Errorf("lynx application not initialized")
+		}
+		cp := app.GetControlPlane()
+		if cp == nil {
+			return nil, nil, fmt.Errorf("control plane not available")
+		}
+		group := shared.ConfigGroup
+		if group == "" {
+			group = shared.ConfigName
+		}
+		cfgSource, err := cp.GetConfig(shared.ConfigName, group)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get shared CA config from control plane: %w", err)
+		}
+		c := config.New(config.WithSource(cfgSource))
+		if err := c.Load(); err != nil {
+			return nil, nil, fmt.Errorf("load shared CA config: %w", err)
+		}
+		var cert conf.Cert
+		if err := c.Scan(&cert); err != nil {
+			return nil, nil, fmt.Errorf("scan shared CA config: %w", err)
+		}
+		// Control plane config: crt = CA cert, key = CA key (rootCA can be same or empty)
+		caCertPEM = []byte(cert.GetCrt())
+		caKeyPEM = []byte(cert.GetKey())
+		if len(caCertPEM) == 0 || len(caKeyPEM) == 0 {
+			return nil, nil, fmt.Errorf("shared CA config must contain crt and key")
+		}
+		return caCertPEM, caKeyPEM, nil
+	default:
+		return nil, nil, fmt.Errorf("shared_ca.from must be %q or %q", conf.SharedCAFromFile, conf.SharedCAFromControlPlane)
+	}
+}
+
+// startAutoRotation starts a goroutine that rotates the server certificate at the configured interval.
+func (cm *CertificateManager) startAutoRotation() {
+	cfg := cm.autoConfig
+	if cfg == nil {
+		cfg = &conf.AutoConfig{}
+	}
+	interval := cfg.ParseAutoRotationInterval()
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-cm.stopChan:
+				return
+			case <-ticker.C:
+				log.Infof("Auto certificate rotation triggered")
+				if err := cm.reloadCertificates(); err != nil {
+					log.Errorf("Auto certificate rotation failed: %v", err)
+				} else {
+					log.Infof("Auto certificate rotated successfully")
+				}
+			}
+		}
+	}()
+	log.Infof("Auto certificate rotation started with interval %v", interval)
+}
+
 // readFile reads a file and returns its content
 func (cm *CertificateManager) readFile(filePath string) ([]byte, error) {
 	// Resolve relative paths
@@ -231,7 +396,9 @@ func (cm *CertificateManager) readFile(filePath string) ([]byte, error) {
 	return data, nil
 }
 
-// buildTLSConfig builds the TLS configuration from loaded certificates
+// buildTLSConfig builds the TLS configuration from loaded certificates.
+// Uses GetCertificate callback so that after rotation (e.g. every 24h), new TLS handshakes
+// get the current certificate without restart; gRPC/HTTP servers using this config pick up new certs automatically.
 func (cm *CertificateManager) buildTLSConfig() error {
 	// Validate certificate and private key
 	if len(cm.certificate) == 0 {
@@ -241,13 +408,7 @@ func (cm *CertificateManager) buildTLSConfig() error {
 		return fmt.Errorf("private key data is empty")
 	}
 
-	// Load X.509 key pair
-	tlsCert, err := tls.X509KeyPair(cm.certificate, cm.privateKey)
-	if err != nil {
-		return fmt.Errorf("failed to load X509 key pair: %w", err)
-	}
-
-	// Create certificate pool for root CA
+	// Create certificate pool for root CA (client auth / mutual TLS)
 	var certPool *x509.CertPool
 	if len(cm.rootCA) > 0 {
 		certPool = x509.NewCertPool()
@@ -256,10 +417,22 @@ func (cm *CertificateManager) buildTLSConfig() error {
 		}
 	}
 
-	// Build TLS configuration
+	// Use GetCertificate so each new TLS handshake reads the current cert from the manager.
+	// After rotation, new connections get the new certificate without process restart.
 	cm.tlsConfig = &tls.Config{
-		Certificates: []tls.Certificate{tlsCert},
-		ClientCAs:    certPool,
+		GetCertificate: func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			certPEM := cm.GetCertificate()
+			keyPEM := cm.GetPrivateKey()
+			if len(certPEM) == 0 || len(keyPEM) == 0 {
+				return nil, fmt.Errorf("no certificate or key")
+			}
+			cert, err := tls.X509KeyPair(certPEM, keyPEM)
+			if err != nil {
+				return nil, fmt.Errorf("load X509 key pair: %w", err)
+			}
+			return &cert, nil
+		},
+		ClientCAs: certPool,
 	}
 
 	// Apply common configuration if available
@@ -368,14 +541,23 @@ func (cm *CertificateManager) checkFilesChanged() bool {
 	return cm.watcher.HasChanged()
 }
 
-// reloadCertificates reloads certificates from files
+// reloadCertificates reloads certificates from the current source.
+// Only local_file and auto support hot reload; control_plane and memory return an error if reload is attempted.
 func (cm *CertificateManager) reloadCertificates() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// Reload certificates
-	if err := cm.loadFromLocalFiles(); err != nil {
-		return err
+	switch cm.config.SourceType {
+	case conf.SourceTypeAuto:
+		if err := cm.loadFromAuto(); err != nil {
+			return err
+		}
+	case conf.SourceTypeLocalFile:
+		if err := cm.loadFromLocalFiles(); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("reload not supported for source type: %s", cm.config.SourceType)
 	}
 
 	// Rebuild TLS configuration

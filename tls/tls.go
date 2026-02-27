@@ -17,6 +17,8 @@ const (
 	tlsPluginDescription = "TLS certificate loader plugin for Lynx framework"
 	tlsPluginVersion     = "v2.0.0"
 	tlsConfPrefix        = "lynx.tls"
+	// TLSConfKeyAuto is the config key for auto-generated certificate options (e.g. rotation_interval, service_name).
+	TLSConfKeyAuto = "lynx.tls.auto"
 )
 
 // LoaderTls represents the TLS certificate loader plugin
@@ -25,6 +27,9 @@ type LoaderTls struct {
 	tls    *conf.Tls
 	cert   *conf.Cert
 	weight int
+
+	// autoConfig is used when source_type is "auto" for rotation and SANs
+	autoConfig *conf.AutoConfig
 
 	// New certificate manager
 	certManager *CertificateManager
@@ -99,13 +104,24 @@ func (t *LoaderTls) InitializeResources(rt plugins.Runtime) error {
 	if err != nil {
 		return err
 	}
+	// When source type is auto, optionally load auto config from TLSConfKeyAuto
+	if t.tls.SourceType == conf.SourceTypeAuto {
+		var auto conf.AutoConfig
+		if scanErr := rt.GetConfig().Value(TLSConfKeyAuto).Scan(&auto); scanErr == nil {
+			t.autoConfig = &auto
+		}
+	}
 	return nil
 }
 
 // StartupTasks performs necessary tasks during plugin startup
 func (t *LoaderTls) StartupTasks() error {
-	// Initialize new certificate manager for all source types
-	t.certManager = NewCertificateManager(t.tls)
+	// Initialize certificate manager (with auto config when source_type is auto)
+	if t.tls.SourceType == conf.SourceTypeAuto {
+		t.certManager = NewCertificateManagerWithAuto(t.tls, t.autoConfig)
+	} else {
+		t.certManager = NewCertificateManager(t.tls)
+	}
 
 	// Initialize certificate manager
 	if err := t.certManager.Initialize(); err != nil {
