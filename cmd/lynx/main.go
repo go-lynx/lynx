@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/go-lynx/lynx/cmd/lynx/internal/ca"
 	"github.com/go-lynx/lynx/cmd/lynx/internal/doctor"
 	"github.com/go-lynx/lynx/cmd/lynx/internal/git"
 	"github.com/go-lynx/lynx/cmd/lynx/internal/plugin"
@@ -60,6 +61,7 @@ func init() {
 	rootCmd.AddCommand(git.CmdGit)
 	rootCmd.AddCommand(plugin.CmdPlugin)
 	rootCmd.AddCommand(run.CmdRun)
+	rootCmd.AddCommand(ca.CmdGenCA)
 	// Global log level flags
 	rootCmd.PersistentFlags().Bool("verbose", false, "enable verbose logs")
 	rootCmd.PersistentFlags().Bool("quiet", false, "suppress non-error logs")
