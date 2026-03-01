@@ -69,6 +69,6 @@ func (g *GrpcSubscribe) buildClientTLSConfig() (*tls.Config, error) {
 	if !certPool.AppendCertsFromPEM(rootCA) {
 		return nil, fmt.Errorf("failed to load root certificate")
 	}
-	// Return configured TLS configuration instance, set server name and root certificate pool
-	return &tls.Config{ServerName: g.caName, RootCAs: certPool}, nil
+	// ServerName must match the upstream service's certificate CN/SAN for TLS verification
+	return &tls.Config{ServerName: g.svcName, RootCAs: certPool}, nil
 }
