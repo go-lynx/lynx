@@ -1,7 +1,7 @@
 package tls
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -26,6 +26,7 @@ type FileWatcher struct {
 	// Control
 	stopChan chan struct{}
 	running  bool
+	stopped  bool // Guard against double-close of stopChan
 }
 
 // MonitoredFile represents a file being monitored
@@ -97,12 +98,12 @@ func (fw *FileWatcher) RemoveFile(filePath string) {
 	}
 }
 
-// Start starts the file monitoring
+// Start starts the file monitoring. Cannot be restarted after Stop().
 func (fw *FileWatcher) Start(checkInterval time.Duration) {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
-	if fw.running {
+	if fw.running || fw.stopped {
 		return
 	}
 
@@ -111,17 +112,18 @@ func (fw *FileWatcher) Start(checkInterval time.Duration) {
 	log.Infof("File watcher started with check interval: %v", checkInterval)
 }
 
-// Stop stops the file monitoring
+// Stop stops the file monitoring. Safe to call multiple times.
 func (fw *FileWatcher) Stop() {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
-	if !fw.running {
+	if !fw.running || fw.stopped {
 		return
 	}
 
-	close(fw.stopChan)
+	fw.stopped = true
 	fw.running = false
+	close(fw.stopChan)
 	log.Infof("File watcher stopped")
 }
 
@@ -155,9 +157,11 @@ func (fw *FileWatcher) checkForChanges() {
 	fw.mu.RUnlock()
 
 	changed := false
+	var changedPaths []string
 	for filePath, monitoredFile := range files {
 		if fw.hasFileChanged(filePath, monitoredFile) {
 			changed = true
+			changedPaths = append(changedPaths, filePath)
 			log.Infof("File changed detected: %s", filePath)
 		}
 	}
@@ -165,6 +169,20 @@ func (fw *FileWatcher) checkForChanges() {
 	if changed {
 		fw.mu.Lock()
 		fw.changeDetected = true
+		// Update MonitoredFile state for changed files to avoid repeated reload notifications
+		for _, filePath := range changedPaths {
+			if mf, exists := fw.files[filePath]; exists {
+				fileInfo, err := os.Stat(filePath)
+				if err == nil {
+					hash, err := fw.calculateFileHash(filePath)
+					if err == nil {
+						mf.LastModified = fileInfo.ModTime()
+						mf.Size = fileInfo.Size()
+						mf.LastHash = hash
+					}
+				}
+			}
+		}
 		fw.mu.Unlock()
 
 		// Notify change (non-blocking)
@@ -209,14 +227,14 @@ func (fw *FileWatcher) hasFileChanged(filePath string, monitoredFile *MonitoredF
 	return false
 }
 
-// calculateFileHash calculates MD5 hash of a file
+// calculateFileHash calculates SHA-256 hash of a file for change detection
 func (fw *FileWatcher) calculateFileHash(filePath string) (string, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", err
 	}
 
-	hash := md5.Sum(data)
+	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:]), nil
 }
 
