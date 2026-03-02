@@ -1,12 +1,16 @@
 // Package lynx provides the core application framework for building microservices.
 //
 // This file (controlplane.go) contains the control plane interfaces and implementation:
-//   - ControlPlane: Main interface for service management
+//   - ControlPlane: Main interface for service management (composed of smaller interfaces)
 //   - RateLimiter: HTTP and gRPC rate limiting
 //   - ServiceRegistry: Service registration and discovery
 //   - RouteManager: Service routing and node filtering
 //   - ConfigManager: Configuration source management
+//   - SystemCore: Basic application information
 //   - DefaultControlPlane: Basic implementation for local development
+//
+// Plugins may implement the full ControlPlane interface (e.g. Polaris, Nacos) or
+// register individual capabilities via SetRateLimiter, SetServiceRegistry, etc.
 package lynx
 
 import (
@@ -116,15 +120,141 @@ func (c *DefaultControlPlane) GetNamespace() string {
 	return ""
 }
 
-// GetControlPlane returns the current control plane instance
+// compositeControlPlane merges a full ControlPlane with optional capability overrides.
+// Individual capabilities take precedence when set; otherwise delegates to the full control plane.
+// Immutable snapshot created per GetControlPlane() call.
+type compositeControlPlane struct {
+	controlPlane    ControlPlane
+	rateLimiter     RateLimiter
+	serviceRegistry ServiceRegistry
+	routeManager    RouteManager
+	configManager   ConfigManager
+	systemCore      SystemCore
+}
+
+// Compile-time check: compositeControlPlane implements ControlPlane and MultiConfigControlPlane
+var (
+	_ ControlPlane            = (*compositeControlPlane)(nil)
+	_ MultiConfigControlPlane = (*compositeControlPlane)(nil)
+)
+
+func (c *compositeControlPlane) HTTPRateLimit() middleware.Middleware {
+	if c.rateLimiter != nil {
+		return c.rateLimiter.HTTPRateLimit()
+	}
+	if c.controlPlane != nil {
+		return c.controlPlane.HTTPRateLimit()
+	}
+	return nil
+}
+
+func (c *compositeControlPlane) GRPCRateLimit() middleware.Middleware {
+	if c.rateLimiter != nil {
+		return c.rateLimiter.GRPCRateLimit()
+	}
+	if c.controlPlane != nil {
+		return c.controlPlane.GRPCRateLimit()
+	}
+	return nil
+}
+
+func (c *compositeControlPlane) NewServiceRegistry() registry.Registrar {
+	if c.serviceRegistry != nil {
+		return c.serviceRegistry.NewServiceRegistry()
+	}
+	if c.controlPlane != nil {
+		return c.controlPlane.NewServiceRegistry()
+	}
+	return nil
+}
+
+func (c *compositeControlPlane) NewServiceDiscovery() registry.Discovery {
+	if c.serviceRegistry != nil {
+		return c.serviceRegistry.NewServiceDiscovery()
+	}
+	if c.controlPlane != nil {
+		return c.controlPlane.NewServiceDiscovery()
+	}
+	return nil
+}
+
+func (c *compositeControlPlane) NewNodeRouter(serviceName string) selector.NodeFilter {
+	if c.routeManager != nil {
+		return c.routeManager.NewNodeRouter(serviceName)
+	}
+	if c.controlPlane != nil {
+		return c.controlPlane.NewNodeRouter(serviceName)
+	}
+	return nil
+}
+
+func (c *compositeControlPlane) GetConfig(fileName string, group string) (config.Source, error) {
+	if c.configManager != nil {
+		return c.configManager.GetConfig(fileName, group)
+	}
+	if c.controlPlane != nil {
+		return c.controlPlane.GetConfig(fileName, group)
+	}
+	return nil, nil
+}
+
+func (c *compositeControlPlane) GetNamespace() string {
+	if c.systemCore != nil {
+		return c.systemCore.GetNamespace()
+	}
+	if c.controlPlane != nil {
+		return c.controlPlane.GetNamespace()
+	}
+	return ""
+}
+
+func (c *compositeControlPlane) GetConfigSources() ([]config.Source, error) {
+	if c.controlPlane != nil {
+		if multi, ok := c.controlPlane.(MultiConfigControlPlane); ok {
+			return multi.GetConfigSources()
+		}
+	}
+	return nil, fmt.Errorf("control plane does not support multi-config")
+}
+
+// GetControlPlane returns the current control plane instance (composite of all capabilities).
+// Returns nil when no control plane and no capabilities are set.
+// Plugins implementing full ControlPlane or individual capabilities are merged.
 func (a *LynxApp) GetControlPlane() ControlPlane {
 	if a == nil {
 		return nil
 	}
-	return Lynx().controlPlane
+	return a.getCompositeControlPlane()
 }
 
-// SetControlPlane sets the control plane instance for the application
+// getCompositeControlPlane returns the composite control plane for this app, or nil if empty.
+// The composite delegates to individual capabilities first, then to the full control plane.
+func (a *LynxApp) getCompositeControlPlane() ControlPlane {
+	a.controlPlaneMu.RLock()
+	cp := a.controlPlane
+	rl := a.rateLimiter
+	sr := a.serviceRegistry
+	rm := a.routeManager
+	cm := a.configManager
+	sc := a.systemCore
+	a.controlPlaneMu.RUnlock()
+	// Return nil when no capabilities are set (matches legacy behavior)
+	if cp == nil && rl == nil && sr == nil && rm == nil && cm == nil && sc == nil {
+		return nil
+	}
+	return &compositeControlPlane{
+		controlPlane:    cp,
+		rateLimiter:     rl,
+		serviceRegistry: sr,
+		routeManager:    rm,
+		configManager:   cm,
+		systemCore:      sc,
+	}
+}
+
+// SetControlPlane sets the control plane instance for the application.
+// When plane implements the full ControlPlane interface, all capabilities are extracted.
+// Existing plugins (Polaris, Nacos) continue to work unchanged.
 func (a *LynxApp) SetControlPlane(plane ControlPlane) error {
 	if a == nil {
 		return fmt.Errorf("lynx app instance is nil")
@@ -132,7 +262,80 @@ func (a *LynxApp) SetControlPlane(plane ControlPlane) error {
 	if plane == nil {
 		return fmt.Errorf("control plane instance cannot be nil")
 	}
-	Lynx().controlPlane = plane
+	a.controlPlaneMu.Lock()
+	defer a.controlPlaneMu.Unlock()
+	a.controlPlane = plane
+	// Extract capabilities from full ControlPlane for composite delegation
+	if rl, ok := plane.(RateLimiter); ok {
+		a.rateLimiter = rl
+	}
+	if sr, ok := plane.(ServiceRegistry); ok {
+		a.serviceRegistry = sr
+	}
+	if rm, ok := plane.(RouteManager); ok {
+		a.routeManager = rm
+	}
+	if cm, ok := plane.(ConfigManager); ok {
+		a.configManager = cm
+	}
+	if sc, ok := plane.(SystemCore); ok {
+		a.systemCore = sc
+	}
+	return nil
+}
+
+// SetRateLimiter sets the rate limiter capability (for partial implementations)
+func (a *LynxApp) SetRateLimiter(r RateLimiter) error {
+	if a == nil {
+		return fmt.Errorf("lynx app instance is nil")
+	}
+	a.controlPlaneMu.Lock()
+	defer a.controlPlaneMu.Unlock()
+	a.rateLimiter = r
+	return nil
+}
+
+// SetServiceRegistry sets the service registry capability (for partial implementations)
+func (a *LynxApp) SetServiceRegistry(sr ServiceRegistry) error {
+	if a == nil {
+		return fmt.Errorf("lynx app instance is nil")
+	}
+	a.controlPlaneMu.Lock()
+	defer a.controlPlaneMu.Unlock()
+	a.serviceRegistry = sr
+	return nil
+}
+
+// SetRouteManager sets the route manager capability (for partial implementations)
+func (a *LynxApp) SetRouteManager(rm RouteManager) error {
+	if a == nil {
+		return fmt.Errorf("lynx app instance is nil")
+	}
+	a.controlPlaneMu.Lock()
+	defer a.controlPlaneMu.Unlock()
+	a.routeManager = rm
+	return nil
+}
+
+// SetConfigManager sets the config manager capability (for partial implementations)
+func (a *LynxApp) SetConfigManager(cm ConfigManager) error {
+	if a == nil {
+		return fmt.Errorf("lynx app instance is nil")
+	}
+	a.controlPlaneMu.Lock()
+	defer a.controlPlaneMu.Unlock()
+	a.configManager = cm
+	return nil
+}
+
+// SetSystemCore sets the system core capability (for partial implementations)
+func (a *LynxApp) SetSystemCore(sc SystemCore) error {
+	if a == nil {
+		return fmt.Errorf("lynx app instance is nil")
+	}
+	a.controlPlaneMu.Lock()
+	defer a.controlPlaneMu.Unlock()
+	a.systemCore = sc
 	return nil
 }
 
