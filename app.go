@@ -104,9 +104,21 @@ type LynxApp struct {
 	// Contains settings that apply across all components.
 	globalConf config.Config
 
-	// controlPlane manages the application's control interface.
+	// controlPlane manages the application's control interface (full implementation).
 	// Handles dynamic configuration updates and system monitoring.
 	controlPlane ControlPlane
+
+	// Optional capability overrides for partial control plane implementations.
+	// When set, these take precedence over controlPlane for the respective capability.
+	// Plugins can register only the capabilities they implement via SetRateLimiter, etc.
+	rateLimiter     RateLimiter
+	serviceRegistry ServiceRegistry
+	routeManager    RouteManager
+	configManager   ConfigManager
+	systemCore      SystemCore
+
+	// controlPlaneMu protects control plane and capability fields
+	controlPlaneMu sync.RWMutex
 
 	// pluginManager handles plugin lifecycle and dependencies.
 	// Provides type-safe plugin management with generic support.
