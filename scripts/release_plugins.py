@@ -2,6 +2,11 @@
 """
 Automatically tag and release all lynx plugins on GitHub
 
+Before creating tags and releases, this script will:
+1. Update pluginVersion in each plugin's Go files to match the release version
+2. Commit and push the version bump (like release_main.py syncs banner version)
+3. Create tag, push tag, and create GitHub release
+
 Usage:
     python3 release_plugins.py <version> [--token <github_token>] [--repo <repo>] [--dry-run]
 
@@ -143,6 +148,61 @@ def load_plugins_config(config_path: Path) -> List[dict]:
         sys.exit(1)
 
 
+def sync_plugin_version(plugin_dir: Path, version: str, dry_run: bool = False) -> Tuple[bool, List[Path]]:
+    """
+    Update pluginVersion/PluginVersion in all Go files of the plugin to match the release version.
+    Handles:
+      1. pluginVersion = "v1.0.0" (unexported const)
+      2. PluginVersion = "1.0.0" (exported const, e.g. lynx-eon-id)
+      3. assert.Equal(t, "v1.0.0", pluginVersion) (test assertions)
+      4. assert.Equal(t, "v1.0.0", PluginVersion) (test assertions, e.g. lynx-sentinel)
+    Note: \s* matches any amount of whitespace, so alignment like
+      pluginVersion         =   "v1.0.0"  (spaces for const block alignment) is supported.
+    Returns (updated: bool, updated_files: List[Path]).
+    """
+    # Ensure version has 'v' prefix for consistency
+    if not version.startswith("v"):
+        version = f"v{version}"
+
+    # Patterns to replace (order matters for combined application)
+    patterns = [
+        # 1. pluginVersion = "v1.0.0" or pluginVersion     = "1.0.0"
+        (re.compile(r'(pluginVersion\s*=\s*)"[^"]*"'), rf'\1"{version}"'),
+        # 2. PluginVersion = "1.0.0" (exported, excludes PluginVersion = pluginVersion)
+        (re.compile(r'(PluginVersion\s*=\s*)"[^"]*"'), rf'\1"{version}"'),
+        # 3. assert.Equal(t, "v1.0.0", pluginVersion)
+        (re.compile(r'(assert\.Equal\(t,\s*)"[^"]*"(\s*,\s*pluginVersion\))'), rf'\1"{version}"\2'),
+        # 4. assert.Equal(t, "v1.0.0", PluginVersion)
+        (re.compile(r'(assert\.Equal\(t,\s*)"[^"]*"(\s*,\s*PluginVersion\))'), rf'\1"{version}"\2'),
+    ]
+
+    updated_files: List[Path] = []
+    for go_file in plugin_dir.rglob("*.go"):
+        try:
+            content = go_file.read_text(encoding="utf-8")
+            new_content = content
+            for pattern, replacement in patterns:
+                new_content = pattern.sub(replacement, new_content)
+            if new_content != content:
+                updated_files.append(go_file)
+                if not dry_run:
+                    go_file.write_text(new_content, encoding="utf-8")
+        except Exception as e:
+            print_warning(f"Could not process {go_file}: {e}")
+
+    if not updated_files:
+        return False, []
+
+    if dry_run:
+        for f in updated_files:
+            print_info(f"[DRY-RUN] Would update pluginVersion to {version} in {f.relative_to(plugin_dir)}")
+        return True, updated_files
+
+    for f in updated_files:
+        print_success(f"Updated pluginVersion to {version} in {f.relative_to(plugin_dir)}")
+    return True, updated_files
+
+
 def check_tag_exists(tag: str) -> bool:
     """Check if tag exists locally"""
     code, _, _ = run_cmd(["git", "tag", "-l", tag], check=False, capture_output=True)
@@ -176,6 +236,21 @@ def create_local_tag(tag: str, plugin_dir: Path, dry_run: bool = False) -> bool:
         return True
     else:
         print_error(f"Failed to create local tag: {tag}")
+        return False
+
+
+def push_commit(plugin_dir: Path, dry_run: bool = False) -> bool:
+    """Push commits to remote from plugin directory"""
+    if dry_run:
+        print_info("[DRY-RUN] Would push commits to remote")
+        return True
+
+    code, _, _ = run_cmd(["git", "push", "origin", "HEAD"], check=False, cwd=str(plugin_dir))
+    if code == 0:
+        print_success("Pushed commits to remote")
+        return True
+    else:
+        print_error("Failed to push commits")
         return False
 
 
@@ -297,7 +372,8 @@ class GitHubAPI:
 
 
 def process_plugin(plugin_name: str, plugin_repo: str, version: str, 
-                   plugin_dir: Path, github_api: Optional[GitHubAPI], dry_run: bool = False) -> bool:
+                   plugin_dir: Path, github_api: Optional[GitHubAPI], dry_run: bool = False,
+                   confirm_all: Optional[List[bool]] = None) -> bool:
     """Process a single plugin: tag and create release in its own repository"""
     # Tag is just the version (e.g., v1.5.0), not plugin-name/version
     tag = version
@@ -319,6 +395,62 @@ def process_plugin(plugin_name: str, plugin_repo: str, version: str,
     if not github_api:
         print_warning("⚠️  GitHub API not available - will skip release operations")
         print_warning("   (Only tag operations will be performed)")
+    
+    # 0. Sync pluginVersion in Go files (like release_main syncs banner version)
+    print_info("Step 0: Syncing pluginVersion in Go files...")
+    version_updated, updated_files = sync_plugin_version(plugin_dir, version, dry_run=dry_run)
+    if version_updated and updated_files and not dry_run:
+        # Show changed files and diff, then ask for confirmation before commit/push
+        print_info(f"Updated {len(updated_files)} file(s):")
+        for f in updated_files:
+            print(f"  - {f.relative_to(plugin_dir)}")
+        # Show git diff for review
+        code, diff_out, _ = run_cmd(
+            ["git", "diff", "--no-color"] + [str(f.relative_to(plugin_dir)) for f in updated_files],
+            check=False,
+            capture_output=True,
+            cwd=str(plugin_dir),
+        )
+        if code == 0 and diff_out:
+            print(f"\n{Colors.OKCYAN}--- git diff ---{Colors.ENDC}")
+            print(diff_out)
+            print(f"{Colors.OKCYAN}--- end diff ---{Colors.ENDC}\n")
+        # Skip prompt if user already confirmed "yall" for all plugins
+        if confirm_all and confirm_all[0]:
+            response = "y"
+            print_info("Auto-confirmed (yall)")
+        else:
+            print(f"{Colors.WARNING}Confirm to commit and push these changes? (y/N/yall): {Colors.ENDC}", end="")
+            try:
+                response = input().strip().lower()
+            except KeyboardInterrupt:
+                print("\nCancelled")
+                # Revert changes
+                for f in updated_files:
+                    run_cmd(["git", "checkout", "--", str(f.relative_to(plugin_dir))], check=False, cwd=str(plugin_dir))
+                return False
+            if response == "yall":
+                if confirm_all is not None:
+                    confirm_all[0] = True
+                response = "y"
+                print_info("Will auto-confirm remaining plugins")
+        if response != "y":
+            print_warning("Skipped commit/push. Reverting file changes...")
+            for f in updated_files:
+                run_cmd(["git", "checkout", "--", str(f.relative_to(plugin_dir))], check=False, cwd=str(plugin_dir))
+            return False
+        # Git add only the modified files (like release_main adds only banner.txt)
+        for f in updated_files:
+            rel_path = f.relative_to(plugin_dir)
+            run_cmd(["git", "add", str(rel_path)], check=True, cwd=str(plugin_dir))
+        run_cmd(
+            ["git", "commit", "-m", f"chore: bump pluginVersion to {version}"],
+            check=True,
+            cwd=str(plugin_dir),
+        )
+        print_success("Committed pluginVersion update")
+        if not push_commit(plugin_dir, dry_run=dry_run):
+            return False
     
     # 1. Check and delete existing release
     if github_api:
@@ -446,9 +578,10 @@ Examples:
             print("\nCancelled")
             sys.exit(0)
     
-    # Process each plugin
+    # Process each plugin (confirm_all: when user types "yall", skip confirmation for rest)
     success_count = 0
     failed_plugins = []
+    confirm_all = [False]
     
     for plugin_config in plugins_config:
         plugin_name = plugin_config['name']
@@ -473,7 +606,7 @@ Examples:
                 continue
         
         try:
-            if process_plugin(plugin_name, plugin_repo, version, plugin_dir, github_api, args.dry_run):
+            if process_plugin(plugin_name, plugin_repo, version, plugin_dir, github_api, args.dry_run, confirm_all):
                 success_count += 1
             else:
                 failed_plugins.append(plugin_name)
