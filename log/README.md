@@ -534,11 +534,11 @@ log.Errorf(format string, args ...any)
 log.Fatalf(format string, args ...any)
 
 // Structured logging
-log.Debugw(keyvals ...any)
-log.Infow(keyvals ...any)
-log.Warnw(keyvals ...any)
-log.Errorw(keyvals ...any)
-log.Fatalw(keyvals ...any)
+log.Debugw(keys ...any)
+log.Infow(keys ...any)
+log.Warnw(keys ...any)
+log.Errorw(keys ...any)
+log.Fatalw(keys ...any)
 
 // Context-aware logging
 log.DebugCtx(ctx context.Context, args ...any)

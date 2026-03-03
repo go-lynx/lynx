@@ -87,14 +87,20 @@ type fallbackLogger struct{}
 func (f *fallbackLogger) logPlain(level, msg string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	formatted := fmt.Sprintf("[%s] [%s] [lynx-log-fallback] %s\n", timestamp, level, msg)
-	os.Stderr.WriteString(formatted)
+	_, err := os.Stderr.WriteString(formatted)
+	if err != nil {
+		return
+	}
 }
 
 func (f *fallbackLogger) logFormat(level, format string, args ...any) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	msg := fmt.Sprintf(format, args...)
 	formatted := fmt.Sprintf("[%s] [%s] [lynx-log-fallback] %s\n", timestamp, level, msg)
-	os.Stderr.WriteString(formatted)
+	_, err := os.Stderr.WriteString(formatted)
+	if err != nil {
+		return
+	}
 }
 
 // helper returns the application's log helper instance.
