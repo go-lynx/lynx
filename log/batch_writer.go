@@ -172,10 +172,16 @@ func (bw *BatchWriter) flushLoop() {
 		select {
 		case <-bw.stopCh:
 			// Final flush on shutdown
-			bw.Flush()
+			err := bw.Flush()
+			if err != nil {
+				return
+			}
 			return
 		case <-ticker.C:
-			bw.Flush()
+			err := bw.Flush()
+			if err != nil {
+				return
+			}
 		}
 	}
 }

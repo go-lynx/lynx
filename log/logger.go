@@ -63,13 +63,13 @@ var (
 // proxyLogger forwards Log calls to an inner logger stored atomically.
 type proxyLogger struct{ inner atomic.Value } // of log.Logger
 
-func (p *proxyLogger) Log(level log.Level, keyvals ...interface{}) error {
+func (p *proxyLogger) Log(level log.Level, keys ...interface{}) error {
 	if p == nil {
 		return nil
 	}
 	if v := p.inner.Load(); v != nil {
 		if l, ok := v.(log.Logger); ok && l != nil {
-			return l.Log(level, keyvals...)
+			return l.Log(level, keys...)
 		}
 	}
 	return nil
@@ -443,6 +443,10 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 					}
 				}
 			}
+		}
+		// EnableDynamicAdjust from config (Performance.EnableDynamicAdjust / enable_dynamic_adjust)
+		if perf := logConfig.GetPerformance(); perf != nil {
+			enableDynamicAdjust = perf.GetEnableDynamicAdjust()
 		}
 
 		// Apply batch writing optimization

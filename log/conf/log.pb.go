@@ -448,8 +448,10 @@ type Log_Performance struct {
 	BatchFlushIntervalMs int32 `protobuf:"varint,3,opt,name=batch_flush_interval_ms,json=batchFlushIntervalMs,proto3" json:"batch_flush_interval_ms,omitempty"`
 	// Buffer size for console output in bytes (default: 32KB)
 	ConsoleBufferSizeBytes int32 `protobuf:"varint,4,opt,name=console_buffer_size_bytes,json=consoleBufferSizeBytes,proto3" json:"console_buffer_size_bytes,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// Enable dynamic queue size adjustment for async log writer based on load (default: false)
+	EnableDynamicAdjust bool `protobuf:"varint,5,opt,name=enable_dynamic_adjust,json=enableDynamicAdjust,proto3" json:"enable_dynamic_adjust,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Log_Performance) Reset() {
@@ -508,6 +510,13 @@ func (x *Log_Performance) GetConsoleBufferSizeBytes() int32 {
 		return x.ConsoleBufferSizeBytes
 	}
 	return 0
+}
+
+func (x *Log_Performance) GetEnableDynamicAdjust() bool {
+	if x != nil {
+		return x.EnableDynamicAdjust
+	}
+	return false
 }
 
 var File_log_proto protoreflect.FileDescriptor
