@@ -76,7 +76,8 @@ func loadBannerData(path string) ([]byte, error) {
 
 // displayBanner writes the banner data to standard output.
 // It returns an error if the write operation fails.
+// Uses Fprint (not Fprintln) because banner content already includes trailing newline.
 func displayBanner(data []byte) error {
-	_, err := fmt.Fprintln(os.Stdout, string(data))
+	_, err := fmt.Fprint(os.Stdout, string(data))
 	return err
 }
