@@ -1,14 +1,43 @@
 package lynx
 
 import (
+	"context"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
-	"github.com/go-kratos/kratos/v2/config/file"
 )
+
+type staticSource struct {
+	kv *config.KeyValue
+}
+
+type staticWatcher struct {
+	stop     chan struct{}
+	stopOnce sync.Once
+}
+
+func (s *staticSource) Load() ([]*config.KeyValue, error) {
+	return []*config.KeyValue{s.kv}, nil
+}
+
+func (s *staticSource) Watch() (config.Watcher, error) {
+	return &staticWatcher{stop: make(chan struct{})}, nil
+}
+
+func (w *staticWatcher) Next() ([]*config.KeyValue, error) {
+	<-w.stop
+	return nil, context.Canceled
+}
+
+func (w *staticWatcher) Stop() error {
+	w.stopOnce.Do(func() {
+		close(w.stop)
+	})
+	return nil
+}
 
 // TestNewApp_ConcurrentInit tests concurrent initialization
 func TestNewApp_ConcurrentInit(t *testing.T) {
@@ -357,26 +386,32 @@ func TestNewApp_ConcurrentInitWithFailure(t *testing.T) {
 
 // resetGlobalState resets global state for testing
 func resetGlobalState() {
-	lynxMu.Lock()
-	lynxApp = nil
-	lynxMu.Unlock()
+	ClearDefaultApp()
 	initMu.Lock()
 	initErr = nil
 	initCompleted = false
+	initInProgress = false
 	initDone = nil
 	initMu.Unlock()
 }
 
 // createTestConfig creates test config
 func createTestConfig(t *testing.T) config.Config {
-	// Create a simple memory config
-	// Note: needs adjustment based on actual config system
-	// If unable to create real config, can create a mock config
-	return config.New(
-		config.WithSource(
-			file.NewSource("testdata/test.yaml"), // Needs test file
-		),
+	t.Helper()
+	cfg := config.New(
+		config.WithSource(&staticSource{kv: &config.KeyValue{
+			Key:    t.Name() + "-test.yaml",
+			Format: "yaml",
+			Value:  []byte("lynx:\n  application:\n    name: test-app\n    version: v0.0.1\n"),
+		}}),
 	)
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("failed to load test config: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = cfg.Close()
+	})
+	return cfg
 }
 
 // createInvalidConfig creates invalid config for testing failure scenarios
@@ -386,6 +421,65 @@ func createInvalidConfig(t *testing.T) config.Config {
 }
 
 // TestNewApp_GoroutineLeak tests goroutine leaks
+func TestNewStandaloneApp_DoesNotPublishGlobal(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	app, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize standalone app: %v", err)
+	}
+	if app == nil {
+		t.Fatal("expected standalone app")
+	}
+	if Lynx() != nil {
+		t.Fatal("standalone app should not publish global singleton")
+	}
+	_ = app.Close()
+}
+
+func TestSetDefaultApp_AndClearDefaultApp(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	app, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize standalone app: %v", err)
+	}
+	SetDefaultApp(app)
+	if Lynx() != app {
+		t.Fatal("expected published default app")
+	}
+	ClearDefaultApp()
+	if Lynx() != nil {
+		t.Fatal("expected default app to be cleared")
+	}
+	_ = app.Close()
+}
+
+func TestStandaloneClose_DoesNotClearOtherDefaultApp(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	defaultApp, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize default app: %v", err)
+	}
+	SetDefaultApp(defaultApp)
+
+	otherApp, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize other app: %v", err)
+	}
+	if err := otherApp.Close(); err != nil {
+		t.Fatalf("Failed to close other app: %v", err)
+	}
+	if Lynx() != defaultApp {
+		t.Fatal("closing standalone app should not clear published default app")
+	}
+	_ = defaultApp.Close()
+}
+
 func TestNewApp_GoroutineLeak(t *testing.T) {
 	resetGlobalState()
 
@@ -400,31 +494,28 @@ func TestNewApp_GoroutineLeak(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			defer wg.Done()
-			app, err := NewApp(cfg)
-			if err == nil && app != nil {
-				// Don't close, let test verify cleanup
-			}
+			_, _ = NewApp(cfg)
 		}()
 	}
 
 	wg.Wait()
 
-	// Wait for cleanup
+	app := Lynx()
+	if app == nil {
+		t.Fatal("expected initialized app")
+	}
+	if err := app.Close(); err != nil {
+		t.Fatalf("failed to close app: %v", err)
+	}
+	resetGlobalState()
+
+	// Give background cleanup goroutines a small window to exit.
 	time.Sleep(200 * time.Millisecond)
 
 	after := runtime.NumGoroutine()
 
-	// Allow some system goroutines
-	if after > before+10 {
-		t.Errorf("Possible goroutine leak: before=%d, after=%d", before, after)
+	// Allow a small amount of runtime noise, but verify Close() actually releases most work.
+	if after > before+3 {
+		t.Errorf("Possible goroutine leak after Close(): before=%d, after=%d", before, after)
 	}
-
-	// Cleanup
-	lynxMu.Lock()
-	if lynxApp != nil {
-		lynxApp.Close()
-		lynxApp = nil
-	}
-	lynxMu.Unlock()
-	resetGlobalState()
 }

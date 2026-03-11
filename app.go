@@ -25,17 +25,42 @@ var (
 	lynxApp *LynxApp
 	// RW mutex protecting reads/writes of lynxApp to avoid race conditions
 	lynxMu sync.RWMutex
-	// initOnce ensures initialization happens only once per session
-	initOnce sync.Once
-	// initMu protects initialization state
+	// initMu protects initialization state.
 	initMu sync.Mutex
-	// initErr stores initialization error
+	// initErr stores the last initialization error.
 	initErr error
-	// initCompleted indicates if initialization has completed (success or failure)
+	// initCompleted indicates whether at least one initialization attempt finished.
 	initCompleted bool
-	// initDone channel signals initialization completion (created per initialization attempt)
+	// initInProgress indicates whether an initialization attempt is currently running.
+	initInProgress bool
+	// initDone channel signals current initialization attempt completion.
 	initDone chan struct{}
 )
+
+// SetDefaultApp publishes app as the process-wide default Lynx application instance.
+// It intentionally does not manage initialization lifecycle; callers should only use it
+// after a fully initialized app is available.
+func SetDefaultApp(app *LynxApp) {
+	lynxMu.Lock()
+	defer lynxMu.Unlock()
+	lynxApp = app
+}
+
+// ClearDefaultApp clears the process-wide default Lynx application instance.
+func ClearDefaultApp() {
+	SetDefaultApp(nil)
+}
+
+// clearDefaultAppIf clears the global default only when it still points to app.
+func clearDefaultAppIf(app *LynxApp) bool {
+	lynxMu.Lock()
+	defer lynxMu.Unlock()
+	if lynxApp != app {
+		return false
+	}
+	lynxApp = nil
+	return true
+}
 
 // resetInitState resets initialization state (for testing/restart scenarios)
 // Should only be called during application shutdown
@@ -44,6 +69,7 @@ func resetInitState() {
 	defer initMu.Unlock()
 	initErr = nil
 	initCompleted = false
+	initInProgress = false
 	initDone = nil
 }
 
@@ -172,125 +198,84 @@ func GetVersion() string {
 	return a.version
 }
 
-// NewApp creates a new Lynx application instance with the provided configuration and plugins.
-// It initializes the application with system hostname and bootstrap configuration.
-// Uses sync.Once to ensure thread-safe singleton initialization.
+// NewStandaloneApp creates a fully initialized Lynx application instance without
+// publishing it as the process-wide default singleton.
 //
-// Parameters:
-//   - cfg: Configuration instance
-//   - plugins: Optional list of plugins to initialize with
+// This is the preferred constructor for tests, isolated runtimes, and future
+// multi-instance scenarios. Call SetDefaultApp explicitly only when a global
+// default instance is truly needed.
+func NewStandaloneApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration cannot be nil")
+	}
+	return initializeApp(cfg, plugins...)
+}
+
+// NewApp creates or returns the process-wide default Lynx application instance.
+// It preserves the historical singleton behavior for compatibility, while the
+// actual instance construction is delegated to NewStandaloneApp/initializeApp.
 //
-// Returns:
-//   - *LynxApp: Initialized application instance
-//   - error: Any error that occurred during initialization
+// NewApp uses an explicit initialization state machine instead of sync.Once so
+// failed initialization can be retried and concurrent callers can wait on the
+// in-flight attempt with a bounded timeout.
 func NewApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, error) {
-	// Validate configuration is not nil; return error if nil
 	if cfg == nil {
 		return nil, fmt.Errorf("configuration cannot be nil")
 	}
 
-	// Fast path: check if already initialized successfully (singleton).
-	// Second call returns the existing instance; new cfg and plugins are ignored.
-	lynxMu.RLock()
-	existing := lynxApp
-	lynxMu.RUnlock()
-	if existing != nil {
-		log.Warnf("Lynx application already initialized, returning existing instance. New configuration and plugins are ignored.")
-		return existing, nil
-	}
+	initTimeout := getInitTimeout(cfg)
 
-	// Check if initialization has already completed (success or failure)
-	initMu.Lock()
-	completed := initCompleted
-	doneChan := initDone
-	initMu.Unlock()
-
-	// If already completed, wait for result
-	if completed && doneChan != nil {
-		<-doneChan // Wait for completion signal
-
-		// Check result
-		initMu.Lock()
-		err := initErr
-		initMu.Unlock()
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize application: %w", err)
+	for {
+		// Fast path: already published default instance.
+		if existing := Lynx(); existing != nil {
+			log.Warnf("Lynx application already initialized, returning existing instance. New configuration and plugins are ignored.")
+			return existing, nil
 		}
 
-		lynxMu.RLock()
-		app := lynxApp
-		lynxMu.RUnlock()
-
-		if app == nil {
-			return nil, fmt.Errorf("application initialization resulted in nil instance")
-		}
-		return app, nil
-	}
-
-	// Use sync.Once to ensure initialization happens only once
-	initOnce.Do(func() {
 		initMu.Lock()
-		// Create completion channel
-		initDone = make(chan struct{})
+		if initInProgress {
+			doneChan := initDone
+			initMu.Unlock()
+			if doneChan == nil {
+				return nil, fmt.Errorf("initialization in progress but completion channel is nil")
+			}
+			select {
+			case <-doneChan:
+				continue
+			case <-time.After(initTimeout):
+				return nil, fmt.Errorf("initialization timeout: initialization did not complete within %v", initTimeout)
+			}
+		}
+
+		// If a previous attempt failed and no new initialization is in progress,
+		// allow a fresh retry with the latest cfg/plugins.
+		initInProgress = true
 		initCompleted = false
 		initErr = nil
-		doneChan := initDone
+		doneChan := make(chan struct{})
+		initDone = doneChan
 		initMu.Unlock()
 
-		// Perform initialization
-		app, err := initializeApp(cfg, plugins...)
+		app, err := NewStandaloneApp(cfg, plugins...)
 
 		initMu.Lock()
 		if err != nil {
 			initErr = err
 		} else {
-			lynxMu.Lock()
-			lynxApp = app
-			lynxMu.Unlock()
+			SetDefaultApp(app)
 		}
 		initCompleted = true
-		initMu.Unlock()
-
-		// Signal completion
+		initInProgress = false
 		close(doneChan)
-	})
-
-	// Wait for initialization to complete with timeout
-	initMu.Lock()
-	doneChan = initDone
-	initMu.Unlock()
-
-	if doneChan == nil {
-		return nil, fmt.Errorf("initialization channel not created")
-	}
-
-	// Get initialization timeout from config if available, default to 30 seconds
-	initTimeout := getInitTimeout(cfg)
-
-	select {
-	case <-doneChan:
-		// Initialization completed, check result
-		initMu.Lock()
-		err := initErr
 		initMu.Unlock()
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize application: %w", err)
 		}
-
-		// Check if app was successfully initialized
-		lynxMu.RLock()
-		app := lynxApp
-		lynxMu.RUnlock()
-
 		if app == nil {
 			return nil, fmt.Errorf("application initialization resulted in nil instance")
 		}
 		return app, nil
-	case <-time.After(initTimeout):
-		// Timeout waiting for initialization
-		return nil, fmt.Errorf("initialization timeout: initialization did not complete within %v", initTimeout)
 	}
 }
 
@@ -343,11 +328,6 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 	if app.name == "" {
 		return nil, fmt.Errorf("application name cannot be empty")
 	}
-
-	// Set global singleton instance (publish with lock)
-	lynxMu.Lock()
-	lynxApp = app
-	lynxMu.Unlock()
 
 	// Emit system start event
 	app.emitSystemEvent(events.EventSystemStart, map[string]any{
@@ -586,10 +566,16 @@ func (a *LynxApp) Close() error {
 		log.Errorf("Failed to close global event bus: %v", err)
 	}
 
-	// Clear global singleton instance
-	lynxMu.Lock()
-	lynxApp = nil
-	lynxMu.Unlock()
+	// Close global configuration to stop watcher goroutines and release resources.
+	if a.globalConf != nil {
+		if err := a.globalConf.Close(); err != nil {
+			log.Errorf("Failed to close global configuration: %v", err)
+		}
+		a.globalConf = nil
+	}
+
+	// Clear global singleton instance if this app is the published default.
+	clearDefaultAppIf(a)
 
 	// Fix Bug 2: Cleanup memory stats cache goroutine to prevent goroutine leak
 	// This ensures the background goroutine for memory stats updates is properly shut down
