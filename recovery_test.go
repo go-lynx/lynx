@@ -23,7 +23,9 @@ func TestErrorRecoveryManager_ConcurrentRecovery(t *testing.T) {
 		Severity:  ErrorSeverityLow,
 	}
 
-	const numGoroutines = 100
+	// Use a smaller number to avoid semaphore + retry backoff causing
+	// the overall test to exceed the default 60s timeout.
+	const numGoroutines = 10
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
 

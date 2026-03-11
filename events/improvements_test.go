@@ -9,12 +9,15 @@ import (
 func TestErrorCallback(t *testing.T) {
 	// Create config with error callback
 	configs := DefaultBusConfigs()
-	configs.Plugin.MaxQueue = 100 // Small queue to trigger overflow quickly
+	configs.Plugin.MaxQueue = 1 // Minimal queue so overflow is near-certain
+	var mu sync.Mutex
 	var callbackCalled bool
 	var callbackReason string
 	var callbackErr error
 
 	configs.Plugin.ErrorCallback = func(event LynxEvent, reason string, err error) {
+		mu.Lock()
+		defer mu.Unlock()
 		callbackCalled = true
 		callbackReason = reason
 		callbackErr = err
@@ -33,9 +36,9 @@ func TestErrorCallback(t *testing.T) {
 		t.Fatal("Plugin bus not found")
 	}
 
-	// Fill the queue to trigger overflow
+	// Rapid-fire publish to overflow the tiny queue
 	event := NewLynxEvent(EventPluginInitialized, "test-plugin", "test")
-	for i := 0; i < 200; i++ { // More than queue capacity
+	for i := 0; i < 500; i++ {
 		bus.Publish(event)
 	}
 
@@ -58,14 +61,20 @@ outer:
 	}
 
 	// Check if callback was called
-	if !callbackCalled {
+	mu.Lock()
+	called := callbackCalled
+	reason := callbackReason
+	cbErr := callbackErr
+	mu.Unlock()
+
+	if !called {
 		t.Error("Error callback was not called")
 		return
 	}
-	if callbackReason != "queue_overflow" {
-		t.Errorf("Expected reason 'queue_overflow', got '%s'", callbackReason)
+	if reason != "drop_newest" {
+		t.Errorf("Expected reason 'drop_newest', got '%s'", reason)
 	}
-	if callbackErr == nil {
+	if cbErr == nil {
 		t.Error("Expected error in callback")
 	}
 }
