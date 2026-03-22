@@ -19,6 +19,7 @@ type UnifiedRuntime struct {
 
 	// Resource info tracking
 	resourceInfo *sync.Map // map[string]*ResourceInfo
+	resourceOpMu *sync.Mutex
 
 	// Configuration and logging
 	config config.Config
@@ -46,6 +47,7 @@ func NewUnifiedRuntime() *UnifiedRuntime {
 	return &UnifiedRuntime{
 		resources:      &sync.Map{},
 		resourceInfo:   &sync.Map{},
+		resourceOpMu:   &sync.Mutex{},
 		logger:         log.DefaultLogger,
 		closed:         false,
 		shutdownCtx:    ctx,
@@ -112,21 +114,34 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 		return fmt.Errorf("resource cannot be nil")
 	}
 
-	// On overwrite, cleanup old resource first to avoid leak
-	if old, loaded := r.resources.LoadAndDelete(name); loaded && old != nil {
-		_ = r.cleanupResourceGracefully(name, old)
-	}
-	if oldInfo, loaded := r.resourceInfo.LoadAndDelete(name); loaded {
-		_ = oldInfo // discard old info
+	caller := r.getCurrentPluginContext()
+	if caller == "" {
+		caller = "system"
 	}
 
-	r.resources.Store(name, resource)
+	var oldResource any
+	r.resourceOpMu.Lock()
+	if oldInfoValue, loaded := r.resourceInfo.Load(name); loaded {
+		if oldInfo, ok := oldInfoValue.(*ResourceInfo); ok {
+			owner := oldInfo.PluginID
+			if owner == "" {
+				owner = "system"
+			}
+			if owner != caller && caller != "system" {
+				r.resourceOpMu.Unlock()
+				return fmt.Errorf("permission denied: plugin %q cannot overwrite shared resource %q owned by %q", caller, name, owner)
+			}
+		}
+		if existing, ok := r.resources.Load(name); ok {
+			oldResource = existing
+		}
+	}
 
 	now := time.Now()
 	info := &ResourceInfo{
 		Name:        name,
 		Type:        reflect.TypeOf(resource).String(),
-		PluginID:    r.getCurrentPluginContext(),
+		PluginID:    caller,
 		IsPrivate:   false,
 		CreatedAt:   now,
 		LastUsedAt:  now,
@@ -135,7 +150,13 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 		Metadata:    make(map[string]any),
 	}
 
+	r.resources.Store(name, resource)
 	r.resourceInfo.Store(name, info)
+	r.resourceOpMu.Unlock()
+
+	if oldResource != nil {
+		_ = r.cleanupResourceGracefully(name, oldResource)
+	}
 
 	// Asynchronously estimate resource size to avoid blocking registration
 	// Use shutdown context to allow graceful cancellation
@@ -203,14 +224,11 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 
 	privateKey := fmt.Sprintf("%s:%s", pluginID, name)
 
-	if old, loaded := r.resources.LoadAndDelete(privateKey); loaded && old != nil {
-		_ = r.cleanupResourceGracefully(privateKey, old)
+	var oldResource any
+	r.resourceOpMu.Lock()
+	if existing, loaded := r.resources.Load(privateKey); loaded {
+		oldResource = existing
 	}
-	if _, loaded := r.resourceInfo.LoadAndDelete(privateKey); loaded {
-		// old info discarded
-	}
-
-	r.resources.Store(privateKey, resource)
 
 	// Create resource info with size estimation
 	now := time.Now()
@@ -226,7 +244,13 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 		Metadata:    make(map[string]any),
 	}
 
+	r.resources.Store(privateKey, resource)
 	r.resourceInfo.Store(privateKey, info)
+	r.resourceOpMu.Unlock()
+
+	if oldResource != nil {
+		_ = r.cleanupResourceGracefully(privateKey, oldResource)
+	}
 
 	// Asynchronously estimate resource size to avoid blocking registration
 	// Use shutdown context to allow graceful cancellation
@@ -318,6 +342,7 @@ func (r *UnifiedRuntime) WithPluginContext(pluginName string) Runtime {
 		contextRuntime := &UnifiedRuntime{
 			resources:            r.resources,    // share the same resource map pointer
 			resourceInfo:         r.resourceInfo, // share the same resource info map pointer
+			resourceOpMu:         r.resourceOpMu, // share resource operation lock
 			config:               r.config,
 			logger:               r.logger,
 			currentPluginContext: pluginName,
@@ -614,6 +639,8 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 		caller = "system-shutdown"
 	}
 
+	r.resourceOpMu.Lock()
+
 	// Collect resources to be deleted with their actual resource objects
 	type resItem struct {
 		name string
@@ -634,6 +661,12 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 		return true
 	})
 
+	for _, item := range toDelete {
+		r.resources.Delete(item.name)
+		r.resourceInfo.Delete(item.name)
+	}
+	r.resourceOpMu.Unlock()
+
 	if len(toDelete) > 0 {
 		if logger := r.GetLogger(); logger != nil {
 			logger.Log(log.LevelInfo, "msg", "resource cleanup initiated", "plugin_id", pluginID, "caller", caller)
@@ -651,10 +684,6 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 		} else {
 			cleanedCount++
 		}
-
-		// Remove from maps after cleanup attempt
-		r.resources.Delete(item.name)
-		r.resourceInfo.Delete(item.name)
 	}
 
 	// Log cleanup summary

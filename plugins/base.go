@@ -155,6 +155,18 @@ func (p *TypedBasePlugin[T]) IsContextAware() bool {
 	return false // Base implementation is not truly context-aware
 }
 
+// PluginProtocol declares the default explicit lifecycle protocol for base plugins.
+// Concrete plugins may override this method to opt into stronger capabilities,
+// for example true context-aware lifecycle.
+func (p *TypedBasePlugin[T]) PluginProtocol() PluginProtocol {
+	return PluginProtocol{
+		ManagedLifecycle: true,
+		HealthAware:      true,
+		ContextLifecycle: false,
+		Recoverable:      false,
+	}
+}
+
 // NewTypedBasePlugin creates a new instance of TypedBasePlugin with the provided metadata.
 // This is the recommended way to initialize a new typed plugin implementation.
 func NewTypedBasePlugin[T any](
@@ -202,8 +214,8 @@ func (p *TypedBasePlugin[T]) Initialize(plugin Plugin, rt Runtime) error {
 		Category: "lifecycle",
 	})
 
-	// Call InitializeResources for custom initialization
-	if err := plugin.InitializeResources(rt); err != nil {
+	// Call InitializeResources for custom initialization when the plugin exposes it.
+	if err := InitializePluginResources(plugin, rt); err != nil {
 		p.setStatus(StatusFailed)
 		return NewPluginError(p.id, "Initialize", "Failed to initialize resources", err)
 	}
@@ -240,10 +252,18 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 		Category: "lifecycle",
 	})
 
-	// Call StartupTasks for custom startup logic
-	if err := plugin.StartupTasks(); err != nil {
+	// Call StartupTasks for custom startup logic when the plugin exposes it.
+	if err := RunStartupTasks(plugin); err != nil {
 		p.setStatus(StatusFailed)
 		return NewPluginError(p.id, "Start", "Failed to perform startup tasks", err)
+	}
+
+	// Check health status after ready
+	err := RunHealthCheck(plugin)
+	if err != nil {
+		p.setStatus(StatusFailed)
+		log.Errorf("Plugin %s health check failed: %v", plugin.Name(), err)
+		return fmt.Errorf("plugin %s health check failed: %w", plugin.Name(), err)
 	}
 
 	p.setStatus(StatusActive)
@@ -255,12 +275,6 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 		Category: "lifecycle",
 	})
 
-	// Check health status after ready
-	err := plugin.CheckHealth()
-	if err != nil {
-		log.Errorf("Plugin %s health check failed: %v", plugin.Name(), err)
-		return fmt.Errorf("plugin %s health check failed: %w", plugin.Name(), err)
-	}
 	return nil
 }
 
@@ -280,8 +294,8 @@ func (p *TypedBasePlugin[T]) Stop(plugin Plugin) error {
 		Category: "lifecycle",
 	})
 
-	// Call CleanupTasks for custom cleanup logic
-	if err := plugin.CleanupTasks(); err != nil {
+	// Call CleanupTasks for custom cleanup logic when the plugin exposes it.
+	if err := RunCleanupTasks(plugin); err != nil {
 		p.setStatus(StatusFailed)
 		return NewPluginError(p.id, "Stop", "Failed to perform cleanup tasks", err)
 	}

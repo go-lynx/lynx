@@ -10,49 +10,37 @@ import (
 
 var (
 	globalManager *EventBusManager
-	globalOnce    sync.Once
 	globalMu      sync.RWMutex
+	globalInitErr error
 )
 
 // InitGlobalEventBus initializes the global event bus manager
 func InitGlobalEventBus(configs BusConfigs) error {
-	var initErr error
-	globalOnce.Do(func() {
-		manager, err := NewEventBusManager(configs)
-		if err != nil {
-			initErr = err
-			return
-		}
-		globalManager = manager
-	})
-	return initErr
+	globalMu.Lock()
+	defer globalMu.Unlock()
+
+	if globalManager != nil {
+		return nil
+	}
+
+	manager, err := NewEventBusManager(configs)
+	if err != nil {
+		globalInitErr = err
+		return err
+	}
+	globalManager = manager
+	globalInitErr = nil
+	return nil
 }
 
 // GetGlobalEventBus returns the global event bus manager
 func GetGlobalEventBus() *EventBusManager {
-	// First check without lock (fast path)
-	globalMu.RLock()
-	manager := globalManager
-	globalMu.RUnlock()
-
-	if manager != nil {
-		return manager
+	manager, err := ensureGlobalEventBus()
+	if err != nil {
+		log.NewHelper(log.DefaultLogger).Warnf("failed to initialize global event bus, using fallback manager: %v", err)
+		return newFallbackEventBusManager()
 	}
-
-	// Double-checked locking pattern: acquire write lock for initialization
-	globalMu.Lock()
-	defer globalMu.Unlock()
-
-	// Check again after acquiring write lock (another goroutine might have initialized it)
-	if globalManager == nil {
-		// Initialize with default configs if not already initialized
-		// Note: This will panic if initialization fails, but it's better than silent failure
-		if err := InitGlobalEventBus(DefaultBusConfigs()); err != nil {
-			panic(fmt.Sprintf("failed to initialize global event bus: %v", err))
-		}
-	}
-
-	return globalManager
+	return manager
 }
 
 // SetGlobalEventBus sets the global event bus manager
@@ -61,6 +49,7 @@ func SetGlobalEventBus(manager *EventBusManager) {
 	defer globalMu.Unlock()
 
 	globalManager = manager
+	globalInitErr = nil
 }
 
 // PublishEvent publishes an event to the global event bus
@@ -151,4 +140,45 @@ func GetGlobalClassifier() *EventClassifier {
 // GetGlobalConfigs returns the bus configurations from the global manager
 func GetGlobalConfigs() BusConfigs {
 	return GetGlobalEventBus().GetConfigs()
+}
+
+func ensureGlobalEventBus() (*EventBusManager, error) {
+	globalMu.RLock()
+	manager := globalManager
+	initErr := globalInitErr
+	globalMu.RUnlock()
+
+	if manager != nil {
+		return manager, nil
+	}
+
+	globalMu.Lock()
+	defer globalMu.Unlock()
+
+	if globalManager != nil {
+		return globalManager, nil
+	}
+
+	manager, err := NewEventBusManager(DefaultBusConfigs())
+	if err != nil {
+		if initErr != nil {
+			err = fmt.Errorf("%w; latest retry failed: %v", initErr, err)
+		}
+		globalInitErr = err
+		return nil, err
+	}
+	globalManager = manager
+	globalInitErr = nil
+	return globalManager, nil
+}
+
+func newFallbackEventBusManager() *EventBusManager {
+	manager := &EventBusManager{
+		buses:      make(map[BusType]*LynxEventBus),
+		classifier: NewEventClassifier(),
+		configs:    DefaultBusConfigs(),
+		logger:     log.DefaultLogger,
+	}
+	manager.initBuses()
+	return manager
 }

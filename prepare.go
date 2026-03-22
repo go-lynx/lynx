@@ -8,6 +8,7 @@ package lynx
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/go-lynx/lynx/log"
 	"github.com/go-lynx/lynx/plugins"
@@ -36,6 +37,9 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 
 	// Initialize slice to store plugins to be loaded with preallocated capacity
 	prepared := make([]plugins.Plugin, 0, len(table))
+	allowPartialFailure := allowPartialPrepareFailure(config)
+	report := PrepareReport{PartialAllowed: allowPartialFailure}
+	var prepareFailures []string
 
 	// Iterate over configuration prefixes
 	for confPrefix, names := range table {
@@ -50,18 +54,21 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 		// If value is nil, log debug and continue
 		if cfg == nil {
 			log.Debugf("No configuration found for prefix: %s", confPrefix)
+			report.Skipped = append(report.Skipped, confPrefix)
 			continue
 		}
 
 		// Load configuration; if result is nil, log debug and continue
 		if loaded := cfg.Load(); loaded == nil {
 			log.Debugf("Configuration cfg is nil for prefix: %s", confPrefix)
+			report.Skipped = append(report.Skipped, confPrefix)
 			continue
 		}
 
 		// Ensure there are plugin names associated with the prefix; otherwise skip
 		if len(names) == 0 {
 			log.Debugf("No plugins associated with prefix: %s", confPrefix)
+			report.Skipped = append(report.Skipped, confPrefix)
 			continue
 		}
 
@@ -79,9 +86,12 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 				// Log specific preparation failure reason
 				log.Warnf("prepare plugin %s failed: %v", name, err)
 				failCount++
+				report.Failures = append(report.Failures, PrepareFailure{PluginName: name, Reason: err.Error()})
+				prepareFailures = append(prepareFailures, fmt.Sprintf("%s: %v", name, err))
 				continue
 			}
 			successCount++
+			report.Prepared = append(report.Prepared, name)
 
 			// Retrieve the plugin instance and append to the result slice
 			if value, ok := m.pluginInstances.Load(name); ok {
@@ -109,8 +119,24 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 	} else {
 		log.Warn("no plugins prepared from config and registry")
 	}
+	m.setLastPrepareReport(report)
+
+	if len(prepareFailures) > 0 && !allowPartialFailure {
+		return prepared, fmt.Errorf("plugin preparation failed for %d plugin(s): %s", len(prepareFailures), strings.Join(prepareFailures, "; "))
+	}
 
 	return prepared, nil
+}
+
+func allowPartialPrepareFailure(config config.Config) bool {
+	if config == nil {
+		return false
+	}
+	var allow bool
+	if err := config.Value("lynx.plugins.allow_partial_prepare_failure").Scan(&allow); err == nil {
+		return allow
+	}
+	return false
 }
 
 // preparePlugin performs preparation for a single plugin.
@@ -138,11 +164,5 @@ func (m *DefaultPluginManager[T]) preparePlugin(name string) error {
 		return fmt.Errorf("created plugin %s is nil", name)
 	}
 
-	// Track the plugin within the manager
-	m.mu.Lock()
-	m.pluginList = append(m.pluginList, p)
-	m.mu.Unlock()
-	m.pluginInstances.Store(p.Name(), p)
-
-	return nil
+	return m.registerPreparedPlugin(p)
 }

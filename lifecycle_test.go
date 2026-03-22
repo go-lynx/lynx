@@ -531,6 +531,13 @@ func (p *SlowPlugin) Stop(plugin plugins.Plugin) error {
 	return nil
 }
 
+func (p *SlowPlugin) PluginProtocol() plugins.PluginProtocol {
+	return plugins.PluginProtocol{
+		ManagedLifecycle: true,
+		HealthAware:      true,
+	}
+}
+
 // FastPlugin is a fast plugin
 type FastPlugin struct{}
 
@@ -588,6 +595,13 @@ func (p *FastPlugin) Start(plugin plugins.Plugin) error {
 
 func (p *FastPlugin) Stop(plugin plugins.Plugin) error {
 	return nil
+}
+
+func (p *FastPlugin) PluginProtocol() plugins.PluginProtocol {
+	return plugins.PluginProtocol{
+		ManagedLifecycle: true,
+		HealthAware:      true,
+	}
 }
 
 // ContextAwareSlowPlugin is a context-aware slow plugin
@@ -668,6 +682,18 @@ func (p *ContextAwareSlowPlugin) StopContext(ctx context.Context, plugin plugins
 	return nil
 }
 
+func (p *ContextAwareSlowPlugin) IsContextAware() bool {
+	return true
+}
+
+func (p *ContextAwareSlowPlugin) PluginProtocol() plugins.PluginProtocol {
+	return plugins.PluginProtocol{
+		ManagedLifecycle: true,
+		HealthAware:      true,
+		ContextLifecycle: true,
+	}
+}
+
 // PanicPlugin is a plugin that panics in lifecycle methods
 type PanicPlugin struct {
 	panicInInit  bool
@@ -738,4 +764,11 @@ func (p *PanicPlugin) Stop(plugin plugins.Plugin) error {
 		panic("panic in Stop")
 	}
 	return nil
+}
+
+func (p *PanicPlugin) PluginProtocol() plugins.PluginProtocol {
+	return plugins.PluginProtocol{
+		ManagedLifecycle: true,
+		HealthAware:      true,
+	}
 }

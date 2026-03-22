@@ -66,22 +66,13 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 
 				rt := m.runtime.WithPluginContext(p.ID())
 
-				// Detect whether plugin supports context-aware lifecycle and truly honors ctx
-				supportsLC := false
-				if _, ok := p.(plugins.LifecycleWithContext); ok {
-					supportsLC = true
-				}
-				ctxAware := false
-				if supportsLC {
-					if ca, ok := p.(plugins.ContextAwareness); ok && ca.IsContextAware() {
-						ctxAware = true
-					}
-				}
+				caps := plugins.DescribePluginCapabilities(p)
+				ctxAware := caps.IsTrulyContextAware
 				// Debug info for context awareness (only show in debug mode)
-				if !supportsLC {
-					log.Debugf("plugin %s (%s) does not implement LifecycleWithContext; step=initialize. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
+				if !caps.Protocol.ContextLifecycle {
+					log.Debugf("plugin %s (%s) does not declare context lifecycle protocol; step=initialize. PluginProtocol().ContextLifecycle must be true to enable context-aware lifecycle", p.Name(), p.ID())
 				} else if !ctxAware {
-					log.Debugf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=initialize. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
+					log.Debugf("plugin %s (%s) declares context lifecycle protocol but is not truly context-aware; step=initialize. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
 				}
 
 				// Emit plugin initializing event
@@ -126,10 +117,10 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 				})
 
 				// Debug info for context awareness (only show in debug mode)
-				if !supportsLC {
-					log.Debugf("plugin %s (%s) does not implement LifecycleWithContext; step=start. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
+				if !caps.Protocol.ContextLifecycle {
+					log.Debugf("plugin %s (%s) does not declare context lifecycle protocol; step=start. PluginProtocol().ContextLifecycle must be true to enable context-aware lifecycle", p.Name(), p.ID())
 				} else if !ctxAware {
-					log.Debugf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=start. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
+					log.Debugf("plugin %s (%s) declares context lifecycle protocol but is not truly context-aware; step=start. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
 				}
 				// Emit plugin starting event
 				m.emitPluginEvent(p.ID(), events.EventPluginStarting, map[string]any{
@@ -484,8 +475,8 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 		}
 
 		var err error
-		if lc, ok := p.(plugins.LifecycleWithContext); ok {
-			// Context-aware plugin - directly call with context
+		if lc, ok := plugins.GetTrueContextLifecycle(p); ok {
+			// Truly context-aware plugin - directly call with context
 			err = lc.InitializeContext(ctx, p, rt)
 		} else {
 			// For non-context-aware plugins, run in a separate goroutine with cancellation monitoring
@@ -694,8 +685,8 @@ func (m *DefaultPluginManager[T]) safeStartPlugin(p plugins.Plugin, timeout time
 		}
 
 		var err error
-		if lc, ok := p.(plugins.LifecycleWithContext); ok {
-			// Context-aware plugin - directly call with context
+		if lc, ok := plugins.GetTrueContextLifecycle(p); ok {
+			// Truly context-aware plugin - directly call with context
 			err = lc.StartContext(ctx, p)
 		} else {
 			// For non-context-aware plugins, run in a separate goroutine with cancellation monitoring
@@ -794,23 +785,14 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 		return nil
 	}
 
-	// Detect whether plugin supports context-aware lifecycle and truly honors ctx
-	supportsLC := false
-	if _, ok := p.(plugins.LifecycleWithContext); ok {
-		supportsLC = true
-	}
-	ctxAware := false
-	if supportsLC {
-		if ca, ok := p.(plugins.ContextAwareness); ok && ca.IsContextAware() {
-			ctxAware = true
-		}
-	}
+	caps := plugins.DescribePluginCapabilities(p)
+	ctxAware := caps.IsTrulyContextAware
 
 	// Debug info for context awareness (only show in debug mode)
-	if !supportsLC {
-		log.Debugf("plugin %s (%s) does not implement LifecycleWithContext; step=stop. Please implement StartContext/StopContext/InitializeContext", p.Name(), p.ID())
+	if !caps.Protocol.ContextLifecycle {
+		log.Debugf("plugin %s (%s) does not declare context lifecycle protocol; step=stop. PluginProtocol().ContextLifecycle must be true to enable context-aware lifecycle", p.Name(), p.ID())
 	} else if !ctxAware {
-		log.Debugf("plugin %s (%s) implements LifecycleWithContext but not truly context-aware; step=stop. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
+		log.Debugf("plugin %s (%s) declares context lifecycle protocol but is not truly context-aware; step=stop. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID())
 	}
 
 	// Emit plugin stopping event
@@ -857,8 +839,8 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 		}
 
 		var err error
-		if lc, ok := p.(plugins.LifecycleWithContext); ok {
-			// Context-aware plugin - directly call with context
+		if lc, ok := plugins.GetTrueContextLifecycle(p); ok {
+			// Truly context-aware plugin - directly call with context
 			err = lc.StopContext(ctx, p)
 		} else {
 			// For non-context-aware plugins, run in a separate goroutine with cancellation monitoring

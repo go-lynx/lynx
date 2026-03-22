@@ -136,6 +136,7 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 	// Track unload start time for monitoring
 	unloadStart := time.Now()
 
+	var batches [][]plugins.Plugin
 	var ordered []plugins.Plugin
 	sorted, err := m.TopologicalSort(m.pluginList)
 	if err != nil {
@@ -147,21 +148,31 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 			ordered = make([]plugins.Plugin, len(m.pluginList))
 			copy(ordered, m.pluginList)
 		}
+		if len(ordered) > 0 {
+			batches = append(batches, ordered)
+		}
 	} else {
-		tmp := make([]plugins.Plugin, 0, len(sorted))
+		levelGroups := make(map[int][]plugins.Plugin)
+		maxLevel := 0
 		for _, w := range sorted {
-			if w.Plugin != nil {
-				tmp = append(tmp, w.Plugin)
+			if w.Plugin == nil {
+				continue
+			}
+			levelGroups[w.level] = append(levelGroups[w.level], w.Plugin)
+			if w.level > maxLevel {
+				maxLevel = w.level
 			}
 		}
-		for i := len(tmp) - 1; i >= 0; i-- {
-			ordered = append(ordered, tmp[i])
+		for level := maxLevel; level >= 0; level-- {
+			batch := levelGroups[level]
+			if len(batch) == 0 {
+				continue
+			}
+			batches = append(batches, batch)
+			ordered = append(ordered, batch...)
 		}
 	}
 
-	// Use semaphore to control parallelism
-	sem := make(chan struct{}, parallelism)
-	var wg sync.WaitGroup
 	var mu sync.Mutex
 	// Optimized: Pre-allocate slice capacity to avoid frequent reallocations
 	unloadErrors := make([]string, 0, len(ordered))
@@ -171,13 +182,7 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 	// Use sync.Map to safely track plugins that have started cleanup
 	cleaningUp := sync.Map{} // map[pluginID]bool
 
-	// Unload plugins with controlled parallelism
-	for _, plugin := range ordered {
-		p := plugin
-		if p == nil {
-			continue
-		}
-
+	for _, batch := range batches {
 		// Check if overall timeout has been reached
 		select {
 		case <-ctx.Done():
@@ -210,85 +215,92 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 			break
 		}
 
-		wg.Add(1)
-		sem <- struct{}{} // Acquire semaphore
-		go func(plugin plugins.Plugin) {
-			defer wg.Done()
-			defer func() { <-sem }() // Release semaphore
+		sem := make(chan struct{}, parallelism)
+		var wg sync.WaitGroup
 
-			// Fix Bug 1: Mark this plugin as being cleaned up to prevent double cleanup
-			pluginID := plugin.ID()
-			if _, alreadyCleaning := cleaningUp.LoadOrStore(pluginID, true); alreadyCleaning {
-				// Another goroutine (forced cleanup) is already cleaning this up, skip
-				log.Debugf("Skipping cleanup for plugin %s: already being cleaned up by forced cleanup", plugin.Name())
-				return
+		for _, plugin := range batch {
+			p := plugin
+			if p == nil {
+				continue
 			}
 
-			// Create per-plugin context that respects overall timeout
-			pluginCtx, pluginCancel := context.WithTimeout(ctx, perPluginTimeout)
-			defer pluginCancel()
+			wg.Add(1)
+			sem <- struct{}{} // Acquire semaphore
+			go func(plugin plugins.Plugin) {
+				defer wg.Done()
+				defer func() { <-sem }() // Release semaphore
 
-			// Emit plugin unloading event
-			m.emitPluginUnloadEvent(pluginID, plugin.Name())
-
-			var stopErr, cleanupErr error
-
-			// Stop plugin with timeout protection
-			stopDone := make(chan error, 1)
-			go func() {
-				stopDone <- m.safeStopPlugin(plugin, perPluginTimeout)
-			}()
-
-			select {
-			case err := <-stopDone:
-				if err != nil {
-					stopErr = err
-					log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
-					m.emitPluginErrorEvent(pluginID, plugin.Name(), "unload", err)
+				// Fix Bug 1: Mark this plugin as being cleaned up to prevent double cleanup
+				pluginID := plugin.ID()
+				if _, alreadyCleaning := cleaningUp.LoadOrStore(pluginID, true); alreadyCleaning {
+					// Another goroutine (forced cleanup) is already cleaning this up, skip
+					log.Debugf("Skipping cleanup for plugin %s: already being cleaned up by forced cleanup", plugin.Name())
+					return
 				}
-			case <-pluginCtx.Done():
-				stopErr = fmt.Errorf("plugin stop timeout after %v", perPluginTimeout)
-				log.Errorf("Plugin %s stop timed out, forcing cleanup", plugin.Name())
-				m.emitPluginErrorEvent(pluginID, plugin.Name(), "unload", stopErr)
-			}
 
-			// Cleanup resources with timeout protection
-			// Fix Bug 1: Only cleanup if we successfully marked this plugin as being cleaned up
-			cleanupDone := make(chan error, 1)
-			go func() {
-				cleanupDone <- m.runtime.CleanupResources(pluginID)
-			}()
+				// Create per-plugin context that respects overall timeout
+				pluginCtx, pluginCancel := context.WithTimeout(ctx, perPluginTimeout)
+				defer pluginCancel()
 
-			select {
-			case err := <-cleanupDone:
-				if err != nil {
-					cleanupErr = err
-					log.Errorf("Failed to cleanup resources for plugin %s: %v", plugin.Name(), err)
-					m.emitResourceCleanupErrorEvent(pluginID, plugin.Name(), err)
+				// Emit plugin unloading event
+				m.emitPluginUnloadEvent(pluginID, plugin.Name())
+
+				var stopErr, cleanupErr error
+
+				// Stop plugin with timeout protection
+				stopDone := make(chan error, 1)
+				go func() {
+					stopDone <- m.safeStopPlugin(plugin, perPluginTimeout)
+				}()
+
+				select {
+				case err := <-stopDone:
+					if err != nil {
+						stopErr = err
+						log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
+						m.emitPluginErrorEvent(pluginID, plugin.Name(), "unload", err)
+					}
+				case <-pluginCtx.Done():
+					stopErr = fmt.Errorf("plugin stop timeout after %v", perPluginTimeout)
+					log.Errorf("Plugin %s stop timed out, forcing cleanup", plugin.Name())
+					m.emitPluginErrorEvent(pluginID, plugin.Name(), "unload", stopErr)
 				}
-			case <-pluginCtx.Done():
-				cleanupErr = fmt.Errorf("resource cleanup timeout after %v", perPluginTimeout)
-				log.Errorf("Plugin %s resource cleanup timed out", plugin.Name())
-				m.emitResourceCleanupErrorEvent(pluginID, plugin.Name(), cleanupErr)
-			}
 
-			// Record unload failure if either stop or cleanup failed
-			if stopErr != nil || cleanupErr != nil {
-				m.recordUnloadFailure(plugin, stopErr, cleanupErr)
-				mu.Lock()
-				unloadErrors = append(unloadErrors, fmt.Sprintf("%s: stop=%v, cleanup=%v",
-					plugin.Name(), stopErr, cleanupErr))
-				mu.Unlock()
-			}
+				// Cleanup resources with timeout protection
+				// Fix Bug 1: Only cleanup if we successfully marked this plugin as being cleaned up
+				cleanupDone := make(chan error, 1)
+				go func() {
+					cleanupDone <- m.runtime.CleanupResources(pluginID)
+				}()
 
-			m.pluginInstances.Delete(plugin.Name())
-			// Remove from cleaningUp map when done
-			cleaningUp.Delete(pluginID)
-		}(p)
-	}
+				select {
+				case err := <-cleanupDone:
+					if err != nil {
+						cleanupErr = err
+						log.Errorf("Failed to cleanup resources for plugin %s: %v", plugin.Name(), err)
+						m.emitResourceCleanupErrorEvent(pluginID, plugin.Name(), err)
+					}
+				case <-pluginCtx.Done():
+					cleanupErr = fmt.Errorf("resource cleanup timeout after %v", perPluginTimeout)
+					log.Errorf("Plugin %s resource cleanup timed out", plugin.Name())
+					m.emitResourceCleanupErrorEvent(pluginID, plugin.Name(), cleanupErr)
+				}
 
-	// Wait for all unload operations to complete or timeout
-	if !timeoutReached {
+				// Record unload failure if either stop or cleanup failed
+				if stopErr != nil || cleanupErr != nil {
+					m.recordUnloadFailure(plugin, stopErr, cleanupErr)
+					mu.Lock()
+					unloadErrors = append(unloadErrors, fmt.Sprintf("%s: stop=%v, cleanup=%v",
+						plugin.Name(), stopErr, cleanupErr))
+					mu.Unlock()
+				}
+
+				m.pluginInstances.Delete(plugin.Name())
+				// Remove from cleaningUp map when done
+				cleaningUp.Delete(pluginID)
+			}(p)
+		}
+
 		done := make(chan struct{})
 		go func() {
 			wg.Wait()
@@ -297,18 +309,21 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 
 		select {
 		case <-done:
-			// All plugins unloaded successfully
-			unloadDuration := time.Since(unloadStart)
-			if len(unloadErrors) > 0 {
-				log.Warnf("UnloadPlugins completed in %v with %d errors: %v",
-					unloadDuration, len(unloadErrors), unloadErrors)
-			} else {
-				log.Infof("UnloadPlugins completed successfully in %v", unloadDuration)
-			}
 		case <-ctx.Done():
 			// Overall timeout reached
 			log.Errorf("UnloadPlugins: overall timeout (%v) reached, some plugins may not have been properly unloaded",
 				totalTimeout)
+			timeoutReached = true
+		}
+	}
+
+	if !timeoutReached {
+		unloadDuration := time.Since(unloadStart)
+		if len(unloadErrors) > 0 {
+			log.Warnf("UnloadPlugins completed in %v with %d errors: %v",
+				unloadDuration, len(unloadErrors), unloadErrors)
+		} else {
+			log.Infof("UnloadPlugins completed successfully in %v", unloadDuration)
 		}
 	}
 
