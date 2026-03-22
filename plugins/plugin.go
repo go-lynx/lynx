@@ -82,13 +82,21 @@ const (
 	UpgradeReplace
 )
 
-// Plugin is the minimal interface that all plugins must implement
-// It combines basic metadata and lifecycle management capabilities
-type Plugin interface {
+// CorePlugin is the minimal lifecycle-managed plugin contract.
+// It intentionally excludes step-level hooks so frameworks can reason about
+// plugin identity/lifecycle separately from optional operational capabilities.
+type CorePlugin interface {
 	Metadata
 	Lifecycle
-	LifecycleSteps
 	DependencyAware
+}
+
+// Plugin is the backward-compatible managed plugin contract used by Lynx today.
+// New code should prefer reasoning in terms of CorePlugin plus specific capability
+// interfaces below, rather than assuming every plugin must implement one wide interface.
+type Plugin interface {
+	CorePlugin
+	LifecycleSteps
 }
 
 // LifecycleWithContext defines optional context-aware lifecycle methods.
@@ -177,6 +185,145 @@ type LifecycleSteps interface {
 	CheckHealth() error
 }
 
+// ResourceInitializer indicates the plugin has an initialization hook for runtime-bound resources.
+type ResourceInitializer interface {
+	InitializeResources(rt Runtime) error
+}
+
+// StartupTasker indicates the plugin exposes startup work beyond basic activation.
+type StartupTasker interface {
+	StartupTasks() error
+}
+
+// CleanupTasker indicates the plugin exposes shutdown cleanup work.
+type CleanupTasker interface {
+	CleanupTasks() error
+}
+
+// HealthChecker indicates the plugin can actively verify its own health.
+type HealthChecker interface {
+	CheckHealth() error
+}
+
+// PluginProtocol declares lifecycle-related capabilities explicitly.
+// New plugins should prefer declaring protocol instead of relying on legacy runtime probing.
+type PluginProtocol struct {
+	ManagedLifecycle bool
+	HealthAware      bool
+	ContextLifecycle bool
+	Recoverable      bool
+}
+
+// ProtocolAwarePlugin explicitly declares its lifecycle protocol.
+type ProtocolAwarePlugin interface {
+	PluginProtocol() PluginProtocol
+}
+
+// PluginCapabilities describes which optional capabilities a plugin exposes.
+type PluginCapabilities struct {
+	HasMetadata         bool
+	HasLifecycle        bool
+	HasDependencies     bool
+	HasResourceInit     bool
+	HasStartupTasks     bool
+	HasCleanupTasks     bool
+	HasHealthCheck      bool
+	HasLifecycleWithCtx bool
+	IsTrulyContextAware bool
+	IsManagedPlugin     bool
+	Protocol            PluginProtocol
+	ProtocolExplicit    bool
+}
+
+// DescribePluginCapabilities returns a structured capability report for a plugin-like object.
+func DescribePluginCapabilities(plugin any) PluginCapabilities {
+	_, hasMetadata := plugin.(Metadata)
+	_, hasLifecycle := plugin.(Lifecycle)
+	_, hasDependencies := plugin.(DependencyAware)
+	_, hasResourceInit := plugin.(ResourceInitializer)
+	_, hasStartupTasks := plugin.(StartupTasker)
+	_, hasCleanupTasks := plugin.(CleanupTasker)
+	_, hasHealthCheck := plugin.(HealthChecker)
+	_, hasLifecycleWithCtx := plugin.(LifecycleWithContext)
+	isContextAware := false
+	if ca, ok := plugin.(ContextAwareness); ok {
+		isContextAware = ca.IsContextAware()
+	}
+	_, isManaged := plugin.(Plugin)
+	protocol := PluginProtocol{}
+	explicit := false
+	if declared, ok := plugin.(ProtocolAwarePlugin); ok {
+		protocol = declared.PluginProtocol()
+		explicit = true
+	}
+	return PluginCapabilities{
+		HasMetadata:         hasMetadata,
+		HasLifecycle:        hasLifecycle,
+		HasDependencies:     hasDependencies,
+		HasResourceInit:     hasResourceInit,
+		HasStartupTasks:     hasStartupTasks,
+		HasCleanupTasks:     hasCleanupTasks,
+		HasHealthCheck:      hasHealthCheck,
+		HasLifecycleWithCtx: hasLifecycleWithCtx,
+		IsTrulyContextAware: isContextAware,
+		IsManagedPlugin:     isManaged,
+		Protocol:            protocol,
+		ProtocolExplicit:    explicit,
+	}
+}
+
+// HasTrueContextLifecycle reports whether the plugin both exposes lifecycle-with-context
+// hooks and explicitly declares that it truly honors context cancellation.
+func HasTrueContextLifecycle(plugin any) bool {
+	caps := DescribePluginCapabilities(plugin)
+	return caps.Protocol.ContextLifecycle && caps.HasLifecycleWithCtx && caps.IsTrulyContextAware
+}
+
+// GetTrueContextLifecycle returns the plugin's LifecycleWithContext only when it is truly
+// context-aware according to HasTrueContextLifecycle.
+func GetTrueContextLifecycle(plugin any) (LifecycleWithContext, bool) {
+	lc, ok := plugin.(LifecycleWithContext)
+	if !ok {
+		return nil, false
+	}
+	if !HasTrueContextLifecycle(plugin) {
+		return nil, false
+	}
+	return lc, true
+}
+
+// InitializePluginResources executes the resource initialization hook when present.
+func InitializePluginResources(plugin any, rt Runtime) error {
+	if initializer, ok := plugin.(ResourceInitializer); ok {
+		return initializer.InitializeResources(rt)
+	}
+	return nil
+}
+
+// RunStartupTasks executes startup tasks when present.
+func RunStartupTasks(plugin any) error {
+	if startup, ok := plugin.(StartupTasker); ok {
+		return startup.StartupTasks()
+	}
+	return nil
+}
+
+// RunCleanupTasks executes cleanup tasks when present.
+func RunCleanupTasks(plugin any) error {
+	if cleanup, ok := plugin.(CleanupTasker); ok {
+		return cleanup.CleanupTasks()
+	}
+	return nil
+}
+
+// RunHealthCheck executes the plugin health check when present.
+func RunHealthCheck(plugin any) error {
+	if checker, ok := plugin.(HealthChecker); ok {
+		return checker.CheckHealth()
+	}
+	return nil
+}
+
 // ResourceInfo resource information
 type ResourceInfo struct {
 	Name        string
@@ -212,6 +359,14 @@ type TypedResourceManager interface {
 	ResourceManager
 }
 
+// ResourceHandle provides a stable typed view over a named runtime resource.
+// It does not hold the concrete object; each call resolves the current resource,
+// so it remains valid across runtime replacements.
+type ResourceHandle[T any] struct {
+	manager ResourceManager
+	name    string
+}
+
 // GetTypedResource get type-safe resource (standalone function)
 func GetTypedResource[T any](manager ResourceManager, name string) (T, error) {
 	var zero T
@@ -231,6 +386,29 @@ func GetTypedResource[T any](manager ResourceManager, name string) (T, error) {
 // RegisterTypedResource register type-safe resource (standalone function)
 func RegisterTypedResource[T any](manager ResourceManager, name string, resource T) error {
 	return manager.RegisterResource(name, resource)
+}
+
+// NewResourceHandle creates a stable typed handle for a named resource.
+func NewResourceHandle[T any](manager ResourceManager, name string) ResourceHandle[T] {
+	return ResourceHandle[T]{manager: manager, name: name}
+}
+
+// Name returns the bound resource name.
+func (h ResourceHandle[T]) Name() string {
+	return h.name
+}
+
+// Get resolves the current typed resource.
+func (h ResourceHandle[T]) Get() (T, error) {
+	return GetTypedResource[T](h.manager, h.name)
+}
+
+// Info returns the current resource metadata when the manager supports it.
+func (h ResourceHandle[T]) Info() (*ResourceInfo, error) {
+	if h.manager == nil {
+		return nil, NewPluginError("runtime", "ResourceHandle.Info", "resource manager is nil", nil)
+	}
+	return h.manager.GetResourceInfo(h.name)
 }
 
 // ConfigProvider provides access to plugin configuration

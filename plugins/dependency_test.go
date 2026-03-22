@@ -92,3 +92,10 @@ func (m *MockPlugin) Status(plugin Plugin) PluginStatus {
 func (m *MockPlugin) Weight() int {
 	return 1
 }
+
+func (m *MockPlugin) PluginProtocol() PluginProtocol {
+	return PluginProtocol{
+		ManagedLifecycle: true,
+		HealthAware:      true,
+	}
+}

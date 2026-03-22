@@ -73,6 +73,13 @@ func (m *mockPlugin) Weight() int {
 	return 1
 }
 
+func (m *mockPlugin) PluginProtocol() plugins.PluginProtocol {
+	return plugins.PluginProtocol{
+		ManagedLifecycle: true,
+		HealthAware:      true,
+	}
+}
+
 // TestTopologicalSort_EmptyInput tests empty input handling
 func TestTopologicalSort_EmptyInput(t *testing.T) {
 	manager := NewPluginManager[plugins.Plugin]()
