@@ -114,6 +114,8 @@ type Runtime interface {
 
 ### Basic Plugin
 
+`PluginProtocol()` is now mandatory. If you embed `BasePlugin` or `TypedBasePlugin`, the default managed protocol is already declared for you. If your plugin truly supports context-aware lifecycle, override `PluginProtocol()` explicitly.
+
 ```go
 package myplugin
 
@@ -232,6 +234,14 @@ func (p *ContextAwarePlugin) StopContext(ctx context.Context, plugin plugins.Plu
 // IsContextAware marks plugin as truly context-aware
 func (p *ContextAwarePlugin) IsContextAware() bool {
     return true
+}
+
+func (p *ContextAwarePlugin) PluginProtocol() plugins.PluginProtocol {
+    return plugins.PluginProtocol{
+        ManagedLifecycle: true,
+        HealthAware:      true,
+        ContextLifecycle: true,
+    }
 }
 ```
 
