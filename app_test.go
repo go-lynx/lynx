@@ -529,12 +529,16 @@ type configurableTestPlugin struct {
 	failOn      config.Config
 	validateOn  config.Config
 	validateErr error
+	protocol    plugins.PluginProtocol
 }
 
 func newConfigurableTestPlugin(name string) *configurableTestPlugin {
-	return &configurableTestPlugin{
+	p := &configurableTestPlugin{
 		BasePlugin: plugins.NewBasePlugin("test."+name+".v1", name, "test configurable plugin", "v1.0.0", "test."+name, 0),
 	}
+	p.AddCapability(plugins.UpgradeConfig)
+	p.protocol = p.BasePlugin.PluginProtocol()
+	return p
 }
 
 func (p *configurableTestPlugin) Configure(conf any) error {
@@ -554,6 +558,10 @@ func (p *configurableTestPlugin) ValidateConfig(conf any) error {
 		return p.validateErr
 	}
 	return nil
+}
+
+func (p *configurableTestPlugin) PluginProtocol() plugins.PluginProtocol {
+	return p.protocol
 }
 
 func (p *configurableTestPlugin) callCount() int {
@@ -650,5 +658,78 @@ func TestSetGlobalConfig_StopsBeforeApplyWhenValidationFails(t *testing.T) {
 	}
 	if plugin.callCount() != 0 {
 		t.Fatalf("expected no Configure calls after validation failure, got %d", plugin.callCount())
+	}
+}
+
+func TestSetGlobalConfig_RejectsRestartRequiredPlugins(t *testing.T) {
+	resetGlobalState()
+	oldCfg := createTestConfig(t)
+	newCfg := createTestConfig(t)
+
+	plugin := newConfigurableTestPlugin("config-restart")
+	plugin.protocol.ConfigHotReload = false
+	plugin.protocol.ConfigValidation = false
+	plugin.protocol.ConfigRollback = false
+
+	app, err := NewStandaloneApp(oldCfg, plugin)
+	if err != nil {
+		t.Fatalf("failed to initialize app: %v", err)
+	}
+	defer app.Close()
+
+	if err := app.SetGlobalConfig(newCfg); err == nil {
+		t.Fatal("expected SetGlobalConfig to reject restart-required plugin")
+	}
+	if plugin.callCount() != 0 {
+		t.Fatalf("expected no Configure calls for restart-required plugin, got %d", plugin.callCount())
+	}
+	plan := app.ConfigReloadPlan()
+	if len(plan.RestartRequired) != 1 || plan.RestartRequired[0].PluginName != plugin.Name() {
+		t.Fatalf("unexpected config reload plan: %#v", plan)
+	}
+}
+
+func TestRuntimeReport_ContainsConfigPlanAndPluginState(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	hot := newConfigurableTestPlugin("report-hot")
+	restart := newConfigurableTestPlugin("report-restart")
+	restart.protocol.ConfigHotReload = false
+	restart.protocol.ConfigValidation = false
+	restart.protocol.ConfigRollback = false
+
+	app, err := NewStandaloneApp(cfg, hot, restart)
+	if err != nil {
+		t.Fatalf("failed to initialize app: %v", err)
+	}
+	defer app.Close()
+
+	report := app.RuntimeReport()
+	if report.AppName != "test-app" {
+		t.Fatalf("unexpected app name: %q", report.AppName)
+	}
+	if report.ConfigReloadPlan.RestartRequired == nil || len(report.ConfigReloadPlan.RestartRequired) != 1 {
+		t.Fatalf("expected one restart-required plugin, got %#v", report.ConfigReloadPlan)
+	}
+	if len(report.Plugins) != 2 {
+		t.Fatalf("expected two plugins in runtime report, got %d", len(report.Plugins))
+	}
+
+	foundHot := false
+	foundRestart := false
+	for _, plugin := range report.Plugins {
+		switch plugin.Name {
+		case hot.Name():
+			foundHot = plugin.Capabilities.Protocol.ConfigHotReload
+		case restart.Name():
+			foundRestart = !plugin.Capabilities.Protocol.ConfigHotReload
+		}
+	}
+	if !foundHot {
+		t.Fatal("expected hot-reloadable plugin to be reported as hot reload capable")
+	}
+	if !foundRestart {
+		t.Fatal("expected restart-required plugin to be reported as non-hot-reloadable")
 	}
 }

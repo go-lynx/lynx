@@ -419,6 +419,27 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 	}
 
 	ver := a.nextConfigVersion()
+	if pm != nil {
+		plan := pm.GetConfigReloadPlan()
+		if len(plan.Invalid) > 0 {
+			err := fmt.Errorf("configuration protocol invalid for plugins: %v", configReloadEntryNames(plan.Invalid))
+			a.emitConfigEvent(rt, plugins.EventConfigurationInvalid, ver, 1, map[string]any{
+				"phase":   "plan",
+				"invalid": configReloadEntryNames(plan.Invalid),
+				"error":   err.Error(),
+			})
+			return err
+		}
+		if len(plan.RestartRequired) > 0 {
+			err := fmt.Errorf("configuration update requires restart for plugins: %v", configReloadEntryNames(plan.RestartRequired))
+			a.emitConfigEvent(rt, plugins.EventConfigurationInvalid, ver, 1, map[string]any{
+				"phase":            "plan",
+				"restart_required": configReloadEntryNames(plan.RestartRequired),
+				"error":            err.Error(),
+			})
+			return err
+		}
+	}
 	a.emitConfigEvent(rt, plugins.EventConfigurationChanged, ver, 1, map[string]any{
 		"phase": "validate",
 	})
@@ -490,13 +511,25 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 	return nil
 }
 
-type configValidator interface {
-	ValidateConfig(conf any) error
-}
-
 type configApplyError struct {
 	Plugin plugins.Plugin
 	Err    error
+}
+
+type runtimeConfigPlugin struct {
+	Plugin       plugins.Plugin
+	Configurable plugins.Configurable
+	Validator    plugins.ConfigValidator
+	Rollbacker   plugins.ConfigRollbacker
+	Caps         plugins.PluginCapabilities
+}
+
+func configReloadEntryNames(entries []ConfigReloadEntry) []string {
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.PluginName)
+	}
+	return names
 }
 
 func (a *LynxApp) nextConfigVersion() uint64 {
@@ -546,7 +579,7 @@ func (a *LynxApp) emitConfigEvent(rt plugins.Runtime, eventType plugins.EventTyp
 	})
 }
 
-func (a *LynxApp) listConfigurablePlugins(pm TypedPluginManager) []plugins.Plugin {
+func (a *LynxApp) listConfigurablePlugins(pm TypedPluginManager) []runtimeConfigPlugin {
 	if pm == nil {
 		return nil
 	}
@@ -555,52 +588,70 @@ func (a *LynxApp) listConfigurablePlugins(pm TypedPluginManager) []plugins.Plugi
 		return nil
 	}
 	list := manager.listPluginsInternal()
-	filtered := make([]plugins.Plugin, 0, len(list))
+	filtered := make([]runtimeConfigPlugin, 0, len(list))
 	for _, p := range list {
-		if _, ok := p.(plugins.Configurable); ok {
-			filtered = append(filtered, p)
+		caps := plugins.DescribePluginCapabilities(p)
+		configurable, ok := p.(plugins.Configurable)
+		if !ok {
+			continue
 		}
+		if caps.ProtocolExplicit && !caps.Protocol.ConfigHotReload {
+			continue
+		}
+		item := runtimeConfigPlugin{
+			Plugin:       p,
+			Configurable: configurable,
+			Caps:         caps,
+		}
+		if validator, ok := p.(plugins.ConfigValidator); ok {
+			item.Validator = validator
+		}
+		if rollbacker, ok := p.(plugins.ConfigRollbacker); ok {
+			item.Rollbacker = rollbacker
+		}
+		filtered = append(filtered, item)
 	}
 	return filtered
 }
 
-func (a *LynxApp) validatePluginConfigurations(pluginList []plugins.Plugin, cfg config.Config) error {
+func (a *LynxApp) validatePluginConfigurations(pluginList []runtimeConfigPlugin, cfg config.Config) error {
 	for _, plugin := range pluginList {
-		validator, ok := plugin.(configValidator)
-		if !ok {
+		if plugin.Caps.ProtocolExplicit && plugin.Caps.Protocol.ConfigValidation && plugin.Validator == nil {
+			return fmt.Errorf("plugin %s declares config validation support but does not implement ConfigValidator", plugin.Plugin.Name())
+		}
+		if plugin.Validator == nil {
 			continue
 		}
-		if err := validator.ValidateConfig(cfg); err != nil {
-			return fmt.Errorf("plugin %s validation failed: %w", plugin.Name(), err)
+		if err := plugin.Validator.ValidateConfig(cfg); err != nil {
+			return fmt.Errorf("plugin %s validation failed: %w", plugin.Plugin.Name(), err)
 		}
 	}
 	return nil
 }
 
-func (a *LynxApp) applyPluginConfigurations(pluginList []plugins.Plugin, cfg config.Config) ([]plugins.Plugin, *configApplyError) {
-	applied := make([]plugins.Plugin, 0, len(pluginList))
+func (a *LynxApp) applyPluginConfigurations(pluginList []runtimeConfigPlugin, cfg config.Config) ([]runtimeConfigPlugin, *configApplyError) {
+	applied := make([]runtimeConfigPlugin, 0, len(pluginList))
 	for _, plugin := range pluginList {
-		configurable, ok := plugin.(plugins.Configurable)
-		if !ok {
-			continue
-		}
-		if err := configurable.Configure(cfg); err != nil {
-			return applied, &configApplyError{Plugin: plugin, Err: err}
+		if err := plugin.Configurable.Configure(cfg); err != nil {
+			return applied, &configApplyError{Plugin: plugin.Plugin, Err: err}
 		}
 		applied = append(applied, plugin)
 	}
 	return applied, nil
 }
 
-func (a *LynxApp) rollbackPluginConfigurations(applied []plugins.Plugin, oldCfg config.Config) error {
+func (a *LynxApp) rollbackPluginConfigurations(applied []runtimeConfigPlugin, oldCfg config.Config) error {
 	var firstErr error
 	for i := len(applied) - 1; i >= 0; i-- {
-		configurable, ok := applied[i].(plugins.Configurable)
-		if !ok {
-			continue
+		plugin := applied[i]
+		var err error
+		if plugin.Configurable != nil {
+			err = plugin.Configurable.Configure(oldCfg)
+		} else if plugin.Rollbacker != nil {
+			err = plugin.Rollbacker.RollbackConfig(oldCfg)
 		}
-		if err := configurable.Configure(oldCfg); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("plugin %s rollback failed: %w", applied[i].Name(), err)
+		if err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("plugin %s rollback failed: %w", plugin.Plugin.Name(), err)
 		}
 	}
 	return firstErr
@@ -959,4 +1010,12 @@ func (a *LynxApp) EventMetrics() map[string]interface{} {
 		return nil
 	}
 	return a.eventManager.GetMonitor().GetMetrics()
+}
+
+// ConfigReloadPlan returns the current plugin manager's config reload classification.
+func (a *LynxApp) ConfigReloadPlan() ConfigReloadPlan {
+	if a == nil || a.pluginManager == nil {
+		return ConfigReloadPlan{}
+	}
+	return a.pluginManager.GetConfigReloadPlan()
 }

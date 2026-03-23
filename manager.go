@@ -29,6 +29,7 @@ type PluginManager interface {
 	GetPlugin(name string) plugins.Plugin
 	GetPluginByID(id string) plugins.Plugin
 	GetPluginCapabilities(name string) (plugins.PluginCapabilities, error)
+	GetConfigReloadPlan() ConfigReloadPlan
 	PreparePlug(config config.Config) ([]plugins.Plugin, error)
 
 	// Runtime and config
@@ -69,6 +70,19 @@ type PrepareReport struct {
 	Skipped        []string
 	Failures       []PrepareFailure
 	PartialAllowed bool
+}
+
+type ConfigReloadEntry struct {
+	PluginName string
+	PluginID   string
+	Reason     string
+}
+
+type ConfigReloadPlan struct {
+	HotReloadable   []ConfigReloadEntry
+	RestartRequired []ConfigReloadEntry
+	Unsupported     []ConfigReloadEntry
+	Invalid         []ConfigReloadEntry
 }
 
 // DefaultPluginManager is the generic plugin manager implementation.
@@ -152,6 +166,50 @@ func (m *DefaultPluginManager[T]) GetPluginCapabilities(name string) (plugins.Pl
 		return plugins.PluginCapabilities{}, fmt.Errorf("plugin %s not found", name)
 	}
 	return plugins.DescribePluginCapabilities(p), nil
+}
+
+func (m *DefaultPluginManager[T]) GetConfigReloadPlan() ConfigReloadPlan {
+	plan := ConfigReloadPlan{
+		HotReloadable:   make([]ConfigReloadEntry, 0),
+		RestartRequired: make([]ConfigReloadEntry, 0),
+		Unsupported:     make([]ConfigReloadEntry, 0),
+		Invalid:         make([]ConfigReloadEntry, 0),
+	}
+	for _, p := range m.listPluginsInternal() {
+		if p == nil {
+			continue
+		}
+		caps := plugins.DescribePluginCapabilities(p)
+		entry := ConfigReloadEntry{
+			PluginName: p.Name(),
+			PluginID:   p.ID(),
+		}
+		_, configurable := p.(plugins.Configurable)
+		_, validator := p.(plugins.ConfigValidator)
+		_, rollbacker := p.(plugins.ConfigRollbacker)
+
+		switch {
+		case caps.ProtocolExplicit && caps.Protocol.ConfigHotReload && !configurable:
+			entry.Reason = "declares config hot reload but does not implement Configurable"
+			plan.Invalid = append(plan.Invalid, entry)
+		case caps.ProtocolExplicit && caps.Protocol.ConfigValidation && !validator:
+			entry.Reason = "declares config validation but does not implement ConfigValidator"
+			plan.Invalid = append(plan.Invalid, entry)
+		case caps.ProtocolExplicit && caps.Protocol.ConfigRollback && !rollbacker && !configurable:
+			entry.Reason = "declares config rollback but does not implement ConfigRollbacker"
+			plan.Invalid = append(plan.Invalid, entry)
+		case caps.ProtocolExplicit && !caps.Protocol.ConfigHotReload:
+			entry.Reason = "plugin requires restart for configuration changes"
+			plan.RestartRequired = append(plan.RestartRequired, entry)
+		case configurable:
+			entry.Reason = "plugin supports runtime configuration updates"
+			plan.HotReloadable = append(plan.HotReloadable, entry)
+		default:
+			entry.Reason = "plugin does not expose runtime configuration hooks"
+			plan.Unsupported = append(plan.Unsupported, entry)
+		}
+	}
+	return plan
 }
 
 // containsName checks if a name exists in the slice.
