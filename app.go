@@ -14,8 +14,10 @@ import (
 	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/events"
 	"github.com/go-lynx/lynx/log"
+	"github.com/go-lynx/lynx/subscribe"
 
 	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-kratos/kratos/v2/selector"
 	"github.com/go-lynx/lynx/plugins"
 	"google.golang.org/grpc"
 )
@@ -44,6 +46,18 @@ func SetDefaultApp(app *LynxApp) {
 	lynxMu.Lock()
 	defer lynxMu.Unlock()
 	lynxApp = app
+	events.SetDefaultEventBusProvider(func() *events.EventBusManager {
+		if lynxApp == nil {
+			return nil
+		}
+		return lynxApp.eventManager
+	})
+	events.SetDefaultListenerManagerProvider(func() *events.EventListenerManager {
+		if lynxApp == nil {
+			return nil
+		}
+		return lynxApp.eventListenerManager
+	})
 }
 
 // ClearDefaultApp clears the process-wide default Lynx application instance.
@@ -158,6 +172,11 @@ type LynxApp struct {
 	// Configuration version (monotonically increasing) used for event ordering and idempotent handling
 	// Uses atomic operations for thread-safe access
 	configVersion uint64
+
+	// App-owned event facilities. Core runtime paths should prefer these over global singletons.
+	eventManager         *events.EventBusManager
+	eventListenerManager *events.EventListenerManager
+	eventAdapter         plugins.EventBusAdapter
 }
 
 // Lynx returns the global LynxApp instance.
@@ -168,30 +187,24 @@ func Lynx() *LynxApp {
 	return lynxApp
 }
 
-// GetHost retrieves the hostname of the current application instance.
-// Returns an empty string if the application is not initialized.
-func GetHost() string {
-	a := Lynx()
+// Host returns the host of this application instance.
+func (a *LynxApp) Host() string {
 	if a == nil {
 		return ""
 	}
 	return a.host
 }
 
-// GetName retrieves the application name.
-// Returns an empty string if the application is not initialized.
-func GetName() string {
-	a := Lynx()
+// Name returns the name of this application instance.
+func (a *LynxApp) Name() string {
 	if a == nil {
 		return ""
 	}
 	return a.name
 }
 
-// GetVersion retrieves the application version.
-// Returns an empty string if the application is not initialized.
-func GetVersion() string {
-	a := Lynx()
+// Version returns the version of this application instance.
+func (a *LynxApp) Version() string {
 	if a == nil {
 		return ""
 	}
@@ -303,26 +316,30 @@ func initializeApp(cfg config.Config, plugins ...plugins.Plugin) (*LynxApp, erro
 		host = hostname
 	}
 
-	// Initialize unified event system
-	if err := events.InitWithDefaultConfig(); err != nil {
-		return nil, fmt.Errorf("failed to initialize event system: %w", err)
-	}
-
-	// Start event system health check
-	events.StartHealthCheck(30 * time.Second) // Check every 30 seconds
-
 	// Create new application instance
 	typedMgr := NewTypedPluginManager(plugins...)
-	app := &LynxApp{
-		host:          host,
-		name:          bConf.Lynx.Application.Name,
-		version:       bConf.Lynx.Application.Version,
-		bootConfig:    &bConf,
-		globalConf:    cfg,
-		pluginManager: typedMgr,
-		controlPlane:  &DefaultControlPlane{},
-		grpcSubs:      make(map[string]*grpc.ClientConn),
+	typedMgr.SetConfig(cfg)
+	eventManager, err := events.NewEventBusManager(events.DefaultBusConfigs())
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize app event system: %w", err)
 	}
+	eventListenerManager := events.NewEventListenerManagerWithEventBus(eventManager)
+	eventAdapter := events.NewPluginEventBusAdapterWithListenerManager(eventManager, eventListenerManager)
+	app := &LynxApp{
+		host:                 host,
+		name:                 bConf.Lynx.Application.Name,
+		version:              bConf.Lynx.Application.Version,
+		bootConfig:           &bConf,
+		globalConf:           cfg,
+		pluginManager:        typedMgr,
+		controlPlane:         &DefaultControlPlane{},
+		grpcSubs:             make(map[string]*grpc.ClientConn),
+		eventManager:         eventManager,
+		eventListenerManager: eventListenerManager,
+		eventAdapter:         eventAdapter,
+	}
+	app.eventManager.StartHealthCheck(30 * time.Second)
+	app.injectRuntimeEventAdapter()
 
 	// Validate required fields
 	if app.name == "" {
@@ -394,99 +411,199 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 		return fmt.Errorf("new configuration cannot be nil")
 	}
 
-	// Close existing configuration if present
-	if a.globalConf != nil {
-		if err := a.globalConf.Close(); err != nil {
-			// Log the failure to close the existing configuration
+	oldCfg := a.globalConf
+	pm := a.GetPluginManager()
+	var rt plugins.Runtime
+	if pm != nil {
+		rt = pm.GetRuntime()
+	}
+
+	ver := a.nextConfigVersion()
+	a.emitConfigEvent(rt, plugins.EventConfigurationChanged, ver, 1, map[string]any{
+		"phase": "validate",
+	})
+
+	configurablePlugins := a.listConfigurablePlugins(pm)
+	if err := a.validatePluginConfigurations(configurablePlugins, cfg); err != nil {
+		a.emitConfigEvent(rt, plugins.EventConfigurationInvalid, ver, 2, map[string]any{
+			"phase": "validate",
+			"error": err.Error(),
+		})
+		return err
+	}
+
+	if pm != nil {
+		pm.SetConfig(cfg)
+	}
+	if rt != nil {
+		rt.SetConfig(cfg)
+	}
+	a.globalConf = cfg
+
+	applied, err := a.applyPluginConfigurations(configurablePlugins, cfg)
+	if err != nil {
+		rollbackErr := a.rollbackPluginConfigurations(applied, oldCfg)
+		if pm != nil {
+			pm.SetConfig(oldCfg)
+		}
+		if rt != nil {
+			rt.SetConfig(oldCfg)
+		}
+		a.globalConf = oldCfg
+		if cfg != nil {
+			_ = cfg.Close()
+		}
+
+		a.emitConfigEvent(rt, plugins.EventRollbackInitiated, ver, 3, map[string]any{
+			"phase":            "rollback",
+			"applied_count":    len(applied),
+			"failed_plugin":    err.Plugin.Name(),
+			"failed_plugin_id": err.Plugin.ID(),
+		})
+		if rollbackErr != nil {
+			a.emitConfigEvent(rt, plugins.EventRollbackFailed, ver, 4, map[string]any{
+				"phase": "rollback",
+				"error": rollbackErr.Error(),
+			})
+			return fmt.Errorf("apply config failed for plugin %s and rollback failed: %w", err.Plugin.Name(), rollbackErr)
+		}
+		a.emitConfigEvent(rt, plugins.EventRollbackCompleted, ver, 4, map[string]any{
+			"phase":         "rollback",
+			"applied_count": len(applied),
+		})
+		return fmt.Errorf("apply config failed for plugin %s: %w", err.Plugin.Name(), err.Err)
+	}
+
+	a.emitConfigEvent(rt, plugins.EventConfigurationApplied, ver, 2, map[string]any{
+		"phase":        "apply",
+		"plugin_count": len(applied),
+		"acknowledged": len(applied),
+	})
+
+	if oldCfg != nil {
+		if err := oldCfg.Close(); err != nil {
 			log.Errorf("Failed to close existing configuration: %v", err)
 			return err
 		}
 	}
 
-	// Update global configuration
-	a.globalConf = cfg
+	return nil
+}
 
-	// Inject new config into the plugin manager and runtime, then broadcast config events
-	// Use atomic operations to ensure configuration update is atomic
-	if pm := a.GetPluginManager(); pm != nil {
-		pm.SetConfig(cfg)
-		if rt := pm.GetRuntime(); rt != nil {
-			// Inject config atomically
-			rt.SetConfig(cfg)
+type configValidator interface {
+	ValidateConfig(conf any) error
+}
 
-			// Increment configuration version with atomic overflow detection
-			// Use CAS loop to ensure atomicity and prevent race conditions
-			var ver uint64
-			for {
-				oldVer := atomic.LoadUint64(&a.configVersion)
-				newVer := oldVer + 1
-				// Skip 0 to avoid confusion (0 means uninitialized)
-				if newVer == 0 {
-					newVer = 1
-				}
-				// Atomically update if version hasn't changed
-				if atomic.CompareAndSwapUint64(&a.configVersion, oldVer, newVer) {
-					ver = newVer
-					// Log warning only if we actually wrapped around
-					if oldVer == ^uint64(0) {
-						log.Warnf("Configuration version overflow detected, resetting to 1. This should not happen in normal operation.")
-					}
-					break
-				}
-				// Version changed, retry (with small delay to avoid busy loop)
-				// Optimized: Use runtime.Gosched() instead of fixed sleep
-				// This yields CPU to other goroutines more efficiently
-				runtime.Gosched()
+type configApplyError struct {
+	Plugin plugins.Plugin
+	Err    error
+}
+
+func (a *LynxApp) nextConfigVersion() uint64 {
+	var ver uint64
+	for {
+		oldVer := atomic.LoadUint64(&a.configVersion)
+		newVer := oldVer + 1
+		if newVer == 0 {
+			newVer = 1
+		}
+		if atomic.CompareAndSwapUint64(&a.configVersion, oldVer, newVer) {
+			ver = newVer
+			if oldVer == ^uint64(0) {
+				log.Warnf("Configuration version overflow detected, resetting to 1. This should not happen in normal operation.")
 			}
+			break
+		}
+		runtime.Gosched()
+	}
+	return ver
+}
 
-			// Broadcast configuration change events atomically
-			// Emit events in order: changed first, then applied
-			// Use event sequence numbers to ensure ordering instead of relying on delay
-			// Use best-effort error handling to prevent config update failure
-			changedEvent := plugins.PluginEvent{
-				Type:      plugins.EventConfigurationChanged,
-				Priority:  plugins.PriorityHigh,
-				Source:    "SetGlobalConfig",
-				Category:  "configuration",
-				PluginID:  configEventPluginID,
-				Status:    plugins.StatusActive,
-				Timestamp: time.Now().Unix(),
-				Metadata: map[string]any{
-					"app":            a.name,
-					"version":        a.version,
-					"host":           a.host,
-					"source":         "SetGlobalConfig",
-					"config_version": ver,
-					"event_sequence": 1, // Sequence number to ensure ordering
-				},
-			}
-			rt.EmitEvent(changedEvent)
+func (a *LynxApp) emitConfigEvent(rt plugins.Runtime, eventType plugins.EventType, version uint64, sequence int, extra map[string]any) {
+	if rt == nil {
+		return
+	}
+	metadata := map[string]any{
+		"app":            a.name,
+		"version":        a.version,
+		"host":           a.host,
+		"source":         "SetGlobalConfig",
+		"config_version": version,
+		"event_sequence": sequence,
+	}
+	for k, v := range extra {
+		metadata[k] = v
+	}
+	rt.EmitEvent(plugins.PluginEvent{
+		Type:      eventType,
+		Priority:  plugins.PriorityHigh,
+		Source:    "SetGlobalConfig",
+		Category:  "configuration",
+		PluginID:  configEventPluginID,
+		Status:    plugins.StatusActive,
+		Timestamp: time.Now().Unix(),
+		Metadata:  metadata,
+	})
+}
 
-			// Removed time.Sleep - rely on event sequence numbers and config_version for ordering
-			// Events are processed in order by the event bus, and sequence numbers provide additional guarantee
-
-			appliedEvent := plugins.PluginEvent{
-				Type:      plugins.EventConfigurationApplied,
-				Priority:  plugins.PriorityHigh,
-				Source:    "SetGlobalConfig",
-				Category:  "configuration",
-				PluginID:  configEventPluginID,
-				Status:    plugins.StatusActive,
-				Timestamp: time.Now().Unix(),
-				Metadata: map[string]any{
-					"app":            a.name,
-					"version":        a.version,
-					"host":           a.host,
-					"source":         "SetGlobalConfig",
-					"config_version": ver,
-					"event_sequence": 2, // Sequence number to ensure ordering
-				},
-			}
-			rt.EmitEvent(appliedEvent)
+func (a *LynxApp) listConfigurablePlugins(pm TypedPluginManager) []plugins.Plugin {
+	if pm == nil {
+		return nil
+	}
+	manager, ok := pm.(*DefaultPluginManager[plugins.Plugin])
+	if !ok {
+		return nil
+	}
+	list := manager.listPluginsInternal()
+	filtered := make([]plugins.Plugin, 0, len(list))
+	for _, p := range list {
+		if _, ok := p.(plugins.Configurable); ok {
+			filtered = append(filtered, p)
 		}
 	}
+	return filtered
+}
 
+func (a *LynxApp) validatePluginConfigurations(pluginList []plugins.Plugin, cfg config.Config) error {
+	for _, plugin := range pluginList {
+		validator, ok := plugin.(configValidator)
+		if !ok {
+			continue
+		}
+		if err := validator.ValidateConfig(cfg); err != nil {
+			return fmt.Errorf("plugin %s validation failed: %w", plugin.Name(), err)
+		}
+	}
 	return nil
+}
+
+func (a *LynxApp) applyPluginConfigurations(pluginList []plugins.Plugin, cfg config.Config) ([]plugins.Plugin, *configApplyError) {
+	applied := make([]plugins.Plugin, 0, len(pluginList))
+	for _, plugin := range pluginList {
+		configurable, ok := plugin.(plugins.Configurable)
+		if !ok {
+			continue
+		}
+		if err := configurable.Configure(cfg); err != nil {
+			return applied, &configApplyError{Plugin: plugin, Err: err}
+		}
+		applied = append(applied, plugin)
+	}
+	return applied, nil
+}
+
+func (a *LynxApp) rollbackPluginConfigurations(applied []plugins.Plugin, oldCfg config.Config) error {
+	var firstErr error
+	for i := len(applied) - 1; i >= 0; i-- {
+		configurable, ok := applied[i].(plugins.Configurable)
+		if !ok {
+			continue
+		}
+		if err := configurable.Configure(oldCfg); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("plugin %s rollback failed: %w", applied[i].Name(), err)
+		}
+	}
+	return firstErr
 }
 
 // emitSystemEvent emits a system event to the unified event system
@@ -559,11 +676,14 @@ func (a *LynxApp) Close() error {
 	}
 
 	// Stop health check before closing event bus
-	events.StopHealthCheck()
-
-	// Close global event bus
-	if err := events.CloseGlobalEventBus(); err != nil {
-		log.Errorf("Failed to close global event bus: %v", err)
+	if a.eventListenerManager != nil {
+		a.eventListenerManager.Clear()
+	}
+	if a.eventManager != nil {
+		a.eventManager.StopHealthCheck()
+		if err := a.eventManager.Close(); err != nil {
+			log.Errorf("Failed to close app event bus: %v", err)
+		}
 	}
 
 	// Close global configuration to stop watcher goroutines and release resources.
@@ -624,4 +744,219 @@ func (a *LynxApp) ClearUnloadFailures() {
 	if pm := a.GetPluginManager(); pm != nil {
 		pm.ClearUnloadFailures()
 	}
+}
+
+// LoadPlugins loads plugins through the app-owned plugin manager and then wires
+// application-level subscriptions that depend on started plugins/control plane.
+func (a *LynxApp) LoadPlugins() error {
+	if a == nil {
+		return fmt.Errorf("lynx app instance is nil")
+	}
+	pm := a.GetPluginManager()
+	if pm == nil {
+		return fmt.Errorf("plugin manager is nil")
+	}
+	if a.globalConf == nil {
+		return fmt.Errorf("global configuration is nil")
+	}
+
+	if err := pm.LoadPlugins(a.globalConf); err != nil {
+		return err
+	}
+
+	if err := a.configureGrpcSubscriptions(); err != nil {
+		pm.UnloadPlugins()
+		return err
+	}
+
+	return nil
+}
+
+// LoadPluginsByName loads a subset of plugins through the app-owned plugin manager.
+func (a *LynxApp) LoadPluginsByName(names []string) error {
+	if a == nil {
+		return fmt.Errorf("lynx app instance is nil")
+	}
+	pm := a.GetPluginManager()
+	if pm == nil {
+		return fmt.Errorf("plugin manager is nil")
+	}
+	if a.globalConf == nil {
+		return fmt.Errorf("global configuration is nil")
+	}
+
+	if err := pm.LoadPluginsByName(a.globalConf, names); err != nil {
+		return err
+	}
+
+	if err := a.configureGrpcSubscriptions(); err != nil {
+		pm.UnloadPluginsByName(names)
+		return err
+	}
+
+	return nil
+}
+
+func (a *LynxApp) configureGrpcSubscriptions() error {
+	if a == nil || a.bootConfig == nil || a.bootConfig.Lynx == nil || a.bootConfig.Lynx.Subscriptions == nil {
+		a.replaceGrpcSubscriptions(nil)
+		return nil
+	}
+
+	subs := a.bootConfig.Lynx.Subscriptions
+	if len(subs.GetGrpc()) == 0 {
+		a.replaceGrpcSubscriptions(nil)
+		return nil
+	}
+
+	controlPlane := a.GetControlPlane()
+	if controlPlane == nil {
+		return fmt.Errorf("grpc subscriptions configured but control plane is not available (install a control plane plugin)")
+	}
+
+	disc := controlPlane.NewServiceDiscovery()
+	if disc == nil {
+		return fmt.Errorf("grpc subscriptions configured but service discovery is not available")
+	}
+
+	routerFactory := func(service string) selector.NodeFilter {
+		return controlPlane.NewNodeRouter(service)
+	}
+
+	var tlsProviders *subscribe.ClientTLSProviders
+	if hasTLSSubscription(subs) {
+		tlsProviders = &subscribe.ClientTLSProviders{
+			ConfigProvider: controlPlane.GetConfig,
+			DefaultRootCA:  a.defaultRootCAProvider(),
+		}
+	}
+
+	conns, err := subscribe.BuildGrpcSubscriptions(subs, disc, routerFactory, tlsProviders)
+	if err != nil {
+		closeGrpcConnections(conns)
+		return fmt.Errorf("build grpc subscriptions failed: %w", err)
+	}
+
+	a.replaceGrpcSubscriptions(conns)
+	return nil
+}
+
+func hasTLSSubscription(subs *conf.Subscriptions) bool {
+	if subs == nil || len(subs.GetGrpc()) == 0 {
+		return false
+	}
+	for _, g := range subs.GetGrpc() {
+		if g.GetTls() {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *LynxApp) defaultRootCAProvider() func() []byte {
+	return func() []byte {
+		if a == nil || a.Certificate() == nil {
+			return nil
+		}
+		return a.Certificate().GetRootCACertificate()
+	}
+}
+
+func (a *LynxApp) replaceGrpcSubscriptions(conns map[string]*grpc.ClientConn) {
+	if a == nil {
+		return
+	}
+
+	next := make(map[string]*grpc.ClientConn, len(conns))
+	for name, conn := range conns {
+		next[name] = conn
+	}
+
+	a.grpcSubsMu.Lock()
+	prev := a.grpcSubs
+	a.grpcSubs = next
+	a.grpcSubsMu.Unlock()
+
+	for name, oldConn := range prev {
+		newConn, stillPresent := next[name]
+		if stillPresent && newConn == oldConn {
+			continue
+		}
+		if oldConn != nil {
+			if err := oldConn.Close(); err != nil {
+				log.Errorf("Failed to close previous gRPC connection for service %s: %v", name, err)
+			}
+		}
+	}
+}
+
+func closeGrpcConnections(conns map[string]*grpc.ClientConn) {
+	for name, conn := range conns {
+		if conn == nil {
+			continue
+		}
+		if err := conn.Close(); err != nil {
+			log.Errorf("Failed to close gRPC connection for service %s: %v", name, err)
+		}
+	}
+}
+
+func (a *LynxApp) injectRuntimeEventAdapter() {
+	if a == nil || a.eventAdapter == nil {
+		return
+	}
+	pm := a.GetPluginManager()
+	if pm == nil {
+		return
+	}
+	rt := pm.GetRuntime()
+	if rt == nil {
+		return
+	}
+	type eventAdapterSetter interface {
+		SetEventBusAdapter(plugins.EventBusAdapter)
+	}
+	if setter, ok := rt.(eventAdapterSetter); ok {
+		setter.SetEventBusAdapter(a.eventAdapter)
+	}
+}
+
+// EventManager returns the app-owned event bus manager.
+func (a *LynxApp) EventManager() *events.EventBusManager {
+	if a == nil {
+		return nil
+	}
+	return a.eventManager
+}
+
+// EventListenerManager returns the app-owned listener manager.
+func (a *LynxApp) EventListenerManager() *events.EventListenerManager {
+	if a == nil {
+		return nil
+	}
+	return a.eventListenerManager
+}
+
+// EventAdapter returns the app-owned plugin event adapter.
+func (a *LynxApp) EventAdapter() plugins.EventBusAdapter {
+	if a == nil {
+		return nil
+	}
+	return a.eventAdapter
+}
+
+// EventSystemHealth returns the health snapshot of the app-owned event system.
+func (a *LynxApp) EventSystemHealth() *events.EventSystemHealth {
+	if a == nil || a.eventManager == nil {
+		return nil
+	}
+	return a.eventManager.GetEventSystemHealth()
+}
+
+// EventMetrics returns the app-owned event monitor metrics.
+func (a *LynxApp) EventMetrics() map[string]interface{} {
+	if a == nil || a.eventManager == nil || a.eventManager.GetMonitor() == nil {
+		return nil
+	}
+	return a.eventManager.GetMonitor().GetMetrics()
 }

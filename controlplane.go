@@ -393,42 +393,42 @@ func (a *LynxApp) GetControlPlaneConfigSources() ([]config.Source, error) {
 	}
 
 	// Fallback to single config loading for backward compatibility
-	configFileName := fmt.Sprintf("%s.yaml", GetName())
+	configFileName := fmt.Sprintf("%s.yaml", a.name)
 	namespace := a.GetControlPlane().GetNamespace()
 
 	// Log configuration loading attempt
 	log.Infof("Loading configuration - File: [%s] Group: [%s] Namespace: [%s]",
-		configFileName, GetName(), namespace)
+		configFileName, a.name, namespace)
 
 	// Get configuration source from control plane
-	configSource, err := a.GetControlPlane().GetConfig(configFileName, GetName())
+	configSource, err := a.GetControlPlane().GetConfig(configFileName, a.name)
 	if err != nil {
 		log.Errorf("Failed to load configuration - File: [%s] Group: [%s] Namespace: [%s] Error: %v",
-			configFileName, GetName(), namespace, err)
+			configFileName, a.name, namespace, err)
 		return nil, fmt.Errorf("failed to load configuration source: %w", err)
 	}
 
 	return []config.Source{configSource}, nil
 }
 
-// GetServiceRegistry returns a new service registry instance
-func GetServiceRegistry() (registry.Registrar, error) {
-	if Lynx() == nil || Lynx().GetControlPlane() == nil {
+// GetServiceRegistry returns a new service registry instance for this app.
+func (a *LynxApp) GetServiceRegistry() (registry.Registrar, error) {
+	if a == nil || a.GetControlPlane() == nil {
 		// No control plane available, return nil registrar (no service registration)
 		return nil, nil
 	}
-	reg := Lynx().GetControlPlane().NewServiceRegistry()
+	reg := a.GetControlPlane().NewServiceRegistry()
 	// Return the registrar even if it's nil (no service registration)
 	return reg, nil
 }
 
-// GetServiceDiscovery returns a new service discovery instance
-func GetServiceDiscovery() (registry.Discovery, error) {
-	if Lynx() == nil || Lynx().GetControlPlane() == nil {
+// GetServiceDiscovery returns a new service discovery instance for this app.
+func (a *LynxApp) GetServiceDiscovery() (registry.Discovery, error) {
+	if a == nil || a.GetControlPlane() == nil {
 		// No control plane available, return nil discovery (no service discovery)
 		return nil, nil
 	}
-	disc := Lynx().GetControlPlane().NewServiceDiscovery()
+	disc := a.GetControlPlane().NewServiceDiscovery()
 	// Return the discovery even if it's nil (no service discovery)
 	return disc, nil
 }

@@ -27,6 +27,7 @@ type LoaderTls struct {
 	tls    *conf.Tls
 	cert   *conf.Cert
 	weight int
+	app    *lynxapp.LynxApp
 
 	// autoConfig is used when source_type is "auto" for rotation and SANs
 	autoConfig *conf.AutoConfig
@@ -85,6 +86,13 @@ func Config(tls *conf.Tls) Option {
 	}
 }
 
+// App binds the TLS plugin to a specific Lynx app instance.
+func App(app *lynxapp.LynxApp) Option {
+	return func(t *LoaderTls) {
+		t.app = app
+	}
+}
+
 // InitializeResources implements custom initialization for TLS loader plugin
 func (t *LoaderTls) InitializeResources(rt plugins.Runtime) error {
 	if t.tls == nil {
@@ -122,6 +130,8 @@ func (t *LoaderTls) StartupTasks() error {
 	} else {
 		t.certManager = NewCertificateManager(t.tls)
 	}
+	t.certManager.SetControlPlaneConfigLoader(t.controlPlaneConfigLoader())
+	t.certManager.SetIdentity(t.currentIdentity())
 
 	// Initialize certificate manager
 	if err := t.certManager.Initialize(); err != nil {
@@ -134,7 +144,11 @@ func (t *LoaderTls) StartupTasks() error {
 	}
 
 	// Set certificate provider
-	lynxapp.Lynx().SetCertificateProvider(t)
+	app := t.resolveApp()
+	if app == nil {
+		return fmt.Errorf("lynx application not initialized")
+	}
+	app.SetCertificateProvider(t)
 	log.Infof("TLS Certificate Loaded successfully using new certificate manager")
 	return nil
 }
@@ -146,7 +160,11 @@ func (t *LoaderTls) startupOldMethod() error {
 	}
 
 	log.Infof("TLS Certificate Loading using old control plane method")
-	cfg, err := lynxapp.Lynx().GetControlPlane().GetConfig(t.tls.GetFileName(), t.tls.GetGroup())
+	loader := t.controlPlaneConfigLoader()
+	if loader == nil {
+		return fmt.Errorf("control plane config loader is not available")
+	}
+	cfg, err := loader(t.tls.GetFileName(), t.tls.GetGroup())
 	if err != nil {
 		return err
 	}
@@ -161,7 +179,11 @@ func (t *LoaderTls) startupOldMethod() error {
 		return err
 	}
 
-	lynxapp.Lynx().SetCertificateProvider(t)
+	app := t.resolveApp()
+	if app == nil {
+		return fmt.Errorf("lynx application not initialized")
+	}
+	app.SetCertificateProvider(t)
 	log.Infof("TLS Certificate Loaded successfully using old method")
 	return nil
 }
@@ -173,8 +195,36 @@ func (t *LoaderTls) CleanupTasks() error {
 		t.certManager.Stop()
 	}
 
-	lynxapp.Lynx().SetCertificateProvider(nil)
+	if app := t.resolveApp(); app != nil {
+		app.SetCertificateProvider(nil)
+	}
 	return nil
+}
+
+func (t *LoaderTls) resolveApp() *lynxapp.LynxApp {
+	return t.app
+}
+
+func (t *LoaderTls) controlPlaneConfigLoader() func(string, string) (config.Source, error) {
+	app := t.resolveApp()
+	if app == nil {
+		return nil
+	}
+	return func(fileName, group string) (config.Source, error) {
+		cp := app.GetControlPlane()
+		if cp == nil {
+			return nil, fmt.Errorf("control plane not available")
+		}
+		return cp.GetConfig(fileName, group)
+	}
+}
+
+func (t *LoaderTls) currentIdentity() (string, string) {
+	app := t.resolveApp()
+	if app == nil {
+		return "", ""
+	}
+	return app.Name(), app.Host()
 }
 
 // NewTlsLoader creates a new TLS loader plugin instance

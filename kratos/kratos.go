@@ -16,6 +16,8 @@ import (
 
 // Options holds the configuration for creating a Kratos application
 type Options struct {
+	// App is the Lynx application instance that owns app metadata and capabilities.
+	App *lynxapp.LynxApp
 	// GRPCServer instance
 	GRPCServer *grpc.Server
 	// HTTPServer instance
@@ -34,11 +36,14 @@ type Options struct {
 //   - *kratos.App: The created Kratos application
 //   - error: Any error that occurred during creation
 func NewKratos(opts Options) (*kratos.App, error) {
+	if opts.App == nil {
+		return nil, fmt.Errorf("lynx app cannot be nil")
+	}
 	// Validate required fields
-	if lynxapp.GetHost() == "" {
+	if opts.App.Host() == "" {
 		return nil, fmt.Errorf("host cannot be empty")
 	}
-	if lynxapp.GetName() == "" {
+	if opts.App.Name() == "" {
 		return nil, fmt.Errorf("service name cannot be empty")
 	}
 	if log.Logger == nil {
@@ -48,15 +53,15 @@ func NewKratos(opts Options) (*kratos.App, error) {
 	// Prepare base options for Kratos application
 	kratosOpts := []kratos.Option{
 		// Set the application ID to the host name
-		kratos.ID(lynxapp.GetHost()),
+		kratos.ID(opts.App.Host()),
 		// Set the application name
-		kratos.Name(lynxapp.GetName()),
+		kratos.Name(opts.App.Name()),
 		// Set the application version
-		kratos.Version(lynxapp.GetVersion()),
+		kratos.Version(opts.App.Version()),
 		// Set the application metadata with basic info
 		kratos.Metadata(map[string]string{
-			"host":    lynxapp.GetHost(),
-			"version": lynxapp.GetVersion(),
+			"host":    opts.App.Host(),
+			"version": opts.App.Version(),
 		}),
 		// Set the application logger
 		kratos.Logger(log.Logger),
@@ -109,12 +114,14 @@ func NewKratos(opts Options) (*kratos.App, error) {
 // Returns:
 //   - Options: Options struct instance containing all provided configuration information.
 func ProvideKratosOptions(
+	app *lynxapp.LynxApp,
 	grpcServer *grpc.Server,
 	httpServer *http.Server,
 	registrar registry.Registrar,
 ) Options {
 	// Return an initialized Options struct instance, assigning the provided parameters to corresponding fields
 	return Options{
+		App:        app,
 		GRPCServer: grpcServer,
 		HTTPServer: httpServer,
 		Registrar:  registrar,

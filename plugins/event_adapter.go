@@ -1,10 +1,6 @@
 package plugins
 
-import (
-	"sync"
-
-	"github.com/go-kratos/kratos/v2/log"
-)
+import "github.com/go-kratos/kratos/v2/log"
 
 // EventBusAdapter provides an interface for plugins to interact with the unified event bus
 // This avoids circular imports between plugins and app/events packages
@@ -12,54 +8,6 @@ type EventBusAdapter interface {
 	PublishEvent(event PluginEvent) error
 	Subscribe(eventType EventType, handler func(PluginEvent)) error
 	SubscribeTo(eventType EventType, handler func(PluginEvent)) error
-}
-
-// GlobalEventBusAdapter provides global access to the event bus adapter
-var (
-	globalEventBusAdapter EventBusAdapter
-	globalAdapterOnce     sync.Once
-	globalAdapterMu       sync.RWMutex
-)
-
-// SetGlobalEventBusAdapter sets the global event bus adapter.
-// If never set, EnsureGlobalEventBusAdapter returns a FallbackEventBusAdapter:
-// events are logged with key "plugin_event_bus_fallback" but not delivered to any subscriber.
-func SetGlobalEventBusAdapter(adapter EventBusAdapter) {
-	globalAdapterMu.Lock()
-	defer globalAdapterMu.Unlock()
-	globalEventBusAdapter = adapter
-}
-
-// GetGlobalEventBusAdapter returns the global event bus adapter (may be nil).
-func GetGlobalEventBusAdapter() EventBusAdapter {
-	globalAdapterMu.RLock()
-	defer globalAdapterMu.RUnlock()
-	return globalEventBusAdapter
-}
-
-// EnsureGlobalEventBusAdapter ensures the global event bus adapter is available.
-// When none was set via SetGlobalEventBusAdapter, returns a FallbackEventBusAdapter
-// so that publish/subscribe do not panic; events are logged but not actually delivered.
-func EnsureGlobalEventBusAdapter() EventBusAdapter {
-	adapter := GetGlobalEventBusAdapter()
-	if adapter != nil {
-		return adapter
-	}
-
-	// Return a fallback adapter that safely handles operations
-	return &FallbackEventBusAdapter{}
-}
-
-// PublishEventToGlobalBus publishes an event to the global event bus
-func PublishEventToGlobalBus(event PluginEvent) error {
-	adapter := EnsureGlobalEventBusAdapter()
-	return adapter.PublishEvent(event)
-}
-
-// SubscribeToGlobalBus subscribes to events on the global event bus
-func SubscribeToGlobalBus(eventType EventType, handler func(PluginEvent)) error {
-	adapter := EnsureGlobalEventBusAdapter()
-	return adapter.SubscribeTo(eventType, handler)
 }
 
 // FallbackEventBusAdapter provides a safe fallback when no global adapter is available.

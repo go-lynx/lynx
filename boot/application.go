@@ -155,8 +155,7 @@ func (app *Application) Run() error {
 	log.Info("lynx application is starting up")
 
 	// Get plugin manager
-	pluginManager := lynxApp.GetPluginManager()
-	if pluginManager == nil {
+	if lynxApp.GetPluginManager() == nil {
 		return fmt.Errorf("plugin manager is nil: cannot manage plugins")
 	}
 
@@ -166,7 +165,7 @@ func (app *Application) Run() error {
 	// local bootstrap configuration, which typically includes the control plane plugin itself.
 	// The preparePlugin() method has built-in deduplication logic to prevent loading the same
 	// plugin twice, so it's safe to call LoadPlugins() multiple times.
-	if err := app.loadPluginsWithProtection(pluginManager); err != nil {
+	if err := app.loadPluginsWithProtection(); err != nil {
 		return err
 	}
 
@@ -325,13 +324,17 @@ func (app *Application) gracefulShutdown() {
 }
 
 // loadPluginsWithProtection loads plugins with circuit breaker protection
-func (app *Application) loadPluginsWithProtection(pluginManager lynxapp.TypedPluginManager) error {
+func (app *Application) loadPluginsWithProtection() error {
 	// Check circuit breaker state before loading plugins
 	if !app.circuitBreaker.CanExecute() {
 		return fmt.Errorf("circuit breaker is open, skipping plugin loading")
 	}
 
-	err := pluginManager.LoadPlugins(app.conf)
+	if app.lynxApp == nil {
+		return fmt.Errorf("lynx application is nil: cannot load plugins")
+	}
+
+	err := app.lynxApp.LoadPlugins()
 	app.circuitBreaker.RecordResult(err)
 	return err
 }

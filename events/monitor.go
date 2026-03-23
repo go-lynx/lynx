@@ -331,19 +331,18 @@ type EventSystemHealth struct {
 	Issues         []string
 }
 
-// GetEventSystemHealth returns the overall health of the event system
-func GetEventSystemHealth() *EventSystemHealth {
-	eventManager := GetGlobalEventBus()
-	if eventManager == nil {
+// GetEventSystemHealth returns the overall health of the event system.
+func (manager *EventBusManager) GetEventSystemHealth() *EventSystemHealth {
+	if manager == nil {
 		return &EventSystemHealth{
 			OverallHealthy: false,
 			BusesHealthy:   make(map[BusType]bool),
 			LastCheck:      time.Now(),
-			Issues:         []string{"Global event bus not initialized"},
+			Issues:         []string{"event bus manager not initialized"},
 		}
 	}
 
-	busStatus := eventManager.GetBusStatus()
+	busStatus := manager.GetBusStatus()
 	overallHealthy := true
 	issues := make([]string, 0)
 	busesHealthy := make(map[BusType]bool, len(busStatus))
@@ -364,58 +363,28 @@ func GetEventSystemHealth() *EventSystemHealth {
 	}
 }
 
-// Global monitor instance
-var (
-	globalMonitor     *EventMonitor
-	globalMonitorOnce sync.Once
-
-	// Health check state management
-	healthCheckMu      sync.Mutex
-	healthCheckDone    chan struct{}
-	healthCheckRunning bool
-)
-
-// GetGlobalMonitor returns the global event monitor
-func GetGlobalMonitor() *EventMonitor {
-	globalMonitorOnce.Do(func() {
-		globalMonitor = NewEventMonitor()
-	})
-	return globalMonitor
-}
-
-// UpdateGlobalHealth updates the global health status
-func UpdateGlobalHealth(healthy bool) {
-	GetGlobalMonitor().UpdateHealth(healthy)
-}
-
-// GetGlobalHealth returns the global health status
-func GetGlobalHealth() bool {
-	return GetGlobalMonitor().IsHealthy()
-}
-
-// GetGlobalMetrics returns the global monitoring metrics
-func GetGlobalMetrics() map[string]interface{} {
-	return GetGlobalMonitor().GetMetrics()
-}
-
 // StartHealthCheck starts periodic health checks for the event system.
 // Can be called multiple times to restart the health check after it has been stopped.
-func StartHealthCheck(interval time.Duration) {
-	healthCheckMu.Lock()
-	defer healthCheckMu.Unlock()
+func (manager *EventBusManager) StartHealthCheck(interval time.Duration) {
+	if manager == nil {
+		return
+	}
+
+	manager.healthCheckMu.Lock()
+	defer manager.healthCheckMu.Unlock()
 
 	// If already running, do nothing
-	if healthCheckRunning {
+	if manager.healthCheckRunning {
 		return
 	}
 
 	// Create new channel for this health check instance
-	healthCheckDone = make(chan struct{})
-	healthCheckRunning = true
+	manager.healthCheckDone = make(chan struct{})
+	manager.healthCheckRunning = true
 
 	// Capture the channel reference for this goroutine instance
 	// This prevents old goroutines from overwriting state of new health checks
-	doneChan := healthCheckDone
+	doneChan := manager.healthCheckDone
 
 	go func() {
 		ticker := time.NewTicker(interval)
@@ -426,18 +395,18 @@ func StartHealthCheck(interval time.Duration) {
 			case <-doneChan:
 				// Only update state if this is still the current health check instance
 				// This prevents old goroutines from overwriting state of newly started health checks
-				healthCheckMu.Lock()
-				if healthCheckDone == doneChan {
+				manager.healthCheckMu.Lock()
+				if manager.healthCheckDone == doneChan {
 					// This is still the current instance, safe to update state
-					healthCheckRunning = false
-					healthCheckDone = nil
+					manager.healthCheckRunning = false
+					manager.healthCheckDone = nil
 				}
 				// If healthCheckDone != doneChan, a new health check has started,
 				// so we should not update the state
-				healthCheckMu.Unlock()
+				manager.healthCheckMu.Unlock()
 				return
 			case <-ticker.C:
-				performHealthCheck()
+				manager.performHealthCheck()
 			}
 		}
 	}()
@@ -445,29 +414,38 @@ func StartHealthCheck(interval time.Duration) {
 
 // StopHealthCheck stops the health check goroutine.
 // Can be called multiple times safely.
-func StopHealthCheck() {
-	healthCheckMu.Lock()
-	defer healthCheckMu.Unlock()
+func (manager *EventBusManager) StopHealthCheck() {
+	if manager == nil {
+		return
+	}
 
-	if healthCheckDone != nil && healthCheckRunning {
+	manager.healthCheckMu.Lock()
+	defer manager.healthCheckMu.Unlock()
+
+	if manager.healthCheckDone != nil && manager.healthCheckRunning {
 		// Close the channel to signal the goroutine to stop
-		close(healthCheckDone)
+		close(manager.healthCheckDone)
 
 		// Clear references immediately to allow new health check to start
 		// The goroutine will check if healthCheckDone == doneChan before updating state
 		// Since we've already set healthCheckDone = nil, the goroutine's check will fail
 		// and it won't overwrite the state, preventing race conditions
-		healthCheckDone = nil
-		healthCheckRunning = false
+		manager.healthCheckDone = nil
+		manager.healthCheckRunning = false
 	}
 }
 
 // performHealthCheck performs a health check and emits health events
-func performHealthCheck() {
-	health := GetEventSystemHealth()
+func (manager *EventBusManager) performHealthCheck() {
+	if manager == nil {
+		return
+	}
+	health := manager.GetEventSystemHealth()
 
 	// Update monitor health status
-	GetGlobalMonitor().UpdateHealth(health.OverallHealthy)
+	if manager.monitor != nil {
+		manager.monitor.UpdateHealth(health.OverallHealthy)
+	}
 
 	// Emit health check event
 	healthEvent := NewLynxEvent(EventHealthCheckStarted, "system", "event-system").
@@ -480,7 +458,7 @@ func performHealthCheck() {
 		WithMetadata("issues", health.Issues)
 
 	// Publish health event
-	PublishEvent(healthEvent)
+	_ = manager.PublishEvent(healthEvent)
 
 	// Emit health status event
 	eventType := EventHealthStatusOK
@@ -500,7 +478,7 @@ func performHealthCheck() {
 		WithMetadata("health_status", health.OverallHealthy).
 		WithMetadata("last_check", health.LastCheck)
 
-	PublishEvent(statusEvent)
+	_ = manager.PublishEvent(statusEvent)
 }
 
 // countHealthyBuses counts the number of healthy buses

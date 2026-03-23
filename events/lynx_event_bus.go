@@ -334,9 +334,7 @@ func (b *LynxEventBus) Pause() {
 			WithStatus("paused").
 			WithMetadata("bus_type", b.busType).
 			WithMetadata("reason", "manual_pause")
-		if manager := GetGlobalEventBus(); manager != nil {
-			_ = manager.PublishEvent(pauseEvent)
-		}
+		b.publishManagerEvent(pauseEvent)
 	}
 }
 
@@ -354,9 +352,7 @@ func (b *LynxEventBus) Resume() {
 			WithMetadata("bus_type", b.busType).
 			WithMetadata("pause_duration", b.pauseDuration.String()).
 			WithMetadata("reason", "manual_resume")
-		if manager := GetGlobalEventBus(); manager != nil {
-			_ = manager.PublishEvent(resumeEvent)
-		}
+		b.publishManagerEvent(resumeEvent)
 	}
 }
 
@@ -422,7 +418,7 @@ func (b *LynxEventBus) checkDegradationWithSize(queueSize, queueCap int) {
 			if b.logger != nil {
 				log.NewHelper(b.logger).Warnf("bus degraded: bus=%d usage=%d%% thr=%d%% mode=%s", b.busType, usage, thr, b.config.DegradationMode)
 			}
-			GetGlobalMonitor().UpdateHealth(false)
+			b.monitor().UpdateHealth(false)
 		}
 		return
 	}
@@ -443,7 +439,7 @@ func (b *LynxEventBus) checkDegradationWithSize(queueSize, queueCap int) {
 		if b.logger != nil {
 			log.NewHelper(b.logger).Infof("bus recovered: bus=%d usage=%d%% rec=%d%%", b.busType, usage, rec)
 		}
-		GetGlobalMonitor().UpdateHealth(true)
+		b.monitor().UpdateHealth(true)
 	}
 }
 
@@ -517,14 +513,14 @@ func (b *LynxEventBus) run() {
 				}
 				b.bufferPool.Put(buf)
 				// Update monitor less frequently during drain
-				GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+				b.monitor().UpdateQueueSize(b.totalQueueSize())
 				if !drained {
 					return
 				}
 			}
 			return
 		case <-ticker.C:
-			GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+			b.monitor().UpdateQueueSize(b.totalQueueSize())
 		default:
 			if b.paused.Load() {
 				time.Sleep(10 * time.Millisecond)
@@ -549,7 +545,7 @@ func (b *LynxEventBus) run() {
 			case <-b.done:
 				continue
 			case <-ticker.C:
-				GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+				b.monitor().UpdateQueueSize(b.totalQueueSize())
 			case ev := <-b.queue:
 				// Decrement queue size when receiving from channel
 				b.queueSize.Add(-1)
@@ -716,13 +712,13 @@ func (b *LynxEventBus) publish(ev LynxEvent) {
 			if b.logger != nil {
 				log.NewHelper(b.logger).Warnf("worker pool submit failed: %v", err)
 			}
-			GetGlobalMonitor().SetError(fmt.Errorf("worker_pool_submit_failed: %v", err))
+			b.monitor().SetError(fmt.Errorf("worker_pool_submit_failed: %v", err))
 			kelindarEvent.Publish(b.dispatcher, ev)
 		}
 	} else {
 		kelindarEvent.Publish(b.dispatcher, ev)
 	}
-	GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+	b.monitor().UpdateQueueSize(b.totalQueueSize())
 }
 
 // helper: publish a batch of events
@@ -759,7 +755,7 @@ func (b *LynxEventBus) publishBatch(events []LynxEvent) {
 				if b.logger != nil {
 					log.NewHelper(b.logger).Warnf("worker pool submit failed: %v", err)
 				}
-				GetGlobalMonitor().SetError(fmt.Errorf("worker_pool_submit_failed: %v", err))
+				b.monitor().SetError(fmt.Errorf("worker_pool_submit_failed: %v", err))
 				kelindarEvent.Publish(b.dispatcher, ev)
 			}
 		}
@@ -772,7 +768,7 @@ func (b *LynxEventBus) publishBatch(events []LynxEvent) {
 			kelindarEvent.Publish(b.dispatcher, events[i])
 		}
 	}
-	GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+	b.monitor().UpdateQueueSize(b.totalQueueSize())
 }
 
 // NewSimpleThrottler creates a new throttler
@@ -809,6 +805,7 @@ func (t *SimpleThrottler) Allow() bool {
 
 // LynxEventBus represents a single event bus for a specific bus type
 type LynxEventBus struct {
+	manager *EventBusManager
 	// kelindar/event dispatcher
 	dispatcher *kelindarEvent.Dispatcher
 
@@ -867,8 +864,9 @@ type LynxEventBus struct {
 }
 
 // NewLynxEventBus creates a new LynxEventBus with the given configuration
-func NewLynxEventBus(config BusConfig, busType BusType) *LynxEventBus {
+func NewLynxEventBus(config BusConfig, busType BusType, manager *EventBusManager) *LynxEventBus {
 	bus := &LynxEventBus{
+		manager:    manager,
 		dispatcher: kelindarEvent.NewDispatcher(),
 		config:     config,
 		busType:    busType,
@@ -946,9 +944,9 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 		if b.metrics != nil {
 			b.metrics.IncrementDropped()
 		}
-		GetGlobalMonitor().IncrementDroppedByReason("throttled")
+		b.monitor().IncrementDroppedByReason("throttled")
 		throttleErr := fmt.Errorf("event throttled: bus=%d prio=%d type=%d", b.busType, event.Priority, event.EventType)
-		GetGlobalMonitor().SetError(throttleErr)
+		b.monitor().SetError(throttleErr)
 
 		// Call error callback if configured
 		if b.config.ErrorCallback != nil {
@@ -966,7 +964,7 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 		b.metrics.IncrementPublished()
 	}
 	// Update global monitor (bucketed by priority) - uses atomic operations internally
-	GetGlobalMonitor().IncrementPublishedByPriority(event.Priority)
+	b.monitor().IncrementPublishedByPriority(event.Priority)
 
 	// Add to history if enabled (non-blocking, uses internal locks)
 	if b.history != nil {
@@ -1039,7 +1037,7 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 	case b.queue <- event:
 		// Increment queue size atomically
 		newSize := b.queueSize.Add(1)
-		GetGlobalMonitor().UpdateQueueSize(int(newSize))
+		b.monitor().UpdateQueueSize(int(newSize))
 	default:
 		// queue full - apply backpressure strategy
 		switch b.config.DropPolicy {
@@ -1061,7 +1059,7 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 			case b.queue <- event:
 				// Increment queue size atomically
 				newSize := b.queueSize.Add(1)
-				GetGlobalMonitor().UpdateQueueSize(int(newSize))
+				b.monitor().UpdateQueueSize(int(newSize))
 			case <-ctx.Done():
 				// Timeout reached - check if we should still try to enqueue critical events
 				if event.Priority == PriorityCritical {
@@ -1070,7 +1068,7 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 					case b.queue <- event:
 						// Increment queue size atomically
 						newSize := b.queueSize.Add(1)
-						GetGlobalMonitor().UpdateQueueSize(int(newSize))
+						b.monitor().UpdateQueueSize(int(newSize))
 					default:
 						b.handleEnqueueOverflow(event, "block_timeout_critical")
 					}
@@ -1099,7 +1097,7 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 			case b.queue <- event:
 				// Increment queue size atomically (oldest was already decremented)
 				newSize := b.queueSize.Add(1)
-				GetGlobalMonitor().UpdateQueueSize(int(newSize))
+				b.monitor().UpdateQueueSize(int(newSize))
 				if dropped && b.logger != nil {
 					log.NewHelper(b.logger).Debugf("dropped oldest event to make room for new event")
 				}
@@ -1144,7 +1142,7 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 				case b.queue <- event:
 					// Increment queue size atomically (dropped event already decremented)
 					newSize := b.queueSize.Add(1)
-					GetGlobalMonitor().UpdateQueueSize(int(newSize))
+					b.monitor().UpdateQueueSize(int(newSize))
 				default:
 					b.handleEnqueueOverflow(event, "drop_newest_critical_failed")
 				}
@@ -1285,10 +1283,10 @@ func (b *LynxEventBus) handleEnqueueOverflow(event LynxEvent, reason string) {
 	if b.metrics != nil {
 		b.metrics.IncrementDropped()
 	}
-	GetGlobalMonitor().IncrementDroppedByReason(reason)
-	GetGlobalMonitor().UpdateQueueSize(b.totalQueueSize())
+	b.monitor().IncrementDroppedByReason(reason)
+	b.monitor().UpdateQueueSize(b.totalQueueSize())
 	dropErr := fmt.Errorf("event dropped due to overflow: bus=%d prio=%d type=%d reason=%s", b.busType, event.Priority, event.EventType, reason)
-	GetGlobalMonitor().SetError(dropErr)
+	b.monitor().SetError(dropErr)
 
 	if b.config.ErrorCallback != nil {
 		b.config.ErrorCallback(event, reason, dropErr)
@@ -1341,8 +1339,8 @@ func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), at
 		if b.metrics != nil {
 			b.metrics.IncrementFailed()
 		}
-		GetGlobalMonitor().IncrementFailed()
-		GetGlobalMonitor().SetError(fmt.Errorf("handler panic: bus=%d type=%d attempt=%d", b.busType, ev.EventType, attempt))
+		b.monitor().IncrementFailed()
+		b.monitor().SetError(fmt.Errorf("handler panic: bus=%d type=%d attempt=%d", b.busType, ev.EventType, attempt))
 		if b.logger != nil {
 			log.NewHelper(b.logger).Errorf("event handler panic: bus=%d type=%d attempt=%d", b.busType, ev.EventType, attempt)
 		}
@@ -1461,7 +1459,7 @@ func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), at
 		if b.metrics != nil {
 			b.metrics.UpdateLatency(duration)
 		}
-		GetGlobalMonitor().UpdateLatency(duration)
+		b.monitor().UpdateLatency(duration)
 		return
 	}
 
@@ -1470,8 +1468,8 @@ func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), at
 		b.metrics.UpdateLatency(duration)
 		b.metrics.IncrementProcessed()
 	}
-	GetGlobalMonitor().UpdateLatency(duration)
-	GetGlobalMonitor().IncrementProcessed()
+	b.monitor().UpdateLatency(duration)
+	b.monitor().IncrementProcessed()
 }
 
 // helper: emit a system error event to act as DLQ
@@ -1495,13 +1493,26 @@ func (b *LynxEventBus) emitErrorEvent(original LynxEvent, attempts int) {
 	errEv.Category = original.Category
 	errEv.Metadata = meta
 	// best effort publish via global manager if available
-	if manager := GetGlobalEventBus(); manager != nil {
+	if manager := b.manager; manager != nil {
 		if err := manager.PublishEvent(errEv); err != nil {
 			// Log error instead of ignoring it
 			if b.logger != nil {
 				log.NewHelper(b.logger).Errorf("failed to publish error event: %v", err)
 			}
 		}
+	}
+}
+
+func (b *LynxEventBus) monitor() *EventMonitor {
+	if b != nil && b.manager != nil && b.manager.monitor != nil {
+		return b.manager.monitor
+	}
+	return NewEventMonitor()
+}
+
+func (b *LynxEventBus) publishManagerEvent(event LynxEvent) {
+	if b != nil && b.manager != nil {
+		_ = b.manager.PublishEvent(event)
 	}
 }
 

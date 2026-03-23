@@ -10,13 +10,20 @@ import (
 // PluginEventBusAdapter implements plugins.EventBusAdapter interface
 // This bridges the unified event bus with the plugin system
 type PluginEventBusAdapter struct {
-	eventManager *EventBusManager
+	eventManager    *EventBusManager
+	listenerManager *EventListenerManager
 }
 
 // NewPluginEventBusAdapter creates a new plugin event bus adapter
 func NewPluginEventBusAdapter(eventManager *EventBusManager) *PluginEventBusAdapter {
+	return NewPluginEventBusAdapterWithListenerManager(eventManager, NewEventListenerManagerWithEventBus(eventManager))
+}
+
+// NewPluginEventBusAdapterWithListenerManager creates a new plugin event bus adapter bound to explicit event facilities.
+func NewPluginEventBusAdapterWithListenerManager(eventManager *EventBusManager, listenerManager *EventListenerManager) *PluginEventBusAdapter {
 	return &PluginEventBusAdapter{
-		eventManager: eventManager,
+		eventManager:    eventManager,
+		listenerManager: listenerManager,
 	}
 }
 
@@ -55,16 +62,10 @@ func (a *PluginEventBusAdapter) SubscribeTo(eventType plugins.EventType, handler
 	return a.eventManager.SubscribeTo(lynxEventType, wrapperHandler)
 }
 
-// SetupPluginEventBusAdapter sets up the global plugin event bus adapter
-func SetupPluginEventBusAdapter() {
-	adapter := NewPluginEventBusAdapter(GetGlobalEventBus())
-	plugins.SetGlobalEventBusAdapter(adapter)
-}
-
 // AddListener bridges a generic listener registration from plugins runtime into the unified event system.
 // Signature matches the dynamic assertion used by plugins runtime (UnifiedRuntime).
 func (a *PluginEventBusAdapter) AddListener(id string, filter *plugins.EventFilter, handler func(interface{}), bus string) error {
-	if a == nil || a.eventManager == nil {
+	if a == nil || a.eventManager == nil || a.listenerManager == nil {
 		return fmt.Errorf("event manager not initialized")
 	}
 	ef := convertPluginFilter(filter)
@@ -74,19 +75,22 @@ func (a *PluginEventBusAdapter) AddListener(id string, filter *plugins.EventFilt
 		pluginEvent := ConvertLynxEvent(ev)
 		handler(pluginEvent)
 	}
-	return AddGlobalListener(id, ef, lynxHandler, busType)
+	return a.listenerManager.AddListener(id, ef, lynxHandler, busType)
 }
 
 // RemoveListener removes a previously added listener by ID.
 // Signature matches the dynamic assertion used by plugins runtime (UnifiedRuntime).
 func (a *PluginEventBusAdapter) RemoveListener(id string) error {
-	return RemoveGlobalListener(id)
+	if a == nil || a.listenerManager == nil {
+		return fmt.Errorf("listener manager not initialized")
+	}
+	return a.listenerManager.RemoveListener(id)
 }
 
 // AddPluginListener registers a listener bound to a specific plugin namespace.
 // Signature matches the dynamic assertion used by plugins runtime (UnifiedRuntime).
 func (a *PluginEventBusAdapter) AddPluginListener(pluginName string, id string, filter *plugins.EventFilter, handler func(interface{})) error {
-	if a == nil || a.eventManager == nil {
+	if a == nil || a.eventManager == nil || a.listenerManager == nil {
 		return fmt.Errorf("event manager not initialized")
 	}
 	ef := convertPluginFilter(filter)
@@ -100,7 +104,7 @@ func (a *PluginEventBusAdapter) AddPluginListener(pluginName string, id string, 
 		pluginEvent := ConvertLynxEvent(ev)
 		handler(pluginEvent)
 	}
-	return AddGlobalListener(id, ef, lynxHandler, BusTypePlugin)
+	return a.listenerManager.AddListener(id, ef, lynxHandler, BusTypePlugin)
 }
 
 // GetEventHistory returns historical plugin events via the unified event manager

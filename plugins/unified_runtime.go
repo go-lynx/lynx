@@ -12,6 +12,11 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
+type runtimeOwner struct {
+	pluginID string
+	handleID uint64
+}
+
 // UnifiedRuntime is a unified Runtime implementation that consolidates all existing capabilities
 type UnifiedRuntime struct {
 	// Resource management - use sync.Map for better concurrent performance
@@ -28,9 +33,13 @@ type UnifiedRuntime struct {
 	// Plugin context management
 	currentPluginContext string
 	contextMu            sync.RWMutex
+	owner                *runtimeOwner
+	ownerHandles         *sync.Map
+	ownerSeq             *atomic.Uint64
 
 	// Event system - uses a unified event bus
 	eventManager interface{} // avoid circular dependency; set at runtime
+	eventAdapter EventBusAdapter
 
 	// Runtime state
 	closed bool
@@ -44,15 +53,27 @@ type UnifiedRuntime struct {
 // NewUnifiedRuntime creates a new unified Runtime instance
 func NewUnifiedRuntime() *UnifiedRuntime {
 	ctx, cancel := context.WithCancel(context.Background())
+	ownerSeq := &atomic.Uint64{}
+	systemOwner := &runtimeOwner{pluginID: "system", handleID: ownerSeq.Add(1)}
 	return &UnifiedRuntime{
 		resources:      &sync.Map{},
 		resourceInfo:   &sync.Map{},
 		resourceOpMu:   &sync.Mutex{},
 		logger:         log.DefaultLogger,
+		owner:          systemOwner,
+		ownerHandles:   &sync.Map{},
+		ownerSeq:       ownerSeq,
 		closed:         false,
 		shutdownCtx:    ctx,
 		shutdownCancel: cancel,
 	}
+}
+
+// SetEventBusAdapter injects the event adapter used by this runtime instance.
+func (r *UnifiedRuntime) SetEventBusAdapter(adapter EventBusAdapter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.eventAdapter = adapter
 }
 
 // ============================================================================
@@ -114,10 +135,8 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 		return fmt.Errorf("resource cannot be nil")
 	}
 
-	caller := r.getCurrentPluginContext()
-	if caller == "" {
-		caller = "system"
-	}
+	callerOwner := r.getCurrentOwner()
+	caller := r.ownerPluginID(callerOwner)
 
 	var oldResource any
 	r.resourceOpMu.Lock()
@@ -127,7 +146,7 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 			if owner == "" {
 				owner = "system"
 			}
-			if owner != caller && caller != "system" {
+			if !r.canManageResource(callerOwner, oldInfo) {
 				r.resourceOpMu.Unlock()
 				return fmt.Errorf("permission denied: plugin %q cannot overwrite shared resource %q owned by %q", caller, name, owner)
 			}
@@ -139,15 +158,16 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 
 	now := time.Now()
 	info := &ResourceInfo{
-		Name:        name,
-		Type:        reflect.TypeOf(resource).String(),
-		PluginID:    caller,
-		IsPrivate:   false,
-		CreatedAt:   now,
-		LastUsedAt:  now,
-		AccessCount: 0,
-		Size:        0,
-		Metadata:    make(map[string]any),
+		Name:          name,
+		Type:          reflect.TypeOf(resource).String(),
+		PluginID:      caller,
+		OwnerHandleID: r.ownerHandleID(callerOwner),
+		IsPrivate:     false,
+		CreatedAt:     now,
+		LastUsedAt:    now,
+		AccessCount:   0,
+		Size:          0,
+		Metadata:      make(map[string]any),
 	}
 
 	r.resources.Store(name, resource)
@@ -209,8 +229,9 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 	default:
 	}
 
-	pluginID := r.getCurrentPluginContext()
-	if pluginID == "" {
+	callerOwner := r.getCurrentOwner()
+	pluginID := r.ownerPluginID(callerOwner)
+	if pluginID == "" || r.isSystemOwner(callerOwner) {
 		return fmt.Errorf("no plugin context set")
 	}
 
@@ -233,15 +254,16 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 	// Create resource info with size estimation
 	now := time.Now()
 	info := &ResourceInfo{
-		Name:        privateKey,
-		Type:        reflect.TypeOf(resource).String(),
-		PluginID:    pluginID,
-		IsPrivate:   true,
-		CreatedAt:   now,
-		LastUsedAt:  now,
-		AccessCount: 0,
-		Size:        0, // Will be calculated asynchronously
-		Metadata:    make(map[string]any),
+		Name:          privateKey,
+		Type:          reflect.TypeOf(resource).String(),
+		PluginID:      pluginID,
+		OwnerHandleID: r.ownerHandleID(callerOwner),
+		IsPrivate:     true,
+		CreatedAt:     now,
+		LastUsedAt:    now,
+		AccessCount:   0,
+		Size:          0, // Will be calculated asynchronously
+		Metadata:      make(map[string]any),
 	}
 
 	r.resources.Store(privateKey, resource)
@@ -326,9 +348,8 @@ func (r *UnifiedRuntime) WithPluginContext(pluginName string) Runtime {
 	// 1) If current context is empty and pluginName is non-empty: allow one-time set.
 	// 2) If current context equals pluginName or pluginName is empty: no-op.
 	// 3) Otherwise: deny switching to another plugin, return current runtime.
-	r.contextMu.RLock()
-	cur := r.currentPluginContext
-	r.contextMu.RUnlock()
+	curOwner := r.getCurrentOwner()
+	cur := r.getCurrentPluginContext()
 
 	// case 2: If current context equals pluginName or pluginName is empty: no-op
 	if pluginName == "" || pluginName == cur {
@@ -336,7 +357,8 @@ func (r *UnifiedRuntime) WithPluginContext(pluginName string) Runtime {
 	}
 
 	// case 1: If current context is empty and pluginName is non-empty: allow one-time set
-	if cur == "" && pluginName != "" {
+	if (cur == "" || r.isSystemOwner(curOwner)) && pluginName != "" {
+		owner := r.resolveOwner(pluginName)
 		// Create a new Runtime instance sharing underlying resource maps
 		// Note: We share the same shutdown context to ensure coordinated shutdown
 		contextRuntime := &UnifiedRuntime{
@@ -347,7 +369,11 @@ func (r *UnifiedRuntime) WithPluginContext(pluginName string) Runtime {
 			logger:               r.logger,
 			currentPluginContext: pluginName,
 			contextMu:            sync.RWMutex{}, // new mutex for this instance's context
+			owner:                owner,
+			ownerHandles:         r.ownerHandles,
+			ownerSeq:             r.ownerSeq,
 			eventManager:         r.eventManager,
+			eventAdapter:         r.getEventAdapter(),
 			closed:               false,
 			mu:                   sync.RWMutex{}, // new mutex for this instance's state
 			shutdownCtx:          r.shutdownCtx,  // share shutdown context
@@ -393,8 +419,10 @@ func (r *UnifiedRuntime) EmitEvent(event PluginEvent) {
 		event.Timestamp = time.Now().Unix()
 	}
 
-	// Use global event bus adapter
-	adapter := EnsureGlobalEventBusAdapter()
+	adapter := r.getEventAdapter()
+	if adapter == nil {
+		return
+	}
 	if err := adapter.PublishEvent(event); err != nil {
 		// Log error without interrupting operation
 		if logger := r.GetLogger(); logger != nil {
@@ -416,13 +444,14 @@ func (r *UnifiedRuntime) EmitPluginEvent(pluginName string, eventType string, da
 
 // AddListener adds an event listener
 func (r *UnifiedRuntime) AddListener(listener EventListener, filter *EventFilter) {
-	// Delegate to the unified event bus
 	if listener == nil {
 		return
 	}
 
-	// Convert to unified event bus listener
-	adapter := EnsureGlobalEventBusAdapter()
+	adapter := r.getEventAdapter()
+	if adapter == nil {
+		return
+	}
 
 	id := listener.GetListenerID()
 	if id == "" {
@@ -460,7 +489,6 @@ func (r *UnifiedRuntime) AddListener(listener EventListener, filter *EventFilter
 
 // RemoveListener removes an event listener
 func (r *UnifiedRuntime) RemoveListener(listener EventListener) {
-	// Delegate to the unified event bus
 	if listener == nil {
 		return
 	}
@@ -468,7 +496,10 @@ func (r *UnifiedRuntime) RemoveListener(listener EventListener) {
 	if id == "" {
 		return
 	}
-	adapter := EnsureGlobalEventBusAdapter()
+	adapter := r.getEventAdapter()
+	if adapter == nil {
+		return
+	}
 	type removeListenerIface interface {
 		RemoveListener(id string) error
 	}
@@ -479,11 +510,13 @@ func (r *UnifiedRuntime) RemoveListener(listener EventListener) {
 
 // AddPluginListener adds a plugin-specific event listener
 func (r *UnifiedRuntime) AddPluginListener(pluginName string, listener EventListener, filter *EventFilter) {
-	// Delegate to the unified event bus
 	if listener == nil {
 		return
 	}
-	adapter := EnsureGlobalEventBusAdapter()
+	adapter := r.getEventAdapter()
+	if adapter == nil {
+		return
+	}
 	id := listener.GetListenerID()
 	if id == "" {
 		id = fmt.Sprintf("plugin-listener-%s-%d", pluginName, time.Now().UnixNano())
@@ -514,8 +547,10 @@ func (r *UnifiedRuntime) AddPluginListener(pluginName string, listener EventList
 
 // GetEventHistory returns event history
 func (r *UnifiedRuntime) GetEventHistory(filter EventFilter) []PluginEvent {
-	// Delegate to the unified event bus
-	adapter := EnsureGlobalEventBusAdapter()
+	adapter := r.getEventAdapter()
+	if adapter == nil {
+		return nil
+	}
 	type historyIface interface {
 		GetEventHistory(filter *EventFilter) []PluginEvent
 	}
@@ -527,8 +562,10 @@ func (r *UnifiedRuntime) GetEventHistory(filter EventFilter) []PluginEvent {
 
 // GetPluginEventHistory returns plugin event history
 func (r *UnifiedRuntime) GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent {
-	// Delegate to the unified event bus
-	adapter := EnsureGlobalEventBusAdapter()
+	adapter := r.getEventAdapter()
+	if adapter == nil {
+		return nil
+	}
 	type pluginHistoryIface interface {
 		GetPluginEventHistory(pluginName string, filter *EventFilter) []PluginEvent
 	}
@@ -544,7 +581,10 @@ func (r *UnifiedRuntime) GetPluginEventHistory(pluginName string, filter EventFi
 
 // SetEventDispatchMode sets event dispatch mode (delegates to event bus)
 func (r *UnifiedRuntime) SetEventDispatchMode(mode string) error {
-	adapter := EnsureGlobalEventBusAdapter()
+	adapter := r.getEventAdapter()
+	if adapter == nil {
+		return nil
+	}
 	if configurable, ok := adapter.(interface{ SetDispatchMode(string) error }); ok {
 		return configurable.SetDispatchMode(mode)
 	}
@@ -553,7 +593,10 @@ func (r *UnifiedRuntime) SetEventDispatchMode(mode string) error {
 
 // SetEventWorkerPoolSize sets event worker pool size (delegates to event bus)
 func (r *UnifiedRuntime) SetEventWorkerPoolSize(size int) {
-	adapter := EnsureGlobalEventBusAdapter()
+	adapter := r.getEventAdapter()
+	if adapter == nil {
+		return
+	}
 	if configurable, ok := adapter.(interface{ SetWorkerPoolSize(int) }); ok {
 		configurable.SetWorkerPoolSize(size)
 	}
@@ -561,7 +604,10 @@ func (r *UnifiedRuntime) SetEventWorkerPoolSize(size int) {
 
 // SetEventTimeout sets event timeout (delegates to event bus)
 func (r *UnifiedRuntime) SetEventTimeout(timeout time.Duration) {
-	adapter := EnsureGlobalEventBusAdapter()
+	adapter := r.getEventAdapter()
+	if adapter == nil {
+		return
+	}
 	if configurable, ok := adapter.(interface{ SetEventTimeout(time.Duration) }); ok {
 		configurable.SetEventTimeout(timeout)
 	}
@@ -574,7 +620,10 @@ func (r *UnifiedRuntime) GetEventStats() map[string]any {
 	}
 
 	// Get stats from event bus adapter
-	adapter := GetGlobalEventBusAdapter()
+	adapter := r.getEventAdapter()
+	if adapter == nil {
+		return stats
+	}
 	if statsProvider, ok := adapter.(interface{ GetStats() map[string]any }); ok {
 		busStats := statsProvider.GetStats()
 		for k, v := range busStats {
@@ -630,9 +679,10 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 		return fmt.Errorf("plugin ID cannot be empty")
 	}
 
-	caller := r.getCurrentPluginContext()
-	if caller != "" {
-		if caller != pluginID && caller != "system" {
+	callerOwner := r.getCurrentOwner()
+	caller := r.ownerPluginID(callerOwner)
+	if caller != "" && !r.isSystemOwner(callerOwner) {
+		if caller != pluginID {
 			return fmt.Errorf("permission denied: plugin %q cannot cleanup resources of plugin %q (only owner or system can cleanup)", caller, pluginID)
 		}
 	} else {
@@ -875,11 +925,14 @@ func (r *UnifiedRuntime) getResourceCleanupTimeout() time.Duration {
 // Shutdown closes the Runtime
 func (r *UnifiedRuntime) Shutdown() {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	if r.closed {
+		r.mu.Unlock()
 		return
 	}
+	adapter := r.eventAdapter
+	logger := r.logger
+	r.closed = true
+	r.mu.Unlock()
 
 	// Cancel shutdown context to signal all background goroutines to stop
 	if r.shutdownCancel != nil {
@@ -887,18 +940,15 @@ func (r *UnifiedRuntime) Shutdown() {
 	}
 
 	// Close event bus
-	adapter := GetGlobalEventBusAdapter()
 	if adapter != nil {
 		if shutdownable, ok := adapter.(interface{ Shutdown() error }); ok {
 			if err := shutdownable.Shutdown(); err != nil {
-				if logger := r.GetLogger(); logger != nil {
+				if logger != nil {
 					logger.Log(log.LevelWarn, "msg", "failed to shutdown event bus", "error", err)
 				}
 			}
 		}
 	}
-
-	r.closed = true
 }
 
 // copyResourceInfo returns a shallow copy of ResourceInfo with Metadata and atomic fields snapshotted.
@@ -907,14 +957,15 @@ func copyResourceInfo(info *ResourceInfo) *ResourceInfo {
 		return nil
 	}
 	c := &ResourceInfo{
-		Name:        info.Name,
-		Type:        info.Type,
-		PluginID:    info.PluginID,
-		IsPrivate:   info.IsPrivate,
-		CreatedAt:   info.CreatedAt,
-		LastUsedAt:  info.LastUsedAt,
-		AccessCount: atomic.LoadInt64(&info.AccessCount),
-		Size:        atomic.LoadInt64(&info.Size),
+		Name:          info.Name,
+		Type:          info.Type,
+		PluginID:      info.PluginID,
+		OwnerHandleID: info.OwnerHandleID,
+		IsPrivate:     info.IsPrivate,
+		CreatedAt:     info.CreatedAt,
+		LastUsedAt:    info.LastUsedAt,
+		AccessCount:   atomic.LoadInt64(&info.AccessCount),
+		Size:          atomic.LoadInt64(&info.Size),
 	}
 	if info.Metadata != nil {
 		c.Metadata = make(map[string]any, len(info.Metadata))
@@ -943,6 +994,79 @@ func (r *UnifiedRuntime) updateAccessStats(name string) {
 			info.LastUsedAt = time.Now()
 		}
 	}
+}
+
+func (r *UnifiedRuntime) getCurrentOwner() *runtimeOwner {
+	r.contextMu.RLock()
+	defer r.contextMu.RUnlock()
+	if r.owner != nil {
+		return r.owner
+	}
+	if r.currentPluginContext == "" {
+		return &runtimeOwner{pluginID: "system"}
+	}
+	return &runtimeOwner{pluginID: r.currentPluginContext}
+}
+
+func (r *UnifiedRuntime) resolveOwner(pluginName string) *runtimeOwner {
+	if pluginName == "" {
+		return &runtimeOwner{pluginID: "system"}
+	}
+	if r.ownerHandles != nil {
+		if value, ok := r.ownerHandles.Load(pluginName); ok {
+			if owner, ok := value.(*runtimeOwner); ok {
+				return owner
+			}
+		}
+	}
+
+	owner := &runtimeOwner{pluginID: pluginName}
+	if r.ownerSeq != nil {
+		owner.handleID = r.ownerSeq.Add(1)
+	}
+	if r.ownerHandles == nil {
+		r.ownerHandles = &sync.Map{}
+	}
+	if actual, loaded := r.ownerHandles.LoadOrStore(pluginName, owner); loaded {
+		if existing, ok := actual.(*runtimeOwner); ok {
+			return existing
+		}
+	}
+	return owner
+}
+
+func (r *UnifiedRuntime) ownerPluginID(owner *runtimeOwner) string {
+	if owner == nil || owner.pluginID == "" {
+		return "system"
+	}
+	return owner.pluginID
+}
+
+func (r *UnifiedRuntime) ownerHandleID(owner *runtimeOwner) uint64 {
+	if owner == nil {
+		return 0
+	}
+	return owner.handleID
+}
+
+func (r *UnifiedRuntime) isSystemOwner(owner *runtimeOwner) bool {
+	return owner == nil || owner.pluginID == "" || owner.pluginID == "system"
+}
+
+func (r *UnifiedRuntime) canManageResource(caller *runtimeOwner, info *ResourceInfo) bool {
+	if info == nil {
+		return true
+	}
+	if r.isSystemOwner(caller) {
+		return true
+	}
+	if caller == nil {
+		return false
+	}
+	if info.OwnerHandleID != 0 && caller.handleID != 0 {
+		return info.OwnerHandleID == caller.handleID
+	}
+	return info.PluginID == caller.pluginID
 }
 
 // estimateResourceSize estimates the size of a resource
@@ -1060,6 +1184,13 @@ func (r *UnifiedRuntime) isClosed() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.closed
+}
+
+func (r *UnifiedRuntime) getEventAdapter() EventBusAdapter {
+	r.mu.RLock()
+	adapter := r.eventAdapter
+	r.mu.RUnlock()
+	return adapter
 }
 
 // ============================================================================

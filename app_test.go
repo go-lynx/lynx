@@ -2,12 +2,14 @@ package lynx
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-lynx/lynx/plugins"
 )
 
 type staticSource struct {
@@ -517,5 +519,136 @@ func TestNewApp_GoroutineLeak(t *testing.T) {
 	// Allow a small amount of runtime noise, but verify Close() actually releases most work.
 	if after > before+3 {
 		t.Errorf("Possible goroutine leak after Close(): before=%d, after=%d", before, after)
+	}
+}
+
+type configurableTestPlugin struct {
+	*plugins.BasePlugin
+	mu          sync.Mutex
+	calls       []config.Config
+	failOn      config.Config
+	validateOn  config.Config
+	validateErr error
+}
+
+func newConfigurableTestPlugin(name string) *configurableTestPlugin {
+	return &configurableTestPlugin{
+		BasePlugin: plugins.NewBasePlugin("test."+name+".v1", name, "test configurable plugin", "v1.0.0", "test."+name, 0),
+	}
+}
+
+func (p *configurableTestPlugin) Configure(conf any) error {
+	cfg, _ := conf.(config.Config)
+	p.mu.Lock()
+	p.calls = append(p.calls, cfg)
+	p.mu.Unlock()
+	if p.failOn != nil && cfg == p.failOn {
+		return fmt.Errorf("configure failed for %s", p.Name())
+	}
+	return nil
+}
+
+func (p *configurableTestPlugin) ValidateConfig(conf any) error {
+	cfg, _ := conf.(config.Config)
+	if p.validateOn != nil && cfg == p.validateOn {
+		return p.validateErr
+	}
+	return nil
+}
+
+func (p *configurableTestPlugin) callCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.calls)
+}
+
+func (p *configurableTestPlugin) callAt(i int) config.Config {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if i < 0 || i >= len(p.calls) {
+		return nil
+	}
+	return p.calls[i]
+}
+
+func TestSetGlobalConfig_RollsBackAppliedPluginsOnFailure(t *testing.T) {
+	resetGlobalState()
+	oldCfg := createTestConfig(t)
+	newCfg := config.New(
+		config.WithSource(&staticSource{kv: &config.KeyValue{
+			Key:    t.Name() + "-new.yaml",
+			Format: "yaml",
+			Value:  []byte("lynx:\n  application:\n    name: test-app\n    version: v0.0.2\n"),
+		}}),
+	)
+	if err := newCfg.Load(); err != nil {
+		t.Fatalf("failed to load new config: %v", err)
+	}
+	t.Cleanup(func() { _ = newCfg.Close() })
+
+	okPlugin := newConfigurableTestPlugin("config-ok")
+	failPlugin := newConfigurableTestPlugin("config-fail")
+	failPlugin.failOn = newCfg
+
+	app, err := NewStandaloneApp(oldCfg, okPlugin, failPlugin)
+	if err != nil {
+		t.Fatalf("failed to initialize app: %v", err)
+	}
+	defer app.Close()
+
+	if err := app.SetGlobalConfig(newCfg); err == nil {
+		t.Fatal("expected SetGlobalConfig to fail")
+	}
+
+	if got := app.GetGlobalConfig(); got != oldCfg {
+		t.Fatalf("expected global config rollback to old config")
+	}
+	if got := app.GetPluginManager().GetRuntime().GetConfig(); got != oldCfg {
+		t.Fatalf("expected runtime config rollback to old config")
+	}
+	if okPlugin.callCount() != 2 {
+		t.Fatalf("expected ok plugin to be configured twice, got %d", okPlugin.callCount())
+	}
+	if okPlugin.callAt(0) != newCfg || okPlugin.callAt(1) != oldCfg {
+		t.Fatalf("expected ok plugin calls [new, old], got [%p, %p]", okPlugin.callAt(0), okPlugin.callAt(1))
+	}
+	if failPlugin.callCount() != 1 || failPlugin.callAt(0) != newCfg {
+		t.Fatalf("expected failing plugin to be configured once with new config")
+	}
+}
+
+func TestSetGlobalConfig_StopsBeforeApplyWhenValidationFails(t *testing.T) {
+	resetGlobalState()
+	oldCfg := createTestConfig(t)
+	newCfg := config.New(
+		config.WithSource(&staticSource{kv: &config.KeyValue{
+			Key:    t.Name() + "-invalid.yaml",
+			Format: "yaml",
+			Value:  []byte("lynx:\n  application:\n    name: test-app\n    version: v0.0.3\n"),
+		}}),
+	)
+	if err := newCfg.Load(); err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	t.Cleanup(func() { _ = newCfg.Close() })
+
+	plugin := newConfigurableTestPlugin("config-validate")
+	plugin.validateOn = newCfg
+	plugin.validateErr = fmt.Errorf("invalid config")
+
+	app, err := NewStandaloneApp(oldCfg, plugin)
+	if err != nil {
+		t.Fatalf("failed to initialize app: %v", err)
+	}
+	defer app.Close()
+
+	if err := app.SetGlobalConfig(newCfg); err == nil {
+		t.Fatal("expected SetGlobalConfig validation failure")
+	}
+	if got := app.GetGlobalConfig(); got != oldCfg {
+		t.Fatalf("expected global config to remain old config")
+	}
+	if plugin.callCount() != 0 {
+		t.Fatalf("expected no Configure calls after validation failure, got %d", plugin.callCount())
 	}
 }
