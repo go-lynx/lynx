@@ -20,14 +20,21 @@ type EventListener struct {
 
 // EventListenerManager manages event listeners
 type EventListenerManager struct {
-	listeners map[string]*EventListener
-	mu        sync.RWMutex
+	listeners    map[string]*EventListener
+	eventManager *EventBusManager
+	mu           sync.RWMutex
 }
 
 // NewEventListenerManager creates a new event listener manager
 func NewEventListenerManager() *EventListenerManager {
+	return NewEventListenerManagerWithEventBus(GetGlobalEventBus())
+}
+
+// NewEventListenerManagerWithEventBus creates a new event listener manager bound to a specific event bus manager.
+func NewEventListenerManagerWithEventBus(eventManager *EventBusManager) *EventListenerManager {
 	return &EventListenerManager{
-		listeners: make(map[string]*EventListener),
+		listeners:    make(map[string]*EventListener),
+		eventManager: eventManager,
 	}
 }
 
@@ -76,10 +83,10 @@ func (m *EventListenerManager) AddListener(id string, filter *EventFilter, handl
 	m.listeners[id] = listener
 
 	// Subscribe to the event bus
-	eventManager := GetGlobalEventBus()
+	eventManager := m.eventManager
 	if eventManager == nil {
 		delete(m.listeners, id)
-		return fmt.Errorf("global event bus not initialized")
+		return fmt.Errorf("event bus not initialized")
 	}
 
 	// If filter is empty, subscribe to all events on the bus
@@ -242,12 +249,27 @@ func (m *EventListenerManager) Clear() {
 
 // Global listener manager instance
 var (
-	globalListenerManager *EventListenerManager
-	globalListenerOnce    sync.Once
+	globalListenerManager   *EventListenerManager
+	globalListenerOnce      sync.Once
+	defaultListenerProvider func() *EventListenerManager
 )
+
+// SetDefaultListenerManagerProvider wires compatibility global access to an external owner such as LynxApp.
+func SetDefaultListenerManagerProvider(provider func() *EventListenerManager) {
+	globalListenerOnce = sync.Once{}
+	defaultListenerProvider = provider
+	if provider == nil {
+		globalListenerManager = nil
+	}
+}
 
 // GetGlobalListenerManager returns the global listener manager
 func GetGlobalListenerManager() *EventListenerManager {
+	if defaultListenerProvider != nil {
+		if manager := defaultListenerProvider(); manager != nil {
+			return manager
+		}
+	}
 	globalListenerOnce.Do(func() {
 		globalListenerManager = NewEventListenerManager()
 	})

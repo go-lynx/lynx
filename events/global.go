@@ -12,7 +12,16 @@ var (
 	globalManager *EventBusManager
 	globalMu      sync.RWMutex
 	globalInitErr error
+
+	defaultEventBusProvider func() *EventBusManager
 )
+
+// SetDefaultEventBusProvider wires compatibility global access to an external owner such as LynxApp.
+func SetDefaultEventBusProvider(provider func() *EventBusManager) {
+	globalMu.Lock()
+	defer globalMu.Unlock()
+	defaultEventBusProvider = provider
+}
 
 // InitGlobalEventBus initializes the global event bus manager
 func InitGlobalEventBus(configs BusConfigs) error {
@@ -35,6 +44,15 @@ func InitGlobalEventBus(configs BusConfigs) error {
 
 // GetGlobalEventBus returns the global event bus manager
 func GetGlobalEventBus() *EventBusManager {
+	globalMu.RLock()
+	provider := defaultEventBusProvider
+	globalMu.RUnlock()
+	if provider != nil {
+		if manager := provider(); manager != nil {
+			return manager
+		}
+	}
+
 	manager, err := ensureGlobalEventBus()
 	if err != nil {
 		log.NewHelper(log.DefaultLogger).Warnf("failed to initialize global event bus, using fallback manager: %v", err)

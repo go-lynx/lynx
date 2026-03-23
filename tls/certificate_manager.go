@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
-	lynxapp "github.com/go-lynx/lynx"
 	"github.com/go-lynx/lynx/log"
 	"github.com/go-lynx/lynx/tls/conf"
 )
@@ -24,6 +23,11 @@ type CertificateManager struct {
 
 	// AutoConfig is used when source_type is "auto" for generating and rotating certificates
 	autoConfig *conf.AutoConfig
+
+	// Explicit runtime dependencies injected by the owning TLS plugin/app.
+	controlPlaneConfigLoader func(string, string) (config.Source, error)
+	serviceName              string
+	hostname                 string
 
 	// Current certificates
 	certificate []byte
@@ -58,6 +62,17 @@ func NewCertificateManagerWithAuto(config *conf.Tls, autoConfig *conf.AutoConfig
 	cm := NewCertificateManager(config)
 	cm.autoConfig = autoConfig
 	return cm
+}
+
+// SetControlPlaneConfigLoader injects a control plane config loader for control-plane backed certificates.
+func (cm *CertificateManager) SetControlPlaneConfigLoader(loader func(string, string) (config.Source, error)) {
+	cm.controlPlaneConfigLoader = loader
+}
+
+// SetIdentity injects the application identity used by auto-generated certificates.
+func (cm *CertificateManager) SetIdentity(serviceName, hostname string) {
+	cm.serviceName = serviceName
+	cm.hostname = hostname
 }
 
 // Initialize initializes the certificate manager and loads certificates
@@ -173,13 +188,8 @@ func (cm *CertificateManager) loadFromLocalFiles() error {
 
 // loadFromControlPlane loads certificates from control plane via Lynx GetConfig
 func (cm *CertificateManager) loadFromControlPlane() error {
-	app := lynxapp.Lynx()
-	if app == nil {
-		return fmt.Errorf("lynx application not initialized")
-	}
-	cp := app.GetControlPlane()
-	if cp == nil {
-		return fmt.Errorf("control plane not available")
+	if cm.controlPlaneConfigLoader == nil {
+		return fmt.Errorf("control plane config loader is not configured")
 	}
 	if cm.config.GetFileName() == "" {
 		return fmt.Errorf("file name is required for control plane source")
@@ -188,7 +198,7 @@ func (cm *CertificateManager) loadFromControlPlane() error {
 	if group == "" {
 		group = cm.config.GetFileName()
 	}
-	cfgSource, err := cp.GetConfig(cm.config.GetFileName(), group)
+	cfgSource, err := cm.controlPlaneConfigLoader(cm.config.GetFileName(), group)
 	if err != nil {
 		return fmt.Errorf("failed to get config from control plane: %w", err)
 	}
@@ -238,11 +248,8 @@ func (cm *CertificateManager) loadFromAuto() error {
 	if cfg == nil {
 		cfg = &conf.AutoConfig{}
 	}
-	var serviceName, hostname string
-	if lynxapp.Lynx() != nil {
-		serviceName = lynxapp.GetName()
-		hostname = lynxapp.GetHost()
-	}
+	serviceName := cm.serviceName
+	hostname := cm.hostname
 	if serviceName == "" && cfg.ServiceName != "" {
 		serviceName = cfg.ServiceName
 	}
@@ -308,19 +315,14 @@ func (cm *CertificateManager) loadSharedCA(shared *conf.SharedCAConfig) (caCertP
 		if shared.ConfigName == "" {
 			return nil, nil, fmt.Errorf("shared_ca config_name is required when from=control_plane")
 		}
-		app := lynxapp.Lynx()
-		if app == nil {
-			return nil, nil, fmt.Errorf("lynx application not initialized")
-		}
-		cp := app.GetControlPlane()
-		if cp == nil {
-			return nil, nil, fmt.Errorf("control plane not available")
+		if cm.controlPlaneConfigLoader == nil {
+			return nil, nil, fmt.Errorf("control plane config loader is not configured")
 		}
 		group := shared.ConfigGroup
 		if group == "" {
 			group = shared.ConfigName
 		}
-		cfgSource, err := cp.GetConfig(shared.ConfigName, group)
+		cfgSource, err := cm.controlPlaneConfigLoader(shared.ConfigName, group)
 		if err != nil {
 			return nil, nil, fmt.Errorf("get shared CA config from control plane: %w", err)
 		}

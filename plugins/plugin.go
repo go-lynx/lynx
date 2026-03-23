@@ -326,15 +326,16 @@ func RunHealthCheck(plugin any) error {
 
 // ResourceInfo resource information
 type ResourceInfo struct {
-	Name        string
-	Type        string
-	PluginID    string
-	IsPrivate   bool
-	CreatedAt   time.Time
-	LastUsedAt  time.Time
-	AccessCount int64
-	Size        int64 // Resource size (bytes)
-	Metadata    map[string]any
+	Name          string
+	Type          string
+	PluginID      string
+	OwnerHandleID uint64
+	IsPrivate     bool
+	CreatedAt     time.Time
+	LastUsedAt    time.Time
+	AccessCount   int64
+	Size          int64 // Resource size (bytes)
+	Metadata      map[string]any
 }
 
 // ResourceManager resource manager interface

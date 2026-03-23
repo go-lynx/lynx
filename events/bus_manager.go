@@ -14,8 +14,13 @@ type EventBusManager struct {
 	buses      map[BusType]*LynxEventBus
 	classifier *EventClassifier
 	configs    BusConfigs
+	monitor    *EventMonitor
 	logger     log.Logger
 	mu         sync.RWMutex
+
+	healthCheckMu      sync.Mutex
+	healthCheckDone    chan struct{}
+	healthCheckRunning bool
 }
 
 // SubscribeWithFilter subscribes on a bus with a predicate filter
@@ -51,6 +56,7 @@ func NewEventBusManager(configs BusConfigs) (*EventBusManager, error) {
 		buses:      make(map[BusType]*LynxEventBus),
 		classifier: NewEventClassifier(),
 		configs:    configs,
+		monitor:    NewEventMonitor(),
 	}
 
 	// Initialize all buses
@@ -74,9 +80,17 @@ func (manager *EventBusManager) initBuses() {
 
 	for _, busType := range busTypes {
 		config := manager.configs.GetBusConfig(busType)
-		bus := NewLynxEventBus(config, busType)
+		bus := NewLynxEventBus(config, busType, manager)
 		manager.buses[busType] = bus
 	}
+}
+
+// GetMonitor returns the monitor bound to this manager.
+func (manager *EventBusManager) GetMonitor() *EventMonitor {
+	if manager == nil {
+		return nil
+	}
+	return manager.monitor
 }
 
 // GetBus returns the bus for the given bus type
@@ -190,6 +204,8 @@ func (manager *EventBusManager) SubscribeToWithCancel(eventType EventType, handl
 
 // Close closes all buses
 func (manager *EventBusManager) Close() error {
+	manager.StopHealthCheck()
+
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 
@@ -360,7 +376,7 @@ func (manager *EventBusManager) UpdateBusConfig(busType BusType, cfg BusConfig) 
 	return nil
 }
 
-// GetBusMetrics returns metrics map for a specific bus combining bus metrics and global monitor snapshot
+// GetBusMetrics returns metrics map for a specific bus combining bus metrics and manager monitor snapshot.
 // Fixed: Get bus reference without holding lock to avoid deadlock
 func (manager *EventBusManager) GetBusMetrics(busType BusType) (map[string]interface{}, error) {
 	// Get bus reference without holding lock
@@ -385,8 +401,9 @@ func (manager *EventBusManager) GetBusMetrics(busType BusType) (map[string]inter
 			result[k] = v
 		}
 	}
-	// also attach global snapshot for convenience
-	result["global"] = GetGlobalMonitor().GetMetrics()
+	if manager.monitor != nil {
+		result["monitor"] = manager.monitor.GetMetrics()
+	}
 	return result, nil
 }
 

@@ -13,9 +13,6 @@ func Init(configs BusConfigs) error {
 		return fmt.Errorf("failed to initialize global event bus: %w", err)
 	}
 
-	// Setup plugin event bus adapter
-	SetupPluginEventBusAdapter()
-
 	return nil
 }
 
@@ -28,9 +25,6 @@ func InitWithLogger(configs BusConfigs, logger log.Logger) error {
 
 	// Set logger for all buses
 	SetGlobalLogger(logger)
-
-	// Setup plugin event bus adapter
-	SetupPluginEventBusAdapter()
 
 	return nil
 }

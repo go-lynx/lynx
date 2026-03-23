@@ -16,11 +16,8 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
-	"github.com/go-kratos/kratos/v2/selector"
-	"github.com/go-lynx/lynx/conf"
 	"github.com/go-lynx/lynx/log"
 	"github.com/go-lynx/lynx/plugins"
-	"github.com/go-lynx/lynx/subscribe"
 )
 
 // LoadPlugins loads and starts all plugins.
@@ -47,71 +44,7 @@ func (m *DefaultPluginManager[T]) LoadPlugins(conf config.Config) error {
 		return err
 	}
 
-	// Build gRPC subscriptions after plugins are loaded (control plane plugin must be started)
-	// This ensures service discovery is available
-	if Lynx() != nil && Lynx().bootConfig != nil && Lynx().bootConfig.Lynx != nil && Lynx().bootConfig.Lynx.Subscriptions != nil {
-		subs := Lynx().bootConfig.Lynx.Subscriptions
-		hasGrpcSubs := subs != nil && len(subs.Grpc) > 0
-		if hasGrpcSubs {
-			controlPlane := Lynx().GetControlPlane()
-			if controlPlane == nil {
-				m.UnloadPlugins()
-				return fmt.Errorf("grpc subscriptions configured but control plane is not available (install a control plane plugin)")
-			}
-			disc := controlPlane.NewServiceDiscovery()
-			if disc == nil {
-				m.UnloadPlugins()
-				return fmt.Errorf("grpc subscriptions configured but service discovery is not available")
-			}
-			routerFactory := func(service string) selector.NodeFilter {
-				return controlPlane.NewNodeRouter(service)
-			}
-			// Build TLS providers for subscriptions that use TLS
-			var tlsProviders *subscribe.ClientTLSProviders
-			if hasTLSSubscription(subs) {
-				tlsProviders = &subscribe.ClientTLSProviders{
-					ConfigProvider: controlPlane.GetConfig,
-					DefaultRootCA:  defaultRootCAProvider(),
-				}
-			}
-			conns, err := subscribe.BuildGrpcSubscriptions(Lynx().bootConfig.Lynx.Subscriptions, disc, routerFactory, tlsProviders)
-			if err != nil {
-				m.UnloadPlugins()
-				return fmt.Errorf("build grpc subscriptions failed: %w", err)
-			}
-			app := Lynx()
-			if app != nil {
-				app.grpcSubsMu.Lock()
-				app.grpcSubs = conns
-				app.grpcSubsMu.Unlock()
-			}
-		}
-	}
-
 	return nil
-}
-
-// hasTLSSubscription returns true if any gRPC subscription has TLS enabled
-func hasTLSSubscription(subs *conf.Subscriptions) bool {
-	if subs == nil || len(subs.Grpc) == 0 {
-		return false
-	}
-	for _, g := range subs.Grpc {
-		if g.GetTls() {
-			return true
-		}
-	}
-	return false
-}
-
-// defaultRootCAProvider returns a function that fetches the application's root CA from the certificate provider
-func defaultRootCAProvider() func() []byte {
-	return func() []byte {
-		if Lynx() != nil && Lynx().Certificate() != nil {
-			return Lynx().Certificate().GetRootCACertificate()
-		}
-		return nil
-	}
 }
 
 // UnloadPlugins stops and unloads all plugins with overall timeout protection.
