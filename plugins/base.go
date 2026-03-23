@@ -159,11 +159,15 @@ func (p *TypedBasePlugin[T]) IsContextAware() bool {
 // Concrete plugins may override this method to opt into stronger capabilities,
 // for example true context-aware lifecycle.
 func (p *TypedBasePlugin[T]) PluginProtocol() PluginProtocol {
+	hotReload := p.SupportsCapability(UpgradeConfig) || p.SupportsCapability(UpgradeVersion)
 	return PluginProtocol{
 		ManagedLifecycle: true,
 		HealthAware:      true,
 		ContextLifecycle: false,
 		Recoverable:      false,
+		ConfigHotReload:  hotReload,
+		ConfigValidation: hotReload,
+		ConfigRollback:   hotReload,
 	}
 }
 
@@ -556,6 +560,12 @@ func (p *TypedBasePlugin[T]) Configure(conf any) error {
 	})
 
 	return nil
+}
+
+// RollbackConfig restores a previous configuration snapshot.
+// Base plugins treat rollback as another validated configure pass.
+func (p *TypedBasePlugin[T]) RollbackConfig(previous any) error {
+	return p.Configure(previous)
 }
 
 // GetDependencies returns a copy of the plugin dependencies so callers cannot
@@ -988,6 +998,29 @@ func (p *TypedBasePlugin[T]) PerformRollback(previousVersion string) error {
 // GetCapabilities returns the plugin's upgrade capabilities.
 func (p *TypedBasePlugin[T]) GetCapabilities() []UpgradeCapability {
 	return p.capabilities
+}
+
+// SetCapabilities replaces the plugin's declared upgrade capabilities.
+func (p *TypedBasePlugin[T]) SetCapabilities(caps ...UpgradeCapability) {
+	if len(caps) == 0 {
+		p.capabilities = []UpgradeCapability{UpgradeNone}
+		return
+	}
+	p.capabilities = append([]UpgradeCapability(nil), caps...)
+}
+
+// AddCapability appends an upgrade capability when it is not already declared.
+func (p *TypedBasePlugin[T]) AddCapability(cap UpgradeCapability) {
+	for _, existing := range p.capabilities {
+		if existing == cap {
+			return
+		}
+	}
+	if len(p.capabilities) == 1 && p.capabilities[0] == UpgradeNone {
+		p.capabilities = []UpgradeCapability{cap}
+		return
+	}
+	p.capabilities = append(p.capabilities, cap)
 }
 
 // SupportsCapability checks if the plugin supports the specified upgrade capability.
