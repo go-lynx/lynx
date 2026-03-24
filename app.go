@@ -6,9 +6,7 @@ package lynx
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-lynx/lynx/conf"
@@ -46,6 +44,11 @@ func SetDefaultApp(app *LynxApp) {
 	lynxMu.Lock()
 	defer lynxMu.Unlock()
 	lynxApp = app
+	if app == nil {
+		events.ClearDefaultEventBusProvider()
+		events.ClearDefaultListenerManagerProvider()
+		return
+	}
 	events.SetDefaultEventBusProvider(func() *events.EventBusManager {
 		if lynxApp == nil {
 			return nil
@@ -113,10 +116,6 @@ func getInitTimeout(cfg config.Config) time.Duration {
 	return defaultTimeout
 }
 
-// Fixed plugin ID used internally for configuration-related events.
-// Avoids using an empty string which would break PluginID-based filtering.
-const configEventPluginID = "lynx.config"
-
 // LynxApp represents the main application instance.
 // It serves as the central coordinator for all application components,
 // managing configuration, logging, plugins, and the control plane.
@@ -144,8 +143,8 @@ type LynxApp struct {
 	// Contains settings that apply across all components.
 	globalConf config.Config
 
-	// controlPlane manages the application's control interface (full implementation).
-	// Handles dynamic configuration updates and system monitoring.
+	// controlPlane manages the application's external control-plane integration.
+	// This is shell-facing composition, not the heart of plugin orchestration.
 	controlPlane ControlPlane
 
 	// Optional capability overrides for partial control plane implementations.
@@ -168,10 +167,6 @@ type LynxApp struct {
 	// Protected by grpcSubsMu for concurrent access
 	grpcSubsMu sync.RWMutex
 	grpcSubs   map[string]*grpc.ClientConn
-
-	// Configuration version (monotonically increasing) used for event ordering and idempotent handling
-	// Uses atomic operations for thread-safe access
-	configVersion uint64
 
 	// App-owned event facilities. Core runtime paths should prefer these over global singletons.
 	eventManager         *events.EventBusManager
@@ -398,108 +393,43 @@ func GetTypedPlugin[T plugins.Plugin](name string) (T, error) {
 	return GetTypedPluginFromManager[T](manager, name)
 }
 
-// SetGlobalConfig updates the global configuration instance.
-// It properly closes the existing configuration before updating.
+// SetGlobalConfig replaces the application configuration reference.
+// Lynx core does not orchestrate runtime plugin reconfiguration; when plugins are
+// already loaded, configuration changes should be applied via process restart or
+// external rollout tools such as Kubernetes.
 func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
-	// Check if application instance is nil
 	if a == nil {
 		return fmt.Errorf("application instance is nil")
 	}
-
-	// Validate the new configuration is not nil
 	if cfg == nil {
 		return fmt.Errorf("new configuration cannot be nil")
 	}
 
-	oldCfg := a.globalConf
 	pm := a.GetPluginManager()
-	var rt plugins.Runtime
-	if pm != nil {
-		rt = pm.GetRuntime()
-	}
+	oldCfg := a.globalConf
 
-	ver := a.nextConfigVersion()
 	if pm != nil {
-		plan := pm.GetConfigReloadPlan()
-		if len(plan.Invalid) > 0 {
-			err := fmt.Errorf("configuration protocol invalid for plugins: %v", configReloadEntryNames(plan.Invalid))
-			a.emitConfigEvent(rt, plugins.EventConfigurationInvalid, ver, 1, map[string]any{
-				"phase":   "plan",
-				"invalid": configReloadEntryNames(plan.Invalid),
-				"error":   err.Error(),
-			})
-			return err
+		loaded := Plugins(pm)
+		if len(loaded) > 0 {
+			loadedNames := make([]string, 0, len(loaded))
+			for _, plugin := range loaded {
+				if plugin == nil {
+					continue
+				}
+				loadedNames = append(loadedNames, plugin.Name())
+			}
+			if cfg != nil {
+				_ = cfg.Close()
+			}
+			return fmt.Errorf("runtime configuration reload is not supported by lynx core; restart application to apply changes for plugins: %v", loadedNames)
 		}
-		if len(plan.RestartRequired) > 0 {
-			err := fmt.Errorf("configuration update requires restart for plugins: %v", configReloadEntryNames(plan.RestartRequired))
-			a.emitConfigEvent(rt, plugins.EventConfigurationInvalid, ver, 1, map[string]any{
-				"phase":            "plan",
-				"restart_required": configReloadEntryNames(plan.RestartRequired),
-				"error":            err.Error(),
-			})
-			return err
-		}
-	}
-	a.emitConfigEvent(rt, plugins.EventConfigurationChanged, ver, 1, map[string]any{
-		"phase": "validate",
-	})
-
-	configurablePlugins := a.listConfigurablePlugins(pm)
-	if err := a.validatePluginConfigurations(configurablePlugins, cfg); err != nil {
-		a.emitConfigEvent(rt, plugins.EventConfigurationInvalid, ver, 2, map[string]any{
-			"phase": "validate",
-			"error": err.Error(),
-		})
-		return err
-	}
-
-	if pm != nil {
 		pm.SetConfig(cfg)
+		if rt := pm.GetRuntime(); rt != nil {
+			rt.SetConfig(cfg)
+		}
 	}
-	if rt != nil {
-		rt.SetConfig(cfg)
-	}
+
 	a.globalConf = cfg
-
-	applied, err := a.applyPluginConfigurations(configurablePlugins, cfg)
-	if err != nil {
-		rollbackErr := a.rollbackPluginConfigurations(applied, oldCfg)
-		if pm != nil {
-			pm.SetConfig(oldCfg)
-		}
-		if rt != nil {
-			rt.SetConfig(oldCfg)
-		}
-		a.globalConf = oldCfg
-		if cfg != nil {
-			_ = cfg.Close()
-		}
-
-		a.emitConfigEvent(rt, plugins.EventRollbackInitiated, ver, 3, map[string]any{
-			"phase":            "rollback",
-			"applied_count":    len(applied),
-			"failed_plugin":    err.Plugin.Name(),
-			"failed_plugin_id": err.Plugin.ID(),
-		})
-		if rollbackErr != nil {
-			a.emitConfigEvent(rt, plugins.EventRollbackFailed, ver, 4, map[string]any{
-				"phase": "rollback",
-				"error": rollbackErr.Error(),
-			})
-			return fmt.Errorf("apply config failed for plugin %s and rollback failed: %w", err.Plugin.Name(), rollbackErr)
-		}
-		a.emitConfigEvent(rt, plugins.EventRollbackCompleted, ver, 4, map[string]any{
-			"phase":         "rollback",
-			"applied_count": len(applied),
-		})
-		return fmt.Errorf("apply config failed for plugin %s: %w", err.Plugin.Name(), err.Err)
-	}
-
-	a.emitConfigEvent(rt, plugins.EventConfigurationApplied, ver, 2, map[string]any{
-		"phase":        "apply",
-		"plugin_count": len(applied),
-		"acknowledged": len(applied),
-	})
 
 	if oldCfg != nil {
 		if err := oldCfg.Close(); err != nil {
@@ -509,152 +439,6 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 	}
 
 	return nil
-}
-
-type configApplyError struct {
-	Plugin plugins.Plugin
-	Err    error
-}
-
-type runtimeConfigPlugin struct {
-	Plugin       plugins.Plugin
-	Configurable plugins.Configurable
-	Validator    plugins.ConfigValidator
-	Rollbacker   plugins.ConfigRollbacker
-	Caps         plugins.PluginCapabilities
-}
-
-func configReloadEntryNames(entries []ConfigReloadEntry) []string {
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		names = append(names, entry.PluginName)
-	}
-	return names
-}
-
-func (a *LynxApp) nextConfigVersion() uint64 {
-	var ver uint64
-	for {
-		oldVer := atomic.LoadUint64(&a.configVersion)
-		newVer := oldVer + 1
-		if newVer == 0 {
-			newVer = 1
-		}
-		if atomic.CompareAndSwapUint64(&a.configVersion, oldVer, newVer) {
-			ver = newVer
-			if oldVer == ^uint64(0) {
-				log.Warnf("Configuration version overflow detected, resetting to 1. This should not happen in normal operation.")
-			}
-			break
-		}
-		runtime.Gosched()
-	}
-	return ver
-}
-
-func (a *LynxApp) emitConfigEvent(rt plugins.Runtime, eventType plugins.EventType, version uint64, sequence int, extra map[string]any) {
-	if rt == nil {
-		return
-	}
-	metadata := map[string]any{
-		"app":            a.name,
-		"version":        a.version,
-		"host":           a.host,
-		"source":         "SetGlobalConfig",
-		"config_version": version,
-		"event_sequence": sequence,
-	}
-	for k, v := range extra {
-		metadata[k] = v
-	}
-	rt.EmitEvent(plugins.PluginEvent{
-		Type:      eventType,
-		Priority:  plugins.PriorityHigh,
-		Source:    "SetGlobalConfig",
-		Category:  "configuration",
-		PluginID:  configEventPluginID,
-		Status:    plugins.StatusActive,
-		Timestamp: time.Now().Unix(),
-		Metadata:  metadata,
-	})
-}
-
-func (a *LynxApp) listConfigurablePlugins(pm TypedPluginManager) []runtimeConfigPlugin {
-	if pm == nil {
-		return nil
-	}
-	manager, ok := pm.(*DefaultPluginManager[plugins.Plugin])
-	if !ok {
-		return nil
-	}
-	list := manager.listPluginsInternal()
-	filtered := make([]runtimeConfigPlugin, 0, len(list))
-	for _, p := range list {
-		caps := plugins.DescribePluginCapabilities(p)
-		configurable, ok := p.(plugins.Configurable)
-		if !ok {
-			continue
-		}
-		if caps.ProtocolExplicit && !caps.Protocol.ConfigHotReload {
-			continue
-		}
-		item := runtimeConfigPlugin{
-			Plugin:       p,
-			Configurable: configurable,
-			Caps:         caps,
-		}
-		if validator, ok := p.(plugins.ConfigValidator); ok {
-			item.Validator = validator
-		}
-		if rollbacker, ok := p.(plugins.ConfigRollbacker); ok {
-			item.Rollbacker = rollbacker
-		}
-		filtered = append(filtered, item)
-	}
-	return filtered
-}
-
-func (a *LynxApp) validatePluginConfigurations(pluginList []runtimeConfigPlugin, cfg config.Config) error {
-	for _, plugin := range pluginList {
-		if plugin.Caps.ProtocolExplicit && plugin.Caps.Protocol.ConfigValidation && plugin.Validator == nil {
-			return fmt.Errorf("plugin %s declares config validation support but does not implement ConfigValidator", plugin.Plugin.Name())
-		}
-		if plugin.Validator == nil {
-			continue
-		}
-		if err := plugin.Validator.ValidateConfig(cfg); err != nil {
-			return fmt.Errorf("plugin %s validation failed: %w", plugin.Plugin.Name(), err)
-		}
-	}
-	return nil
-}
-
-func (a *LynxApp) applyPluginConfigurations(pluginList []runtimeConfigPlugin, cfg config.Config) ([]runtimeConfigPlugin, *configApplyError) {
-	applied := make([]runtimeConfigPlugin, 0, len(pluginList))
-	for _, plugin := range pluginList {
-		if err := plugin.Configurable.Configure(cfg); err != nil {
-			return applied, &configApplyError{Plugin: plugin.Plugin, Err: err}
-		}
-		applied = append(applied, plugin)
-	}
-	return applied, nil
-}
-
-func (a *LynxApp) rollbackPluginConfigurations(applied []runtimeConfigPlugin, oldCfg config.Config) error {
-	var firstErr error
-	for i := len(applied) - 1; i >= 0; i-- {
-		plugin := applied[i]
-		var err error
-		if plugin.Configurable != nil {
-			err = plugin.Configurable.Configure(oldCfg)
-		} else if plugin.Rollbacker != nil {
-			err = plugin.Rollbacker.RollbackConfig(oldCfg)
-		}
-		if err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("plugin %s rollback failed: %w", plugin.Plugin.Name(), err)
-		}
-	}
-	return firstErr
 }
 
 // emitSystemEvent emits a system event to the unified event system
@@ -1012,10 +796,73 @@ func (a *LynxApp) EventMetrics() map[string]interface{} {
 	return a.eventManager.GetMonitor().GetMetrics()
 }
 
-// ConfigReloadPlan returns the current plugin manager's config reload classification.
+// RestartRequirementReport returns the current plugin manager's restart-based
+// compatibility report for configuration changes.
+func (a *LynxApp) RestartRequirementReport() RestartRequirementReport {
+	if a == nil || a.pluginManager == nil {
+		return RestartRequirementReport{}
+	}
+	return a.pluginManager.GetRestartRequirementReport()
+}
+
+// ConfigReloadPlan returns the current plugin manager's compatibility view for
+// older callers. New code should prefer RestartRequirementReport().
 func (a *LynxApp) ConfigReloadPlan() ConfigReloadPlan {
 	if a == nil || a.pluginManager == nil {
 		return ConfigReloadPlan{}
 	}
 	return a.pluginManager.GetConfigReloadPlan()
+}
+
+type PluginRuntimeReport struct {
+	ID           string
+	Name         string
+	Version      string
+	Status       plugins.PluginStatus
+	Capabilities plugins.PluginCapabilities
+}
+
+type RuntimeReport struct {
+	AppName    string
+	AppVersion string
+	Host       string
+	// RestartRequirementReport is the core-facing view for config-change handling.
+	RestartRequirementReport RestartRequirementReport
+	// ConfigReloadPlan is retained only for compatibility with older callers.
+	ConfigReloadPlan ConfigReloadPlan
+	Plugins          []PluginRuntimeReport
+}
+
+func (a *LynxApp) RuntimeReport() RuntimeReport {
+	report := RuntimeReport{}
+	if a == nil {
+		return report
+	}
+
+	report.AppName = a.Name()
+	report.AppVersion = a.Version()
+	report.Host = a.Host()
+	report.RestartRequirementReport = a.RestartRequirementReport()
+	report.ConfigReloadPlan = a.ConfigReloadPlan()
+
+	if a.pluginManager == nil {
+		return report
+	}
+
+	list := Plugins(a.pluginManager)
+	report.Plugins = make([]PluginRuntimeReport, 0, len(list))
+	for _, p := range list {
+		if p == nil {
+			continue
+		}
+		report.Plugins = append(report.Plugins, PluginRuntimeReport{
+			ID:           p.ID(),
+			Name:         p.Name(),
+			Version:      p.Version(),
+			Status:       p.Status(p),
+			Capabilities: plugins.DescribePluginCapabilities(p),
+		})
+	}
+
+	return report
 }

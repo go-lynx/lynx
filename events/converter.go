@@ -115,6 +115,7 @@ func ConvertEventType(eventType plugins.EventType) EventType {
 		return EventAuthenticationFailed
 	case plugins.EventAuthorizationDenied:
 		return EventAuthorizationDenied
+	// Legacy compatibility mapping for upgrade/rollback event names.
 	case plugins.EventUpgradeAvailable:
 		return EventUpgradeAvailable
 	case plugins.EventUpgradeInitiated:
@@ -245,6 +246,7 @@ func ConvertEventTypeBack(eventType EventType) plugins.EventType {
 		return plugins.EventAuthenticationFailed
 	case EventAuthorizationDenied:
 		return plugins.EventAuthorizationDenied
+	// Legacy compatibility mapping for upgrade/rollback event names.
 	case EventUpgradeAvailable:
 		return plugins.EventUpgradeAvailable
 	case EventUpgradeInitiated:

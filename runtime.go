@@ -1,11 +1,8 @@
-// Package lynx provides the core application framework for building microservices.
+// Package lynx provides the core plugin orchestration framework used by Lynx applications.
 //
-// This file (runtime.go) contains the runtime plugin implementation:
-//   - TypedRuntimePlugin: Core runtime for resource and event management
-//   - Resource registration and retrieval (shared and private)
-//   - Event emission and listener management
-//   - Configuration access and updates
-//   - Plugin context management
+// This file (runtime.go) keeps the historical root-package runtime wrapper.
+// The actual runtime implementation lives in plugins.UnifiedRuntime; this file
+// exists mainly as a backward-compatible adapter.
 package lynx
 
 import (

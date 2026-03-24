@@ -77,7 +77,9 @@ const (
 	EventAuthorizationDenied  EventType = 0x62
 )
 
-// Upgrade event types
+// Upgrade and rollback event types are compatibility-only identifiers kept so
+// older integrations can still be classified and converted. They are not part
+// of Lynx core's preferred lifecycle model.
 const (
 	EventUpgradeAvailable   EventType = 0x70
 	EventUpgradeInitiated   EventType = 0x71

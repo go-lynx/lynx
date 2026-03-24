@@ -10,7 +10,7 @@ Core framework files with clear naming:
 - `lifecycle.go`: Plugin lifecycle operations (init/start/stop with safety)
 - `ops.go`: Plugin loading/unloading operations and resource management
 - `topology.go`: Plugin dependency resolution and topological sorting
-- `runtime.go`: TypedRuntimePlugin for resource sharing and event handling
+- `runtime.go`: Backward-compatible runtime wrapper around `plugins.UnifiedRuntime`
 - `controlplane.go`: ControlPlane interfaces for service management
 - `certificate.go`: CertificateProvider interface for TLS
 - `prepare.go`: Plugin preparation and bootstrapping from configuration
@@ -39,7 +39,7 @@ Core framework files with clear naming:
 - `golangci-lint run`: Lint with repo-configured rules from `.golangci.yml`.
 - `make init`: Install required toolchain (`protoc` plugins, `kratos`, `wire`).
 - `make config`: Regenerate Go code from all `*.proto` files under `boot/`, `conf/`, `log/conf/`, `tls/conf/` folders.
-- `lynx run --watch`: Build and run the current service with hot reload (requires `go install ./cmd/lynx`).
+- `lynx run --watch`: Build and run the current service with file-watch auto-restart for development (requires `go install ./cmd/lynx`).
 
 ## Coding Style & Naming Conventions
 - Go 1.25+, fmt-ed with `gofmt`/`goimports` (local prefix `github.com/go-lynx/lynx`).

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-lynx/lynx/events"
 	"github.com/go-lynx/lynx/plugins"
 )
 
@@ -459,6 +460,38 @@ func TestSetDefaultApp_AndClearDefaultApp(t *testing.T) {
 	_ = app.Close()
 }
 
+func TestClearDefaultApp_ClearsGlobalEventProviders(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	app, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize standalone app: %v", err)
+	}
+	defer app.Close()
+
+	SetDefaultApp(app)
+
+	if got := events.GetGlobalEventBus(); got != app.eventManager {
+		t.Fatal("expected global event bus to resolve to app-owned manager while default app is published")
+	}
+	if got := events.GetGlobalListenerManager(); got != app.eventListenerManager {
+		t.Fatal("expected global listener manager to resolve to app-owned manager while default app is published")
+	}
+
+	ClearDefaultApp()
+
+	if Lynx() != nil {
+		t.Fatal("expected default app to be cleared")
+	}
+	if got := events.GetGlobalEventBus(); got == nil || got == app.eventManager {
+		t.Fatal("expected global event bus provider to detach from cleared default app")
+	}
+	if got := events.GetGlobalListenerManager(); got == nil || got == app.eventListenerManager {
+		t.Fatal("expected global listener manager provider to detach from cleared default app")
+	}
+}
+
 func TestStandaloneClose_DoesNotClearOtherDefaultApp(t *testing.T) {
 	resetGlobalState()
 	cfg := createTestConfig(t)
@@ -536,7 +569,6 @@ func newConfigurableTestPlugin(name string) *configurableTestPlugin {
 	p := &configurableTestPlugin{
 		BasePlugin: plugins.NewBasePlugin("test."+name+".v1", name, "test configurable plugin", "v1.0.0", "test."+name, 0),
 	}
-	p.AddCapability(plugins.UpgradeConfig)
 	p.protocol = p.BasePlugin.PluginProtocol()
 	return p
 }
@@ -579,7 +611,7 @@ func (p *configurableTestPlugin) callAt(i int) config.Config {
 	return p.calls[i]
 }
 
-func TestSetGlobalConfig_RollsBackAppliedPluginsOnFailure(t *testing.T) {
+func TestSetGlobalConfig_AllowsConfigSwapBeforePluginsAreManaged(t *testing.T) {
 	resetGlobalState()
 	oldCfg := createTestConfig(t)
 	newCfg := config.New(
@@ -596,7 +628,6 @@ func TestSetGlobalConfig_RollsBackAppliedPluginsOnFailure(t *testing.T) {
 
 	okPlugin := newConfigurableTestPlugin("config-ok")
 	failPlugin := newConfigurableTestPlugin("config-fail")
-	failPlugin.failOn = newCfg
 
 	app, err := NewStandaloneApp(oldCfg, okPlugin, failPlugin)
 	if err != nil {
@@ -604,28 +635,25 @@ func TestSetGlobalConfig_RollsBackAppliedPluginsOnFailure(t *testing.T) {
 	}
 	defer app.Close()
 
-	if err := app.SetGlobalConfig(newCfg); err == nil {
-		t.Fatal("expected SetGlobalConfig to fail")
+	if err := app.SetGlobalConfig(newCfg); err != nil {
+		t.Fatalf("expected SetGlobalConfig to succeed before plugins are managed: %v", err)
 	}
 
-	if got := app.GetGlobalConfig(); got != oldCfg {
-		t.Fatalf("expected global config rollback to old config")
+	if got := app.GetGlobalConfig(); got != newCfg {
+		t.Fatalf("expected global config to switch to new config")
 	}
-	if got := app.GetPluginManager().GetRuntime().GetConfig(); got != oldCfg {
-		t.Fatalf("expected runtime config rollback to old config")
+	if got := app.GetPluginManager().GetRuntime().GetConfig(); got != newCfg {
+		t.Fatalf("expected runtime config to switch to new config")
 	}
-	if okPlugin.callCount() != 2 {
-		t.Fatalf("expected ok plugin to be configured twice, got %d", okPlugin.callCount())
+	if okPlugin.callCount() != 0 {
+		t.Fatalf("expected no Configure calls before plugins are managed, got %d", okPlugin.callCount())
 	}
-	if okPlugin.callAt(0) != newCfg || okPlugin.callAt(1) != oldCfg {
-		t.Fatalf("expected ok plugin calls [new, old], got [%p, %p]", okPlugin.callAt(0), okPlugin.callAt(1))
-	}
-	if failPlugin.callCount() != 1 || failPlugin.callAt(0) != newCfg {
-		t.Fatalf("expected failing plugin to be configured once with new config")
+	if failPlugin.callCount() != 0 {
+		t.Fatalf("expected no Configure calls before plugins are managed, got %d", failPlugin.callCount())
 	}
 }
 
-func TestSetGlobalConfig_StopsBeforeApplyWhenValidationFails(t *testing.T) {
+func TestSetGlobalConfig_DoesNotRunPluginValidationBeforePluginsAreManaged(t *testing.T) {
 	resetGlobalState()
 	oldCfg := createTestConfig(t)
 	newCfg := config.New(
@@ -650,26 +678,23 @@ func TestSetGlobalConfig_StopsBeforeApplyWhenValidationFails(t *testing.T) {
 	}
 	defer app.Close()
 
-	if err := app.SetGlobalConfig(newCfg); err == nil {
-		t.Fatal("expected SetGlobalConfig validation failure")
+	if err := app.SetGlobalConfig(newCfg); err != nil {
+		t.Fatalf("expected SetGlobalConfig to succeed before plugins are managed: %v", err)
 	}
-	if got := app.GetGlobalConfig(); got != oldCfg {
-		t.Fatalf("expected global config to remain old config")
+	if got := app.GetGlobalConfig(); got != newCfg {
+		t.Fatalf("expected global config to switch before plugins are managed")
 	}
 	if plugin.callCount() != 0 {
-		t.Fatalf("expected no Configure calls after validation failure, got %d", plugin.callCount())
+		t.Fatalf("expected no Configure calls before plugins are managed, got %d", plugin.callCount())
 	}
 }
 
-func TestSetGlobalConfig_RejectsRestartRequiredPlugins(t *testing.T) {
+func TestSetGlobalConfig_ConfigPlanIsEmptyBeforePluginsAreManaged(t *testing.T) {
 	resetGlobalState()
 	oldCfg := createTestConfig(t)
 	newCfg := createTestConfig(t)
 
 	plugin := newConfigurableTestPlugin("config-restart")
-	plugin.protocol.ConfigHotReload = false
-	plugin.protocol.ConfigValidation = false
-	plugin.protocol.ConfigRollback = false
 
 	app, err := NewStandaloneApp(oldCfg, plugin)
 	if err != nil {
@@ -677,27 +702,28 @@ func TestSetGlobalConfig_RejectsRestartRequiredPlugins(t *testing.T) {
 	}
 	defer app.Close()
 
-	if err := app.SetGlobalConfig(newCfg); err == nil {
-		t.Fatal("expected SetGlobalConfig to reject restart-required plugin")
+	if err := app.SetGlobalConfig(newCfg); err != nil {
+		t.Fatalf("expected SetGlobalConfig to succeed before plugins are managed: %v", err)
 	}
 	if plugin.callCount() != 0 {
-		t.Fatalf("expected no Configure calls for restart-required plugin, got %d", plugin.callCount())
+		t.Fatalf("expected no Configure calls before plugins are managed, got %d", plugin.callCount())
 	}
 	plan := app.ConfigReloadPlan()
-	if len(plan.RestartRequired) != 1 || plan.RestartRequired[0].PluginName != plugin.Name() {
-		t.Fatalf("unexpected config reload plan: %#v", plan)
+	if len(plan.RestartRequired) != 0 || len(plan.Invalid) != 0 || len(plan.Unsupported) != 0 || len(plan.HotReloadable) != 0 {
+		t.Fatalf("expected empty config reload plan before plugins are managed: %#v", plan)
+	}
+	restartReport := app.RestartRequirementReport()
+	if len(restartReport.RestartRequired) != 0 || len(restartReport.Invalid) != 0 {
+		t.Fatalf("expected empty restart requirement report before plugins are managed: %#v", restartReport)
 	}
 }
 
-func TestRuntimeReport_ContainsConfigPlanAndPluginState(t *testing.T) {
+func TestRuntimeReport_OnlyShowsManagedPlugins(t *testing.T) {
 	resetGlobalState()
 	cfg := createTestConfig(t)
 
 	hot := newConfigurableTestPlugin("report-hot")
 	restart := newConfigurableTestPlugin("report-restart")
-	restart.protocol.ConfigHotReload = false
-	restart.protocol.ConfigValidation = false
-	restart.protocol.ConfigRollback = false
 
 	app, err := NewStandaloneApp(cfg, hot, restart)
 	if err != nil {
@@ -709,27 +735,50 @@ func TestRuntimeReport_ContainsConfigPlanAndPluginState(t *testing.T) {
 	if report.AppName != "test-app" {
 		t.Fatalf("unexpected app name: %q", report.AppName)
 	}
-	if report.ConfigReloadPlan.RestartRequired == nil || len(report.ConfigReloadPlan.RestartRequired) != 1 {
-		t.Fatalf("expected one restart-required plugin, got %#v", report.ConfigReloadPlan)
+	if len(report.ConfigReloadPlan.RestartRequired) != 0 {
+		t.Fatalf("expected no config reload entries before plugins are managed, got %#v", report.ConfigReloadPlan)
 	}
-	if len(report.Plugins) != 2 {
-		t.Fatalf("expected two plugins in runtime report, got %d", len(report.Plugins))
+	if len(report.RestartRequirementReport.RestartRequired) != 0 {
+		t.Fatalf("expected no restart requirement entries before plugins are managed, got %#v", report.RestartRequirementReport)
+	}
+	if len(report.ConfigReloadPlan.RestartRequired) != len(report.RestartRequirementReport.RestartRequired) {
+		t.Fatalf("expected compatibility config reload plan to mirror restart report: %#v vs %#v", report.ConfigReloadPlan, report.RestartRequirementReport)
+	}
+	if len(report.Plugins) != 0 {
+		t.Fatalf("expected no managed plugins in runtime report before load, got %d", len(report.Plugins))
+	}
+}
+
+func TestRuntimeReport_CompatibilityConfigReloadPlanMirrorsRestartReport(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	plugin := newConfigurableTestPlugin("report-configurable")
+	app, err := NewStandaloneApp(cfg, plugin)
+	if err != nil {
+		t.Fatalf("failed to initialize app: %v", err)
+	}
+	defer app.Close()
+
+	manager, ok := app.GetPluginManager().(*DefaultPluginManager[plugins.Plugin])
+	if !ok {
+		t.Fatal("expected default plugin manager implementation")
+	}
+	if err := manager.registerManagedPlugin(plugin); err != nil {
+		t.Fatalf("failed to register managed plugin: %v", err)
 	}
 
-	foundHot := false
-	foundRestart := false
-	for _, plugin := range report.Plugins {
-		switch plugin.Name {
-		case hot.Name():
-			foundHot = plugin.Capabilities.Protocol.ConfigHotReload
-		case restart.Name():
-			foundRestart = !plugin.Capabilities.Protocol.ConfigHotReload
-		}
+	report := app.RuntimeReport()
+	if len(report.RestartRequirementReport.RestartRequired) != 1 {
+		t.Fatalf("expected one restart-required entry, got %#v", report.RestartRequirementReport)
 	}
-	if !foundHot {
-		t.Fatal("expected hot-reloadable plugin to be reported as hot reload capable")
+	if len(report.ConfigReloadPlan.RestartRequired) != 1 {
+		t.Fatalf("expected compatibility reload plan to report one restart-required entry, got %#v", report.ConfigReloadPlan)
 	}
-	if !foundRestart {
-		t.Fatal("expected restart-required plugin to be reported as non-hot-reloadable")
+	if len(report.ConfigReloadPlan.Invalid) != len(report.RestartRequirementReport.Invalid) {
+		t.Fatalf("expected invalid entries to stay mirrored: %#v vs %#v", report.ConfigReloadPlan, report.RestartRequirementReport)
+	}
+	if report.ConfigReloadPlan.RestartRequired[0] != report.RestartRequirementReport.RestartRequired[0] {
+		t.Fatalf("expected compatibility and restart reports to point at the same plugin: %#v vs %#v", report.ConfigReloadPlan, report.RestartRequirementReport)
 	}
 }

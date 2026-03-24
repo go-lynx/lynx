@@ -27,7 +27,10 @@ var (
 	flagConf string
 )
 
-// Application represents the main bootstrap structure for Lynx applications, responsible for managing application initialization, configuration loading, and lifecycle
+// Application is an optional bootstrap shell around Lynx core.
+// It owns process-level concerns such as signal handling, startup sequencing,
+// and Kratos integration. It should not be treated as part of the plugin
+// orchestration core itself.
 type Application struct {
 	wire    wireApp          // Function used to initialize Kratos application
 	plugins []plugins.Plugin // List of plugins to initialize
@@ -82,7 +85,9 @@ const (
 	DefaultCircuitBreakerTimeout   = 60 * time.Second
 )
 
-// init package initialization function for parsing command line arguments and configuring JSON serialization options
+// init registers boot-package flags for compatibility.
+// Parsing is intentionally left to the host process or explicit startup paths;
+// importing this package should not consume command-line flags eagerly.
 func init() {
 	// Only parse command line arguments in non-test environments
 	if !isTestEnvironment() {
@@ -90,10 +95,6 @@ func init() {
 		configMgr := GetConfigManager()
 		defaultConfPath := configMgr.GetDefaultConfigPath()
 		flag.StringVar(&flagConf, "conf", defaultConfPath, "config path, eg: -conf config.yaml")
-		flag.Parse()
-
-		// Set parsed configuration path to configuration manager
-		configMgr.SetConfigPath(flagConf)
 	}
 }
 

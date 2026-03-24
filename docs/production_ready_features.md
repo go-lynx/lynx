@@ -259,7 +259,7 @@ lynx:
 
 **Features:**
 - Service discovery and registration
-- Dynamic configuration with hot reload
+- External configuration sourcing for restart-based rollout workflows
 - Rate limiting (HTTP and gRPC)
 - Circuit breaking
 - Multi-configuration loading with merge strategies

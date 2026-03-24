@@ -17,6 +17,14 @@ type runtimeOwner struct {
 	handleID uint64
 }
 
+type runtimeSharedState struct {
+	mu           sync.RWMutex
+	config       config.Config
+	logger       log.Logger
+	eventAdapter EventBusAdapter
+	closed       bool
+}
+
 // UnifiedRuntime is a unified Runtime implementation that consolidates all existing capabilities
 type UnifiedRuntime struct {
 	// Resource management - use sync.Map for better concurrent performance
@@ -29,6 +37,7 @@ type UnifiedRuntime struct {
 	// Configuration and logging
 	config config.Config
 	logger log.Logger
+	shared *runtimeSharedState
 
 	// Plugin context management
 	currentPluginContext string
@@ -56,10 +65,13 @@ func NewUnifiedRuntime() *UnifiedRuntime {
 	ownerSeq := &atomic.Uint64{}
 	systemOwner := &runtimeOwner{pluginID: "system", handleID: ownerSeq.Add(1)}
 	return &UnifiedRuntime{
-		resources:      &sync.Map{},
-		resourceInfo:   &sync.Map{},
-		resourceOpMu:   &sync.Mutex{},
-		logger:         log.DefaultLogger,
+		resources:    &sync.Map{},
+		resourceInfo: &sync.Map{},
+		resourceOpMu: &sync.Mutex{},
+		logger:       log.DefaultLogger,
+		shared: &runtimeSharedState{
+			logger: log.DefaultLogger,
+		},
 		owner:          systemOwner,
 		ownerHandles:   &sync.Map{},
 		ownerSeq:       ownerSeq,
@@ -71,9 +83,10 @@ func NewUnifiedRuntime() *UnifiedRuntime {
 
 // SetEventBusAdapter injects the event adapter used by this runtime instance.
 func (r *UnifiedRuntime) SetEventBusAdapter(adapter EventBusAdapter) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.eventAdapter = adapter
+	state := r.sharedState()
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.eventAdapter = adapter
 }
 
 // ============================================================================
@@ -308,33 +321,37 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 
 // GetConfig returns the config
 func (r *UnifiedRuntime) GetConfig() config.Config {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.config
+	state := r.sharedState()
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	return state.config
 }
 
 // SetConfig sets the config
 func (r *UnifiedRuntime) SetConfig(conf config.Config) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.config = conf
+	state := r.sharedState()
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.config = conf
 }
 
 // GetLogger returns the logger
 func (r *UnifiedRuntime) GetLogger() log.Logger {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.logger == nil {
+	state := r.sharedState()
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	if state.logger == nil {
 		return log.DefaultLogger
 	}
-	return r.logger
+	return state.logger
 }
 
 // SetLogger sets the logger
 func (r *UnifiedRuntime) SetLogger(logger log.Logger) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.logger = logger
+	state := r.sharedState()
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.logger = logger
 }
 
 // ============================================================================
@@ -365,15 +382,16 @@ func (r *UnifiedRuntime) WithPluginContext(pluginName string) Runtime {
 			resources:            r.resources,    // share the same resource map pointer
 			resourceInfo:         r.resourceInfo, // share the same resource info map pointer
 			resourceOpMu:         r.resourceOpMu, // share resource operation lock
-			config:               r.config,
-			logger:               r.logger,
+			config:               r.GetConfig(),
+			logger:               r.GetLogger(),
+			shared:               r.sharedState(),
 			currentPluginContext: pluginName,
 			contextMu:            sync.RWMutex{}, // new mutex for this instance's context
 			owner:                owner,
 			ownerHandles:         r.ownerHandles,
 			ownerSeq:             r.ownerSeq,
 			eventManager:         r.eventManager,
-			eventAdapter:         r.getEventAdapter(),
+			eventAdapter:         nil,
 			closed:               false,
 			mu:                   sync.RWMutex{}, // new mutex for this instance's state
 			shutdownCtx:          r.shutdownCtx,  // share shutdown context
@@ -892,23 +910,24 @@ func (r *UnifiedRuntime) GetResourceStats() map[string]any {
 // Can be configured via "lynx.runtime.resource_cleanup_timeout" config key.
 func (r *UnifiedRuntime) getResourceCleanupTimeout() time.Duration {
 	defaultTimeout := 3 * time.Second
-	if r.config == nil {
+	cfg := r.GetConfig()
+	if cfg == nil {
 		return defaultTimeout
 	}
 
 	var confStr string
-	if err := r.config.Value("lynx.runtime.resource_cleanup_timeout").Scan(&confStr); err == nil {
+	if err := cfg.Value("lynx.runtime.resource_cleanup_timeout").Scan(&confStr); err == nil {
 		if parsed, err2 := time.ParseDuration(confStr); err2 == nil {
 			// Validate timeout range: 1s to 30s
 			if parsed < 1*time.Second {
-				if r.logger != nil {
-					r.logger.Log(log.LevelWarn, "msg", "resource_cleanup_timeout too short, using minimum 1s", "configured", parsed)
+				if logger := r.GetLogger(); logger != nil {
+					logger.Log(log.LevelWarn, "msg", "resource_cleanup_timeout too short, using minimum 1s", "configured", parsed)
 				}
 				return 1 * time.Second
 			}
 			if parsed > 30*time.Second {
-				if r.logger != nil {
-					r.logger.Log(log.LevelWarn, "msg", "resource_cleanup_timeout too long, using maximum 30s", "configured", parsed)
+				if logger := r.GetLogger(); logger != nil {
+					logger.Log(log.LevelWarn, "msg", "resource_cleanup_timeout too long, using maximum 30s", "configured", parsed)
 				}
 				return 30 * time.Second
 			}
@@ -924,15 +943,16 @@ func (r *UnifiedRuntime) getResourceCleanupTimeout() time.Duration {
 
 // Shutdown closes the Runtime
 func (r *UnifiedRuntime) Shutdown() {
-	r.mu.Lock()
-	if r.closed {
-		r.mu.Unlock()
+	state := r.sharedState()
+	state.mu.Lock()
+	if state.closed {
+		state.mu.Unlock()
 		return
 	}
-	adapter := r.eventAdapter
-	logger := r.logger
-	r.closed = true
-	r.mu.Unlock()
+	adapter := state.eventAdapter
+	logger := state.logger
+	state.closed = true
+	state.mu.Unlock()
 
 	// Cancel shutdown context to signal all background goroutines to stop
 	if r.shutdownCancel != nil {
@@ -1181,16 +1201,38 @@ func (r *UnifiedRuntime) Close() {
 // ============================================================================
 
 func (r *UnifiedRuntime) isClosed() bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.closed
+	state := r.sharedState()
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	return state.closed
 }
 
 func (r *UnifiedRuntime) getEventAdapter() EventBusAdapter {
-	r.mu.RLock()
-	adapter := r.eventAdapter
-	r.mu.RUnlock()
+	state := r.sharedState()
+	state.mu.RLock()
+	adapter := state.eventAdapter
+	state.mu.RUnlock()
 	return adapter
+}
+
+func (r *UnifiedRuntime) sharedState() *runtimeSharedState {
+	if r.shared != nil {
+		return r.shared
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.shared == nil {
+		r.shared = &runtimeSharedState{
+			config:       r.config,
+			logger:       r.logger,
+			eventAdapter: r.eventAdapter,
+			closed:       r.closed,
+		}
+		if r.shared.logger == nil {
+			r.shared.logger = log.DefaultLogger
+		}
+	}
+	return r.shared
 }
 
 // ============================================================================

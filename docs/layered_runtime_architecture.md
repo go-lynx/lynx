@@ -1,12 +1,27 @@
 # Lynx Framework Architecture
 
+See also: [Core Refocus Plan](./core_refocus_plan.md)
+See also: [Structure Classification And Execution Plan](./structure_classification_plan.md)
+
 ## Overview
 
-Lynx is a plug-and-play microservice framework for Go, designed to simplify building robust, scalable, and observable cloud-native applications. The framework provides a unified runtime, plugin management, event system, and essential utilities.
+Lynx should be understood first as a plugin orchestration framework for Go.
+It provides a unified runtime, plugin management, and event plumbing for
+plugin-based applications.
+
+Lynx core is not intended to duplicate rollout capabilities that already belong
+to external platforms such as Kubernetes. In particular, in-process hot reload,
+live replacement, and rollout choreography are not strategic core goals.
+
+The codebase currently has three practical layers:
+
+- Core: plugin orchestration, lifecycle, dependency ordering, runtime ownership
+- Optional shell: application bootstrap, signal handling, control-plane helpers
+- Compatibility surface: singleton access, global event fallbacks, legacy upgrade/config semantics
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Application Layer                                    │
+│                    Shell / Application Layer                                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
 │  │   LynxApp    │  │    Boot      │  │   Control    │  │  Certificate │   │
 │  │   (app.go)   │  │              │  │    Plane     │  │   Provider   │   │
@@ -24,10 +39,10 @@ Lynx is a plug-and-play microservice framework for Go, designed to simplify buil
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Runtime Layer                                        │
+│                           Runtime Layer                                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
-│  │   Runtime    │  │   Events     │  │   Config     │  │   Recovery   │   │
-│  │ (runtime.go) │  │   System     │  │              │  │              │   │
+│  │ UnifiedRuntime│ │   Events     │  │   Config     │  │   Recovery   │   │
+│  │ (plugins/)    │ │   System     │  │              │  │              │   │
 │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -73,39 +88,39 @@ Lynx is a plug-and-play microservice framework for Go, designed to simplify buil
 
 ### Root Package (`github.com/go-lynx/lynx`)
 
-The root package contains the core framework implementation:
+The root package contains the orchestration core plus some application-facing
+assembly code:
 
 | File | Description |
 |------|-------------|
 | `doc.go` | Package documentation |
-| `app.go` | LynxApp core structure, initialization, and main API |
+| `app.go` | App instance assembly, singleton compatibility, runtime wiring, and shutdown |
 | `manager.go` | Plugin manager interfaces and DefaultPluginManager implementation |
 | `lifecycle.go` | Plugin lifecycle operations (init/start/stop with safety) |
 | `ops.go` | Plugin loading/unloading operations and resource management |
 | `topology.go` | Plugin dependency resolution and topological sorting |
-| `runtime.go` | TypedRuntimePlugin for resource sharing and event handling |
-| `controlplane.go` | ControlPlane interfaces for service management |
+| `prepare.go` | Configuration-driven plugin preparation |
+| `runtime.go` | Backward-compatible runtime wrapper delegating to `plugins.UnifiedRuntime` |
+| `controlplane.go` | Optional shell-facing control plane composition interfaces |
 | `certificate.go` | CertificateProvider interface for TLS |
-| `config.go` | Plugin configuration preparation |
 | `recovery.go` | Error recovery and circuit breaker mechanisms |
 
 ### Sub-packages
 
 | Package | Description |
 |---------|-------------|
-| `boot/` | Bootstrap helpers and config loading |
+| `boot/` | Optional application bootstrap shell and process lifecycle glue |
 | `cmd/` | CLI entrypoints (e.g., `lynx` tool) |
 | `conf/` | Configuration proto definitions |
-| `events/` | Event system for inter-plugin communication |
+| `events/` | Event system plus compatibility global access helpers |
 | `log/` | Logging system with zerolog integration |
 | `tls/` | TLS certificate management and validation |
 | `cache/` | Caching abstractions and implementations |
 | `subscribe/` | Service subscription and dependency management |
 | `observability/` | Metrics and monitoring utilities |
-| `interfaces/` | Public interface definitions for adapters |
 | `pkg/` | Reusable utility packages (auth, cast, collection, etc.) |
 | `internal/` | Private implementation details |
-| `plugins/` | Plugin SDK with base implementations |
+| `plugins/` | Plugin SDK and `UnifiedRuntime` implementation |
 
 ## Plugin System Architecture
 
@@ -140,11 +155,11 @@ graph TB
 
 ### Plugin Manager
 
-The `DefaultPluginManager` handles:
+The `DefaultPluginManager` is the real heart of the framework. It handles:
 
 - Plugin registration and lookup
 - Dependency-aware plugin loading (topological sort)
-- Parallel plugin startup with rollback on failure
+- Parallel plugin startup with failure cleanup on startup error
 - Graceful plugin shutdown in reverse order
 - Resource cleanup and statistics
 
@@ -194,7 +209,7 @@ type PluginEvent struct {
 
 ## Runtime System
 
-### TypedRuntimePlugin
+### UnifiedRuntime
 
 Provides:
 
@@ -209,9 +224,9 @@ Provides:
 - **Shared Resources**: Cross-plugin shared resources
 - **Resource Info**: Lifecycle tracking and statistics
 
-## Control Plane Integration
+## Optional Shell Integration
 
-The framework supports control plane integration for:
+Lynx includes optional shell-facing helpers for:
 
 - Service discovery and registration
 - Configuration management (single and multi-config)
@@ -219,7 +234,7 @@ The framework supports control plane integration for:
 - Circuit breaking
 - Load balancing
 
-Supported control planes:
+Examples of supported control-plane plugins:
 - **Polaris** (`lynx-polaris`)
 - **Nacos** (`lynx-nacos`)
 - **Apollo** (`lynx-apollo`)

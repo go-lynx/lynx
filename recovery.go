@@ -730,8 +730,14 @@ func (erm *ErrorRecoveryManager) GetErrorStats() map[string]interface{} {
 
 	stats := make(map[string]interface{})
 
-	// Error counts by type
-	stats["error_counts"] = erm.errorCounts
+	// Error counts by type. Expose both the structured map and flat top-level
+	// entries for backward compatibility with existing callers/tests.
+	errorCounts := make(map[string]int64, len(erm.errorCounts))
+	for errorType, count := range erm.errorCounts {
+		errorCounts[errorType] = count
+		stats[errorType] = count
+	}
+	stats["error_counts"] = errorCounts
 
 	// Recent errors (last 10)
 	recentErrors := make([]map[string]interface{}, 0)

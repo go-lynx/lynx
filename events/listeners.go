@@ -263,6 +263,12 @@ func SetDefaultListenerManagerProvider(provider func() *EventListenerManager) {
 	}
 }
 
+// ClearDefaultListenerManagerProvider removes the compatibility provider used
+// for process-wide default listener-manager lookups.
+func ClearDefaultListenerManagerProvider() {
+	SetDefaultListenerManagerProvider(nil)
+}
+
 // GetGlobalListenerManager returns the global listener manager
 func GetGlobalListenerManager() *EventListenerManager {
 	if defaultListenerProvider != nil {
