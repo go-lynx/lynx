@@ -1,21 +1,19 @@
 package plugins
 
-// Upgradable defines methods for plugin upgrade operations
-// Manages plugin version upgrades and updates
+// Upgradable defines legacy plugin-local upgrade hooks.
+// This is intentionally optional compatibility metadata; Lynx core focuses on
+// orchestration and does not provide a framework guarantee for live plugin
+// replacement or in-process rollout.
 type Upgradable interface {
-	// GetCapabilities returns the supported upgrade capabilities
-	// Lists the ways this plugin can be upgraded
+	// GetCapabilities returns the legacy upgrade capabilities advertised by the plugin.
 	GetCapabilities() []UpgradeCapability
 
-	// PrepareUpgrade prepares for version upgrade
-	// Validates and prepares for the upgrade process
+	// PrepareUpgrade prepares plugin-owned upgrade logic.
 	PrepareUpgrade(targetVersion string) error
 
-	// ExecuteUpgrade performs the actual version upgrade
-	// Applies the upgrade and verifies success
+	// ExecuteUpgrade performs plugin-owned upgrade logic.
 	ExecuteUpgrade(targetVersion string) error
 
-	// RollbackUpgrade reverts to the previous version
-	// Restores the plugin to its previous state
+	// RollbackUpgrade performs plugin-owned rollback logic.
 	RollbackUpgrade(previousVersion string) error
 }

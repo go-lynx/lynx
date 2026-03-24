@@ -170,15 +170,15 @@ Translations: [English](README.md) | [简体中文](README_zh.md)
 
 ## 🚀 What is Lynx?
 
-**Lynx** is a revolutionary open-source microservices framework that transforms the way developers build distributed systems. Built on the robust foundations of **Seata**, **Polaris**, and **Kratos**, Lynx delivers a seamless plug-and-play experience that lets you focus on business logic while we handle the infrastructure complexity.
+**Lynx** is an open-source plugin orchestration framework for Go applications built on top of **Kratos**. Its center of gravity is plugin lifecycle management, dependency-aware startup order, unified runtime ownership, and framework stability rather than in-process platform magic.
 
 ### 🎯 Why Choose Lynx?
 
-- **⚡ Zero Configuration**: Get started in minutes with minimal setup
-- **🔌 Plugin-Driven**: Modular architecture with hot-pluggable components
-- **🛡️ Enterprise Ready**: Production-grade reliability and security
-- **📈 Scalable**: Built for high-performance microservices
-- **🔄 Cloud Native**: Designed for modern cloud environments
+- **⚡ Fast Startup Path**: Start with a small core and add plugins deliberately
+- **🔌 Plugin-Oriented**: Modular architecture centered on orchestration and lifecycle
+- **🛡️ Stability First**: Production-focused resource ownership and shutdown behavior
+- **📈 Cloud-Native Friendly**: Designed to work with restart- and rollout-based deployment models
+- **🔄 Clear Boundaries**: Leaves rollout and in-process mutation concerns to external tooling when appropriate
 
 ---
 
@@ -186,7 +186,7 @@ Translations: [English](README.md) | [简体中文](README_zh.md)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Lynx Application Layer                      │
+│                 Shell / Application Layer                     │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
 │  │ LynxApp     │  │ Boot        │  │ Control     │           │
@@ -199,8 +199,8 @@ Translations: [English](README.md) | [简体中文](README_zh.md)
 │                  Plugin Management Layer                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
-│  │ Plugin      │  │ TypedPlugin │  │ Plugin      │           │
-│  │ Manager     │  │ Manager     │  │ Factory     │           │
+│  │ Plugin      │  │ Lifecycle   │  │ Plugin      │           │
+│  │ Manager     │  │ / Ops       │  │ Factory     │           │
 │  └─────────────┘  └─────────────┘  └─────────────┘           │
 └─────────────────────────────────────────────────────────────────┘
                                 │
@@ -209,8 +209,8 @@ Translations: [English](README.md) | [简体中文](README_zh.md)
 │                    Runtime Layer                               │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
-│  │ Runtime     │  │ TypedRuntime│  │ Simple      │           │
-│  │ Interface   │  │ Impl        │  │ Runtime     │           │
+│  │ Runtime     │  │ Unified     │  │ Compat      │           │
+│  │ Interface   │  │ Runtime     │  │ Wrappers    │           │
 │  └─────────────┘  └─────────────┘  └─────────────┘           │
 └─────────────────────────────────────────────────────────────────┘
                                 │
@@ -266,7 +266,7 @@ Lynx leverages battle-tested open-source technologies:
 |-----------|------------|---------|
 | **Service Discovery** | [Polaris](https://github.com/polarismesh/polaris) | Service registration and discovery |
 | **Distributed Transactions** | [Seata](https://github.com/seata/seata) | ACID transactions across services |
-| **Framework Core** | [Kratos](https://github.com/go-kratos/kratos) | High-performance microservices framework |
+| **Framework Core** | [Kratos](https://github.com/go-kratos/kratos) | High-performance Go service framework |
 | **Language** | [Go](https://golang.org/) | Fast, reliable, and concurrent |
 
 ---
@@ -570,12 +570,12 @@ The `--fix` flag can automatically resolve:
 
 ### 🚀 lynx run - Quick Development Server
 
-The `lynx run` command provides a convenient way to build and run your Lynx project with optional hot reload for rapid development.
+The `lynx run` command provides a convenient way to build and run your Lynx project with optional file-watch auto-restart for rapid development.
 
 #### Features
 
 - **Automatic Build & Run**: Compiles and executes your project in one command
-- **Hot Reload**: Automatically rebuilds and restarts on file changes (with `--watch` flag)
+- **File-Watch Auto-Restart**: Automatically rebuilds and restarts on file changes during development (with `--watch` flag)
 - **Process Management**: Graceful shutdown and restart handling
 - **Smart Detection**: Automatically finds main package in project structure
 - **Environment Control**: Pass custom environment variables and arguments
@@ -587,7 +587,7 @@ lynx run [path] [flags]
 ```
 
 **Flags:**
-- `--watch, -w`: Enable hot reload (watch for file changes)
+- `--watch, -w`: Enable file-watch auto-restart for development
 - `--build-args`: Additional arguments for go build
 - `--run-args`: Arguments to pass to the running application
 - `--verbose, -v`: Enable verbose output
@@ -601,7 +601,7 @@ lynx run [path] [flags]
 # Run project in current directory
 lynx run
 
-# Run with hot reload (auto-restart on file changes)
+# Run with file-watch auto-restart
 lynx run --watch
 
 # Run specific project directory

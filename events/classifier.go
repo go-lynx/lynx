@@ -89,7 +89,7 @@ func (c *EventClassifier) initDefaultMappings() {
 	c.typeToBus[EventAuthenticationFailed] = BusTypeSecurity
 	c.typeToBus[EventAuthorizationDenied] = BusTypeSecurity
 
-	// Upgrade events -> System bus
+	// Legacy upgrade/rollback compatibility events -> System bus
 	c.typeToBus[EventUpgradeAvailable] = BusTypeSystem
 	c.typeToBus[EventUpgradeInitiated] = BusTypeSystem
 	c.typeToBus[EventUpgradeValidating] = BusTypeSystem

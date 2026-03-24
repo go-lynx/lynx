@@ -162,7 +162,10 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 					"ctx_aware":   ctxAware,
 				})
 
-				m.pluginInstances.Store(p.Name(), p)
+				if err := m.registerManagedPlugin(p); err != nil {
+					errCh <- fmt.Errorf("failed to register managed plugin %s: %w", p.ID(), err)
+					return
+				}
 
 				type metricsGathererProvider interface{ MetricsGatherer() prometheus.Gatherer }
 				if prov, ok := p.(metricsGathererProvider); ok {
@@ -255,12 +258,21 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 						p.Name(), p.ID(), timeout)
 				}
 
-				// Remove from plugin instances
-				m.pluginInstances.Delete(p.Name())
+				// Remove from manager indexes so failed startup attempts do not leave stale entries.
+				m.unregisterPlugin(p)
 
 				rollbackMu.Lock()
 				rollbackResults = append(rollbackResults, result)
 				rollbackMu.Unlock()
+			}
+
+			// Ensure plugins that never started, or the one that failed before rollback,
+			// do not remain registered after a failed load attempt.
+			for _, pwl := range sorted {
+				if pwl.Plugin == nil {
+					continue
+				}
+				m.unregisterPlugin(pwl.Plugin)
 			}
 
 			// Log rollback summary

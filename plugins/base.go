@@ -156,18 +156,19 @@ func (p *TypedBasePlugin[T]) IsContextAware() bool {
 }
 
 // PluginProtocol declares the default explicit lifecycle protocol for base plugins.
-// Concrete plugins may override this method to opt into stronger capabilities,
-// for example true context-aware lifecycle.
+// Concrete plugins may override this method to opt into stronger capabilities.
+// The framework default stays conservative: plugin orchestration and stability
+// are core concerns, while runtime hot-reload/rollback capabilities must be
+// explicitly declared by concrete plugins rather than inherited implicitly.
 func (p *TypedBasePlugin[T]) PluginProtocol() PluginProtocol {
-	hotReload := p.SupportsCapability(UpgradeConfig) || p.SupportsCapability(UpgradeVersion)
 	return PluginProtocol{
 		ManagedLifecycle: true,
 		HealthAware:      true,
 		ContextLifecycle: false,
 		Recoverable:      false,
-		ConfigHotReload:  hotReload,
-		ConfigValidation: hotReload,
-		ConfigRollback:   hotReload,
+		ConfigHotReload:  false,
+		ConfigValidation: false,
+		ConfigRollback:   false,
 	}
 }
 
@@ -419,8 +420,8 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 		})
 		return report
 	case StatusUpgrading:
-		report.Status = "upgrading"
-		report.Message = "Plugin is being upgraded"
+		report.Status = "transitional"
+		report.Message = "Plugin is in a legacy upgrade compatibility state"
 		// Emit event indicating unknown health status
 		p.EmitEvent(PluginEvent{
 			Type:     EventHealthStatusUnknown,
@@ -430,8 +431,8 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 		})
 		return report
 	case StatusRollback:
-		report.Status = "rolling-back"
-		report.Message = "Plugin is rolling back to previous version"
+		report.Status = "transitional"
+		report.Message = "Plugin is in a legacy rollback compatibility state"
 		// Emit event indicating unknown health status
 		p.EmitEvent(PluginEvent{
 			Type:     EventHealthStatusUnknown,
@@ -523,49 +524,16 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 	return report
 }
 
-// Configure updates the plugin's configuration with the provided settings.
-// This method validates and applies new configuration values.
+// Configure is intentionally unsupported by the base plugin.
+// Plugins that really need plugin-local runtime configuration must implement
+// their own configuration flow explicitly.
 func (p *TypedBasePlugin[T]) Configure(conf any) error {
-	// Emit event indicating configuration has changed
-	p.EmitEvent(PluginEvent{
-		Type:     EventConfigurationChanged,
-		Priority: PriorityNormal,
-		Source:   "Configure",
-		Category: "configuration",
-	})
-
-	// Validate and apply configuration
-	if err := p.ValidateConfig(conf); err != nil {
-		// Emit event indicating invalid configuration
-		p.EmitEvent(PluginEvent{
-			Type:     EventConfigurationInvalid,
-			Priority: PriorityHigh,
-			Source:   "Configure",
-			Category: "configuration",
-			Error:    err,
-		})
-		return NewPluginError(p.id, "Configure", "Invalid configuration", err)
-	}
-
-	if err := p.ApplyConfig(conf); err != nil {
-		return NewPluginError(p.id, "Configure", "Failed to apply configuration", err)
-	}
-
-	// Emit event indicating configuration has been applied
-	p.EmitEvent(PluginEvent{
-		Type:     EventConfigurationApplied,
-		Priority: PriorityNormal,
-		Source:   "Configure",
-		Category: "configuration",
-	})
-
-	return nil
+	return NewPluginError(p.id, "Configure", "Runtime configuration reload is not supported by the base plugin", ErrRuntimeConfigNotSupported)
 }
 
-// RollbackConfig restores a previous configuration snapshot.
-// Base plugins treat rollback as another validated configure pass.
+// RollbackConfig is intentionally unsupported by the base plugin.
 func (p *TypedBasePlugin[T]) RollbackConfig(previous any) error {
-	return p.Configure(previous)
+	return NewPluginError(p.id, "RollbackConfig", "Runtime configuration rollback is not supported by the base plugin", ErrRuntimeConfigNotSupported)
 }
 
 // GetDependencies returns a copy of the plugin dependencies so callers cannot
@@ -844,155 +812,30 @@ func (p *TypedBasePlugin[T]) Resume() error {
 	return nil
 }
 
-// PrepareUpgrade prepares the plugin for upgrade.
-// This method checks if the plugin supports the upgrade capability.
+// PrepareUpgrade is intentionally unsupported by the base plugin.
+// Live upgrade should be owned by external rollout tooling, not Lynx core.
 func (p *TypedBasePlugin[T]) PrepareUpgrade(targetVersion string) error {
-	if !p.SupportsCapability(UpgradeConfig) && !p.SupportsCapability(UpgradeVersion) {
-		return NewPluginError(p.id, "PrepareUpgrade", "Upgrade not supported", ErrPluginUpgradeNotSupported)
-	}
-
-	if p.getStatus() != StatusActive {
-		return NewPluginError(p.id, "PrepareUpgrade", "Plugin must be active to upgrade", ErrPluginNotActive)
-	}
-
-	// Emit event indicating upgrade has been initiated
-	p.EmitEvent(PluginEvent{
-		Type:     EventUpgradeInitiated,
-		Priority: PriorityHigh,
-		Source:   "PrepareUpgrade",
-		Category: "upgrade",
-		Metadata: map[string]any{
-			"targetVersion":  targetVersion,
-			"currentVersion": p.version,
-		},
-	})
-
-	p.setStatus(StatusUpgrading)
-	return nil
+	return NewPluginError(p.id, "PrepareUpgrade", "Live plugin upgrade is not supported by lynx core", ErrPluginUpgradeNotSupported)
 }
 
-// ExecuteUpgrade performs the plugin upgrade.
-// This method checks if the plugin is in the upgrading state.
+// ExecuteUpgrade is intentionally unsupported by the base plugin.
 func (p *TypedBasePlugin[T]) ExecuteUpgrade(targetVersion string) error {
-	if p.getStatus() != StatusUpgrading {
-		return NewPluginError(p.id, "ExecuteUpgrade", "Plugin must be in upgrading state", ErrPluginNotActive)
-	}
-
-	// Perform upgrade tasks
-	if err := p.PerformUpgrade(targetVersion); err != nil {
-		// Emit event indicating upgrade failed
-		p.EmitEvent(PluginEvent{
-			Type:     EventUpgradeFailed,
-			Priority: PriorityCritical,
-			Source:   "ExecuteUpgrade",
-			Category: "upgrade",
-			Error:    err,
-			Metadata: map[string]any{
-				"targetVersion":  targetVersion,
-				"currentVersion": p.version,
-			},
-		})
-
-		// Attempt automatic rollback
-		if rollbackErr := p.RollbackUpgrade(p.version); rollbackErr != nil {
-			// If rollback fails, plugin is in an inconsistent state
-			p.setStatus(StatusFailed)
-			return NewPluginError(p.id, "ExecuteUpgrade", "Upgrade and rollback failed", err)
-		}
-
-		return NewPluginError(p.id, "ExecuteUpgrade", "Upgrade failed, rolled back", err)
-	}
-
-	// Update version and restore active state under same lock to avoid race with Version()
-	p.statusMu.Lock()
-	p.version = targetVersion
-	p.status = StatusActive
-	p.statusMu.Unlock()
-
-	// Emit event indicating upgrade has been completed
-	p.EmitEvent(PluginEvent{
-		Type:     EventUpgradeCompleted,
-		Priority: PriorityHigh,
-		Source:   "ExecuteUpgrade",
-		Category: "upgrade",
-		Metadata: map[string]any{
-			"version": targetVersion,
-		},
-	})
-
-	return nil
+	return NewPluginError(p.id, "ExecuteUpgrade", "Live plugin upgrade is not supported by lynx core", ErrPluginUpgradeNotSupported)
 }
 
-// RollbackUpgrade rolls back the plugin upgrade.
-// This method checks if the plugin is in the upgrading or failed state.
+// RollbackUpgrade is intentionally unsupported by the base plugin.
 func (p *TypedBasePlugin[T]) RollbackUpgrade(previousVersion string) error {
-	if p.getStatus() != StatusUpgrading && p.getStatus() != StatusFailed {
-		return NewPluginError(p.id, "RollbackUpgrade", "Plugin must be in upgrading or failed state", ErrPluginNotActive)
-	}
-
-	p.setStatus(StatusRollback)
-	// Emit event indicating rollback has been initiated
-	p.EmitEvent(PluginEvent{
-		Type:     EventRollbackInitiated,
-		Priority: PriorityHigh,
-		Source:   "RollbackUpgrade",
-		Category: "upgrade",
-		Metadata: map[string]any{
-			"previousVersion": previousVersion,
-			"currentVersion":  p.version,
-		},
-	})
-
-	// Perform rollback tasks
-	if err := p.PerformRollback(previousVersion); err != nil {
-		p.setStatus(StatusFailed)
-		// Emit event indicating rollback failed
-		p.EmitEvent(PluginEvent{
-			Type:     EventRollbackFailed,
-			Priority: PriorityCritical,
-			Source:   "RollbackUpgrade",
-			Category: "upgrade",
-			Error:    err,
-			Metadata: map[string]any{
-				"previousVersion": previousVersion,
-				"currentVersion":  p.version,
-			},
-		})
-		return NewPluginError(p.id, "RollbackUpgrade", "Rollback failed", err)
-	}
-
-	// Restore version and active state under same lock to avoid race with Version()
-	p.statusMu.Lock()
-	p.version = previousVersion
-	p.status = StatusActive
-	p.statusMu.Unlock()
-
-	// Emit event indicating rollback has been completed
-	p.EmitEvent(PluginEvent{
-		Type:     EventRollbackCompleted,
-		Priority: PriorityHigh,
-		Source:   "RollbackUpgrade",
-		Category: "upgrade",
-		Metadata: map[string]any{
-			"version": previousVersion,
-		},
-	})
-
-	return nil
+	return NewPluginError(p.id, "RollbackUpgrade", "Live plugin rollback is not supported by lynx core", ErrPluginUpgradeNotSupported)
 }
 
-// PerformUpgrade handles the actual upgrade process.
-// This is an internal method called by ExecuteUpgrade.
+// PerformUpgrade is intentionally unsupported by the base plugin.
 func (p *TypedBasePlugin[T]) PerformUpgrade(targetVersion string) error {
-	// Implementation-specific upgrade logic
-	return nil
+	return ErrPluginUpgradeNotSupported
 }
 
-// PerformRollback handles the actual rollback process.
-// This is an internal method called by RollbackUpgrade.
+// PerformRollback is intentionally unsupported by the base plugin.
 func (p *TypedBasePlugin[T]) PerformRollback(previousVersion string) error {
-	// Implementation-specific rollback logic
-	return nil
+	return ErrPluginUpgradeNotSupported
 }
 
 // GetCapabilities returns the plugin's upgrade capabilities.

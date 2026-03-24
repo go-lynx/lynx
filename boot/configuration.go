@@ -22,6 +22,15 @@ func (app *Application) LoadBootstrapConfig() error {
 	// Get configuration path
 	configMgr := GetConfigManager()
 	configPath := configMgr.GetConfigPath()
+	if configPath == "" {
+		configPath = flagConf
+	}
+	if configPath == "" {
+		configPath = configMgr.GetDefaultConfigPath()
+	}
+	if configPath != "" {
+		configMgr.SetConfigPath(configPath)
+	}
 
 	// Check if configuration path is empty
 	if configPath == "" {

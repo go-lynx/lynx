@@ -131,7 +131,10 @@ const (
 	EventDependencyError = "dependency.error"
 )
 
-// Upgrade event types for managing plugin versions
+// Upgrade and rollback event types are retained only for compatibility with
+// older plugins and external consumers. Lynx core does not use them as part of
+// the default lifecycle model, and restart/external rollout remains the
+// preferred way to apply code or deployment changes.
 const (
 	// EventUpgradeAvailable indicates new version availability.
 	// Triggered when update check finds newer version.

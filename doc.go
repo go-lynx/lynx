@@ -1,35 +1,40 @@
-// Package lynx provides the core application framework for building microservices.
+// Package lynx provides the core plugin orchestration framework used by Lynx applications.
 //
-// Lynx is a plug-and-play Go microservices framework built on top of Kratos,
-// providing a unified runtime environment for plugin-based application development.
+// Lynx is built around plugin orchestration, dependency-aware lifecycle
+// management, and a unified runtime for plugin-based applications built on top
+// of Kratos.
+//
+// The root package should be understood primarily as framework core. Optional
+// bootstrap/process helpers live in the boot package, while some singleton and
+// legacy integration surfaces remain for compatibility.
 //
 // # Architecture
 //
 // The framework is organized around the following core concepts:
 //
-//   - LynxApp: The main application instance managing lifecycle and configuration
+//   - LynxApp: Application-facing assembly for the core runtime and plugin manager
 //   - Plugin Manager: Handles plugin registration, dependency resolution, and lifecycle
-//   - Runtime: Provides resource sharing, event handling, and configuration access
-//   - Control Plane: Manages service discovery, rate limiting, and routing
+//   - UnifiedRuntime: Provides resource sharing, event handling, and plugin-scoped runtime views
+//   - Control Plane: Optional shell-facing integration for discovery, routing, and config sources
 //
 // # File Organization
 //
 // The root package contains the following files:
 //
-//   - app.go: LynxApp core structure, initialization, and main API
+//   - app.go: App instance assembly, singleton compatibility, runtime wiring, and shutdown
 //   - manager.go: Plugin manager interfaces and implementation
 //   - lifecycle.go: Plugin lifecycle operations (init/start/stop)
 //   - ops.go: Plugin loading and unloading operations
 //   - topology.go: Plugin dependency resolution and ordering
-//   - runtime.go: Runtime plugin providing resource and event management
-//   - controlplane.go: Control plane interfaces for service management
+//   - runtime.go: Backward-compatible runtime wrapper around plugins.UnifiedRuntime
+//   - controlplane.go: Optional shell-facing control plane interfaces
 //   - certificate.go: TLS certificate provider interface
 //   - prepare.go: Plugin preparation and bootstrapping from configuration
 //   - recovery.go: Error recovery and resilience mechanisms
 //
 // # Quick Start
 //
-// Basic usage of the Lynx framework:
+// Basic usage of the Lynx core:
 //
 //	package main
 //
@@ -57,7 +62,7 @@
 //	        panic(err)
 //	    }
 //
-//	    // Run application using boot package
+//	    // Or hand the app to the optional boot package
 //	    boot.Run(app)
 //	}
 //
@@ -89,8 +94,9 @@
 //
 // # Configuration
 //
-// The framework uses YAML configuration files. See conf/boot-example.yml for
-// a complete configuration reference.
+// The framework uses YAML configuration files. Configuration changes that affect
+// loaded plugins are expected to be applied by restart or external rollout
+// tooling rather than in-process orchestration by the core.
 //
 // # For More Information
 //

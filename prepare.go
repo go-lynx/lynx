@@ -16,10 +16,9 @@ import (
 	"github.com/go-kratos/kratos/v2/config"
 )
 
-// PreparePlug bootstraps plugin loading via remote or local configuration files.
-// It initializes and registers plugins based on configuration. If a single plugin fails,
-// it logs the error and skips that plugin, attempting to return other successful items.
-// Returns a list of successfully prepared plugins (possibly empty) and an error only for global failures.
+// PreparePlug bootstraps plugin staging via remote or local configuration files.
+// It prepares plugin instances based on configuration and returns only plugins
+// that are not yet managed by the lifecycle manager.
 func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.Plugin, error) {
 	// Validate configuration is not nil; log and return error if nil
 	if config == nil {
@@ -82,7 +81,8 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 			}
 
 			// Prepare plugin if creatable
-			if err := m.preparePlugin(name); err != nil {
+			plugin, err := m.preparePlugin(name)
+			if err != nil {
 				// Log specific preparation failure reason
 				log.Warnf("prepare plugin %s failed: %v", name, err)
 				failCount++
@@ -90,15 +90,13 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 				prepareFailures = append(prepareFailures, fmt.Sprintf("%s: %v", name, err))
 				continue
 			}
+			if plugin == nil {
+				report.Skipped = append(report.Skipped, name)
+				continue
+			}
 			successCount++
 			report.Prepared = append(report.Prepared, name)
-
-			// Retrieve the plugin instance and append to the result slice
-			if value, ok := m.pluginInstances.Load(name); ok {
-				if plugin, ok := value.(plugins.Plugin); ok {
-					prepared = append(prepared, plugin)
-				}
-			}
+			prepared = append(prepared, plugin)
 		}
 
 		// Prefix-level summary logging to help diagnose configuration issues
@@ -140,29 +138,41 @@ func allowPartialPrepareFailure(config config.Config) bool {
 }
 
 // preparePlugin performs preparation for a single plugin.
-// It checks for existing instances, creates the plugin, and adds it to the manager.
-// Returns an error if any step fails.
-func (m *DefaultPluginManager[T]) preparePlugin(name string) error {
-	// Return error if plugin is already loaded
-	if _, exists := m.pluginInstances.Load(name); exists {
-		return fmt.Errorf("plugin %s is already loaded", name)
+// It returns nil,nil when the plugin is already lifecycle-managed and therefore
+// should not be prepared again for the current load attempt.
+func (m *DefaultPluginManager[T]) preparePlugin(name string) (plugins.Plugin, error) {
+	if value, exists := m.managedInstances.Load(name); exists {
+		if _, ok := value.(plugins.Plugin); ok {
+			return nil, nil
+		}
+	}
+
+	// Reuse an already staged prepared plugin when available.
+	if value, exists := m.pluginInstances.Load(name); exists {
+		if plugin, ok := value.(plugins.Plugin); ok && plugin != nil {
+			return plugin, nil
+		}
+		return nil, fmt.Errorf("plugin %s has invalid prepared instance", name)
 	}
 
 	// Validate the plugin exists in the factory
 	if !m.factory.HasPlugin(name) {
-		return fmt.Errorf("plugin %s does not exist in factory", name)
+		return nil, fmt.Errorf("plugin %s does not exist in factory", name)
 	}
 
 	// Create the plugin instance
 	p, err := m.factory.CreatePlugin(name)
 	if err != nil {
-		return fmt.Errorf("failed to create plugin %s: %v", name, err)
+		return nil, fmt.Errorf("failed to create plugin %s: %v", name, err)
 	}
 
 	// Validate the created plugin instance is not nil
 	if p == nil {
-		return fmt.Errorf("created plugin %s is nil", name)
+		return nil, fmt.Errorf("created plugin %s is nil", name)
 	}
 
-	return m.registerPreparedPlugin(p)
+	if err := m.registerPreparedPlugin(p); err != nil {
+		return nil, err
+	}
+	return p, nil
 }

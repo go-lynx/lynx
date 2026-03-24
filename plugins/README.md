@@ -28,7 +28,7 @@ This package contains:
 | `version.go` | Version comparison and semantic versioning utilities |
 | `id.go` | Plugin ID generation and validation utilities |
 | `conflict_resolver.go` | Plugin conflict resolution strategies |
-| `upg.go` | Plugin upgrade capabilities and strategies |
+| `upg.go` | Legacy compatibility upgrade hooks for plugin-owned logic |
 
 ## Core Interfaces
 
@@ -107,8 +107,8 @@ type Runtime interface {
 | `StatusStopping` | Shutting down |
 | `StatusTerminated` | Gracefully shut down |
 | `StatusFailed` | Fatal error occurred |
-| `StatusUpgrading` | Being upgraded |
-| `StatusRollback` | Rolling back from failed upgrade |
+| `StatusUpgrading` | Legacy compatibility state only; not part of the default core lifecycle |
+| `StatusRollback` | Legacy compatibility state only; not part of the default core lifecycle |
 
 ## Creating a Plugin
 
@@ -414,21 +414,21 @@ report := plugin.GetHealth()
 ## Upgrade Capabilities
 
 ```go
-// Supported upgrade capabilities
+// Legacy compatibility capabilities for plugin-owned upgrade logic
 const (
-    UpgradeNone    // No runtime upgrades supported
-    UpgradeConfig  // Can update config without restart
-    UpgradeVersion // Can upgrade version without restart
-    UpgradeReplace // Can be completely replaced at runtime
+    UpgradeNone    // Restart-based handling; no legacy upgrade hooks advertised
+    UpgradeConfig  // Legacy plugin-owned config mutation hook
+    UpgradeVersion // Legacy plugin-owned version upgrade hook
+    UpgradeReplace // Legacy plugin-owned replacement hook
 )
 
-// Prepare for upgrade
+// Legacy compatibility hook: prepare plugin-owned upgrade logic
 plugin.PrepareUpgrade("2.0.0")
 
-// Execute upgrade
+// Legacy compatibility hook: execute plugin-owned upgrade logic
 plugin.ExecuteUpgrade("2.0.0")
 
-// Rollback if needed
+// Legacy compatibility hook: execute plugin-owned rollback logic
 plugin.RollbackUpgrade("1.0.0")
 ```
 

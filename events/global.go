@@ -23,6 +23,12 @@ func SetDefaultEventBusProvider(provider func() *EventBusManager) {
 	defaultEventBusProvider = provider
 }
 
+// ClearDefaultEventBusProvider removes the compatibility provider used for
+// process-wide default event bus lookups.
+func ClearDefaultEventBusProvider() {
+	SetDefaultEventBusProvider(nil)
+}
+
 // InitGlobalEventBus initializes the global event bus manager
 func InitGlobalEventBus(configs BusConfigs) error {
 	globalMu.Lock()

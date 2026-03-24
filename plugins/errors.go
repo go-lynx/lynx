@@ -13,33 +13,34 @@ type ErrorCode string
 
 const (
 	// Plugin lifecycle errors
-	ErrorCodePluginNotFound        ErrorCode = "PLUGIN_NOT_FOUND"
-	ErrorCodePluginAlreadyExists   ErrorCode = "PLUGIN_ALREADY_EXISTS"
-	ErrorCodePluginNotInitialized  ErrorCode = "PLUGIN_NOT_INITIALIZED"
-	ErrorCodePluginNotActive       ErrorCode = "PLUGIN_NOT_ACTIVE"
-	ErrorCodePluginAlreadyActive   ErrorCode = "PLUGIN_ALREADY_ACTIVE"
-	
+	ErrorCodePluginNotFound       ErrorCode = "PLUGIN_NOT_FOUND"
+	ErrorCodePluginAlreadyExists  ErrorCode = "PLUGIN_ALREADY_EXISTS"
+	ErrorCodePluginNotInitialized ErrorCode = "PLUGIN_NOT_INITIALIZED"
+	ErrorCodePluginNotActive      ErrorCode = "PLUGIN_NOT_ACTIVE"
+	ErrorCodePluginAlreadyActive  ErrorCode = "PLUGIN_ALREADY_ACTIVE"
+
 	// Configuration errors
-	ErrorCodeInvalidPluginID       ErrorCode = "INVALID_PLUGIN_ID"
-	ErrorCodeInvalidPluginVersion  ErrorCode = "INVALID_PLUGIN_VERSION"
-	ErrorCodeInvalidPluginConfig   ErrorCode = "INVALID_PLUGIN_CONFIG"
-	ErrorCodeInvalidConfiguration  ErrorCode = "INVALID_CONFIGURATION"
-	
+	ErrorCodeInvalidPluginID           ErrorCode = "INVALID_PLUGIN_ID"
+	ErrorCodeInvalidPluginVersion      ErrorCode = "INVALID_PLUGIN_VERSION"
+	ErrorCodeInvalidPluginConfig       ErrorCode = "INVALID_PLUGIN_CONFIG"
+	ErrorCodeInvalidConfiguration      ErrorCode = "INVALID_CONFIGURATION"
+	ErrorCodeRuntimeConfigNotSupported ErrorCode = "RUNTIME_CONFIG_NOT_SUPPORTED"
+
 	// Dependency errors
 	ErrorCodePluginDependencyNotMet ErrorCode = "PLUGIN_DEPENDENCY_NOT_MET"
-	
+
 	// Upgrade errors
 	ErrorCodePluginUpgradeNotSupported ErrorCode = "PLUGIN_UPGRADE_NOT_SUPPORTED"
 	ErrorCodePluginUpgradeFailed       ErrorCode = "PLUGIN_UPGRADE_FAILED"
-	
+
 	// Resource errors
 	ErrorCodePluginResourceNotFound ErrorCode = "PLUGIN_RESOURCE_NOT_FOUND"
 	ErrorCodePluginResourceInvalid  ErrorCode = "PLUGIN_RESOURCE_INVALID"
-	
+
 	// Operation errors
 	ErrorCodePluginOperationTimeout   ErrorCode = "PLUGIN_OPERATION_TIMEOUT"
 	ErrorCodePluginOperationCancelled ErrorCode = "PLUGIN_OPERATION_CANCELLED"
-	
+
 	// Health and security errors
 	ErrorCodePluginHealthCheckFailed ErrorCode = "PLUGIN_HEALTH_CHECK_FAILED"
 	ErrorCodePluginSecurityViolation ErrorCode = "PLUGIN_SECURITY_VIOLATION"
@@ -82,6 +83,10 @@ var (
 	// ErrInvalidConfiguration indicates that the provided configuration is not of the expected type
 	// This error occurs when attempting to configure a plugin with an incompatible configuration type
 	ErrInvalidConfiguration = NewStandardError(ErrorCodeInvalidConfiguration, "invalid configuration type", "Configuration type does not match expected plugin configuration interface")
+
+	// ErrRuntimeConfigNotSupported indicates that runtime configuration orchestration is not supported
+	// by the Lynx core base plugin implementation.
+	ErrRuntimeConfigNotSupported = NewStandardError(ErrorCodeRuntimeConfigNotSupported, "runtime configuration not supported", "Lynx core does not orchestrate runtime plugin reconfiguration")
 
 	// ErrPluginDependencyNotMet indicates that one or more plugin dependencies are not satisfied
 	// All required dependencies must be available and properly configured
@@ -174,29 +179,29 @@ type PluginError struct {
 // Returns a formatted error message including plugin ID, operation, and details
 func (e *PluginError) Error() string {
 	var parts []string
-	
+
 	if e.Code != "" {
 		parts = append(parts, fmt.Sprintf("[%s]", e.Code))
 	}
-	
+
 	if e.PluginID != "" {
 		parts = append(parts, fmt.Sprintf("plugin '%s'", e.PluginID))
 	}
-	
+
 	if e.Operation != "" {
 		parts = append(parts, fmt.Sprintf("operation '%s'", e.Operation))
 	}
-	
+
 	parts = append(parts, "failed")
-	
+
 	if e.Message != "" {
 		parts = append(parts, fmt.Sprintf(": %s", e.Message))
 	}
-	
+
 	if e.Err != nil {
 		parts = append(parts, fmt.Sprintf(" (caused by: %v)", e.Err))
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
@@ -250,24 +255,24 @@ func getStackTrace() string {
 	const depth = 32
 	var pcs [depth]uintptr
 	n := runtime.Callers(3, pcs[:])
-	
+
 	var sb strings.Builder
 	frames := runtime.CallersFrames(pcs[:n])
-	
+
 	for {
 		frame, more := frames.Next()
 		if !more {
 			break
 		}
-		
+
 		// Skip runtime and internal frames
 		if strings.Contains(frame.File, "runtime/") {
 			continue
 		}
-		
+
 		sb.WriteString(fmt.Sprintf("%s:%d %s\n", frame.File, frame.Line, frame.Function))
 	}
-	
+
 	return sb.String()
 }
 
@@ -290,12 +295,12 @@ func GetPluginError(err error) *PluginError {
 func FormatErrorForUser(err error) string {
 	if pluginErr := GetPluginError(err); pluginErr != nil {
 		if pluginErr.PluginID != "" && pluginErr.Operation != "" {
-			return fmt.Sprintf("Plugin '%s' failed during '%s': %s", 
+			return fmt.Sprintf("Plugin '%s' failed during '%s': %s",
 				pluginErr.PluginID, pluginErr.Operation, pluginErr.Message)
 		}
 		return pluginErr.Message
 	}
-	
+
 	return err.Error()
 }
 
@@ -304,21 +309,21 @@ func FormatErrorForDeveloper(err error) string {
 	if pluginErr := GetPluginError(err); pluginErr != nil {
 		var sb strings.Builder
 		sb.WriteString(pluginErr.Error())
-		
+
 		if len(pluginErr.Context) > 0 {
 			sb.WriteString("\nContext:")
 			for k, v := range pluginErr.Context {
 				sb.WriteString(fmt.Sprintf("\n  %s: %v", k, v))
 			}
 		}
-		
+
 		if pluginErr.StackTrace != "" {
 			sb.WriteString("\nStack Trace:\n")
 			sb.WriteString(pluginErr.StackTrace)
 		}
-		
+
 		return sb.String()
 	}
-	
+
 	return err.Error()
 }

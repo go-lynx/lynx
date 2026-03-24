@@ -29,6 +29,7 @@ type PluginManager interface {
 	GetPlugin(name string) plugins.Plugin
 	GetPluginByID(id string) plugins.Plugin
 	GetPluginCapabilities(name string) (plugins.PluginCapabilities, error)
+	GetRestartRequirementReport() RestartRequirementReport
 	GetConfigReloadPlan() ConfigReloadPlan
 	PreparePlug(config config.Config) ([]plugins.Plugin, error)
 
@@ -78,6 +79,16 @@ type ConfigReloadEntry struct {
 	Reason     string
 }
 
+// RestartRequirementReport is the core-facing summary for configuration changes.
+// Lynx applies configuration changes by restart instead of in-process reload.
+type RestartRequirementReport struct {
+	RestartRequired []ConfigReloadEntry
+	Invalid         []ConfigReloadEntry
+}
+
+// ConfigReloadPlan is kept as a compatibility report for older callers.
+// New code should prefer RestartRequirementReport, which reflects the
+// restart-based core model directly.
 type ConfigReloadPlan struct {
 	HotReloadable   []ConfigReloadEntry
 	RestartRequired []ConfigReloadEntry
@@ -87,11 +98,15 @@ type ConfigReloadPlan struct {
 
 // DefaultPluginManager is the generic plugin manager implementation.
 type DefaultPluginManager[T plugins.Plugin] struct {
-	pluginInstances   sync.Map // Name() -> Plugin instance
-	pluginIDs         sync.Map // ID() -> Plugin instance
+	pluginInstances   sync.Map // Name() -> known/prepared plugin instance
+	pluginIDs         sync.Map // ID() -> known/prepared plugin instance
 	pluginList        []plugins.Plugin
+	managedInstances  sync.Map // Name() -> lifecycle-managed plugin instance
+	managedIDs        sync.Map // ID() -> lifecycle-managed plugin instance
+	managedPluginList []plugins.Plugin
 	factory           *factory.TypedFactory
 	mu                sync.RWMutex
+	operationMu       sync.Mutex
 	runtime           plugins.Runtime
 	config            config.Config
 	lastPrepareReport PrepareReport
@@ -104,9 +119,10 @@ type DefaultPluginManager[T plugins.Plugin] struct {
 // NewPluginManager creates a generic plugin manager.
 func NewPluginManager[T plugins.Plugin](pluginList ...T) *DefaultPluginManager[T] {
 	manager := &DefaultPluginManager[T]{
-		pluginList: make([]plugins.Plugin, 0),
-		factory:    factory.GlobalTypedFactory(),
-		runtime:    plugins.NewUnifiedRuntime(),
+		pluginList:        make([]plugins.Plugin, 0),
+		managedPluginList: make([]plugins.Plugin, 0),
+		factory:           factory.GlobalTypedFactory(),
+		runtime:           plugins.NewUnifiedRuntime(),
 	}
 
 	// register initial plugins
@@ -142,6 +158,11 @@ func (m *DefaultPluginManager[T]) GetRuntime() plugins.Runtime {
 
 // GetPlugin gets a plugin by Name().
 func (m *DefaultPluginManager[T]) GetPlugin(name string) plugins.Plugin {
+	if value, ok := m.managedInstances.Load(name); ok {
+		if plugin, ok := value.(plugins.Plugin); ok {
+			return plugin
+		}
+	}
 	if value, ok := m.pluginInstances.Load(name); ok {
 		if plugin, ok := value.(plugins.Plugin); ok {
 			return plugin
@@ -152,6 +173,11 @@ func (m *DefaultPluginManager[T]) GetPlugin(name string) plugins.Plugin {
 
 // GetPluginByID gets a plugin by ID().
 func (m *DefaultPluginManager[T]) GetPluginByID(id string) plugins.Plugin {
+	if value, ok := m.managedIDs.Load(id); ok {
+		if plugin, ok := value.(plugins.Plugin); ok {
+			return plugin
+		}
+	}
 	if value, ok := m.pluginIDs.Load(id); ok {
 		if plugin, ok := value.(plugins.Plugin); ok {
 			return plugin
@@ -168,11 +194,9 @@ func (m *DefaultPluginManager[T]) GetPluginCapabilities(name string) (plugins.Pl
 	return plugins.DescribePluginCapabilities(p), nil
 }
 
-func (m *DefaultPluginManager[T]) GetConfigReloadPlan() ConfigReloadPlan {
-	plan := ConfigReloadPlan{
-		HotReloadable:   make([]ConfigReloadEntry, 0),
+func (m *DefaultPluginManager[T]) GetRestartRequirementReport() RestartRequirementReport {
+	report := RestartRequirementReport{
 		RestartRequired: make([]ConfigReloadEntry, 0),
-		Unsupported:     make([]ConfigReloadEntry, 0),
 		Invalid:         make([]ConfigReloadEntry, 0),
 	}
 	for _, p := range m.listPluginsInternal() {
@@ -191,23 +215,37 @@ func (m *DefaultPluginManager[T]) GetConfigReloadPlan() ConfigReloadPlan {
 		switch {
 		case caps.ProtocolExplicit && caps.Protocol.ConfigHotReload && !configurable:
 			entry.Reason = "declares config hot reload but does not implement Configurable"
-			plan.Invalid = append(plan.Invalid, entry)
+			report.Invalid = append(report.Invalid, entry)
 		case caps.ProtocolExplicit && caps.Protocol.ConfigValidation && !validator:
 			entry.Reason = "declares config validation but does not implement ConfigValidator"
-			plan.Invalid = append(plan.Invalid, entry)
+			report.Invalid = append(report.Invalid, entry)
 		case caps.ProtocolExplicit && caps.Protocol.ConfigRollback && !rollbacker && !configurable:
 			entry.Reason = "declares config rollback but does not implement ConfigRollbacker"
-			plan.Invalid = append(plan.Invalid, entry)
+			report.Invalid = append(report.Invalid, entry)
+		case caps.ProtocolExplicit && (caps.Protocol.ConfigHotReload || caps.Protocol.ConfigValidation || caps.Protocol.ConfigRollback):
+			entry.Reason = "plugin declares runtime configuration hooks, but lynx core requires restart to apply configuration changes"
+			report.RestartRequired = append(report.RestartRequired, entry)
+		case configurable || validator || rollbacker:
+			entry.Reason = "plugin exposes configuration hooks, but lynx core requires restart to apply configuration changes"
+			report.RestartRequired = append(report.RestartRequired, entry)
 		case caps.ProtocolExplicit && !caps.Protocol.ConfigHotReload:
 			entry.Reason = "plugin requires restart for configuration changes"
-			plan.RestartRequired = append(plan.RestartRequired, entry)
-		case configurable:
-			entry.Reason = "plugin supports runtime configuration updates"
-			plan.HotReloadable = append(plan.HotReloadable, entry)
+			report.RestartRequired = append(report.RestartRequired, entry)
 		default:
-			entry.Reason = "plugin does not expose runtime configuration hooks"
-			plan.Unsupported = append(plan.Unsupported, entry)
+			entry.Reason = "lynx core applies configuration changes by restart"
+			report.RestartRequired = append(report.RestartRequired, entry)
 		}
+	}
+	return report
+}
+
+func (m *DefaultPluginManager[T]) GetConfigReloadPlan() ConfigReloadPlan {
+	report := m.GetRestartRequirementReport()
+	plan := ConfigReloadPlan{
+		HotReloadable:   make([]ConfigReloadEntry, 0),
+		RestartRequired: append([]ConfigReloadEntry(nil), report.RestartRequired...),
+		Unsupported:     make([]ConfigReloadEntry, 0),
+		Invalid:         append([]ConfigReloadEntry(nil), report.Invalid...),
 	}
 	return plan
 }
@@ -222,18 +260,19 @@ func containsName(slice []string, name string) bool {
 	return false
 }
 
-// listPluginNamesInternal returns current plugin names (sorted).
-// Optimized to use pluginList when available to avoid duplicate traversal
+// listPluginNamesInternal returns the names of lifecycle-managed plugins (sorted).
+// Prepared-only plugins are intentionally excluded so runtime-facing queries only
+// report plugins that actually entered manager-controlled lifecycle.
 func (m *DefaultPluginManager[T]) listPluginNamesInternal() []string {
 	if m == nil {
 		return nil
 	}
 
-	// Use pluginList if available to avoid traversing sync.Map
+	// Use managedPluginList if available to avoid traversing sync.Map
 	m.mu.RLock()
-	if len(m.pluginList) > 0 {
-		names := make([]string, 0, len(m.pluginList))
-		for _, p := range m.pluginList {
+	if len(m.managedPluginList) > 0 {
+		names := make([]string, 0, len(m.managedPluginList))
+		for _, p := range m.managedPluginList {
 			if p != nil {
 				names = append(names, p.Name())
 			}
@@ -244,9 +283,9 @@ func (m *DefaultPluginManager[T]) listPluginNamesInternal() []string {
 	}
 	m.mu.RUnlock()
 
-	// Fallback to sync.Map traversal if pluginList is empty
+	// Fallback to sync.Map traversal if managedPluginList is empty
 	names := make([]string, 0)
-	m.pluginInstances.Range(func(key, value any) bool {
+	m.managedInstances.Range(func(key, value any) bool {
 		if name, ok := key.(string); ok {
 			names = append(names, name)
 		}
@@ -256,15 +295,15 @@ func (m *DefaultPluginManager[T]) listPluginNamesInternal() []string {
 	return names
 }
 
-// listPluginsInternal returns a copy of current plugins (read-locked).
+// listPluginsInternal returns a copy of lifecycle-managed plugins (read-locked).
 func (m *DefaultPluginManager[T]) listPluginsInternal() []plugins.Plugin {
 	if m == nil {
 		return nil
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make([]plugins.Plugin, 0, len(m.pluginList))
-	for _, p := range m.pluginList {
+	out := make([]plugins.Plugin, 0, len(m.managedPluginList))
+	for _, p := range m.managedPluginList {
 		if p != nil {
 			out = append(out, p)
 		}
@@ -368,4 +407,100 @@ func (m *DefaultPluginManager[T]) registerPreparedPlugin(p plugins.Plugin) error
 	m.pluginInstances.Store(p.Name(), p)
 	m.pluginIDs.Store(p.ID(), p)
 	return nil
+}
+
+func (m *DefaultPluginManager[T]) registerManagedPlugin(p plugins.Plugin) error {
+	if m == nil || p == nil {
+		return fmt.Errorf("plugin is nil")
+	}
+	if existing, ok := m.managedInstances.Load(p.Name()); ok {
+		if existingPlugin, ok := existing.(plugins.Plugin); ok && existingPlugin.ID() != p.ID() {
+			return fmt.Errorf("managed plugin name %s already registered with different ID %s", p.Name(), existingPlugin.ID())
+		}
+		return nil
+	}
+	if existing, ok := m.managedIDs.Load(p.ID()); ok {
+		if existingPlugin, ok := existing.(plugins.Plugin); ok && existingPlugin.Name() != p.Name() {
+			return fmt.Errorf("managed plugin ID %s already registered with different name %s", p.ID(), existingPlugin.Name())
+		}
+		return nil
+	}
+
+	m.mu.Lock()
+	m.managedPluginList = append(m.managedPluginList, p)
+	m.mu.Unlock()
+	m.managedInstances.Store(p.Name(), p)
+	m.managedIDs.Store(p.ID(), p)
+	m.removePreparedPlugin(p)
+	return nil
+}
+
+func (m *DefaultPluginManager[T]) removePreparedPlugin(p plugins.Plugin) {
+	if m == nil || p == nil {
+		return
+	}
+
+	m.pluginInstances.Delete(p.Name())
+	m.pluginIDs.Delete(p.ID())
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.pluginList) == 0 {
+		return
+	}
+
+	filtered := m.pluginList[:0]
+	for _, item := range m.pluginList {
+		if item == nil {
+			continue
+		}
+		if item.Name() == p.Name() && item.ID() == p.ID() {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	m.pluginList = filtered
+}
+
+func (m *DefaultPluginManager[T]) unregisterPlugin(p plugins.Plugin) {
+	if m == nil || p == nil {
+		return
+	}
+
+	m.pluginInstances.Delete(p.Name())
+	m.pluginIDs.Delete(p.ID())
+	m.managedInstances.Delete(p.Name())
+	m.managedIDs.Delete(p.ID())
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.pluginList) > 0 {
+		filtered := m.pluginList[:0]
+		for _, item := range m.pluginList {
+			if item == nil {
+				continue
+			}
+			if item.Name() == p.Name() && item.ID() == p.ID() {
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		m.pluginList = filtered
+	}
+
+	if len(m.managedPluginList) > 0 {
+		filtered := m.managedPluginList[:0]
+		for _, item := range m.managedPluginList {
+			if item == nil {
+				continue
+			}
+			if item.Name() == p.Name() && item.ID() == p.ID() {
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		m.managedPluginList = filtered
+	}
 }

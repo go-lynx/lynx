@@ -50,35 +50,36 @@ const (
 	// Should transition to StatusTerminated or attempt recovery
 	StatusFailed
 
-	// StatusUpgrading indicates that the plugin is currently being upgraded
-	// During this state, the plugin may be partially operational
-	// Should transition to StatusActive or StatusFailed
+	// StatusUpgrading is kept only for backward compatibility with older plugins.
+	// Lynx core does not treat live upgrade as a standard lifecycle path.
 	StatusUpgrading
 
-	// StatusRollback indicates that the plugin is rolling back from a failed upgrade
-	// Attempting to restore the previous working state
-	// Should transition to StatusActive or StatusFailed
+	// StatusRollback is kept only for backward compatibility with older plugins.
+	// Lynx core does not orchestrate in-process rollback as a standard lifecycle path.
 	StatusRollback
 )
 
-// UpgradeCapability defines the various ways a plugin can be upgraded during runtime
+// UpgradeCapability describes optional legacy plugin self-management behaviors.
+// Lynx core does not treat live upgrade or replacement as a framework-level
+// guarantee; these flags are advisory compatibility metadata only and concrete
+// plugins must opt in explicitly where needed.
 type UpgradeCapability int
 
 const (
-	// UpgradeNone indicates the plugin does not support any runtime upgrades
-	// Must be stopped and restarted to apply any changes
+	// UpgradeNone indicates the plugin does not advertise legacy live-upgrade hooks.
+	// Restart remains the default core path for change application.
 	UpgradeNone UpgradeCapability = iota
 
-	// UpgradeConfig indicates the plugin can update its configuration without restart
-	// Supports runtime configuration changes but not code updates
+	// UpgradeConfig indicates the plugin advertises legacy self-managed config mutation.
+	// This does not mean Lynx core orchestrates in-process rollout.
 	UpgradeConfig
 
-	// UpgradeVersion indicates the plugin can perform version upgrades without restart
-	// Supports both configuration and code updates during runtime
+	// UpgradeVersion indicates the plugin advertises legacy self-managed version upgrade hooks.
+	// Lynx core still expects restart/external rollout as the standard path.
 	UpgradeVersion
 
-	// UpgradeReplace indicates the plugin supports complete replacement during runtime
-	// Can be entirely replaced with a new instance while maintaining service
+	// UpgradeReplace indicates the plugin advertises legacy replacement semantics.
+	// Lynx core does not provide a framework guarantee for live replacement.
 	UpgradeReplace
 )
 
@@ -207,14 +208,19 @@ type HealthChecker interface {
 
 // PluginProtocol declares lifecycle-related capabilities explicitly.
 // New plugins should prefer declaring protocol instead of relying on legacy runtime probing.
+// Configuration mutation flags are compatibility metadata only; Lynx core still
+// applies configuration changes by restart instead of in-process orchestration.
 type PluginProtocol struct {
 	ManagedLifecycle bool
 	HealthAware      bool
 	ContextLifecycle bool
 	Recoverable      bool
-	ConfigHotReload  bool
+	// Deprecated compatibility metadata only. Core config changes are restart-based.
+	ConfigHotReload bool
+	// Deprecated compatibility metadata only. Core config changes are restart-based.
 	ConfigValidation bool
-	ConfigRollback   bool
+	// Deprecated compatibility metadata only. Core config changes are restart-based.
+	ConfigRollback bool
 }
 
 // ProtocolAwarePlugin explicitly declares its lifecycle protocol.
@@ -452,20 +458,22 @@ type Suspendable interface {
 	Resume() error
 }
 
-// Configurable defines methods for plugin configuration management
-// Manages plugin configuration updates and validation
+// Configurable defines optional compatibility hooks for plugins that manage
+// their own runtime configuration concerns. Lynx core does not orchestrate
+// in-process config rollout; configuration changes are applied by restart.
 type Configurable interface {
-	// Configure applies and validates the given configuration
-	// Updates plugin configuration during runtime
+	// Configure applies plugin-specific configuration in plugin-owned code paths.
 	Configure(conf any) error
 }
 
-// ConfigValidator defines optional validation support for runtime configuration updates.
+// ConfigValidator defines optional compatibility validation for plugin-owned
+// configuration handling. It does not make live core reload a supported path.
 type ConfigValidator interface {
 	ValidateConfig(conf any) error
 }
 
-// ConfigRollbacker defines optional explicit rollback support for runtime configuration updates.
+// ConfigRollbacker defines optional compatibility rollback support for
+// plugin-owned configuration handling. Lynx core itself remains restart-based.
 type ConfigRollbacker interface {
 	RollbackConfig(previous any) error
 }
