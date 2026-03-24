@@ -13,7 +13,7 @@ func TestStrX(t *testing.T) {
 	if Truncate("ChineseABC", 0, "…") != "" {
 		t.Fatalf("Truncate max<=0")
 	}
-	if Truncate("ChineseABC", 2, "") != "Chinese" {
+	if Truncate("ChineseABC", 2, "") != "Ch" {
 		t.Fatalf("Truncate runes no ellipsis")
 	}
 	got := Truncate("ChineseABC", 3, "…")
