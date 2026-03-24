@@ -67,29 +67,29 @@ func TestTimeRotationWriter_ShouldRotateByTime(t *testing.T) {
 		{
 			name:     "hourly - should rotate",
 			interval: RotationIntervalHourly,
-			lastTime: time.Now().Add(-2 * time.Hour),
-			now:      time.Now(),
+			lastTime: time.Date(2026, time.March, 24, 10, 0, 0, 0, time.Local),
+			now:      time.Date(2026, time.March, 24, 12, 0, 0, 0, time.Local),
 			expected: true,
 		},
 		{
 			name:     "hourly - should not rotate",
 			interval: RotationIntervalHourly,
-			lastTime: time.Now().Add(-30 * time.Minute),
-			now:      time.Now(),
+			lastTime: time.Date(2026, time.March, 24, 11, 30, 0, 0, time.Local),
+			now:      time.Date(2026, time.March, 24, 11, 45, 0, 0, time.Local),
 			expected: false,
 		},
 		{
 			name:     "daily - should rotate",
 			interval: RotationIntervalDaily,
-			lastTime: time.Now().Add(-25 * time.Hour),
-			now:      time.Now(),
+			lastTime: time.Date(2026, time.March, 23, 9, 0, 0, 0, time.Local),
+			now:      time.Date(2026, time.March, 24, 12, 0, 0, 0, time.Local),
 			expected: true,
 		},
 		{
 			name:     "daily - should not rotate",
 			interval: RotationIntervalDaily,
-			lastTime: time.Now().Add(-12 * time.Hour).Truncate(24 * time.Hour), // Same day
-			now:      time.Now(),
+			lastTime: time.Date(2026, time.March, 24, 0, 0, 0, 0, time.Local),
+			now:      time.Date(2026, time.March, 24, 12, 0, 0, 0, time.Local),
 			expected: false,
 		},
 	}
@@ -102,6 +102,7 @@ func TestTimeRotationWriter_ShouldRotateByTime(t *testing.T) {
 
 			writer.mu.Lock()
 			writer.lastRotate = tt.lastTime
+			writer.now = func() time.Time { return tt.now }
 			writer.mu.Unlock()
 
 			// Test shouldRotateByTime

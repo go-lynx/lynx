@@ -1,7 +1,6 @@
 package log
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -37,6 +36,7 @@ type TimeRotationWriter struct {
 	strategy     RotationStrategy
 	interval     RotationInterval
 	lastRotate   time.Time
+	now          func() time.Time
 	mu           sync.Mutex
 	stopCh       chan struct{}
 	wg           sync.WaitGroup
@@ -68,6 +68,7 @@ func NewTimeRotationWriter(filename string, maxSizeMB, maxBackups, maxAgeDays in
 		filename:     filename,
 		strategy:     strategy,
 		interval:     interval,
+		now:          time.Now,
 		lastRotate:   time.Now(),
 		stopCh:       make(chan struct{}),
 		maxTotalSize: int64(maxTotalSizeMB) * 1024 * 1024, // Convert MB to bytes
@@ -114,36 +115,10 @@ func (trw *TimeRotationWriter) Write(p []byte) (int, error) {
 		maxTotalSize := trw.maxTotalSize
 		trw.sizeMu.Unlock()
 
-		// Check total size limit (call outside main lock to avoid blocking writes)
+		// Check total size limit asynchronously so writers do not block on cleanup.
 		if maxTotalSize > 0 && totalSize > maxTotalSize {
-			// Use goroutine to avoid blocking Write() call
-			// Use context with timeout to prevent goroutine leak
 			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-
-				done := make(chan struct{})
-				go func() {
-					defer close(done)
-					trw.sizeMu.Lock()
-					defer trw.sizeMu.Unlock()
-					// Double-check after acquiring lock (might have been updated)
-					if trw.totalSize > trw.maxTotalSize {
-						// Invalidate cache before enforcement
-						trw.invalidateSizeCache()
-						trw.enforceTotalSizeLimit()
-						// Update cache after enforcement
-						trw.updateTotalSize()
-					}
-				}()
-
-				select {
-				case <-done:
-					// Completed successfully
-				case <-ctx.Done():
-					// Timeout: log warning but don't block
-					fmt.Fprintf(os.Stderr, "[lynx-log-warn] enforceTotalSizeLimit timeout after 30s\n")
-				}
+				trw.enforceTotalSizeLimit()
 			}()
 		}
 	}
@@ -183,23 +158,40 @@ func (trw *TimeRotationWriter) Close() error {
 
 // shouldRotateByTime checks if rotation is needed based on time
 func (trw *TimeRotationWriter) shouldRotateByTime() bool {
-	now := time.Now()
+	now := trw.now()
 	var nextRotate time.Time
 
 	switch trw.interval {
 	case RotationIntervalHourly:
-		// Rotate at the start of each hour
-		nextRotate = trw.lastRotate.Truncate(time.Hour).Add(time.Hour)
+		nextRotate = time.Date(
+			trw.lastRotate.Year(),
+			trw.lastRotate.Month(),
+			trw.lastRotate.Day(),
+			trw.lastRotate.Hour(),
+			0, 0, 0,
+			trw.lastRotate.Location(),
+		).Add(time.Hour)
 	case RotationIntervalDaily:
-		// Rotate at midnight
-		nextRotate = trw.lastRotate.Truncate(24 * time.Hour).Add(24 * time.Hour)
+		nextRotate = time.Date(
+			trw.lastRotate.Year(),
+			trw.lastRotate.Month(),
+			trw.lastRotate.Day()+1,
+			0, 0, 0, 0,
+			trw.lastRotate.Location(),
+		)
 	case RotationIntervalWeekly:
-		// Rotate at the start of each week (Monday 00:00)
 		daysSinceMonday := int(trw.lastRotate.Weekday()) - 1
 		if daysSinceMonday < 0 {
-			daysSinceMonday = 6 // Sunday
+			daysSinceMonday = 6
 		}
-		nextRotate = trw.lastRotate.Truncate(24*time.Hour).AddDate(0, 0, 7-daysSinceMonday)
+		weekStart := time.Date(
+			trw.lastRotate.Year(),
+			trw.lastRotate.Month(),
+			trw.lastRotate.Day()-daysSinceMonday,
+			0, 0, 0, 0,
+			trw.lastRotate.Location(),
+		)
+		nextRotate = weekStart.AddDate(0, 0, 7)
 	default:
 		return false
 	}
@@ -237,7 +229,7 @@ func (trw *TimeRotationWriter) rotate() error {
 	}
 
 	// Update last rotate time
-	trw.lastRotate = time.Now()
+	trw.lastRotate = trw.now()
 
 	// Invalidate cache and update total size
 	trw.invalidateSizeCache()
@@ -294,15 +286,35 @@ func (trw *TimeRotationWriter) timeRotationLoop() {
 			var nextRotate time.Time
 			switch trw.interval {
 			case RotationIntervalHourly:
-				nextRotate = trw.lastRotate.Truncate(time.Hour).Add(time.Hour)
+				nextRotate = time.Date(
+					trw.lastRotate.Year(),
+					trw.lastRotate.Month(),
+					trw.lastRotate.Day(),
+					trw.lastRotate.Hour(),
+					0, 0, 0,
+					trw.lastRotate.Location(),
+				).Add(time.Hour)
 			case RotationIntervalDaily:
-				nextRotate = trw.lastRotate.Truncate(24 * time.Hour).Add(24 * time.Hour)
+				nextRotate = time.Date(
+					trw.lastRotate.Year(),
+					trw.lastRotate.Month(),
+					trw.lastRotate.Day()+1,
+					0, 0, 0, 0,
+					trw.lastRotate.Location(),
+				)
 			case RotationIntervalWeekly:
 				daysSinceMonday := int(trw.lastRotate.Weekday()) - 1
 				if daysSinceMonday < 0 {
-					daysSinceMonday = 6 // Sunday
+					daysSinceMonday = 6
 				}
-				nextRotate = trw.lastRotate.Truncate(24*time.Hour).AddDate(0, 0, 7-daysSinceMonday)
+				weekStart := time.Date(
+					trw.lastRotate.Year(),
+					trw.lastRotate.Month(),
+					trw.lastRotate.Day()-daysSinceMonday,
+					0, 0, 0, 0,
+					trw.lastRotate.Location(),
+				)
+				nextRotate = weekStart.AddDate(0, 0, 7)
 			default:
 				nextRotate = now.Add(baseCheckInterval)
 			}
@@ -365,55 +377,11 @@ func (trw *TimeRotationWriter) timeRotationLoop() {
 func (trw *TimeRotationWriter) updateTotalSize() {
 	trw.sizeMu.Lock()
 	defer trw.sizeMu.Unlock()
-
-	// Check cache first
-	if trw.sizeCacheValid.Load() {
-		cacheTime := trw.sizeCacheTime.Load()
-		if cacheTime > 0 {
-			cacheAge := time.Since(time.Unix(0, cacheTime))
-			if cacheAge < trw.cacheTTL {
-				// Use cached value
-				trw.totalSize = trw.sizeCache.Load()
-				return
-			}
-		}
-	}
-
-	dir := filepath.Dir(trw.filename)
-	base := filepath.Base(trw.filename)
-	ext := filepath.Ext(base)
-	baseName := base[:len(base)-len(ext)]
-
-	var total int64
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		// On error, use cached value if available
-		if trw.sizeCacheValid.Load() {
-			trw.totalSize = trw.sizeCache.Load()
-		}
-		return
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		// Match log files: base.log, base.YYYYMMDD.log, base.YYYYMMDD.log.gz, etc.
-		if name == base ||
-			(len(name) > len(base) && name[:len(baseName)] == baseName &&
-				(name[len(name)-len(ext):] == ext || name[len(name)-len(ext)-3:] == ext+".gz")) {
-			info, err := entry.Info()
-			if err == nil {
-				total += info.Size()
-			}
-		}
-	}
-
+	total := trw.recalculateTotalSize()
 	trw.totalSize = total
 	// Update cache
 	trw.sizeCache.Store(total)
-	trw.sizeCacheTime.Store(time.Now().UnixNano())
+	trw.sizeCacheTime.Store(trw.now().UnixNano())
 	trw.sizeCacheValid.Store(true)
 }
 
@@ -454,9 +422,7 @@ func (trw *TimeRotationWriter) enforceTotalSizeLimit() {
 			continue
 		}
 		name := entry.Name()
-		if name == base ||
-			(len(name) > len(baseName) && name[:len(baseName)] == baseName &&
-				(name[len(name)-len(ext):] == ext || name[len(name)-len(ext)-3:] == ext+".gz")) {
+		if trw.matchesManagedLogFile(name, base, baseName, ext) {
 			info, err := entry.Info()
 			if err == nil {
 				files = append(files, logFile{
@@ -496,7 +462,59 @@ func (trw *TimeRotationWriter) enforceTotalSizeLimit() {
 		}
 	}
 
-	// Invalidate cache and recalculate to ensure accuracy
-	trw.invalidateSizeCache()
-	trw.updateTotalSize()
+	// Recalculate while still holding the size lock to keep the in-memory view coherent.
+	total := trw.recalculateTotalSize()
+	trw.totalSize = total
+	trw.sizeCache.Store(total)
+	trw.sizeCacheTime.Store(trw.now().UnixNano())
+	trw.sizeCacheValid.Store(true)
+}
+
+func (trw *TimeRotationWriter) recalculateTotalSize() int64 {
+	dir := filepath.Dir(trw.filename)
+	base := filepath.Base(trw.filename)
+	ext := filepath.Ext(base)
+	baseName := base[:len(base)-len(ext)]
+
+	var total int64
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if trw.sizeCacheValid.Load() {
+			return trw.sizeCache.Load()
+		}
+		return 0
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if !trw.matchesManagedLogFile(entry.Name(), base, baseName, ext) {
+			continue
+		}
+		info, err := entry.Info()
+		if err == nil {
+			total += info.Size()
+		}
+	}
+	return total
+}
+
+func (trw *TimeRotationWriter) matchesManagedLogFile(name, base, baseName, ext string) bool {
+	if name == base {
+		return true
+	}
+	if len(name) > len(base)+1 && name[:len(base)+1] == base+"." {
+		return true
+	}
+	if len(name) <= len(baseName) || name[:len(baseName)] != baseName {
+		return false
+	}
+	if len(name) >= len(ext) && name[len(name)-len(ext):] == ext {
+		return true
+	}
+	if len(name) >= len(ext)+3 && name[len(name)-len(ext)-3:] == ext+".gz" {
+		return true
+	}
+	return false
 }
