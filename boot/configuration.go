@@ -8,6 +8,24 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
+func (app *Application) resolveBootstrapConfigPath() string {
+	if app == nil {
+		return ""
+	}
+
+	configMgr := GetConfigManager()
+	if app.configPath != "" {
+		return app.configPath
+	}
+	if configPath := configMgr.GetConfigPath(); configPath != "" {
+		return configPath
+	}
+	if flagConf != "" {
+		return flagConf
+	}
+	return configMgr.GetDefaultConfigPath()
+}
+
 // LoadBootstrapConfig loads bootstrap configuration from local files or directories.
 // It reads configuration from the path specified by the configuration manager and initializes the application's configuration state.
 //
@@ -19,17 +37,9 @@ func (app *Application) LoadBootstrapConfig() error {
 		return fmt.Errorf("application instance is nil: cannot load bootstrap configuration")
 	}
 
-	// Get configuration path
-	configMgr := GetConfigManager()
-	configPath := configMgr.GetConfigPath()
-	if configPath == "" {
-		configPath = flagConf
-	}
-	if configPath == "" {
-		configPath = configMgr.GetDefaultConfigPath()
-	}
-	if configPath != "" {
-		configMgr.SetConfigPath(configPath)
+	configPath := app.resolveBootstrapConfigPath()
+	if configPath != "" && app.configPath == "" {
+		GetConfigManager().SetConfigPath(configPath)
 	}
 
 	// Check if configuration path is empty

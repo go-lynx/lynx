@@ -1,6 +1,7 @@
 package events
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -206,5 +207,88 @@ func TestConfigurationValidation(t *testing.T) {
 	_, err = NewEventBusManager(configs)
 	if err == nil {
 		t.Error("Expected error for invalid throttling configuration")
+	}
+}
+
+func TestGlobalListenerManager_UsesProviderSafely(t *testing.T) {
+	t.Cleanup(func() {
+		ClearDefaultListenerManagerProvider()
+	})
+
+	manager, err := NewEventBusManager(DefaultBusConfigs())
+	if err != nil {
+		t.Fatalf("failed to create event bus manager: %v", err)
+	}
+	defer manager.Close()
+
+	listenerManager := NewEventListenerManagerWithEventBus(manager)
+	SetDefaultListenerManagerProvider(func() *EventListenerManager {
+		return listenerManager
+	})
+
+	got := GetGlobalListenerManager()
+	if got != listenerManager {
+		t.Fatalf("expected provider-backed listener manager, got %p want %p", got, listenerManager)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := AddGlobalListenerWithContext(ctx, "provider-listener", nil, func(LynxEvent) {}, BusTypePlugin); err != nil {
+		t.Fatalf("failed to add global listener via provider-backed manager: %v", err)
+	}
+	if listenerManager.Count() != 1 {
+		t.Fatalf("expected listener to be registered on provider-backed manager, count=%d", listenerManager.Count())
+	}
+
+	cancel()
+	time.Sleep(20 * time.Millisecond)
+	if listenerManager.Count() != 0 {
+		t.Fatalf("expected listener to be removed after context cancellation, count=%d", listenerManager.Count())
+	}
+}
+
+func TestExplicitManagerHelpers_DoNotRequireGlobals(t *testing.T) {
+	manager, err := NewEventBusManager(DefaultBusConfigs())
+	if err != nil {
+		t.Fatalf("failed to create event bus manager: %v", err)
+	}
+	defer manager.Close()
+
+	listenerManager := NewEventListenerManagerWithEventBus(manager)
+
+	eventReceived := make(chan struct{}, 1)
+	if err := SubscribeToWithManager(manager, EventPluginInitialized, func(LynxEvent) {
+		select {
+		case eventReceived <- struct{}{}:
+		default:
+		}
+	}); err != nil {
+		t.Fatalf("failed to subscribe to event with explicit manager: %v", err)
+	}
+
+	if err := PublishEventWithManager(manager, NewLynxEvent(EventPluginInitialized, "test-plugin", "test")); err != nil {
+		t.Fatalf("failed to publish with explicit manager: %v", err)
+	}
+
+	select {
+	case <-eventReceived:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected event to be delivered via explicit manager helpers")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := AddListenerWithManagerAndContext(ctx, listenerManager, "explicit-listener", nil, func(LynxEvent) {}, BusTypePlugin); err != nil {
+		t.Fatalf("failed to add listener with explicit manager: %v", err)
+	}
+	if listenerManager.Count() != 1 {
+		t.Fatalf("expected listener to be registered on explicit manager, count=%d", listenerManager.Count())
+	}
+
+	if err := RemoveListenerWithManager(listenerManager, "explicit-listener"); err != nil {
+		t.Fatalf("failed to remove listener with explicit manager: %v", err)
+	}
+	if listenerManager.Count() != 0 {
+		t.Fatalf("expected listener to be removed from explicit manager, count=%d", listenerManager.Count())
 	}
 }
