@@ -2,6 +2,7 @@ package boot
 
 import (
 	"context"
+	"flag"
 	"strings"
 	"testing"
 	"time"
@@ -118,5 +119,33 @@ func TestApplication_StopKratosAppWithTimeout(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "shutdown timeout exceeded") {
 		t.Fatalf("expected shutdown timeout error, got %v", err)
+	}
+}
+
+func TestRegisterBootstrapFlags_IsIdempotentAndReadsExistingFlag(t *testing.T) {
+	fs := flag.NewFlagSet("boot-test", flag.ContinueOnError)
+	RegisterBootstrapFlags(fs)
+	RegisterBootstrapFlags(fs)
+
+	confFlag := fs.Lookup("conf")
+	if confFlag == nil {
+		t.Fatal("expected conf flag to be registered")
+	}
+
+	existing := flag.NewFlagSet("boot-existing", flag.ContinueOnError)
+	existing.String("conf", "/tmp/existing.yaml", "")
+
+	previousFlagConf := flagConf
+	t.Cleanup(func() {
+		flagConf = previousFlagConf
+	})
+	flagConf = ""
+
+	RegisterBootstrapFlags(existing)
+	if got := existing.Lookup("conf").Value.String(); got != "/tmp/existing.yaml" {
+		t.Fatalf("expected existing conf flag value to remain unchanged, got %q", got)
+	}
+	if flagConf != "/tmp/existing.yaml" {
+		t.Fatalf("expected package flagConf to mirror existing flag value, got %q", flagConf)
 	}
 }
