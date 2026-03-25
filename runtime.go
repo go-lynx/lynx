@@ -21,18 +21,6 @@ type TypedRuntimePlugin struct {
 	runtime plugins.Runtime
 }
 
-// NewTypedRuntimePlugin creates a new compatibility runtime wrapper.
-// Deprecated: prefer plugins.NewUnifiedRuntime.
-func NewTypedRuntimePlugin() *TypedRuntimePlugin {
-	runtime := plugins.NewUnifiedRuntime()
-	runtime.SetLogger(log.DefaultLogger)
-
-	r := &TypedRuntimePlugin{
-		runtime: runtime,
-	}
-	return r
-}
-
 // GetResource retrieves a shared plugin resource by name.
 // Returns the resource and any error encountered.
 func (r *TypedRuntimePlugin) GetResource(name string) (any, error) {
@@ -46,24 +34,48 @@ func (r *TypedRuntimePlugin) RegisterResource(name string, resource any) error {
 }
 
 // GetTypedResource retrieves a type-safe resource (standalone helper)
+// Deprecated: prefer GetTypedResourceFromRuntime or plugins.GetTypedResource with an explicit plugins.Runtime.
 func GetTypedResource[T any](r *TypedRuntimePlugin, name string) (T, error) {
+	return GetTypedResourceFromRuntime[T](r.UnderlyingRuntime(), name)
+}
+
+// GetTypedResourceFromRuntime retrieves a type-safe resource from an explicit runtime.
+func GetTypedResourceFromRuntime[T any](runtime plugins.Runtime, name string) (T, error) {
 	var zero T
-	resource, err := r.GetResource(name)
-	if err != nil {
-		return zero, err
+	if runtime == nil {
+		return zero, fmt.Errorf("runtime is nil")
 	}
-
-	typed, ok := resource.(T)
-	if !ok {
-		return zero, fmt.Errorf("type assertion failed for resource %s", name)
-	}
-
-	return typed, nil
+	return plugins.GetTypedResource[T](runtime, name)
 }
 
 // RegisterTypedResource registers a type-safe resource (standalone helper)
+// Deprecated: prefer RegisterTypedResourceOnRuntime or plugins.RegisterTypedResource with an explicit plugins.Runtime.
 func RegisterTypedResource[T any](r *TypedRuntimePlugin, name string, resource T) error {
-	return r.RegisterResource(name, resource)
+	return RegisterTypedResourceOnRuntime[T](r.UnderlyingRuntime(), name, resource)
+}
+
+// RegisterTypedResourceOnRuntime registers a typed resource on an explicit runtime.
+func RegisterTypedResourceOnRuntime[T any](runtime plugins.Runtime, name string, resource T) error {
+	if runtime == nil {
+		return fmt.Errorf("runtime is nil")
+	}
+	return plugins.RegisterTypedResource[T](runtime, name, resource)
+}
+
+// NewDefaultRuntime creates a unified runtime configured with the default logger.
+func NewDefaultRuntime() plugins.Runtime {
+	runtime := plugins.NewUnifiedRuntime()
+	runtime.SetLogger(log.DefaultLogger)
+	return runtime
+}
+
+// NewTypedRuntimePlugin creates a new compatibility runtime wrapper.
+// Deprecated: prefer NewDefaultRuntime or plugins.NewUnifiedRuntime.
+func NewTypedRuntimePlugin() *TypedRuntimePlugin {
+	r := &TypedRuntimePlugin{
+		runtime: NewDefaultRuntime(),
+	}
+	return r
 }
 
 // GetConfig returns the plugin configuration manager.
@@ -109,7 +121,7 @@ func (r *TypedRuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugi
 type RuntimePlugin = TypedRuntimePlugin
 
 // NewRuntimePlugin creates a runtime plugin (backward-compatible)
-// Deprecated: prefer plugins.NewUnifiedRuntime.
+// Deprecated: prefer NewDefaultRuntime or plugins.NewUnifiedRuntime.
 func NewRuntimePlugin() *RuntimePlugin {
 	return NewTypedRuntimePlugin()
 }
@@ -211,5 +223,3 @@ func (r *TypedRuntimePlugin) CleanupResources(pluginID string) error {
 func (r *TypedRuntimePlugin) GetResourceStats() map[string]any {
 	return r.runtime.GetResourceStats()
 }
-
-// RemoveListener unregisters an event listener.

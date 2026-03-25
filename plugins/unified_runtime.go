@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,6 +24,44 @@ type runtimeSharedState struct {
 	logger       log.Logger
 	eventAdapter EventBusAdapter
 	closed       bool
+}
+
+const (
+	sharedResourceKeyPrefix   = "__lynx_shared__:"
+	privateResourceKeyPrefix  = "__lynx_private__:"
+	privateResourceNamePrefix = "private:"
+)
+
+func sharedResourceStorageKey(name string) string {
+	return sharedResourceKeyPrefix + name
+}
+
+func privateResourceStorageKey(pluginID, name string) string {
+	return privateResourceKeyPrefix + pluginID + ":" + name
+}
+
+func privateResourceDisplayName(pluginID, name string) string {
+	return privateResourceNamePrefix + pluginID + ":" + name
+}
+
+func parsePrivateResourceDisplayName(name string) (string, string, bool) {
+	if !strings.HasPrefix(name, privateResourceNamePrefix) {
+		return "", "", false
+	}
+	trimmed := strings.TrimPrefix(name, privateResourceNamePrefix)
+	idx := strings.Index(trimmed, ":")
+	if idx <= 0 || idx == len(trimmed)-1 {
+		return "", "", false
+	}
+	return trimmed[:idx], trimmed[idx+1:], true
+}
+
+func parseLegacyPrivateResourceDisplayName(name string) (string, string, bool) {
+	idx := strings.Index(name, ":")
+	if idx <= 0 || idx == len(name)-1 {
+		return "", "", false
+	}
+	return name[:idx], name[idx+1:], true
 }
 
 // UnifiedRuntime is a unified Runtime implementation that consolidates all existing capabilities
@@ -118,12 +157,13 @@ func (r *UnifiedRuntime) GetSharedResource(name string) (any, error) {
 		return nil, fmt.Errorf("resource name cannot be empty")
 	}
 
-	value, ok := r.resources.Load(name)
+	key := sharedResourceStorageKey(name)
+	value, ok := r.resources.Load(key)
 	if !ok {
 		return nil, fmt.Errorf("resource not found: %s", name)
 	}
 
-	r.updateAccessStats(name)
+	r.updateAccessStats(key)
 
 	return value, nil
 }
@@ -150,10 +190,11 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 
 	callerOwner := r.getCurrentOwner()
 	caller := r.ownerPluginID(callerOwner)
+	key := sharedResourceStorageKey(name)
 
 	var oldResource any
 	r.resourceOpMu.Lock()
-	if oldInfoValue, loaded := r.resourceInfo.Load(name); loaded {
+	if oldInfoValue, loaded := r.resourceInfo.Load(key); loaded {
 		if oldInfo, ok := oldInfoValue.(*ResourceInfo); ok {
 			owner := oldInfo.PluginID
 			if owner == "" {
@@ -164,7 +205,7 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 				return fmt.Errorf("permission denied: plugin %q cannot overwrite shared resource %q owned by %q", caller, name, owner)
 			}
 		}
-		if existing, ok := r.resources.Load(name); ok {
+		if existing, ok := r.resources.Load(key); ok {
 			oldResource = existing
 		}
 	}
@@ -183,8 +224,8 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 		Metadata:      make(map[string]any),
 	}
 
-	r.resources.Store(name, resource)
-	r.resourceInfo.Store(name, info)
+	r.resources.Store(key, resource)
+	r.resourceInfo.Store(key, info)
 	r.resourceOpMu.Unlock()
 
 	if oldResource != nil {
@@ -206,7 +247,7 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 				// Runtime closed during estimation, skip update
 				return
 			default:
-				if value, ok := r.resourceInfo.Load(name); ok {
+				if value, ok := r.resourceInfo.Load(key); ok {
 					if existingInfo, ok := value.(*ResourceInfo); ok {
 						// Use atomic store for thread-safe update
 						atomic.StoreInt64(&existingInfo.Size, size)
@@ -226,8 +267,15 @@ func (r *UnifiedRuntime) GetPrivateResource(name string) (any, error) {
 		return nil, fmt.Errorf("no plugin context set")
 	}
 
-	privateKey := fmt.Sprintf("%s:%s", pluginID, name)
-	return r.GetSharedResource(privateKey)
+	key := privateResourceStorageKey(pluginID, name)
+	value, ok := r.resources.Load(key)
+	if !ok {
+		return nil, fmt.Errorf("resource not found: %s", name)
+	}
+
+	r.updateAccessStats(key)
+
+	return value, nil
 }
 
 // RegisterPrivateResource registers a private (plugin-scoped) resource.
@@ -256,18 +304,19 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 		return fmt.Errorf("resource cannot be nil")
 	}
 
-	privateKey := fmt.Sprintf("%s:%s", pluginID, name)
+	key := privateResourceStorageKey(pluginID, name)
+	displayName := privateResourceDisplayName(pluginID, name)
 
 	var oldResource any
 	r.resourceOpMu.Lock()
-	if existing, loaded := r.resources.Load(privateKey); loaded {
+	if existing, loaded := r.resources.Load(key); loaded {
 		oldResource = existing
 	}
 
 	// Create resource info with size estimation
 	now := time.Now()
 	info := &ResourceInfo{
-		Name:          privateKey,
+		Name:          displayName,
 		Type:          reflect.TypeOf(resource).String(),
 		PluginID:      pluginID,
 		OwnerHandleID: r.ownerHandleID(callerOwner),
@@ -279,12 +328,12 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 		Metadata:      make(map[string]any),
 	}
 
-	r.resources.Store(privateKey, resource)
-	r.resourceInfo.Store(privateKey, info)
+	r.resources.Store(key, resource)
+	r.resourceInfo.Store(key, info)
 	r.resourceOpMu.Unlock()
 
 	if oldResource != nil {
-		_ = r.cleanupResourceGracefully(privateKey, oldResource)
+		_ = r.cleanupResourceGracefully(displayName, oldResource)
 	}
 
 	// Asynchronously estimate resource size to avoid blocking registration
@@ -302,7 +351,7 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 				// Runtime closed during estimation, skip update
 				return
 			default:
-				if value, ok := r.resourceInfo.Load(privateKey); ok {
+				if value, ok := r.resourceInfo.Load(key); ok {
 					if existingInfo, ok := value.(*ResourceInfo); ok {
 						// Use atomic store for thread-safe update
 						atomic.StoreInt64(&existingInfo.Size, size)
@@ -411,6 +460,33 @@ func (r *UnifiedRuntime) WithPluginContext(pluginName string) Runtime {
 // GetCurrentPluginContext returns current plugin context
 func (r *UnifiedRuntime) GetCurrentPluginContext() string {
 	return r.getCurrentPluginContext()
+}
+
+func (r *UnifiedRuntime) resolveResourceInfoLookupKey(name string) string {
+	if _, ok := r.resourceInfo.Load(name); ok {
+		return name
+	}
+
+	sharedKey := sharedResourceStorageKey(name)
+	if _, ok := r.resourceInfo.Load(sharedKey); ok {
+		return sharedKey
+	}
+
+	if pluginID, privateName, ok := parsePrivateResourceDisplayName(name); ok {
+		privateKey := privateResourceStorageKey(pluginID, privateName)
+		if _, exists := r.resourceInfo.Load(privateKey); exists {
+			return privateKey
+		}
+	}
+
+	if pluginID, privateName, ok := parseLegacyPrivateResourceDisplayName(name); ok {
+		privateKey := privateResourceStorageKey(pluginID, privateName)
+		if _, exists := r.resourceInfo.Load(privateKey); exists {
+			return privateKey
+		}
+	}
+
+	return name
 }
 
 func (r *UnifiedRuntime) getCurrentPluginContext() string {
@@ -662,7 +738,8 @@ func (r *UnifiedRuntime) GetResourceInfo(name string) (*ResourceInfo, error) {
 		return nil, fmt.Errorf("resource name cannot be empty")
 	}
 
-	value, ok := r.resourceInfo.Load(name)
+	key := r.resolveResourceInfoLookupKey(name)
+	value, ok := r.resourceInfo.Load(key)
 	if !ok {
 		return nil, fmt.Errorf("resource info not found: %s", name)
 	}
@@ -711,8 +788,9 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 
 	// Collect resources to be deleted with their actual resource objects
 	type resItem struct {
-		name string
-		res  any
+		key         string
+		displayName string
+		res         any
 	}
 	var toDelete []resItem
 
@@ -720,9 +798,9 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	r.resourceInfo.Range(func(key, value interface{}) bool {
 		if info, ok := value.(*ResourceInfo); ok {
 			if info.PluginID == pluginID {
-				name := key.(string)
-				if resource, exists := r.resources.Load(name); exists {
-					toDelete = append(toDelete, resItem{name: name, res: resource})
+				storageKey := key.(string)
+				if resource, exists := r.resources.Load(storageKey); exists {
+					toDelete = append(toDelete, resItem{key: storageKey, displayName: info.Name, res: resource})
 				}
 			}
 		}
@@ -730,8 +808,8 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	})
 
 	for _, item := range toDelete {
-		r.resources.Delete(item.name)
-		r.resourceInfo.Delete(item.name)
+		r.resources.Delete(item.key)
+		r.resourceInfo.Delete(item.key)
 	}
 	r.resourceOpMu.Unlock()
 
@@ -747,8 +825,8 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 
 	for _, item := range toDelete {
 		// Cleanup resource gracefully
-		if err := r.cleanupResourceGracefully(item.name, item.res); err != nil {
-			errors = append(errors, fmt.Errorf("failed to cleanup resource %s: %w", item.name, err))
+		if err := r.cleanupResourceGracefully(item.displayName, item.res); err != nil {
+			errors = append(errors, fmt.Errorf("failed to cleanup resource %s: %w", item.displayName, err))
 		} else {
 			cleanedCount++
 		}

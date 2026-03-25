@@ -14,6 +14,8 @@ var (
 	globalInitErr error
 
 	defaultEventBusProvider func() *EventBusManager
+	globalFallbackOnce      sync.Once
+	globalFallbackManager   *EventBusManager
 )
 
 // SetDefaultEventBusProvider wires compatibility global access to an external owner such as LynxApp.
@@ -64,8 +66,8 @@ func GetGlobalEventBus() *EventBusManager {
 
 	manager, err := ensureGlobalEventBus()
 	if err != nil {
-		log.NewHelper(log.DefaultLogger).Warnf("failed to initialize global event bus, using fallback manager: %v", err)
-		return newFallbackEventBusManager()
+		log.NewHelper(log.DefaultLogger).Warnf("failed to initialize global event bus, using shared fallback manager: %v", err)
+		return getOrCreateFallbackEventBusManager()
 	}
 	return manager
 }
@@ -176,6 +178,10 @@ func CloseGlobalEventBus() error {
 
 		return globalManager.Close()
 	}
+
+	if globalFallbackManager != nil {
+		return globalFallbackManager.Close()
+	}
 	return nil
 }
 
@@ -231,13 +237,16 @@ func ensureGlobalEventBus() (*EventBusManager, error) {
 	return globalManager, nil
 }
 
-func newFallbackEventBusManager() *EventBusManager {
-	manager := &EventBusManager{
-		buses:      make(map[BusType]*LynxEventBus),
-		classifier: NewEventClassifier(),
-		configs:    DefaultBusConfigs(),
-		logger:     log.DefaultLogger,
-	}
-	manager.initBuses()
-	return manager
+func getOrCreateFallbackEventBusManager() *EventBusManager {
+	globalFallbackOnce.Do(func() {
+		manager := &EventBusManager{
+			buses:      make(map[BusType]*LynxEventBus),
+			classifier: NewEventClassifier(),
+			configs:    DefaultBusConfigs(),
+			logger:     log.DefaultLogger,
+		}
+		manager.initBuses()
+		globalFallbackManager = manager
+	})
+	return globalFallbackManager
 }

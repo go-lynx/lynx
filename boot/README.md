@@ -19,7 +19,9 @@ management lives in the root `lynx` package and `plugins/UnifiedRuntime`.
 `boot` is now intentionally less intrusive than before:
 
 - importing `boot` no longer calls `flag.Parse()`
-- the package still registers the `-conf` flag for compatibility
+- importing `boot` no longer registers `-conf` eagerly
+- host processes may call `RegisterBootstrapFlags(...)` before parsing flags
+- `Run()` / `LoadBootstrapConfig()` still lazily register `-conf` for compatibility
 - configuration path resolution happens during explicit bootstrap loading
 - `LYNX_CONFIG_PATH` remains the default environment-based override
 

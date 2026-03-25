@@ -1,6 +1,7 @@
 package boot
 
 import (
+	"flag"
 	"fmt"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -20,10 +21,19 @@ func (app *Application) resolveBootstrapConfigPath() string {
 	if configPath := configMgr.GetConfigPath(); configPath != "" {
 		return configPath
 	}
-	if flagConf != "" {
-		return flagConf
+	if configPath := currentBootstrapFlagValue(); configPath != "" {
+		return configPath
 	}
 	return configMgr.GetDefaultConfigPath()
+}
+
+func currentBootstrapFlagValue() string {
+	if existing := flag.CommandLine.Lookup("conf"); existing != nil && existing.Value != nil {
+		if value := existing.Value.String(); value != "" {
+			return value
+		}
+	}
+	return flagConf
 }
 
 // LoadBootstrapConfig loads bootstrap configuration from local files or directories.
@@ -36,6 +46,8 @@ func (app *Application) LoadBootstrapConfig() error {
 	if app == nil {
 		return fmt.Errorf("application instance is nil: cannot load bootstrap configuration")
 	}
+
+	ensureBootstrapFlagsRegistered()
 
 	configPath := app.resolveBootstrapConfigPath()
 	if configPath != "" && app.configPath == "" {

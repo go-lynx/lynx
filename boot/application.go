@@ -24,7 +24,8 @@ import (
 
 // flagConf holds the configuration file path from command line arguments
 var (
-	flagConf string
+	flagConf                   string
+	registerBootstrapFlagsOnce sync.Once
 )
 
 // Application is an optional bootstrap shell around Lynx core.
@@ -41,11 +42,11 @@ type Application struct {
 	publishDefaultApp bool             // Whether boot publishes the created app as process-wide default
 
 	// Enhanced fields for production readiness
-	shutdownTimeout time.Duration   // Graceful shutdown timeout
-	shutdownChan    chan struct{}   // Channel to signal shutdown
-	shutdownOnce    sync.Once       // Ensure shutdown is called only once
-	healthChecker   *HealthChecker  // Health checker for monitoring
-	circuitBreaker  *CircuitBreaker // Circuit breaker for error handling
+	shutdownTimeout time.Duration           // Graceful shutdown timeout
+	shutdownChan    chan struct{}           // Channel to signal shutdown
+	shutdownOnce    sync.Once               // Ensure shutdown is called only once
+	healthChecker   *HealthChecker          // Health checker for monitoring
+	circuitBreaker  *lynxapp.CircuitBreaker // Circuit breaker for error handling
 }
 
 // HealthChecker provides application health monitoring
@@ -59,26 +60,6 @@ type HealthChecker struct {
 	app           *Application // Reference to application for health checks
 }
 
-// CircuitBreaker provides error handling and recovery
-type CircuitBreaker struct {
-	mu           sync.RWMutex
-	state        CircuitState
-	failureCount int
-	successCount int
-	lastFailure  time.Time
-	threshold    int
-	timeout      time.Duration
-}
-
-// CircuitState represents the state of circuit breaker
-type CircuitState int
-
-const (
-	CircuitStateClosed CircuitState = iota
-	CircuitStateOpen
-	CircuitStateHalfOpen
-)
-
 // Default configuration constants
 const (
 	DefaultShutdownTimeout         = 30 * time.Second
@@ -87,17 +68,33 @@ const (
 	DefaultCircuitBreakerTimeout   = 60 * time.Second
 )
 
-// init registers boot-package flags for compatibility.
-// Parsing is intentionally left to the host process or explicit startup paths;
-// importing this package should not consume command-line flags eagerly.
-func init() {
-	// Only parse command line arguments in non-test environments
-	if !isTestEnvironment() {
-		// Use configuration manager to get default configuration path
-		configMgr := GetConfigManager()
-		defaultConfPath := configMgr.GetDefaultConfigPath()
-		flag.StringVar(&flagConf, "conf", defaultConfPath, "config path, eg: -conf config.yaml")
+// RegisterBootstrapFlags registers boot compatibility flags on the provided flag set.
+// Host processes that parse flags before calling Run should invoke this explicitly.
+// The registration is idempotent for the process-wide default FlagSet.
+func RegisterBootstrapFlags(fs *flag.FlagSet) {
+	if fs == nil {
+		fs = flag.CommandLine
 	}
+
+	if existing := fs.Lookup("conf"); existing != nil {
+		if existing.Value != nil {
+			flagConf = existing.Value.String()
+		}
+		return
+	}
+
+	configMgr := GetConfigManager()
+	defaultConfPath := configMgr.GetDefaultConfigPath()
+	fs.StringVar(&flagConf, "conf", defaultConfPath, "config path, eg: -conf config.yaml")
+}
+
+func ensureBootstrapFlagsRegistered() {
+	if isTestEnvironment() {
+		return
+	}
+	registerBootstrapFlagsOnce.Do(func() {
+		RegisterBootstrapFlags(flag.CommandLine)
+	})
 }
 
 // isTestEnvironment checks if running in test environment
@@ -246,11 +243,7 @@ func (app *Application) initializeEnhancedFeatures() {
 	}
 
 	// Initialize circuit breaker
-	app.circuitBreaker = &CircuitBreaker{
-		state:     CircuitStateClosed,
-		threshold: DefaultCircuitBreakerThreshold,
-		timeout:   DefaultCircuitBreakerTimeout,
-	}
+	app.circuitBreaker = lynxapp.NewCircuitBreaker(DefaultCircuitBreakerThreshold, DefaultCircuitBreakerTimeout)
 }
 
 // setupSignalHandling sets up signal handling for graceful shutdown
@@ -627,75 +620,4 @@ func (hc *HealthChecker) IsHealthy() bool {
 	hc.mu.RLock()
 	defer hc.mu.RUnlock()
 	return hc.isHealthy
-}
-
-// CircuitBreaker methods
-
-// CanExecute checks if the circuit breaker allows execution.
-// Open->HalfOpen transition is done under exclusive lock to avoid multiple goroutines allowing execution.
-func (cb *CircuitBreaker) CanExecute() bool {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-
-	switch cb.state {
-	case CircuitStateClosed:
-		return true
-	case CircuitStateOpen:
-		if time.Since(cb.lastFailure) >= cb.timeout {
-			cb.state = CircuitStateHalfOpen
-			return true
-		}
-		return false
-	case CircuitStateHalfOpen:
-		return true
-	default:
-		return false
-	}
-}
-
-// RecordResult records the result of an operation
-func (cb *CircuitBreaker) RecordResult(err error) {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-
-	if err != nil {
-		cb.failureCount++
-		cb.lastFailure = time.Now()
-
-		if cb.state == CircuitStateClosed && cb.failureCount >= cb.threshold {
-			cb.state = CircuitStateOpen
-			log.Warnf("Circuit breaker opened after %d failures", cb.failureCount)
-		} else if cb.state == CircuitStateHalfOpen {
-			cb.state = CircuitStateOpen
-			log.Warn("Circuit breaker reopened after failed attempt")
-		}
-	} else {
-		cb.successCount++
-
-		if cb.state == CircuitStateHalfOpen {
-			cb.state = CircuitStateClosed
-			cb.resetCounters()
-			log.Info("Circuit breaker closed after successful attempt")
-		} else if cb.state == CircuitStateClosed {
-			// Reset counters periodically in closed state to prevent unbounded growth
-			// Reset after a reasonable number of successes to maintain recent history
-			const resetThreshold = 1000
-			if cb.successCount >= resetThreshold {
-				cb.resetCounters()
-			}
-		}
-	}
-}
-
-// resetCounters resets the circuit breaker counters
-func (cb *CircuitBreaker) resetCounters() {
-	cb.failureCount = 0
-	cb.successCount = 0
-}
-
-// GetState returns the current circuit breaker state
-func (cb *CircuitBreaker) GetState() CircuitState {
-	cb.mu.RLock()
-	defer cb.mu.RUnlock()
-	return cb.state
 }

@@ -60,3 +60,75 @@ func TestWithPluginContextConcurrent(t *testing.T) {
 		t.Fatalf("no private resource found in resource info list")
 	}
 }
+
+func TestPrivateResourceNamespace_DoesNotCollideWithShared(t *testing.T) {
+	base := NewUnifiedRuntime()
+	pluginRuntime := base.WithPluginContext("plugin-a")
+
+	if err := base.RegisterSharedResource("plugin-a:db", "shared"); err != nil {
+		t.Fatalf("failed to register shared resource: %v", err)
+	}
+	if err := pluginRuntime.RegisterPrivateResource("db", "private"); err != nil {
+		t.Fatalf("failed to register private resource: %v", err)
+	}
+
+	shared, err := base.GetSharedResource("plugin-a:db")
+	if err != nil {
+		t.Fatalf("failed to resolve shared resource: %v", err)
+	}
+	if shared.(string) != "shared" {
+		t.Fatalf("unexpected shared resource value: %v", shared)
+	}
+
+	privateValue, err := pluginRuntime.GetPrivateResource("db")
+	if err != nil {
+		t.Fatalf("failed to resolve private resource: %v", err)
+	}
+	if privateValue.(string) != "private" {
+		t.Fatalf("unexpected private resource value: %v", privateValue)
+	}
+
+	sharedInfo, err := base.GetResourceInfo("plugin-a:db")
+	if err != nil {
+		t.Fatalf("failed to get shared resource info: %v", err)
+	}
+	if sharedInfo.IsPrivate {
+		t.Fatalf("expected shared resource info, got private: %+v", sharedInfo)
+	}
+
+	privateInfo, err := base.GetResourceInfo("private:plugin-a:db")
+	if err != nil {
+		t.Fatalf("failed to get private resource info: %v", err)
+	}
+	if !privateInfo.IsPrivate {
+		t.Fatalf("expected private resource info, got shared: %+v", privateInfo)
+	}
+}
+
+func TestPrivateResourceInfo_ResolvesLegacyDisplayNameWithoutBreakingSharedStorage(t *testing.T) {
+	base := NewUnifiedRuntime()
+	pluginRuntime := base.WithPluginContext("plugin-b")
+
+	if err := pluginRuntime.RegisterPrivateResource("cache", 42); err != nil {
+		t.Fatalf("failed to register private resource: %v", err)
+	}
+
+	info, err := base.GetResourceInfo("private:plugin-b:cache")
+	if err != nil {
+		t.Fatalf("expected private display-name lookup to work: %v", err)
+	}
+	if !info.IsPrivate {
+		t.Fatalf("expected private resource info, got shared: %+v", info)
+	}
+	if info.PluginID != "plugin-b" {
+		t.Fatalf("unexpected plugin id: %+v", info)
+	}
+
+	legacyInfo, err := base.GetResourceInfo("plugin-b:cache")
+	if err != nil {
+		t.Fatalf("expected legacy private display-name lookup to remain compatible: %v", err)
+	}
+	if !legacyInfo.IsPrivate {
+		t.Fatalf("expected legacy private resource info, got shared: %+v", legacyInfo)
+	}
+}

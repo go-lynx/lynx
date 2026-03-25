@@ -7,6 +7,17 @@ import (
 	"time"
 )
 
+func resetGlobalEventBusStateForTest(t *testing.T) {
+	t.Helper()
+	globalMu.Lock()
+	defer globalMu.Unlock()
+	globalManager = nil
+	globalInitErr = nil
+	defaultEventBusProvider = nil
+	globalFallbackManager = nil
+	globalFallbackOnce = sync.Once{}
+}
+
 func TestErrorCallback(t *testing.T) {
 	// Create config with error callback
 	configs := DefaultBusConfigs()
@@ -290,5 +301,28 @@ func TestExplicitManagerHelpers_DoNotRequireGlobals(t *testing.T) {
 	}
 	if listenerManager.Count() != 0 {
 		t.Fatalf("expected listener to be removed from explicit manager, count=%d", listenerManager.Count())
+	}
+}
+
+func TestGetGlobalEventBus_UsesSharedFallbackAfterInitFailure(t *testing.T) {
+	resetGlobalEventBusStateForTest(t)
+	t.Cleanup(func() {
+		_ = CloseGlobalEventBus()
+		resetGlobalEventBusStateForTest(t)
+	})
+
+	configs := DefaultBusConfigs()
+	configs.Plugin.MaxQueue = -1
+	if err := InitGlobalEventBus(configs); err == nil {
+		t.Fatal("expected invalid config to fail global init")
+	}
+
+	first := GetGlobalEventBus()
+	second := GetGlobalEventBus()
+	if first == nil || second == nil {
+		t.Fatal("expected shared fallback manager to be available")
+	}
+	if first != second {
+		t.Fatal("expected repeated fallback resolution to return the same manager instance")
 	}
 }
