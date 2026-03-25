@@ -2,6 +2,12 @@
 
 The Lynx Unified Event System is a high-performance, multi-bus event processing system built on `kelindar/event`, providing unified event notification and management for the Lynx framework.
 
+Compatibility note:
+
+- app-owned event managers are the preferred runtime path
+- `GetGlobalEventBus()`, `GetGlobalListenerManager()`, and other global helpers remain for compatibility
+- global helpers should be understood as compatibility-mode access, not the preferred model for multi-instance applications
+
 ## Features
 
 - **Multi-bus architecture**: 8 built-in buses for isolation and performance
@@ -56,6 +62,10 @@ configs := events.DefaultBusConfigs()
 configs.Plugin.MaxQueue = 20000
 err = events.Init(configs)
 ```
+
+When Lynx is used through `LynxApp`, the app-owned event manager is normally the
+preferred owner. The global initialization helpers are mainly useful for
+standalone compatibility flows and legacy integrations.
 
 ### Publishing Events
 

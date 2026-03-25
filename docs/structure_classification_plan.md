@@ -40,7 +40,7 @@ These areas are the real strategic core and should receive most design attention
   - dependency validation
   - startup/unload order
 - `lifecycle.go`
-  - initialize/start/rollback flow
+  - initialize/start/failure-cleanup flow
 - `ops.go`
   - load/unload operations
   - stop semantics
@@ -132,7 +132,8 @@ Important boundary:
    - shutdown sequencing
 
 2. plugin registration states are still too compressed
-   - prepared and actively managed plugins still share the same registry structures
+   - prepared inventory and actively managed runtime state are now separated, but both still live inside one manager type with significant compatibility surface around them
+   - the remaining complexity is now mostly compatibility and API shape, not stale runtime-state leakage
 
 3. compatibility layers still shape the public mental model
    - global event fallback
@@ -189,6 +190,13 @@ Done when:
 
 - manager state is easy to reason about after prepare, partial start, rollback, and unload
 
+Current progress:
+
+- prepared and managed plugin state now use distinct registries
+- runtime-facing queries no longer expose prepared-only plugins
+- repeated load and subset-load paths have regression coverage
+- concurrent load entrypoints are serialized so startup side effects do not run twice
+
 ### Step 3. Demote Runtime Config Compatibility Reporting
 
 Goal:
@@ -243,6 +251,11 @@ Done when:
 
 - core remains coherent even if shell code is absent
 
+Current progress:
+
+- `boot` no longer parses command-line flags at import time
+- bootstrap config resolution now happens during explicit shell startup
+
 ### Step 6. Reduce Global Compatibility Gravity
 
 Goal:
@@ -258,6 +271,11 @@ Tasks:
 Done when:
 
 - multi-instance reasoning and shutdown ordering become simpler
+
+Current progress:
+
+- clearing the default app now detaches global event/listener providers explicitly
+- global fallbacks still exist, but they are less likely to retain stale app-owned references
 
 ## Immediate Next Move
 

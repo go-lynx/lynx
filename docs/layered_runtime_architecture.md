@@ -189,7 +189,7 @@ The framework supports a unified event system for inter-plugin communication:
 
 ```go
 type PluginEvent struct {
-    Type      EventType       // Event type (started, stopped, config changed, etc.)
+    Type      EventType       // Event type (started, stopped, dependency/error, etc.)
     Priority  EventPriority   // Event priority
     Source    string          // Event source
     Category  string          // Event category
@@ -218,6 +218,10 @@ Provides:
 - Event emission and listening
 - Plugin context management
 
+The runtime implementation is shared-state based. Plugin-scoped views created by
+`WithPluginContext()` are access-control views over the same runtime state,
+not stale copies of config/logger/event wiring.
+
 ### Resource Management
 
 - **Private Resources**: Isolated per-plugin resources
@@ -238,6 +242,9 @@ Examples of supported control-plane plugins:
 - **Polaris** (`lynx-polaris`)
 - **Nacos** (`lynx-nacos`)
 - **Apollo** (`lynx-apollo`)
+
+These integrations should be understood as shell/application conveniences rather
+than evidence that Lynx core itself is a general-purpose control plane.
 
 ## Plugin Ecosystem
 

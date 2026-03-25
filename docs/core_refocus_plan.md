@@ -126,19 +126,13 @@ Success criteria:
 
 Status:
 
-- in progress
+- completed
 
-Current structural finding:
+Final structural outcome:
 
-- the manager still uses the same registration structures for both freshly prepared plugins and plugins that have actually entered lifecycle management
-- this leaks "prepared-only" objects into runtime-facing queries and distorts higher-level behavior such as runtime reporting and config-change checks
-
-Planned implementation direction:
-
-- introduce explicit prepared-plugin tracking separate from active/managed plugin tracking
-- keep prepare as a staging step, not as implicit runtime registration
-- make runtime-facing queries report managed plugins, not merely prepared candidates
-- clear transient prepared state after each load attempt so retries are deterministic
+- manager now separates prepared inventory from lifecycle-managed runtime state
+- runtime-facing queries no longer treat prepared-only plugins as loaded/runtime-visible objects
+- retries and subset loads operate on deterministic staging semantics instead of ambiguous shared registration
 
 Current implementation progress:
 
@@ -253,6 +247,7 @@ Recent progress:
 - added regression coverage proving global event/listener lookups stop resolving to the cleared default app
 - `boot` no longer parses command-line flags at import time; it only registers `-conf` and resolves the path during explicit bootstrap loading
 - added regression coverage proving bootstrap config can still load from the registered `-conf` value without eager `flag.Parse()`
+- operation entrypoints now guard against nil-manager regressions even after lifecycle-operation serialization was added
 
 ### Phase 6: Increase Failure-Oriented Verification
 
@@ -282,6 +277,7 @@ Recent verification progress:
 - root recovery tests for concurrency and goroutine cleanup now pass
 - plugin manager lifecycle operations now serialize load/unload/stop entrypoints to avoid concurrent duplicate startup side effects
 - added regression coverage proving concurrent `LoadPlugins()` calls only start a plugin once
+- full `go test ./... -count=1` passes on the current tree
 
 Known unrelated test debt still present outside the current plugin-core refocus:
 
