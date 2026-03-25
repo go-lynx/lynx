@@ -20,6 +20,42 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
+type unloadPluginResult struct {
+	pluginName   string
+	stopErr      error
+	cleanupErr   error
+	shouldRecord bool
+}
+
+type unloadExecutionOptions struct {
+	operation         string
+	unregisterOnError bool
+}
+
+func formatUnloadErrorSummary(result unloadPluginResult) string {
+	return fmt.Sprintf("%s: stop=%v, cleanup=%v", result.pluginName, result.stopErr, result.cleanupErr)
+}
+
+func (m *DefaultPluginManager[T]) recordUnloadResult(plugin plugins.Plugin, result unloadPluginResult) {
+	if m == nil || plugin == nil || !result.shouldRecord {
+		return
+	}
+	m.recordUnloadFailure(plugin, result.stopErr, result.cleanupErr)
+}
+
+func unloadResultError(pluginName string, result unloadPluginResult) error {
+	if !result.shouldRecord {
+		return nil
+	}
+	if result.stopErr != nil {
+		return fmt.Errorf("failed to stop plugin %s: %w", pluginName, result.stopErr)
+	}
+	if result.cleanupErr != nil {
+		return fmt.Errorf("failed to cleanup resources for plugin %s: %w", pluginName, result.cleanupErr)
+	}
+	return nil
+}
+
 func shouldStopPlugin(p plugins.Plugin) bool {
 	if p == nil {
 		return false
@@ -30,6 +66,182 @@ func shouldStopPlugin(p plugins.Plugin) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func (m *DefaultPluginManager[T]) resetPluginManagerStateAfterUnload() {
+	m.mu.Lock()
+	m.pluginList = nil
+	m.managedPluginList = nil
+	m.mu.Unlock()
+
+	m.pluginIDs.Range(func(key, value any) bool {
+		m.pluginIDs.Delete(key)
+		return true
+	})
+	m.managedIDs.Range(func(key, value any) bool {
+		m.managedIDs.Delete(key)
+		return true
+	})
+	m.pluginInstances.Range(func(key, value any) bool {
+		m.pluginInstances.Delete(key)
+		return true
+	})
+	m.managedInstances.Range(func(key, value any) bool {
+		m.managedInstances.Delete(key)
+		return true
+	})
+}
+
+func (m *DefaultPluginManager[T]) resolveOrderedUnloadTargets(targets []plugins.Plugin, description string) []plugins.Plugin {
+	if len(targets) == 0 {
+		return nil
+	}
+
+	var ordered []plugins.Plugin
+	sorted, err := m.TopologicalSort(targets)
+	if err != nil {
+		log.Errorf("topological sort failed for %s: %v", description, err)
+		log.Errorf("Using best-effort unload order for %s", description)
+		ordered = m.UnloadOrder(targets)
+		if len(ordered) == 0 {
+			ordered = targets
+		}
+		return ordered
+	}
+
+	tmp := make([]plugins.Plugin, 0, len(sorted))
+	for _, w := range sorted {
+		if w.Plugin != nil {
+			tmp = append(tmp, w.Plugin)
+		}
+	}
+	for i := len(tmp) - 1; i >= 0; i-- {
+		ordered = append(ordered, tmp[i])
+	}
+	return ordered
+}
+
+func (m *DefaultPluginManager[T]) buildUnloadBatches(targets []plugins.Plugin) ([][]plugins.Plugin, []plugins.Plugin) {
+	if len(targets) == 0 {
+		return nil, nil
+	}
+
+	sorted, err := m.TopologicalSort(targets)
+	if err != nil {
+		log.Errorf("topological sort failed during unload: %v", err)
+		log.Errorf("Using best-effort unload order (dependents before dependencies)")
+		ordered := m.UnloadOrder(targets)
+		if len(ordered) == 0 {
+			ordered = make([]plugins.Plugin, len(targets))
+			copy(ordered, targets)
+		}
+		if len(ordered) == 0 {
+			return nil, nil
+		}
+		return [][]plugins.Plugin{ordered}, ordered
+	}
+
+	levelGroups := make(map[int][]plugins.Plugin)
+	maxLevel := 0
+	for _, w := range sorted {
+		if w.Plugin == nil {
+			continue
+		}
+		levelGroups[w.level] = append(levelGroups[w.level], w.Plugin)
+		if w.level > maxLevel {
+			maxLevel = w.level
+		}
+	}
+
+	var batches [][]plugins.Plugin
+	var ordered []plugins.Plugin
+	for level := maxLevel; level >= 0; level-- {
+		batch := levelGroups[level]
+		if len(batch) == 0 {
+			continue
+		}
+		batches = append(batches, batch)
+		ordered = append(ordered, batch...)
+	}
+	return batches, ordered
+}
+
+func (m *DefaultPluginManager[T]) forceCleanupRemainingPlugins(ordered []plugins.Plugin, cleaningUp *sync.Map) {
+	for _, remaining := range ordered {
+		if remaining == nil {
+			continue
+		}
+
+		pluginID := remaining.ID()
+		if _, alreadyCleaning := cleaningUp.LoadOrStore(pluginID, true); alreadyCleaning {
+			log.Debugf("Skipping forced cleanup for plugin %s: already being cleaned up", remaining.Name())
+			continue
+		}
+
+		m.unregisterPlugin(remaining)
+		if cleanupErr := m.runtime.CleanupResources(pluginID); cleanupErr != nil {
+			log.Warnf("Forced cleanup failed for plugin %s: %v", remaining.Name(), cleanupErr)
+		}
+	}
+}
+
+func (m *DefaultPluginManager[T]) appendUnloadError(unloadErrors *[]string, unloadErrorsMu *sync.Mutex, result unloadPluginResult) {
+	if !result.shouldRecord {
+		return
+	}
+
+	unloadErrorsMu.Lock()
+	*unloadErrors = append(*unloadErrors, formatUnloadErrorSummary(result))
+	unloadErrorsMu.Unlock()
+}
+
+func (m *DefaultPluginManager[T]) unloadBatch(
+	ctx context.Context,
+	batch []plugins.Plugin,
+	perPluginTimeout time.Duration,
+	parallelism int,
+	cleaningUp *sync.Map,
+	unloadErrors *[]string,
+	unloadErrorsMu *sync.Mutex,
+) bool {
+	sem := make(chan struct{}, parallelism)
+	var wg sync.WaitGroup
+
+	for _, plugin := range batch {
+		p := plugin
+		if p == nil {
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(plugin plugins.Plugin) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			result, processed := m.unloadManagedPlugin(ctx, plugin, perPluginTimeout, cleaningUp)
+			if !processed {
+				return
+			}
+			if result.shouldRecord {
+				m.recordUnloadResult(plugin, result)
+				m.appendUnloadError(unloadErrors, unloadErrorsMu, result)
+			}
+		}(p)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return false
+	case <-ctx.Done():
+		return true
 	}
 }
 
@@ -95,42 +307,7 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 	// Track unload start time for monitoring
 	unloadStart := time.Now()
 
-	var batches [][]plugins.Plugin
-	var ordered []plugins.Plugin
-	sorted, err := m.TopologicalSort(m.managedPluginList)
-	if err != nil {
-		// Topological sort failed - use dependency-aware unload order (best effort)
-		log.Errorf("topological sort failed during unload: %v", err)
-		log.Errorf("Using best-effort unload order (dependents before dependencies)")
-		ordered = m.UnloadOrder(m.managedPluginList)
-		if len(ordered) == 0 {
-			ordered = make([]plugins.Plugin, len(m.managedPluginList))
-			copy(ordered, m.managedPluginList)
-		}
-		if len(ordered) > 0 {
-			batches = append(batches, ordered)
-		}
-	} else {
-		levelGroups := make(map[int][]plugins.Plugin)
-		maxLevel := 0
-		for _, w := range sorted {
-			if w.Plugin == nil {
-				continue
-			}
-			levelGroups[w.level] = append(levelGroups[w.level], w.Plugin)
-			if w.level > maxLevel {
-				maxLevel = w.level
-			}
-		}
-		for level := maxLevel; level >= 0; level-- {
-			batch := levelGroups[level]
-			if len(batch) == 0 {
-				continue
-			}
-			batches = append(batches, batch)
-			ordered = append(ordered, batch...)
-		}
-	}
+	batches, ordered := m.buildUnloadBatches(m.managedPluginList)
 
 	var mu sync.Mutex
 	// Optimized: Pre-allocate slice capacity to avoid frequent reallocations
@@ -148,24 +325,7 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 			log.Errorf("UnloadPlugins: overall timeout (%v) reached, forcing shutdown of remaining %d plugins",
 				totalTimeout, len(ordered))
 			timeoutReached = true
-			// Fix Bug 1: Force cleanup of remaining plugins that haven't started cleanup yet
-			// Only clean up plugins that are not already being cleaned up by their goroutines
-			for _, remaining := range ordered {
-				if remaining != nil {
-					pluginID := remaining.ID()
-					// Check if this plugin is already being cleaned up
-					if _, alreadyCleaning := cleaningUp.LoadOrStore(pluginID, true); alreadyCleaning {
-						// Plugin is already being cleaned up by its goroutine, skip forced cleanup
-						log.Debugf("Skipping forced cleanup for plugin %s: already being cleaned up", remaining.Name())
-						continue
-					}
-					// This plugin hasn't started cleanup yet, force cleanup it
-					m.unregisterPlugin(remaining)
-					if cleanupErr := m.runtime.CleanupResources(pluginID); cleanupErr != nil {
-						log.Warnf("Forced cleanup failed for plugin %s: %v", remaining.Name(), cleanupErr)
-					}
-				}
-			}
+			m.forceCleanupRemainingPlugins(ordered, &cleaningUp)
 			break
 		default:
 		}
@@ -174,103 +334,7 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 			break
 		}
 
-		sem := make(chan struct{}, parallelism)
-		var wg sync.WaitGroup
-
-		for _, plugin := range batch {
-			p := plugin
-			if p == nil {
-				continue
-			}
-
-			wg.Add(1)
-			sem <- struct{}{} // Acquire semaphore
-			go func(plugin plugins.Plugin) {
-				defer wg.Done()
-				defer func() { <-sem }() // Release semaphore
-
-				// Fix Bug 1: Mark this plugin as being cleaned up to prevent double cleanup
-				pluginID := plugin.ID()
-				if _, alreadyCleaning := cleaningUp.LoadOrStore(pluginID, true); alreadyCleaning {
-					// Another goroutine (forced cleanup) is already cleaning this up, skip
-					log.Debugf("Skipping cleanup for plugin %s: already being cleaned up by forced cleanup", plugin.Name())
-					return
-				}
-
-				// Create per-plugin context that respects overall timeout
-				pluginCtx, pluginCancel := context.WithTimeout(ctx, perPluginTimeout)
-				defer pluginCancel()
-
-				// Emit plugin unloading event
-				m.emitPluginUnloadEvent(pluginID, plugin.Name())
-
-				var stopErr, cleanupErr error
-
-				// Stop plugin with timeout protection only when the plugin actually entered a running lifecycle state.
-				if shouldStopPlugin(plugin) {
-					stopDone := make(chan error, 1)
-					go func() {
-						stopDone <- m.safeStopPlugin(plugin, perPluginTimeout)
-					}()
-
-					select {
-					case err := <-stopDone:
-						if err != nil {
-							stopErr = err
-							log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
-							m.emitPluginErrorEvent(pluginID, plugin.Name(), "unload", err)
-						}
-					case <-pluginCtx.Done():
-						stopErr = fmt.Errorf("plugin stop timeout after %v", perPluginTimeout)
-						log.Errorf("Plugin %s stop timed out, forcing cleanup", plugin.Name())
-						m.emitPluginErrorEvent(pluginID, plugin.Name(), "unload", stopErr)
-					}
-				}
-
-				// Cleanup resources with timeout protection
-				// Fix Bug 1: Only cleanup if we successfully marked this plugin as being cleaned up
-				cleanupDone := make(chan error, 1)
-				go func() {
-					cleanupDone <- m.runtime.CleanupResources(pluginID)
-				}()
-
-				select {
-				case err := <-cleanupDone:
-					if err != nil {
-						cleanupErr = err
-						log.Errorf("Failed to cleanup resources for plugin %s: %v", plugin.Name(), err)
-						m.emitResourceCleanupErrorEvent(pluginID, plugin.Name(), err)
-					}
-				case <-pluginCtx.Done():
-					cleanupErr = fmt.Errorf("resource cleanup timeout after %v", perPluginTimeout)
-					log.Errorf("Plugin %s resource cleanup timed out", plugin.Name())
-					m.emitResourceCleanupErrorEvent(pluginID, plugin.Name(), cleanupErr)
-				}
-
-				// Record unload failure if either stop or cleanup failed
-				if stopErr != nil || cleanupErr != nil {
-					m.recordUnloadFailure(plugin, stopErr, cleanupErr)
-					mu.Lock()
-					unloadErrors = append(unloadErrors, fmt.Sprintf("%s: stop=%v, cleanup=%v",
-						plugin.Name(), stopErr, cleanupErr))
-					mu.Unlock()
-				}
-
-				m.unregisterPlugin(plugin)
-				// Remove from cleaningUp map when done
-				cleaningUp.Delete(pluginID)
-			}(p)
-		}
-
-		done := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-		case <-ctx.Done():
+		if m.unloadBatch(ctx, batch, perPluginTimeout, parallelism, &cleaningUp, &unloadErrors, &mu) {
 			// Overall timeout reached
 			log.Errorf("UnloadPlugins: overall timeout (%v) reached, some plugins may not have been properly unloaded",
 				totalTimeout)
@@ -288,27 +352,102 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 		}
 	}
 
-	// Cleanup plugin list
-	m.mu.Lock()
-	m.pluginList = nil
-	m.managedPluginList = nil
-	m.mu.Unlock()
-	m.pluginIDs.Range(func(key, value any) bool {
-		m.pluginIDs.Delete(key)
-		return true
-	})
-	m.managedIDs.Range(func(key, value any) bool {
-		m.managedIDs.Delete(key)
-		return true
-	})
-	m.pluginInstances.Range(func(key, value any) bool {
-		m.pluginInstances.Delete(key)
-		return true
-	})
-	m.managedInstances.Range(func(key, value any) bool {
-		m.managedInstances.Delete(key)
-		return true
-	})
+	m.resetPluginManagerStateAfterUnload()
+}
+
+func (m *DefaultPluginManager[T]) unloadManagedPlugin(ctx context.Context, plugin plugins.Plugin, perPluginTimeout time.Duration, cleaningUp *sync.Map) (unloadPluginResult, bool) {
+	result := unloadPluginResult{}
+	if plugin == nil {
+		return result, false
+	}
+
+	pluginID := plugin.ID()
+	result.pluginName = plugin.Name()
+
+	// Fix Bug 1: Mark this plugin as being cleaned up to prevent double cleanup.
+	if _, alreadyCleaning := cleaningUp.LoadOrStore(pluginID, true); alreadyCleaning {
+		log.Debugf("Skipping cleanup for plugin %s: already being cleaned up by forced cleanup", plugin.Name())
+		return result, false
+	}
+	defer cleaningUp.Delete(pluginID)
+
+	pluginCtx, pluginCancel := context.WithTimeout(ctx, perPluginTimeout)
+	defer pluginCancel()
+
+	m.emitPluginUnloadEvent(pluginID, plugin.Name())
+
+	result.stopErr = m.stopPluginForUnload(pluginCtx, plugin, perPluginTimeout, unloadExecutionOptions{operation: "unload"})
+	result.cleanupErr = m.cleanupPluginForUnload(pluginCtx, plugin, pluginID, perPluginTimeout)
+	result.shouldRecord = result.stopErr != nil || result.cleanupErr != nil
+
+	m.unregisterPlugin(plugin)
+	return result, true
+}
+
+func (m *DefaultPluginManager[T]) stopPluginForUnload(pluginCtx context.Context, plugin plugins.Plugin, perPluginTimeout time.Duration, opts unloadExecutionOptions) error {
+	if !shouldStopPlugin(plugin) {
+		return nil
+	}
+
+	stopDone := make(chan error, 1)
+	go func() {
+		stopDone <- m.safeStopPlugin(plugin, perPluginTimeout)
+	}()
+
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
+			m.emitPluginErrorEvent(plugin.ID(), plugin.Name(), opts.operation, err)
+		}
+		return err
+	case <-pluginCtx.Done():
+		err := fmt.Errorf("plugin stop timeout after %v", perPluginTimeout)
+		log.Errorf("Plugin %s stop timed out, forcing cleanup", plugin.Name())
+		m.emitPluginErrorEvent(plugin.ID(), plugin.Name(), opts.operation, err)
+		return err
+	}
+}
+
+func (m *DefaultPluginManager[T]) cleanupPluginForUnload(pluginCtx context.Context, plugin plugins.Plugin, pluginID string, perPluginTimeout time.Duration) error {
+	cleanupDone := make(chan error, 1)
+	go func() {
+		cleanupDone <- m.runtime.CleanupResources(pluginID)
+	}()
+
+	select {
+	case err := <-cleanupDone:
+		if err != nil {
+			log.Errorf("Failed to cleanup resources for plugin %s: %v", plugin.Name(), err)
+			m.emitResourceCleanupErrorEvent(pluginID, plugin.Name(), err)
+		}
+		return err
+	case <-pluginCtx.Done():
+		err := fmt.Errorf("resource cleanup timeout after %v", perPluginTimeout)
+		log.Errorf("Plugin %s resource cleanup timed out", plugin.Name())
+		m.emitResourceCleanupErrorEvent(pluginID, plugin.Name(), err)
+		return err
+	}
+}
+
+func (m *DefaultPluginManager[T]) unloadPluginSynchronously(plugin plugins.Plugin, timeout time.Duration, opts unloadExecutionOptions) unloadPluginResult {
+	result := unloadPluginResult{}
+	if plugin == nil {
+		return result
+	}
+
+	result.pluginName = plugin.Name()
+	pluginCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	m.emitPluginUnloadEvent(plugin.ID(), plugin.Name())
+	result.stopErr = m.stopPluginForUnload(pluginCtx, plugin, timeout, opts)
+	result.cleanupErr = m.cleanupPluginForUnload(pluginCtx, plugin, plugin.ID(), timeout)
+	result.shouldRecord = result.stopErr != nil || result.cleanupErr != nil
+	if !result.shouldRecord || opts.unregisterOnError {
+		m.unregisterPlugin(plugin)
+	}
+	return result
 }
 
 // LoadPluginsByName loads a subset of plugins by Name().
@@ -421,57 +560,14 @@ func (m *DefaultPluginManager[T]) UnloadPluginsByName(names []string) {
 		return
 	}
 
-	var ordered []plugins.Plugin
-	sorted, err := m.TopologicalSort(subset)
-	if err != nil {
-		log.Errorf("topological sort failed for subset unload: %v", err)
-		log.Errorf("Using best-effort unload order for subset")
-		ordered = m.UnloadOrder(subset)
-		if len(ordered) == 0 {
-			ordered = subset
-		}
-	} else {
-		tmp := make([]plugins.Plugin, 0, len(sorted))
-		for _, w := range sorted {
-			if w.Plugin != nil {
-				tmp = append(tmp, w.Plugin)
-			}
-		}
-		for i := len(tmp) - 1; i >= 0; i-- {
-			ordered = append(ordered, tmp[i])
-		}
-	}
+	ordered := m.resolveOrderedUnloadTargets(subset, "subset unload")
 
 	for _, p := range ordered {
 		if p == nil {
 			continue
 		}
-
-		// Emit plugin unloading event
-		m.emitPluginUnloadEvent(p.ID(), p.Name())
-
-		var stopErr, cleanupErr error
-		if shouldStopPlugin(p) {
-			if err := m.safeStopPlugin(p, timeout); err != nil {
-				stopErr = err
-				log.Errorf("Failed to unload plugin %s: %v", p.Name(), err)
-				// Emit error event
-				m.emitPluginErrorEvent(p.ID(), p.Name(), "unload", err)
-			}
-		}
-		if err := m.runtime.CleanupResources(p.ID()); err != nil {
-			cleanupErr = err
-			log.Errorf("Failed to cleanup resources for plugin %s: %v", p.Name(), err)
-			// Emit resource cleanup error event
-			m.emitResourceCleanupErrorEvent(p.ID(), p.Name(), err)
-		}
-
-		// Record unload failure if either stop or cleanup failed
-		if stopErr != nil || cleanupErr != nil {
-			m.recordUnloadFailure(p, stopErr, cleanupErr)
-		}
-
-		m.unregisterPlugin(p)
+		result := m.unloadPluginSynchronously(p, timeout, unloadExecutionOptions{operation: "unload", unregisterOnError: true})
+		m.recordUnloadResult(p, result)
 	}
 
 }
@@ -501,35 +597,10 @@ func (m *DefaultPluginManager[T]) StopPlugin(pluginName string) error {
 		return nil
 	}
 
-	// Emit plugin stopping event
-	m.emitPluginUnloadEvent(p.ID(), p.Name())
-
 	timeout := m.getStopTimeout()
-	var stopErr, cleanupErr error
-	if shouldStopPlugin(p) {
-		if err := m.safeStopPlugin(p, timeout); err != nil {
-			stopErr = err
-			// Emit error event
-			m.emitPluginErrorEvent(p.ID(), p.Name(), "stop", err)
-		}
-	}
-	if err := m.runtime.CleanupResources(p.ID()); err != nil {
-		cleanupErr = err
-		// Emit resource cleanup error event
-		m.emitResourceCleanupErrorEvent(p.ID(), p.Name(), err)
-	}
-
-	// Record unload failure if either stop or cleanup failed
-	if stopErr != nil || cleanupErr != nil {
-		m.recordUnloadFailure(p, stopErr, cleanupErr)
-		if stopErr != nil {
-			return fmt.Errorf("failed to stop plugin %s: %w", pluginName, stopErr)
-		}
-		return fmt.Errorf("failed to cleanup resources for plugin %s: %w", pluginName, cleanupErr)
-	}
-
-	m.unregisterPlugin(p)
-	return nil
+	result := m.unloadPluginSynchronously(p, timeout, unloadExecutionOptions{operation: "stop", unregisterOnError: false})
+	m.recordUnloadResult(p, result)
+	return unloadResultError(pluginName, result)
 }
 
 // GetResourceStats Resource helpers.
@@ -564,98 +635,99 @@ func Plugins(m TypedPluginManager) []plugins.Plugin {
 	return nil
 }
 
-// emitPluginUnloadEvent emits a plugin unload event
-func (m *DefaultPluginManager[T]) emitPluginUnloadEvent(pluginID, pluginName string) {
+func (m *DefaultPluginManager[T]) emitManagerEvent(
+	eventType plugins.EventType,
+	priority int,
+	category string,
+	pluginID string,
+	status plugins.PluginStatus,
+	err error,
+	metadata map[string]any,
+) {
 	if m.runtime == nil {
 		return
 	}
 
 	pluginEvent := plugins.PluginEvent{
-		Type:      plugins.EventPluginStopping,
-		Priority:  plugins.PriorityNormal,
+		Type:      eventType,
+		Priority:  priority,
 		Source:    "plugin-manager",
-		Category:  "lifecycle",
+		Category:  category,
 		PluginID:  pluginID,
-		Status:    plugins.StatusInactive,
+		Status:    status,
 		Timestamp: time.Now().Unix(),
-		Metadata: map[string]any{
-			"plugin_name": pluginName,
-			"operation":   "unload",
-		},
+		Error:     err,
+		Metadata:  metadata,
 	}
 
 	m.runtime.EmitEvent(pluginEvent)
+}
+
+func managerOperationMetadata(pluginName, operation string, extra map[string]any) map[string]any {
+	metadata := map[string]any{
+		"operation": operation,
+	}
+	if pluginName != "" {
+		metadata["plugin_name"] = pluginName
+	}
+	for key, value := range extra {
+		metadata[key] = value
+	}
+	return metadata
+}
+
+// emitPluginUnloadEvent emits a plugin unload event
+func (m *DefaultPluginManager[T]) emitPluginUnloadEvent(pluginID, pluginName string) {
+	m.emitManagerEvent(
+		plugins.EventPluginStopping,
+		plugins.PriorityNormal,
+		"lifecycle",
+		pluginID,
+		plugins.StatusInactive,
+		nil,
+		managerOperationMetadata(pluginName, "unload", nil),
+	)
 }
 
 // emitPluginErrorEvent emits a plugin error event
 func (m *DefaultPluginManager[T]) emitPluginErrorEvent(pluginID, pluginName, operation string, err error) {
-	if m.runtime == nil {
-		return
-	}
-
-	pluginEvent := plugins.PluginEvent{
-		Type:      plugins.EventErrorOccurred,
-		Priority:  plugins.PriorityHigh,
-		Source:    "plugin-manager",
-		Category:  "error",
-		PluginID:  pluginID,
-		Status:    plugins.StatusFailed,
-		Timestamp: time.Now().Unix(),
-		Error:     err,
-		Metadata: map[string]any{
-			"plugin_name": pluginName,
-			"operation":   operation,
-		},
-	}
-
-	m.runtime.EmitEvent(pluginEvent)
+	m.emitManagerEvent(
+		plugins.EventErrorOccurred,
+		plugins.PriorityHigh,
+		"error",
+		pluginID,
+		plugins.StatusFailed,
+		err,
+		managerOperationMetadata(pluginName, operation, nil),
+	)
 }
 
 // emitResourceCleanupErrorEvent emits a resource cleanup error event
 func (m *DefaultPluginManager[T]) emitResourceCleanupErrorEvent(pluginID, pluginName string, err error) {
-	if m.runtime == nil {
-		return
-	}
-
-	pluginEvent := plugins.PluginEvent{
-		Type:      plugins.EventErrorOccurred,
-		Priority:  plugins.PriorityNormal,
-		Source:    "plugin-manager",
-		Category:  "error",
-		PluginID:  pluginID,
-		Status:    plugins.StatusFailed,
-		Timestamp: time.Now().Unix(),
-		Error:     err,
-		Metadata: map[string]any{
-			"plugin_name": pluginName,
-			"operation":   "resource_cleanup",
-		},
-	}
-
-	m.runtime.EmitEvent(pluginEvent)
+	m.emitManagerEvent(
+		plugins.EventErrorOccurred,
+		plugins.PriorityNormal,
+		"error",
+		pluginID,
+		plugins.StatusFailed,
+		err,
+		managerOperationMetadata(pluginName, "resource_cleanup", nil),
+	)
 }
 
 // emitPluginManagerShutdownEvent emits a plugin manager shutdown event
 func (m *DefaultPluginManager[T]) emitPluginManagerShutdownEvent() {
-	if m.runtime == nil {
-		return
-	}
-
-	pluginEvent := plugins.PluginEvent{
-		Type:      plugins.EventType("system.plugin_manager_shutdown"),
-		Priority:  plugins.PriorityHigh,
-		Source:    "plugin-manager",
-		Category:  "system",
-		PluginID:  "system",
-		Status:    plugins.StatusInactive,
-		Timestamp: time.Now().Unix(),
-		Metadata: map[string]any{
-			"operation": "shutdown",
-			"reason":    "application_close",
-		},
-	}
-
-	m.runtime.EmitEvent(pluginEvent)
+	m.emitManagerEvent(
+		plugins.EventType("system.plugin_manager_shutdown"),
+		plugins.PriorityHigh,
+		"system",
+		"system",
+		plugins.StatusInactive,
+		nil,
+		managerOperationMetadata("", "shutdown", map[string]any{
+			"reason": "application_close",
+		}),
+	)
 }
 
 // recordUnloadFailure records a plugin unload failure for monitoring

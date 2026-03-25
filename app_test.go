@@ -13,6 +13,16 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
+type typedPluginForAppLookup struct {
+	*plugins.BasePlugin
+}
+
+func newTypedPluginForAppLookup(name string) *typedPluginForAppLookup {
+	return &typedPluginForAppLookup{
+		BasePlugin: plugins.NewBasePlugin("test."+name+".v1", name, "typed lookup plugin", "v1.0.0", "test."+name, 0),
+	}
+}
+
 type staticSource struct {
 	kv *config.KeyValue
 }
@@ -264,6 +274,117 @@ func TestNewApp_InitTimeout(t *testing.T) {
 	// Cleanup
 	if app1 != nil {
 		app1.Close()
+	}
+}
+
+func TestGetTypedPluginFromApp_DoesNotRequireDefaultSingleton(t *testing.T) {
+	resetGlobalState()
+
+	plugin := newTypedPluginForAppLookup("typed-explicit")
+	manager := NewTypedPluginManager(plugin)
+	app := &LynxApp{pluginManager: manager}
+
+	got, err := GetTypedPluginFromApp[*typedPluginForAppLookup](app, plugin.Name())
+	if err != nil {
+		t.Fatalf("expected typed plugin lookup from explicit app to succeed: %v", err)
+	}
+	if got != plugin {
+		t.Fatalf("expected explicit app lookup to return the same plugin pointer")
+	}
+
+	if Lynx() != nil {
+		t.Fatal("expected no default singleton app to be published in this test")
+	}
+}
+
+func TestMustGetTypedPluginFromApp_PanicsOnMissingPlugin(t *testing.T) {
+	resetGlobalState()
+
+	app := &LynxApp{pluginManager: NewTypedPluginManager()}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected MustGetTypedPluginFromApp to panic for missing plugin")
+		}
+	}()
+
+	_ = MustGetTypedPluginFromApp[*typedPluginForAppLookup](app, "missing")
+}
+
+func TestGetEventManagersFromApp_DoesNotRequireDefaultSingleton(t *testing.T) {
+	resetGlobalState()
+
+	eventManager, err := events.NewEventBusManager(events.DefaultBusConfigs())
+	if err != nil {
+		t.Fatalf("failed to create event manager: %v", err)
+	}
+	defer eventManager.Close()
+
+	listenerManager := events.NewEventListenerManagerWithEventBus(eventManager)
+	app := &LynxApp{
+		eventManager:         eventManager,
+		eventListenerManager: listenerManager,
+	}
+
+	if got := GetEventManagerFromApp(app); got != eventManager {
+		t.Fatalf("expected app-owned event manager, got %p want %p", got, eventManager)
+	}
+	if got := GetEventListenerManagerFromApp(app); got != listenerManager {
+		t.Fatalf("expected app-owned listener manager, got %p want %p", got, listenerManager)
+	}
+	if Lynx() != nil {
+		t.Fatalf("expected no default app to be required")
+	}
+}
+
+func TestGetCoreStateFromApp_DoesNotRequireDefaultSingleton(t *testing.T) {
+	resetGlobalState()
+
+	cfg := createTestConfig(t)
+	manager := NewTypedPluginManager()
+	app := &LynxApp{
+		globalConf:    cfg,
+		pluginManager: manager,
+	}
+
+	if got := GetGlobalConfigFromApp(app); got != cfg {
+		t.Fatalf("expected app-owned config, got %p want %p", got, cfg)
+	}
+	if got := GetPluginManagerFromApp(app); got != manager {
+		t.Fatalf("expected app-owned plugin manager, got %p want %p", got, manager)
+	}
+	if Lynx() != nil {
+		t.Fatalf("expected no default app to be required")
+	}
+}
+
+func TestClearDefaultAppIf_ClearsEventProviders(t *testing.T) {
+	resetGlobalState()
+
+	eventManager, err := events.NewEventBusManager(events.DefaultBusConfigs())
+	if err != nil {
+		t.Fatalf("failed to create event manager: %v", err)
+	}
+	defer eventManager.Close()
+
+	listenerManager := events.NewEventListenerManagerWithEventBus(eventManager)
+	app := &LynxApp{
+		eventManager:         eventManager,
+		eventListenerManager: listenerManager,
+	}
+
+	SetDefaultApp(app)
+	if !clearDefaultAppIf(app) {
+		t.Fatalf("expected default app to be cleared")
+	}
+	if got := Lynx(); got != nil {
+		t.Fatalf("expected default app to be nil, got %p", got)
+	}
+	if got := events.GetGlobalEventBus(); got == eventManager {
+		t.Fatalf("expected provider-backed event manager to be cleared")
+	}
+	if got := events.GetGlobalListenerManager(); got == listenerManager {
+		t.Fatalf("expected provider-backed listener manager to be cleared")
 	}
 }
 

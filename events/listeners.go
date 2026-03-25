@@ -26,6 +26,9 @@ type EventListenerManager struct {
 }
 
 // NewEventListenerManager creates a new event listener manager
+//
+// Deprecated: prefer NewEventListenerManagerWithEventBus with an explicit
+// *EventBusManager to avoid relying on the compatibility global event bus.
 func NewEventListenerManager() *EventListenerManager {
 	return NewEventListenerManagerWithEventBus(GetGlobalEventBus())
 }
@@ -252,10 +255,13 @@ var (
 	globalListenerManager   *EventListenerManager
 	globalListenerOnce      sync.Once
 	defaultListenerProvider func() *EventListenerManager
+	globalListenerMu        sync.RWMutex
 )
 
 // SetDefaultListenerManagerProvider wires compatibility global access to an external owner such as LynxApp.
 func SetDefaultListenerManagerProvider(provider func() *EventListenerManager) {
+	globalListenerMu.Lock()
+	defer globalListenerMu.Unlock()
 	globalListenerOnce = sync.Once{}
 	defaultListenerProvider = provider
 	if provider == nil {
@@ -270,31 +276,74 @@ func ClearDefaultListenerManagerProvider() {
 }
 
 // GetGlobalListenerManager returns the global listener manager
+//
+// Deprecated: prefer passing an explicit *EventListenerManager and using
+// AddListenerWithManager, AddListenerWithManagerAndContext, or RemoveListenerWithManager.
 func GetGlobalListenerManager() *EventListenerManager {
-	if defaultListenerProvider != nil {
-		if manager := defaultListenerProvider(); manager != nil {
+	globalListenerMu.RLock()
+	provider := defaultListenerProvider
+	globalListenerMu.RUnlock()
+	if provider != nil {
+		if manager := provider(); manager != nil {
 			return manager
 		}
 	}
+
 	globalListenerOnce.Do(func() {
-		globalListenerManager = NewEventListenerManager()
+		manager := NewEventListenerManager()
+		globalListenerMu.Lock()
+		globalListenerManager = manager
+		globalListenerMu.Unlock()
 	})
-	return globalListenerManager
+	globalListenerMu.RLock()
+	manager := globalListenerManager
+	globalListenerMu.RUnlock()
+	return manager
 }
 
 // AddGlobalListener adds a listener to the global listener manager
+//
+// Deprecated: prefer AddListenerWithManager with an explicit *EventListenerManager.
 func AddGlobalListener(id string, filter *EventFilter, handler func(LynxEvent), busType BusType) error {
 	return GetGlobalListenerManager().AddListener(id, filter, handler, busType)
 }
 
+// AddListenerWithManager adds a listener via the provided listener manager.
+func AddListenerWithManager(manager *EventListenerManager, id string, filter *EventFilter, handler func(LynxEvent), busType BusType) error {
+	if manager == nil {
+		return fmt.Errorf("listener manager is nil")
+	}
+	return manager.AddListener(id, filter, handler, busType)
+}
+
 // AddGlobalListenerWithContext adds a listener to the global listener manager and auto-removes on ctx cancellation.
+//
+// Deprecated: prefer AddListenerWithManagerAndContext with an explicit *EventListenerManager.
 func AddGlobalListenerWithContext(ctx context.Context, id string, filter *EventFilter, handler func(LynxEvent), busType BusType) error {
 	return GetGlobalListenerManager().AddListenerWithContext(ctx, id, filter, handler, busType)
 }
 
+// AddListenerWithManagerAndContext adds a listener via the provided manager and removes it when ctx is canceled.
+func AddListenerWithManagerAndContext(ctx context.Context, manager *EventListenerManager, id string, filter *EventFilter, handler func(LynxEvent), busType BusType) error {
+	if manager == nil {
+		return fmt.Errorf("listener manager is nil")
+	}
+	return manager.AddListenerWithContext(ctx, id, filter, handler, busType)
+}
+
 // RemoveGlobalListener removes a listener from the global listener manager
+//
+// Deprecated: prefer RemoveListenerWithManager with an explicit *EventListenerManager.
 func RemoveGlobalListener(id string) error {
 	return GetGlobalListenerManager().RemoveListener(id)
+}
+
+// RemoveListenerWithManager removes a listener via the provided listener manager.
+func RemoveListenerWithManager(manager *EventListenerManager, id string) error {
+	if manager == nil {
+		return fmt.Errorf("listener manager is nil")
+	}
+	return manager.RemoveListener(id)
 }
 
 // ListGlobalListeners returns all global listeners

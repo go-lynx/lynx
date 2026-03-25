@@ -248,6 +248,14 @@ Recent progress:
 - `boot` no longer parses command-line flags at import time; it only registers `-conf` and resolves the path during explicit bootstrap loading
 - added regression coverage proving bootstrap config can still load from the registered `-conf` value without eager `flag.Parse()`
 - operation entrypoints now guard against nil-manager regressions even after lifecycle-operation serialization was added
+- `boot.Application` can now create a standalone app and optionally publish the default singleton explicitly instead of always going through `NewApp()`
+- explicit helpers such as `GetTypedPluginFromApp(...)` now exist so new code can avoid the global default app path
+
+Current engineering assessment:
+
+- approximate completion against the current core-refocus target: `72%`
+- strongest areas today: core runtime direction, plugin-manager state separation, lifecycle-path refactoring feasibility
+- largest remaining gaps: global-vs-instance state cleanup, compatibility-surface reduction, boot thinning, event-system slimming, and finishing unload-path helper unification
 
 ### Phase 6: Increase Failure-Oriented Verification
 

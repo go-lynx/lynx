@@ -73,6 +73,11 @@ type startupControlledPlugin struct {
 	started  *atomic.Int32
 }
 
+type stopControlledPlugin struct {
+	*plugins.BasePlugin
+	stopErr error
+}
+
 func newStartupControlledPlugin(name string, startErr error) *startupControlledPlugin {
 	return newCountingStartupControlledPlugin(name, startErr, nil)
 }
@@ -85,11 +90,22 @@ func newCountingStartupControlledPlugin(name string, startErr error, started *at
 	}
 }
 
+func newStopControlledPlugin(name string, stopErr error) *stopControlledPlugin {
+	return &stopControlledPlugin{
+		BasePlugin: plugins.NewBasePlugin("test."+name+".v1", name, "stop controlled plugin", "v1.0.0", "test."+name, 0),
+		stopErr:    stopErr,
+	}
+}
+
 func (p *startupControlledPlugin) StartupTasks() error {
 	if p.started != nil {
 		p.started.Add(1)
 	}
 	return p.startErr
+}
+
+func (p *stopControlledPlugin) Stop(plugin plugins.Plugin) error {
+	return p.stopErr
 }
 
 func createManagerLoadConfig(t *testing.T, yamlBody string) config.Config {
@@ -204,6 +220,50 @@ func TestManager_LoadPlugins_RetryAfterStartupFailure(t *testing.T) {
 	}
 	if got := Plugins(manager); len(got) != 1 || got[0].Name() != "retryable" {
 		t.Fatalf("unexpected managed plugins after retry: %#v", got)
+	}
+}
+
+func TestManager_UnloadPluginsByName_RemovesOnlyTargetedManagedPlugin(t *testing.T) {
+	manager := NewPluginManager[plugins.Plugin]()
+
+	alpha := newStartupControlledPlugin("subset-unload-alpha", nil)
+	beta := newStartupControlledPlugin("subset-unload-beta", nil)
+	alpha.SetStatus(plugins.StatusActive)
+	beta.SetStatus(plugins.StatusActive)
+
+	if err := manager.registerManagedPlugin(alpha); err != nil {
+		t.Fatalf("failed to register alpha plugin: %v", err)
+	}
+	if err := manager.registerManagedPlugin(beta); err != nil {
+		t.Fatalf("failed to register beta plugin: %v", err)
+	}
+
+	manager.UnloadPluginsByName([]string{alpha.Name()})
+
+	if got := manager.GetPlugin(alpha.Name()); got != nil {
+		t.Fatalf("expected targeted plugin to be removed after subset unload, got %s", got.Name())
+	}
+	if got := manager.GetPlugin(beta.Name()); got == nil || got.Name() != beta.Name() {
+		t.Fatalf("expected non-target plugin to remain managed after subset unload, got %#v", got)
+	}
+}
+
+func TestManager_StopPlugin_KeepsManagedRegistrationOnStopFailure(t *testing.T) {
+	manager := NewPluginManager[plugins.Plugin]()
+
+	plugin := newStopControlledPlugin("stop-failure", fmt.Errorf("stop failed"))
+	plugin.SetStatus(plugins.StatusActive)
+
+	if err := manager.registerManagedPlugin(plugin); err != nil {
+		t.Fatalf("failed to register plugin: %v", err)
+	}
+
+	err := manager.StopPlugin(plugin.Name())
+	if err == nil {
+		t.Fatal("expected stop failure to be returned")
+	}
+	if got := manager.GetPlugin(plugin.Name()); got == nil {
+		t.Fatal("expected plugin to remain registered after stop failure")
 	}
 }
 

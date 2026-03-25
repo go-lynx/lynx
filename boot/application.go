@@ -32,11 +32,13 @@ var (
 // and Kratos integration. It should not be treated as part of the plugin
 // orchestration core itself.
 type Application struct {
-	wire    wireApp          // Function used to initialize Kratos application
-	plugins []plugins.Plugin // List of plugins to initialize
-	conf    config.Config    // Application configuration instance
-	cleanup func()           // Cleanup function for resource cleanup when application shuts down
-	lynxApp *lynxapp.LynxApp // Lynx application instance
+	wire              wireApp          // Function used to initialize Kratos application
+	plugins           []plugins.Plugin // List of plugins to initialize
+	conf              config.Config    // Application configuration instance
+	cleanup           func()           // Cleanup function for resource cleanup when application shuts down
+	lynxApp           *lynxapp.LynxApp // Lynx application instance
+	configPath        string           // Optional instance-scoped bootstrap config path
+	publishDefaultApp bool             // Whether boot publishes the created app as process-wide default
 
 	// Enhanced fields for production readiness
 	shutdownTimeout time.Duration   // Graceful shutdown timeout
@@ -133,31 +135,12 @@ func (app *Application) Run() error {
 	}
 
 	// Initialize Lynx application
-	lynxApp, err := lynxapp.NewApp(app.conf, app.plugins...)
+	lynxApp, err := lynxapp.NewStandaloneApp(app.conf, app.plugins...)
 	if err != nil {
 		return fmt.Errorf("failed to create Lynx application: %w", err)
 	}
-	app.lynxApp = lynxApp
-
-	// Initialize logger (must be done before signal handling to allow logging)
-	if err := log.InitLogger(app.GetName(), app.GetHost(), app.GetVersion(), app.conf); err != nil {
-		return fmt.Errorf("failed to initialize logger: %w", err)
-	}
-
-	// Set up signal handling for graceful shutdown (after logger is initialized)
-	app.setupSignalHandling()
-
-	// Show startup banner (decoupled from logger)
-	if err := banner.Init(app.conf); err != nil {
-		log.Warnf("failed to initialize/show banner: %v", err)
-	}
-
-	// Log application startup information
-	log.Info("lynx application is starting up")
-
-	// Get plugin manager
-	if lynxApp.GetPluginManager() == nil {
-		return fmt.Errorf("plugin manager is nil: cannot manage plugins")
+	if err := app.initializeRuntimeShell(lynxApp); err != nil {
+		return err
 	}
 
 	// Load plugins with circuit breaker protection
@@ -193,24 +176,59 @@ func (app *Application) Run() error {
 	// This ensures health checks can properly verify plugin states
 	app.startHealthChecker()
 
-	// Calculate application startup duration
-	elapsedMs := time.Since(startTime).Milliseconds()
-	var elapsedDisplay string
-	switch {
-	case elapsedMs < 1000:
-		// Less than 1 second, display milliseconds
-		elapsedDisplay = fmt.Sprintf("%d ms", elapsedMs)
-	case elapsedMs < 60_000:
-		// Less than 1 minute, display seconds (keep two decimal places)
-		elapsedDisplay = fmt.Sprintf("%.2f s", float64(elapsedMs)/1000)
-	default:
-		// More than 1 minute, display minutes (keep two decimal places)
-		elapsedDisplay = fmt.Sprintf("%.2f m", float64(elapsedMs)/1000/60)
-	}
-	log.Infof("lynx application started successfully, elapsed time: %s, port listening initiated", elapsedDisplay)
+	log.Infof("lynx application started successfully, elapsed time: %s, port listening initiated", formatStartupElapsed(time.Since(startTime)))
 
 	// Run Kratos application with graceful shutdown support
 	return app.runWithGracefulShutdown(kratosApp)
+}
+
+func (app *Application) initializeRuntimeShell(lynxApp *lynxapp.LynxApp) error {
+	if app == nil {
+		return fmt.Errorf("application instance is nil: cannot initialize runtime shell")
+	}
+	if lynxApp == nil {
+		return fmt.Errorf("lynx application is nil: cannot initialize runtime shell")
+	}
+
+	app.publishAppIfConfigured(lynxApp)
+	app.lynxApp = lynxApp
+
+	if err := log.InitLogger(app.GetName(), app.GetHost(), app.GetVersion(), app.conf); err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+
+	app.setupSignalHandling()
+
+	if err := banner.Init(app.conf); err != nil {
+		log.Warnf("failed to initialize/show banner: %v", err)
+	}
+
+	log.Info("lynx application is starting up")
+
+	if lynxApp.GetPluginManager() == nil {
+		return fmt.Errorf("plugin manager is nil: cannot manage plugins")
+	}
+
+	return nil
+}
+
+func (app *Application) publishAppIfConfigured(lynxApp *lynxapp.LynxApp) {
+	if app == nil || lynxApp == nil || !app.publishDefaultApp {
+		return
+	}
+	lynxapp.SetDefaultApp(lynxApp)
+}
+
+func formatStartupElapsed(elapsed time.Duration) string {
+	elapsedMs := elapsed.Milliseconds()
+	switch {
+	case elapsedMs < 1000:
+		return fmt.Sprintf("%d ms", elapsedMs)
+	case elapsedMs < 60_000:
+		return fmt.Sprintf("%.2f s", float64(elapsedMs)/1000)
+	default:
+		return fmt.Sprintf("%.2f m", float64(elapsedMs)/1000/60)
+	}
 }
 
 // initializeEnhancedFeatures initializes enhanced production features
@@ -256,6 +274,30 @@ func (app *Application) initiateShutdown() {
 	})
 }
 
+func (app *Application) protectShutdownStep(stepName string, fn func()) {
+	if fn == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("Panic in %s: %v", stepName, r)
+		}
+	}()
+	fn()
+}
+
+func protectLoggerCleanup(fn func()) {
+	if fn == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("Panic when cleaning up loggers: %v\n", r)
+		}
+	}()
+	fn()
+}
+
 // gracefulShutdown performs graceful shutdown of the application
 // Shutdown order: health checker -> plugins -> application -> cleanup -> loggers
 func (app *Application) gracefulShutdown() {
@@ -270,56 +312,31 @@ func (app *Application) gracefulShutdown() {
 
 	// Step 1: Stop health checker first to prevent new health checks during shutdown
 	if app.healthChecker != nil {
-		// Protect against panic when stopping health checker
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Errorf("Panic when stopping health checker: %v", r)
-				}
-			}()
+		app.protectShutdownStep("stopping health checker", func() {
 			app.healthChecker.Stop()
-		}()
+		})
 	}
 
 	// Step 2: Close Lynx application (this will unload plugins in reverse dependency order)
 	if app.lynxApp != nil {
-		// Protect against panic when closing application
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Errorf("Panic when closing Lynx application: %v", r)
-				}
-			}()
+		app.protectShutdownStep("closing Lynx application", func() {
 			if err := app.lynxApp.Close(); err != nil {
 				log.Errorf("Error during Lynx application shutdown: %v", err)
 			}
-		}()
+		})
 	}
 
 	// Step 3: Execute custom cleanup functions
 	if app.cleanup != nil {
-		// Protect against panic in custom cleanup
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Errorf("Panic in custom cleanup: %v", r)
-				}
-			}()
+		app.protectShutdownStep("custom cleanup", func() {
 			app.cleanup()
-		}()
+		})
 	}
 
 	// Step 4: Cleanup loggers and close all writers (should be last)
-	// Protect against panic when cleaning up loggers
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				// Use fmt.Printf as fallback since logger may be closed
-				fmt.Printf("Panic when cleaning up loggers: %v\n", r)
-			}
-		}()
+	protectLoggerCleanup(func() {
 		log.CleanupLoggers()
-	}()
+	})
 
 	log.Info("Graceful shutdown completed")
 }
@@ -361,38 +378,39 @@ func (app *Application) runWithGracefulShutdown(kratosApp *kratos.App) error {
 	case <-app.shutdownChan:
 		log.Info("Shutdown signal received, stopping Kratos application...")
 
-		// Create context with shutdown timeout only after receiving shutdown signal
-		ctx, cancel := context.WithTimeout(context.Background(), app.shutdownTimeout)
-		defer cancel()
-
-		// Stop Kratos application gracefully with timeout
-		stopChan := make(chan error, 1)
-		go func() {
-			defer func() {
-				// Recover from panic during stop
-				if r := recover(); r != nil {
-					stopChan <- fmt.Errorf("panic during Kratos application stop: %v", r)
-				}
-			}()
-			stopChan <- kratosApp.Stop()
-		}()
-
-		select {
-		case err := <-stopChan:
-			if err != nil {
-				log.Errorf("Error stopping Kratos application: %v", err)
-			}
-			return err
-		case <-ctx.Done():
-			log.Error("Shutdown timeout exceeded during graceful shutdown")
-			return fmt.Errorf("shutdown timeout exceeded during graceful shutdown")
-		}
+		return app.stopKratosAppWithTimeout(kratosApp)
 
 	case err := <-errChan:
 		log.Error(err)
 		// Initiate shutdown on error to ensure cleanup
 		app.initiateShutdown()
 		return fmt.Errorf("failed to run Kratos application: %w", err)
+	}
+}
+
+func (app *Application) stopKratosAppWithTimeout(kratosApp *kratos.App) error {
+	ctx, cancel := context.WithTimeout(context.Background(), app.shutdownTimeout)
+	defer cancel()
+
+	stopChan := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				stopChan <- fmt.Errorf("panic during Kratos application stop: %v", r)
+			}
+		}()
+		stopChan <- kratosApp.Stop()
+	}()
+
+	select {
+	case err := <-stopChan:
+		if err != nil {
+			log.Errorf("Error stopping Kratos application: %v", err)
+		}
+		return err
+	case <-ctx.Done():
+		log.Error("Shutdown timeout exceeded during graceful shutdown")
+		return fmt.Errorf("shutdown timeout exceeded during graceful shutdown")
 	}
 }
 
@@ -446,9 +464,30 @@ func NewApplication(wire wireApp, plugins ...plugins.Plugin) *Application {
 
 	// Return initialized Application instance
 	return &Application{
-		wire:    wire,
-		plugins: plugins,
+		wire:              wire,
+		plugins:           plugins,
+		publishDefaultApp: true,
 	}
+}
+
+// SetConfigPath binds a bootstrap config path to this Application instance.
+// Instance-scoped paths take precedence over process-wide config manager state.
+func (app *Application) SetConfigPath(path string) *Application {
+	if app == nil {
+		return nil
+	}
+	app.configPath = path
+	return app
+}
+
+// SetPublishDefaultApp controls whether Run publishes the created app as the
+// process-wide default Lynx application instance.
+func (app *Application) SetPublishDefaultApp(enabled bool) *Application {
+	if app == nil {
+		return nil
+	}
+	app.publishDefaultApp = enabled
+	return app
 }
 
 // HealthChecker methods

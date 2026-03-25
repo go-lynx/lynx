@@ -49,6 +49,9 @@ func InitGlobalEventBus(configs BusConfigs) error {
 }
 
 // GetGlobalEventBus returns the global event bus manager
+//
+// Deprecated: prefer passing an explicit *EventBusManager and using
+// PublishEventWithManager, SubscribeWithManager, or SubscribeToWithManager.
 func GetGlobalEventBus() *EventBusManager {
 	globalMu.RLock()
 	provider := defaultEventBusProvider
@@ -77,18 +80,48 @@ func SetGlobalEventBus(manager *EventBusManager) {
 }
 
 // PublishEvent publishes an event to the global event bus
+//
+// Deprecated: prefer PublishEventWithManager with an explicit *EventBusManager.
 func PublishEvent(event LynxEvent) error {
 	return GetGlobalEventBus().PublishEvent(event)
 }
 
+// PublishEventWithManager publishes an event via the provided event bus manager.
+func PublishEventWithManager(manager *EventBusManager, event LynxEvent) error {
+	if manager == nil {
+		return fmt.Errorf("event bus manager is nil")
+	}
+	return manager.PublishEvent(event)
+}
+
 // Subscribe subscribes to events on a specific bus
+//
+// Deprecated: prefer SubscribeWithManager with an explicit *EventBusManager.
 func Subscribe(busType BusType, handler func(LynxEvent)) error {
 	return GetGlobalEventBus().Subscribe(busType, handler)
 }
 
+// SubscribeWithManager subscribes to events on a specific bus via the provided manager.
+func SubscribeWithManager(manager *EventBusManager, busType BusType, handler func(LynxEvent)) error {
+	if manager == nil {
+		return fmt.Errorf("event bus manager is nil")
+	}
+	return manager.Subscribe(busType, handler)
+}
+
 // SubscribeTo subscribes to a specific event type
+//
+// Deprecated: prefer SubscribeToWithManager with an explicit *EventBusManager.
 func SubscribeTo(eventType EventType, handler func(LynxEvent)) error {
 	return GetGlobalEventBus().SubscribeTo(eventType, handler)
+}
+
+// SubscribeToWithManager subscribes to a specific event type via the provided manager.
+func SubscribeToWithManager(manager *EventBusManager, eventType EventType, handler func(LynxEvent)) error {
+	if manager == nil {
+		return fmt.Errorf("event bus manager is nil")
+	}
+	return manager.SubscribeTo(eventType, handler)
 }
 
 // CloseGlobalEventBus closes the global event bus manager
@@ -147,6 +180,8 @@ func CloseGlobalEventBus() error {
 }
 
 // SetGlobalLogger sets the logger for the global event bus manager
+//
+// Deprecated: prefer calling SetLogger on an explicit *EventBusManager.
 func SetGlobalLogger(logger log.Logger) {
 	GetGlobalEventBus().SetLogger(logger)
 }

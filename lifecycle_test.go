@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-lynx/lynx/plugins"
 )
 
@@ -256,6 +257,53 @@ func TestSafeInitPlugin_ConcurrentInit(t *testing.T) {
 
 	// Verify all initializations succeeded (or at least no panics)
 	t.Logf("Success: %d, Errors: %d", successCount, errorCount)
+}
+
+func TestLifecycleConfigHelpers_ClampDurationsAndParallelism(t *testing.T) {
+	cfg := config.New(
+		config.WithSource(&staticSource{kv: &config.KeyValue{
+			Key:    t.Name() + ".yaml",
+			Format: "yaml",
+			Value: []byte(`
+lynx:
+  plugins:
+    init_timeout: 500ms
+    start_timeout: 70s
+    stop_timeout: 0s
+    unload_total_timeout: 5s
+    start_parallelism: 0
+    unload_parallelism: 99
+`),
+		}}),
+	)
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = cfg.Close()
+	})
+
+	manager := NewPluginManager[plugins.Plugin]()
+	manager.SetConfig(cfg)
+
+	if got := manager.getInitTimeout(); got != time.Second {
+		t.Fatalf("expected init timeout to clamp to 1s, got %v", got)
+	}
+	if got := manager.getStartTimeout(); got != 60*time.Second {
+		t.Fatalf("expected start timeout to clamp to 60s, got %v", got)
+	}
+	if got := manager.getStopTimeout(); got != time.Second {
+		t.Fatalf("expected stop timeout to clamp to 1s, got %v", got)
+	}
+	if got := manager.getUnloadTotalTimeout(); got != 10*time.Second {
+		t.Fatalf("expected unload total timeout to clamp to 10s, got %v", got)
+	}
+	if got := manager.getStartParallelism(); got != 8 {
+		t.Fatalf("expected invalid start parallelism to fall back to default 8, got %d", got)
+	}
+	if got := manager.getUnloadParallelism(); got != 16 {
+		t.Fatalf("expected unload parallelism to clamp to 16, got %d", got)
+	}
 }
 
 // TestSafeStartPlugin_ConcurrentStart tests concurrent startup

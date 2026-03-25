@@ -76,6 +76,8 @@ func clearDefaultAppIf(app *LynxApp) bool {
 		return false
 	}
 	lynxApp = nil
+	events.ClearDefaultEventBusProvider()
+	events.ClearDefaultListenerManagerProvider()
 	return true
 }
 
@@ -174,12 +176,39 @@ type LynxApp struct {
 	eventAdapter         plugins.EventBusAdapter
 }
 
-// Lynx returns the global LynxApp instance.
-// It ensures thread-safe access to the singleton instance.
+// Lynx returns the process-wide default LynxApp instance.
+//
+// Deprecated: prefer passing an explicit *LynxApp and using instance helpers
+// such as GetTypedPluginFromApp, GetEventManagerFromApp, and
+// GetEventListenerManagerFromApp.
 func Lynx() *LynxApp {
 	lynxMu.RLock()
 	defer lynxMu.RUnlock()
 	return lynxApp
+}
+
+// GetEventManagerFromApp returns the event bus manager owned by app.
+func GetEventManagerFromApp(app *LynxApp) *events.EventBusManager {
+	if app == nil {
+		return nil
+	}
+	return app.EventManager()
+}
+
+// GetEventListenerManagerFromApp returns the listener manager owned by app.
+func GetEventListenerManagerFromApp(app *LynxApp) *events.EventListenerManager {
+	if app == nil {
+		return nil
+	}
+	return app.EventListenerManager()
+}
+
+// GetEventAdapterFromApp returns the plugin event adapter owned by app.
+func GetEventAdapterFromApp(app *LynxApp) plugins.EventBusAdapter {
+	if app == nil {
+		return nil
+	}
+	return app.EventAdapter()
 }
 
 // Host returns the host of this application instance.
@@ -376,21 +405,50 @@ func (a *LynxApp) GetGlobalConfig() config.Config {
 	return a.globalConf
 }
 
-// GetTypedPlugin globally retrieves a type-safe plugin instance
-func GetTypedPlugin[T plugins.Plugin](name string) (T, error) {
+// GetPluginManagerFromApp returns the plugin manager owned by app.
+func GetPluginManagerFromApp(app *LynxApp) TypedPluginManager {
+	if app == nil {
+		return nil
+	}
+	return app.GetPluginManager()
+}
+
+// GetGlobalConfigFromApp returns the config owned by app.
+func GetGlobalConfigFromApp(app *LynxApp) config.Config {
+	if app == nil {
+		return nil
+	}
+	return app.GetGlobalConfig()
+}
+
+// GetTypedPluginFromApp retrieves a typed plugin from an explicit app instance.
+func GetTypedPluginFromApp[T plugins.Plugin](app *LynxApp, name string) (T, error) {
 	var zero T
-	a := Lynx()
-	if a == nil {
+	if app == nil {
 		return zero, fmt.Errorf("lynx application not initialized")
 	}
 
-	manager := a.GetTypedPluginManager()
+	manager := app.GetTypedPluginManager()
 	if manager == nil {
 		return zero, fmt.Errorf("typed plugin manager not initialized")
 	}
 
-	// Retrieve via the unified TypedPluginManager and perform a type assertion
 	return GetTypedPluginFromManager[T](manager, name)
+}
+
+// MustGetTypedPluginFromApp retrieves a typed plugin from an explicit app instance or panics.
+func MustGetTypedPluginFromApp[T plugins.Plugin](app *LynxApp, name string) T {
+	p, err := GetTypedPluginFromApp[T](app, name)
+	if err != nil {
+		panic(err)
+	}
+	return p
+}
+
+// GetTypedPlugin globally retrieves a type-safe plugin instance.
+// Deprecated: prefer GetTypedPluginFromApp or GetTypedPluginFromManager to avoid relying on the process-wide default app.
+func GetTypedPlugin[T plugins.Plugin](name string) (T, error) {
+	return GetTypedPluginFromApp[T](Lynx(), name)
 }
 
 // SetGlobalConfig replaces the application configuration reference.
@@ -806,7 +864,10 @@ func (a *LynxApp) RestartRequirementReport() RestartRequirementReport {
 }
 
 // ConfigReloadPlan returns the current plugin manager's compatibility view for
-// older callers. New code should prefer RestartRequirementReport().
+// older callers.
+//
+// Deprecated: prefer RestartRequirementReport(), which matches Lynx core's
+// restart-based configuration model.
 func (a *LynxApp) ConfigReloadPlan() ConfigReloadPlan {
 	if a == nil || a.pluginManager == nil {
 		return ConfigReloadPlan{}

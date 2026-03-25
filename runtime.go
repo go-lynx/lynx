@@ -14,13 +14,15 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// TypedRuntimePlugin generic runtime plugin
+// TypedRuntimePlugin is a compatibility wrapper around plugins.Runtime.
+// Deprecated: prefer plugins.NewUnifiedRuntime and the plugins.Runtime interface directly.
 type TypedRuntimePlugin struct {
 	// Use unified Runtime as the underlying implementation
 	runtime plugins.Runtime
 }
 
-// NewTypedRuntimePlugin creates a new TypedRuntimePlugin instance with default settings.
+// NewTypedRuntimePlugin creates a new compatibility runtime wrapper.
+// Deprecated: prefer plugins.NewUnifiedRuntime.
 func NewTypedRuntimePlugin() *TypedRuntimePlugin {
 	runtime := plugins.NewUnifiedRuntime()
 	runtime.SetLogger(log.DefaultLogger)
@@ -103,11 +105,21 @@ func (r *TypedRuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugi
 }
 
 // RuntimePlugin backward-compatible alias of TypedRuntimePlugin
+// Deprecated: prefer plugins.Runtime.
 type RuntimePlugin = TypedRuntimePlugin
 
 // NewRuntimePlugin creates a runtime plugin (backward-compatible)
+// Deprecated: prefer plugins.NewUnifiedRuntime.
 func NewRuntimePlugin() *RuntimePlugin {
 	return NewTypedRuntimePlugin()
+}
+
+// UnderlyingRuntime returns the wrapped plugins.Runtime instance.
+func (r *TypedRuntimePlugin) UnderlyingRuntime() plugins.Runtime {
+	if r == nil {
+		return nil
+	}
+	return r.runtime
 }
 
 // GetPrivateResource gets a private resource for the current plugin context
