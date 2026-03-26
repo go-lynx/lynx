@@ -23,22 +23,22 @@ const (
 
 // repoInfo matches GitHub API repo response (only needed fields)
 type githubRepoInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	CloneURL    string `json:"clone_url"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	CloneURL      string `json:"clone_url"`
 	DefaultBranch string `json:"default_branch"`
-	Private     bool   `json:"private"`
+	Private       bool   `json:"private"`
 }
 
 // pluginCacheEntry is the cached plugin list with timestamp
 type pluginCacheEntry struct {
-	Plugins   []*PluginMetadata `json:"plugins"`
-	CachedAt  time.Time         `json:"cached_at"`
+	Plugins  []*PluginMetadata `json:"plugins"`
+	CachedAt time.Time         `json:"cached_at"`
 }
 
 var (
-	githubPluginCache     []*PluginMetadata
-	githubPluginCacheMu   sync.RWMutex
+	githubPluginCache      []*PluginMetadata
+	githubPluginCacheMu    sync.RWMutex
 	forceRefreshPluginList bool // when true, skip cache and always fetch from GitHub (set by list --no-cache)
 )
 
@@ -50,7 +50,7 @@ var repoNameToType = map[string]PluginType{
 	"redis": TypeNoSQL, "redis-lock": TypeNoSQL, "mongodb": TypeNoSQL,
 	"elasticsearch": TypeNoSQL, "etcd": TypeOther, "etcd-lock": TypeOther,
 	"tracer": TypeTracer,
-	"seata": TypeDTX, "dtm": TypeDTX,
+	"seata":  TypeDTX, "dtm": TypeDTX,
 	"nacos": TypeConfig, "apollo": TypeConfig, "polaris": TypeOther,
 	"swagger": TypeOther, "sentinel": TypeOther, "eon-id": TypeOther,
 }

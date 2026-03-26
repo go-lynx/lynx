@@ -75,7 +75,7 @@ func displayPluginInfo(plugin *PluginMetadata) error {
 	fmt.Printf("  Version:     %s\n", plugin.Version)
 	fmt.Printf("  Author:      %s\n", plugin.Author)
 	fmt.Printf("  License:     %s\n", plugin.License)
-	
+
 	// Status
 	fmt.Printf("\n%s\n", color.YellowString("Status:"))
 	switch plugin.Status {

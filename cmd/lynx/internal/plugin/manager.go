@@ -151,7 +151,7 @@ func (m *PluginManager) scanInstalledPlugins() {
 			}
 
 			pluginName := pluginDir.Name()
-			
+
 			// Check if plugin has go.mod
 			goModPath := filepath.Join(typeDir, pluginName, "go.mod")
 			if _, err := os.Stat(goModPath); err == nil {
@@ -551,7 +551,7 @@ func (m *PluginManager) getServicePluginConfig(name string) map[string]interface
 		return map[string]interface{}{
 			"addr":    ":8080",
 			"timeout": "30s",
-			"# Note": "Configure service-specific settings here",
+			"# Note":  "Configure service-specific settings here",
 		}
 	}
 }
@@ -720,12 +720,12 @@ func (m *PluginManager) getGenericPluginConfig(name string) map[string]interface
 	switch name {
 	case "polaris":
 		return map[string]interface{}{
-			"namespace":              "default",
-			"server_addresses":       []string{"127.0.0.1:8091"},
-			"enable_retry":           true,
-			"max_retry_times":        3,
-			"retry_interval":         "2s",
-			"health_check_interval":  "5s",
+			"namespace":             "default",
+			"server_addresses":      []string{"127.0.0.1:8091"},
+			"enable_retry":          true,
+			"max_retry_times":       3,
+			"retry_interval":        "2s",
+			"health_check_interval": "5s",
 		}
 	case "swagger":
 		return map[string]interface{}{
@@ -780,7 +780,7 @@ func (m *PluginManager) checkDependencies(name string) error {
 		if plugin.Status != StatusInstalled || plugin.Name == name {
 			continue
 		}
-		
+
 		for _, dep := range plugin.Dependencies {
 			if dep.Name == name && dep.Required {
 				return fmt.Errorf("plugin %s depends on %s", plugin.Name, name)

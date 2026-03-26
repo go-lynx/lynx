@@ -94,16 +94,27 @@ assembly code:
 | File | Description |
 |------|-------------|
 | `doc.go` | Package documentation |
-| `app.go` | App instance assembly, singleton compatibility, runtime wiring, and shutdown |
+| `app.go` | App instance definition and instance-facing APIs |
+| `app_compat.go` | Default-app singleton compatibility helpers |
+| `app_report.go` | Core-facing restart-based reports |
+| `app_report_compat.go` | Compatibility report views retained for older callers |
+| `app_init.go` | App construction and initialization flow |
+| `app_shutdown.go` | App shutdown and cleanup flow |
+| `app_subscriptions.go` | Subscription loading and gRPC subscription wiring |
 | `manager.go` | Plugin manager interfaces and DefaultPluginManager implementation |
 | `lifecycle.go` | Plugin lifecycle operations (init/start/stop with safety) |
 | `ops.go` | Plugin loading/unloading operations and resource management |
 | `topology.go` | Plugin dependency resolution and topological sorting |
 | `prepare.go` | Configuration-driven plugin preparation |
-| `runtime.go` | Backward-compatible runtime wrapper delegating to `plugins.UnifiedRuntime` |
+| `runtime.go` | Core runtime helpers for explicit `plugins.Runtime` usage |
+| `runtime_compat.go` | Compatibility runtime wrapper delegating to `plugins.UnifiedRuntime` |
 | `controlplane.go` | Optional shell-facing control plane composition interfaces |
 | `certificate.go` | CertificateProvider interface for TLS |
-| `recovery.go` | Error recovery and circuit breaker mechanisms |
+| `circuit_breaker.go` | Shared circuit breaker implementation |
+| `recovery.go` | Error recovery manager flow |
+| `recovery_strategy.go` | Recovery strategy interfaces and default behavior |
+| `recovery_report.go` | Recovery reporting and health views |
+| `recovery_types.go` | Recovery records and error classification types |
 
 ### Sub-packages
 
@@ -112,7 +123,7 @@ assembly code:
 | `boot/` | Optional application bootstrap shell and process lifecycle glue |
 | `cmd/` | CLI entrypoints (e.g., `lynx` tool) |
 | `conf/` | Configuration proto definitions |
-| `events/` | Event system plus compatibility global access helpers |
+| `events/` | Event system plus compatibility global access helpers; large event-bus paths are split by subscription, publish, runtime, retry, state, and lifecycle responsibilities |
 | `log/` | Logging system with zerolog integration |
 | `tls/` | TLS certificate management and validation |
 | `cache/` | Caching abstractions and implementations |
@@ -120,7 +131,7 @@ assembly code:
 | `observability/` | Metrics and monitoring utilities |
 | `pkg/` | Reusable utility packages (auth, cast, collection, etc.) |
 | `internal/` | Private implementation details |
-| `plugins/` | Plugin SDK and `UnifiedRuntime` implementation |
+| `plugins/` | Plugin SDK and `UnifiedRuntime` implementation; runtime paths are split by registration, resources, events, ownership, and shared state responsibilities |
 
 ## Plugin System Architecture
 

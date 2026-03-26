@@ -19,6 +19,17 @@
   <a href="https://github.com/go-lynx/lynx/stargazers"><img src="https://img.shields.io/github/stars/go-lynx/lynx" alt="Stars"></a>
 </p>
 
+## Architecture Position
+
+Lynx should be read as a plugin orchestration framework first.
+
+- Core: plugin orchestration, lifecycle ordering, shared runtime, event plumbing
+- Optional shell: `boot`, app startup wiring, control-plane-facing helpers
+- Compatibility surface: singleton access, root-package runtime wrappers, global event helpers
+
+The preferred path for new code is explicit app/runtime ownership. Compatibility
+helpers remain available, but they are no longer the design center.
+
 ## 📊 Event System
 
 Lynx provides a unified event system for inter-plugin communication:

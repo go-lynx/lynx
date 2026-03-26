@@ -67,7 +67,7 @@ func displaySearchResults(plugins []*PluginMetadata, keyword string) error {
 
 	// Create table writer
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	
+
 	// Print header
 	fmt.Fprintf(w, "NAME\tTYPE\tVERSION\tSTATUS\tDESCRIPTION\n")
 	fmt.Fprintf(w, "----\t----\t-------\t------\t-----------\n")
@@ -85,7 +85,7 @@ func displaySearchResults(plugins []*PluginMetadata, keyword string) error {
 
 		typeStr := colorizeType(plugin.Type)
 		status := colorizeStatus(plugin.Status)
-		
+
 		// Truncate and highlight description
 		desc := plugin.Description
 		if len(desc) > 50 {

@@ -189,11 +189,17 @@ Status:
 
 - in progress
 
+Recent progress:
+
+- `ConfigReloadPlan` is now isolated in compatibility-oriented files instead of living beside the core restart-based report types
+- `CoreRuntimeReport()` now exists as the preferred app-facing summary without config-reload compatibility vocabulary
+- compatibility runtime wrappers and default-app helpers are split into explicit `*_compat.go` files
+
 Open compatibility surfaces still to simplify:
 
 - `PluginProtocol` still carries `ConfigHotReload`, `ConfigValidation`, and `ConfigRollback`
-- `ConfigReloadPlan` still exists as a compatibility report even though core now has `RestartRequirementReport`
-- `LynxApp` still contains compatibility inspection paths for configurable and rollback-capable plugins
+- `ConfigReloadPlan` still exists publicly for older callers even though it now lives in compatibility-oriented files
+- `LynxApp` still exposes compatibility inspection/reporting paths for older callers
 
 ### Phase 4: Remove Upgrade Semantics From Default Core Model
 
@@ -214,11 +220,17 @@ Status:
 
 - in progress
 
+Recent progress:
+
+- legacy upgrade hooks now live in `plugins/upg_compat.go`
+- legacy upgrade/rollback event vocabulary now lives in `plugins/events_compat.go`
+- legacy `BasePlugin` upgrade helpers now live in `plugins/base_compat.go`
+
 Open compatibility surfaces still to simplify:
 
 - `PluginStatus` still includes `upgrading` and `rollback`
 - `UpgradeCapability` and upgrade interfaces still exist in the public plugin API
-- plugin event constants still exist as compatibility vocabulary even though docs and base behavior now demote them
+- plugin event constants still exist as public compatibility vocabulary even though docs and file layout now demote them
 
 ### Phase 5: Tighten Global vs Instance State
 
@@ -253,9 +265,9 @@ Recent progress:
 
 Current engineering assessment:
 
-- approximate completion against the current core-refocus target: `72%`
-- strongest areas today: core runtime direction, plugin-manager state separation, lifecycle-path refactoring feasibility
-- largest remaining gaps: global-vs-instance state cleanup, compatibility-surface reduction, boot thinning, event-system slimming, and finishing unload-path helper unification
+- approximate completion against the current core-refocus target: `83%`
+- strongest areas today: event/runtime layering, explicit-vs-compatibility boundary clarity, plugin-manager state separation, and architecture/documentation alignment
+- largest remaining gaps: public compatibility vocabulary reduction, boot thinning, finishing unload-path helper unification, and pushing verification beyond the currently curated package set
 
 ### Phase 6: Increase Failure-Oriented Verification
 
@@ -285,12 +297,16 @@ Recent verification progress:
 - root recovery tests for concurrency and goroutine cleanup now pass
 - plugin manager lifecycle operations now serialize load/unload/stop entrypoints to avoid concurrent duplicate startup side effects
 - added regression coverage proving concurrent `LoadPlugins()` calls only start a plugin once
-- full `go test ./... -count=1` passes on the current tree
+- event bus paths are now regression-tested after responsibility splits across subscribe, publish, runtime, retry, state, and lifecycle files
+- `UnifiedRuntime` paths are now regression-tested after registration, resources, events, ownership, and shared-state splits
+- `make validate-active` now provides a focused regression entrypoint for the actively refactored core surfaces
+- broader supporting packages now pass a curated extended verification set covering `cache`, `subscribe`, `tls`, `observability`, `pkg/...`, and `log`
+- `make validate-broad` now combines active-core regressions with that broader supporting-package verification layer
 
-Known unrelated test debt still present outside the current plugin-core refocus:
+Known unrelated verification debt still present outside the current plugin-core refocus:
 
-- `log` package has time- and filesystem-sensitive test failures around rotation and total-size accounting
-- `pkg/strx` currently has a failing string truncation assertion
+- full-repository formatting is not yet clean enough to make `make validate` a default day-to-day gate
+- `go test -race` remains unusable in this workspace because the local ThreadSanitizer runtime reports `unsupported VMA range`
 
 ## Immediate Next Steps
 
@@ -301,15 +317,19 @@ The recommended next implementation order is:
 3. Continue simplifying config-reload concepts in core types and docs.
 4. Clean up remaining upgrade-centric state and event semantics from the default core path.
 5. Tighten global-vs-instance behavior and reduce hidden singleton coupling.
-6. Return to unrelated flaky test debt after plugin-core boundaries are stable.
+6. Expand verification from active-core regressions to broader repository coverage once structural work settles.
 
 ## Validation Snapshot
 
 Verified with the local Go toolchain in this workspace:
 
-- `go test . -run 'TestSetGlobalConfig|TestRuntimeReport'`
-- `go test . -run 'TestErrorRecoveryManager_(ConcurrentRecordError|ConcurrentRecovery|GoroutineLeak|StopMonitorGoroutineExit|SemaphoreTimeoutGoroutineCleanup)'`
-- `go test ./plugins/...`
+- `make validate-active`
+- `make validate-broad`
+- `go test . ./boot ./events ./plugins -run 'Test(Runtime|App|Application_|NewApplication_|FormatStartupElapsed|GetGlobalEventBus_UsesSharedFallbackAfterInitFailure|GlobalListenerManager_UsesProviderSafely|ExplicitManagerHelpers_DoNotRequireGlobals|PrivateResourceNamespace_DoesNotCollideWithShared|PrivateResourceInfo_ResolvesLegacyDisplayNameWithoutBreakingSharedStorage|CircuitBreaker_|ErrorRecoveryManager_)'`
+
+Environment note:
+
+- `go test -race` is currently not usable in this workspace because the local ThreadSanitizer runtime reports `unsupported VMA range`; this is an environment limitation, not a code-level race finding
 
 Current non-core failures observed during broader test runs:
 

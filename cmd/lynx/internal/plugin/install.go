@@ -64,7 +64,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			if plugin.Official {
 				fmt.Printf("✓ Official plugin by %s\n", plugin.Author)
 			}
-			
+
 			// Show dependencies if any
 			if len(plugin.Dependencies) > 0 {
 				fmt.Println("📌 Dependencies:")

@@ -49,38 +49,6 @@ const (
 	// The plugin is non-operational and may require manual intervention
 	// Should transition to StatusTerminated or attempt recovery
 	StatusFailed
-
-	// StatusUpgrading is kept only for backward compatibility with older plugins.
-	// Lynx core does not treat live upgrade as a standard lifecycle path.
-	StatusUpgrading
-
-	// StatusRollback is kept only for backward compatibility with older plugins.
-	// Lynx core does not orchestrate in-process rollback as a standard lifecycle path.
-	StatusRollback
-)
-
-// UpgradeCapability describes optional legacy plugin self-management behaviors.
-// Lynx core does not treat live upgrade or replacement as a framework-level
-// guarantee; these flags are advisory compatibility metadata only and concrete
-// plugins must opt in explicitly where needed.
-type UpgradeCapability int
-
-const (
-	// UpgradeNone indicates the plugin does not advertise legacy live-upgrade hooks.
-	// Restart remains the default core path for change application.
-	UpgradeNone UpgradeCapability = iota
-
-	// UpgradeConfig indicates the plugin advertises legacy self-managed config mutation.
-	// This does not mean Lynx core orchestrates in-process rollout.
-	UpgradeConfig
-
-	// UpgradeVersion indicates the plugin advertises legacy self-managed version upgrade hooks.
-	// Lynx core still expects restart/external rollout as the standard path.
-	UpgradeVersion
-
-	// UpgradeReplace indicates the plugin advertises legacy replacement semantics.
-	// Lynx core does not provide a framework guarantee for live replacement.
-	UpgradeReplace
 )
 
 // CorePlugin is the minimal lifecycle-managed plugin contract.
@@ -92,7 +60,7 @@ type CorePlugin interface {
 	DependencyAware
 }
 
-// Plugin is the backward-compatible managed plugin contract used by Lynx today.
+// Plugin is the current managed plugin contract used by Lynx today.
 // New code should prefer reasoning in terms of CorePlugin plus specific capability
 // interfaces below, rather than assuming every plugin must implement one wide interface.
 type Plugin interface {
@@ -103,7 +71,7 @@ type Plugin interface {
 // LifecycleWithContext defines optional context-aware lifecycle methods.
 // Plugins implementing this interface can receive cancellation/timeout signals
 // and are encouraged to stop work promptly when the context is done.
-// This interface is backward-compatible and optional; if not implemented,
+// This interface is optional; if not implemented,
 // the manager will fall back to calling the non-context methods.
 type LifecycleWithContext interface {
 	// InitializeContext prepares the plugin with context support.
@@ -456,26 +424,6 @@ type Suspendable interface {
 	// Resume restores plugin operations from a suspended state
 	// Resumes normal operation without reinitialization
 	Resume() error
-}
-
-// Configurable defines optional compatibility hooks for plugins that manage
-// their own runtime configuration concerns. Lynx core does not orchestrate
-// in-process config rollout; configuration changes are applied by restart.
-type Configurable interface {
-	// Configure applies plugin-specific configuration in plugin-owned code paths.
-	Configure(conf any) error
-}
-
-// ConfigValidator defines optional compatibility validation for plugin-owned
-// configuration handling. It does not make live core reload a supported path.
-type ConfigValidator interface {
-	ValidateConfig(conf any) error
-}
-
-// ConfigRollbacker defines optional compatibility rollback support for
-// plugin-owned configuration handling. Lynx core itself remains restart-based.
-type ConfigRollbacker interface {
-	RollbackConfig(previous any) error
 }
 
 // DependencyAware defines methods for plugin dependency management

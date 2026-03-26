@@ -30,6 +30,8 @@ type PluginManager interface {
 	GetPluginByID(id string) plugins.Plugin
 	GetPluginCapabilities(name string) (plugins.PluginCapabilities, error)
 	GetRestartRequirementReport() RestartRequirementReport
+	// Deprecated: prefer GetRestartRequirementReport, which reflects Lynx core's
+	// restart-based configuration model directly.
 	GetConfigReloadPlan() ConfigReloadPlan
 	PreparePlug(config config.Config) ([]plugins.Plugin, error)
 
@@ -83,16 +85,6 @@ type ConfigReloadEntry struct {
 // Lynx applies configuration changes by restart instead of in-process reload.
 type RestartRequirementReport struct {
 	RestartRequired []ConfigReloadEntry
-	Invalid         []ConfigReloadEntry
-}
-
-// ConfigReloadPlan is kept as a compatibility report for older callers.
-// New code should prefer RestartRequirementReport, which reflects the
-// restart-based core model directly.
-type ConfigReloadPlan struct {
-	HotReloadable   []ConfigReloadEntry
-	RestartRequired []ConfigReloadEntry
-	Unsupported     []ConfigReloadEntry
 	Invalid         []ConfigReloadEntry
 }
 
@@ -237,17 +229,6 @@ func (m *DefaultPluginManager[T]) GetRestartRequirementReport() RestartRequireme
 		}
 	}
 	return report
-}
-
-func (m *DefaultPluginManager[T]) GetConfigReloadPlan() ConfigReloadPlan {
-	report := m.GetRestartRequirementReport()
-	plan := ConfigReloadPlan{
-		HotReloadable:   make([]ConfigReloadEntry, 0),
-		RestartRequired: append([]ConfigReloadEntry(nil), report.RestartRequired...),
-		Unsupported:     make([]ConfigReloadEntry, 0),
-		Invalid:         append([]ConfigReloadEntry(nil), report.Invalid...),
-	}
-	return plan
 }
 
 // containsName checks if a name exists in the slice.

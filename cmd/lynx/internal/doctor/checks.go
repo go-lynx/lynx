@@ -139,7 +139,7 @@ func (b *BaseCheck) fixConfigIssues() error {
 				}
 			}
 		}
-		
+
 		// Create a basic boot config example if none exists
 		bootConfigPath := "app/conf/boot-example.yml"
 		if _, err := os.Stat(bootConfigPath); os.IsNotExist(err) {
@@ -534,7 +534,7 @@ func (c *GoModCheck) Check() CheckResult {
 			moduleName := strings.TrimPrefix(line, "module ")
 			moduleName = strings.TrimSpace(moduleName)
 			result.Details["module"] = moduleName
-			
+
 			if moduleName == "github.com/go-lynx/lynx" || strings.HasPrefix(moduleName, "github.com/go-lynx/") {
 				result.Status = StatusOK
 				result.Message = fmt.Sprintf("Valid go.mod with module: %s", moduleName)
@@ -602,16 +602,16 @@ func (c *ConfigFileCheck) Check() CheckResult {
 		if err != nil {
 			return nil
 		}
-		
+
 		// Skip vendor and hidden directories
 		if info.IsDir() && (strings.HasPrefix(info.Name(), ".") || info.Name() == "vendor") {
 			return filepath.SkipDir
 		}
-		
+
 		if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") {
 			if strings.Contains(path, "conf") || strings.Contains(path, "config") {
 				configFiles = append(configFiles, path)
-				
+
 				// Try to parse the YAML file
 				content, err := os.ReadFile(path)
 				if err != nil {
@@ -634,7 +634,7 @@ func (c *ConfigFileCheck) Check() CheckResult {
 	} else {
 		result.Details["config_files"] = configFiles
 		result.Details["invalid_files"] = invalidFiles
-		
+
 		if len(invalidFiles) > 0 {
 			result.Status = StatusError
 			result.Message = fmt.Sprintf("Found %d invalid config files", len(invalidFiles))
