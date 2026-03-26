@@ -11,6 +11,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"
+	"gopkg.in/yaml.v3"
 
 	"github.com/go-lynx/lynx/cmd/lynx/internal/base"
 	"github.com/go-lynx/lynx/cmd/lynx/internal/plugin"
@@ -22,6 +23,22 @@ type Project struct {
 	Path string // Project path
 }
 
+type projectCreateResult struct {
+	pluginFailures []string
+	modTidyFailed  bool
+}
+
+const defaultLayoutRepo = "https://github.com/go-lynx/lynx-layout.git"
+
+var builtInLayoutPlugins = map[string]struct{}{
+	"grpc":       {},
+	"http":       {},
+	"mysql":      {},
+	"redis":      {},
+	"redis-lock": {},
+	"tracer":     {},
+}
+
 // New creates a new project from a remote repository.
 // preSelectedPlugins: when nil, run interactive plugin selection; when non-nil, use the slice (may be empty) and skip prompt.
 func (p *Project) New(ctx context.Context, dir string, layout string, branch string, force bool, module string, postTidy bool, preSelectedPlugins *[]*plugin.PluginMetadata) error {
@@ -31,7 +48,7 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	// Check if target path already exists
 	if _, err := os.Stat(to); !os.IsNotExist(err) {
 		// If exists, notify user that path already exists
-		base.Warnf("%s", fmt.Sprintf(base.T("already_exists"), p.Name))
+		base.Warnf("%s", base.T("already_exists", p.Name))
 		// --force will silently overwrite, otherwise interactive confirmation
 		if !force {
 			prompt := &survey.Confirm{
@@ -55,12 +72,15 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	}
 
 	// Notify user to start creating project and display project name and layout repository information
-	base.Infof("%s", fmt.Sprintf(base.T("creating_service"), p.Name, layout))
+	base.Infof("%s", base.T("creating_service", p.Name, layout))
 	// Create a new repository instance
 	repo := base.NewRepo(layout, branch)
 	// Copy remote repository content to target path, excluding .git and .github directories
 	// If --module is provided, replace the module in template go.mod; otherwise don't replace template module
 	if err := repo.CopyToV2(ctx, to, module, []string{".git", ".github"}, nil); err != nil {
+		return err
+	}
+	if err := sanitizeProjectModules(to); err != nil {
 		return err
 	}
 	// Rename the user directory under cmd directory to project name (layout must provide cmd/user)
@@ -76,6 +96,7 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	base.Tree(to, dir)
 
 	// Resolve plugin list: interactive when preSelectedPlugins==nil, otherwise use pre-selected (or empty)
+	result := projectCreateResult{}
 	var selectedPlugins []*plugin.PluginMetadata
 	if preSelectedPlugins != nil {
 		selectedPlugins = *preSelectedPlugins
@@ -88,7 +109,9 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	}
 	if len(selectedPlugins) > 0 {
 		// Add selected plugins to go.mod
-		if err := addPluginsToProject(ctx, to, selectedPlugins); err != nil {
+		pluginResult, err := addPluginsToProject(ctx, to, selectedPlugins)
+		result.pluginFailures = append(result.pluginFailures, pluginResult.pluginFailures...)
+		if err != nil {
 			base.Warnf("Failed to add plugin dependencies: %v\n", err)
 		}
 	}
@@ -98,14 +121,15 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 		cmd := exec.CommandContext(ctx, "go", "mod", "tidy")
 		cmd.Dir = to
 		if out, err := cmd.CombinedOutput(); err != nil {
-			base.Warnf("%s", fmt.Sprintf(base.T("mod_tidy_failed"), err, string(out)))
+			result.modTidyFailed = true
+			base.Warnf("%s", base.T("mod_tidy_failed", err, string(out)))
 		} else {
 			base.Infof("%s", base.T("mod_tidy_ok"))
 		}
 	}
 
 	// Notify user that project creation was successful
-	base.Infof("%s", fmt.Sprintf(base.T("project_success"), color.GreenString(p.Name)))
+	printProjectSummary(p.Name, result)
 	// Prompt user to use the following commands to start the project
 	base.Infof("%s", base.T("start_cmds_header"))
 	base.Infof("%s\n", color.WhiteString("$ cd %s", p.Name))
@@ -121,6 +145,21 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	return nil
 }
 
+func printProjectSummary(name string, result projectCreateResult) {
+	if len(result.pluginFailures) == 0 && !result.modTidyFailed {
+		base.Infof("%s", base.T("project_success", color.GreenString(name)))
+		return
+	}
+
+	base.Warnf("%s", base.T("project_partial", color.YellowString(name)))
+	for _, failure := range result.pluginFailures {
+		base.Warnf("%s\n", base.T("project_followup", failure))
+	}
+	if result.modTidyFailed {
+		base.Warnf("%s\n", base.T("project_followup", "go mod tidy failed; inspect dependency integrity or module proxy state"))
+	}
+}
+
 // selectPlugins prompts the user to select plugins interactively.
 // Loads plugin list from GitHub (with cache). Returns nil, nil when no plugins available or user cancels.
 func selectPlugins() ([]*plugin.PluginMetadata, error) {
@@ -130,7 +169,7 @@ func selectPlugins() ([]*plugin.PluginMetadata, error) {
 		base.Warnf("Load plugin list failed: %v (skip plugin selection)\n", err)
 		return nil, nil
 	}
-	allPlugins := registry.GetAllPlugins()
+	allPlugins := filterSelectablePlugins(registry.GetAllPlugins())
 	if len(allPlugins) == 0 {
 		return nil, nil
 	}
@@ -253,9 +292,49 @@ func ResolvePluginNames(commaSeparated string) ([]*plugin.PluginMetadata, error)
 			base.Warnf("Plugin %q not found, skip: %v\n", name, err)
 			continue
 		}
+		if shouldSkipBuiltInPlugin(p.Name) {
+			base.Warnf("Plugin %q is already built into the default layout, skip explicit integration\n", name)
+			continue
+		}
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+func normalizeRepoURL(raw string) string {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	s = strings.TrimSuffix(s, "/")
+	return s
+}
+
+func usingDefaultLayout() bool {
+	current := repoURL
+	if current == "" {
+		current = defaultLayoutRepo
+	}
+	return normalizeRepoURL(current) == normalizeRepoURL(defaultLayoutRepo)
+}
+
+func shouldSkipBuiltInPlugin(name string) bool {
+	if !usingDefaultLayout() {
+		return false
+	}
+	_, ok := builtInLayoutPlugins[strings.TrimSpace(strings.ToLower(name))]
+	return ok
+}
+
+func filterSelectablePlugins(all []*plugin.PluginMetadata) []*plugin.PluginMetadata {
+	if !usingDefaultLayout() {
+		return all
+	}
+	filtered := make([]*plugin.PluginMetadata, 0, len(all))
+	for _, p := range all {
+		if p == nil || shouldSkipBuiltInPlugin(p.Name) {
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+	return filtered
 }
 
 // getPluginModulePath returns the correct Go module path for a plugin
@@ -306,21 +385,29 @@ func getPluginModulePath(p *plugin.PluginMetadata) string {
 }
 
 // addPluginsToProject adds selected plugins to the project's go.mod
-func addPluginsToProject(ctx context.Context, projectDir string, plugins []*plugin.PluginMetadata) error {
+func addPluginsToProject(ctx context.Context, projectDir string, plugins []*plugin.PluginMetadata) (projectCreateResult, error) {
+	result := projectCreateResult{}
 	if len(plugins) == 0 {
-		return nil
+		return result, nil
 	}
 
 	base.Infof("%s\n", base.T("adding_plugins"))
 
+	selected := make([]*plugin.PluginMetadata, 0, len(plugins))
 	for _, p := range plugins {
+		if p == nil {
+			continue
+		}
+
 		// Get the correct module path for the plugin
 		importPath := getPluginModulePath(p)
 
 		if importPath == "" {
-			base.Warnf("%s\n", fmt.Sprintf(base.T("plugin_add_failed"), p.Name, "no import path"))
+			base.Warnf("%s\n", base.T("plugin_add_failed", p.Name, "no import path"))
+			result.pluginFailures = append(result.pluginFailures, fmt.Sprintf("plugin %s: no import path", p.Name))
 			continue
 		}
+		selected = append(selected, p)
 
 		// Add version if specified
 		packagePath := importPath
@@ -335,14 +422,156 @@ func addPluginsToProject(ctx context.Context, projectDir string, plugins []*plug
 		cmd := exec.CommandContext(ctx, "go", "get", packagePath)
 		cmd.Dir = projectDir
 		if out, err := cmd.CombinedOutput(); err != nil {
-			base.Warnf("%s\n", fmt.Sprintf(base.T("plugin_add_failed"), p.Name, err))
+			base.Warnf("%s\n", base.T("plugin_add_failed", p.Name, err))
+			result.pluginFailures = append(result.pluginFailures, fmt.Sprintf("plugin %s: %v", p.Name, err))
 			if len(out) > 0 {
 				base.Warnf("Output: %s\n", string(out))
 			}
 		} else {
-			base.Infof("%s\n", fmt.Sprintf(base.T("plugin_added"), p.Name))
+			base.Infof("%s\n", base.T("plugin_added", p.Name))
 		}
 	}
 
+	if err := writePluginImportsFile(projectDir, selected); err != nil {
+		return result, err
+	}
+	if err := mergePluginBootstrapConfig(projectDir, selected); err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
+func sanitizeProjectModules(projectDir string) error {
+	for _, rel := range []string{"go.mod", filepath.Join("api", "go.mod")} {
+		filename := filepath.Join(projectDir, rel)
+		if _, err := os.Stat(filename); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if err := base.SanitizeGeneratedGoMod(filename); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func writePluginImportsFile(projectDir string, plugins []*plugin.PluginMetadata) error {
+	if len(plugins) == 0 {
+		return nil
+	}
+
+	mainPackageDir, err := findMainPackageDir(projectDir)
+	if err != nil {
+		return err
+	}
+
+	seen := make(map[string]struct{}, len(plugins))
+	imports := make([]string, 0, len(plugins))
+	for _, p := range plugins {
+		importPath := getPluginModulePath(p)
+		if importPath == "" {
+			continue
+		}
+		if _, ok := seen[importPath]; ok {
+			continue
+		}
+		seen[importPath] = struct{}{}
+		imports = append(imports, importPath)
+	}
+	if len(imports) == 0 {
+		return nil
+	}
+
+	sort.Strings(imports)
+
+	var b strings.Builder
+	b.WriteString("// Code generated by lynx new. DO NOT EDIT.\n\n")
+	b.WriteString("package main\n\n")
+	b.WriteString("import (\n")
+	for _, importPath := range imports {
+		b.WriteString(fmt.Sprintf("\t_ %q\n", importPath))
+	}
+	b.WriteString(")\n")
+
+	return os.WriteFile(filepath.Join(mainPackageDir, "plugins_gen.go"), []byte(b.String()), 0644)
+}
+
+func findMainPackageDir(projectDir string) (string, error) {
+	cmdDir := filepath.Join(projectDir, "cmd")
+	entries, err := os.ReadDir(cmdDir)
+	if err != nil {
+		return "", fmt.Errorf("read cmd directory %s: %w", cmdDir, err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		mainGo := filepath.Join(cmdDir, entry.Name(), "main.go")
+		if _, err := os.Stat(mainGo); err == nil {
+			return filepath.Join(cmdDir, entry.Name()), nil
+		}
+	}
+	return "", fmt.Errorf("no cmd/<name>/main.go found under %s", cmdDir)
+}
+
+func mergePluginBootstrapConfig(projectDir string, plugins []*plugin.PluginMetadata) error {
+	if len(plugins) == 0 {
+		return nil
+	}
+
+	configPath := filepath.Join(projectDir, "configs", "bootstrap.local.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read bootstrap config %s: %w", configPath, err)
+	}
+
+	var cfg map[string]any
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("parse bootstrap config %s: %w", configPath, err)
+	}
+	if cfg == nil {
+		cfg = make(map[string]any)
+	}
+
+	lynxSection := ensureStringMap(cfg["lynx"])
+	cfg["lynx"] = lynxSection
+
+	for _, p := range plugins {
+		if p == nil {
+			continue
+		}
+		key := strings.TrimSpace(p.Name)
+		if key == "" {
+			continue
+		}
+		if _, exists := lynxSection[key]; exists {
+			continue
+		}
+		defaultConfig := plugin.DefaultConfigForPlugin(p)
+		if len(defaultConfig) == 0 {
+			continue
+		}
+		lynxSection[key] = defaultConfig
+	}
+
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal bootstrap config %s: %w", configPath, err)
+	}
+	return os.WriteFile(configPath, out, 0644)
+}
+
+func ensureStringMap(v any) map[string]any {
+	switch typed := v.(type) {
+	case map[string]any:
+		return typed
+	default:
+		return make(map[string]any)
+	}
 }
