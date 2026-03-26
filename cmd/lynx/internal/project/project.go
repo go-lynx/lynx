@@ -214,7 +214,7 @@ func run(_ *cobra.Command, args []string) error {
 // Print actionable suggestions based on error keywords.
 func printSuggestions(msg string) {
 	low := strings.ToLower(msg)
-	say := func(key string, args ...any) { fmt.Fprintln(os.Stderr, fmt.Sprintf(base.T(key), args...)) }
+	say := func(key string, args ...any) { fmt.Fprintln(os.Stderr, base.T(key, args...)) }
 	switch {
 	case strings.Contains(low, "could not resolve host") || strings.Contains(low, "couldn't resolve host") || strings.Contains(low, "name or service not known"):
 		say("suggestion_dns")

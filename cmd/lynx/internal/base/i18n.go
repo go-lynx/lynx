@@ -38,6 +38,7 @@ var messages = map[string]map[string]string{
 		"mod_tidy_failed":    "\n⚠️  'go mod tidy' 执行失败: %v\n%s\n",
 		"mod_tidy_ok":        "\n✅ 'go mod tidy' 完成\n",
 		"project_success":    "\n🎉 项目创建成功 %s\n",
+		"project_partial":    "\n⚠️  项目已创建，但仍有后续问题需要处理 %s\n",
 		"start_cmds_header":  "💻 使用以下命令启动项目 👇:\n\n",
 		"thanks":             "🤝 感谢使用 Lynx\n",
 		"tutorial":           "📚 教程: https://go-lynx.cn/docs/start\n",
@@ -56,6 +57,7 @@ var messages = map[string]map[string]string{
 		"adding_plugins":      "正在添加插件依赖...",
 		"plugin_added":        "✅ 插件 %s 已添加",
 		"plugin_add_failed":   "⚠️  插件 %s 添加失败: %v",
+		"project_followup":    "   👉 后续处理：%s",
 	},
 	"en": {
 		"project_names":      "What are the project names ?",
@@ -67,6 +69,7 @@ var messages = map[string]map[string]string{
 		"mod_tidy_failed":    "\n⚠️  'go mod tidy' failed: %v\n%s\n",
 		"mod_tidy_ok":        "\n✅ 'go mod tidy' completed\n",
 		"project_success":    "\n🎉 Project creation succeeded %s\n",
+		"project_partial":    "\n⚠️  Project created, but follow-up issues still need attention %s\n",
 		"start_cmds_header":  "💻 Use the following command to start the project 👇:\n\n",
 		"thanks":             "🤝 Thanks for using Lynx\n",
 		"tutorial":           "📚 Tutorial: https://go-lynx.cn/docs/start\n",
@@ -85,6 +88,7 @@ var messages = map[string]map[string]string{
 		"adding_plugins":      "Adding plugin dependencies...",
 		"plugin_added":        "✅ Plugin %s added",
 		"plugin_add_failed":   "⚠️  Failed to add plugin %s: %v",
+		"project_followup":    "   👉 Follow-up: %s",
 	},
 }
 
