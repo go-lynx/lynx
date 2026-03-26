@@ -18,10 +18,6 @@ import (
 )
 
 var (
-	// lynxApp is the singleton instance of the Lynx application
-	lynxApp *LynxApp
-	// RW mutex protecting reads/writes of lynxApp to avoid race conditions
-	lynxMu sync.RWMutex
 	// initMu protects initialization state.
 	initMu sync.Mutex
 	// initErr stores the last initialization error.
@@ -33,50 +29,6 @@ var (
 	// initDone channel signals current initialization attempt completion.
 	initDone chan struct{}
 )
-
-// SetDefaultApp publishes app as the process-wide default Lynx application instance.
-// It intentionally does not manage initialization lifecycle; callers should only use it
-// after a fully initialized app is available.
-func SetDefaultApp(app *LynxApp) {
-	lynxMu.Lock()
-	defer lynxMu.Unlock()
-	lynxApp = app
-	if app == nil {
-		events.ClearDefaultEventBusProvider()
-		events.ClearDefaultListenerManagerProvider()
-		return
-	}
-	events.SetDefaultEventBusProvider(func() *events.EventBusManager {
-		if lynxApp == nil {
-			return nil
-		}
-		return lynxApp.eventManager
-	})
-	events.SetDefaultListenerManagerProvider(func() *events.EventListenerManager {
-		if lynxApp == nil {
-			return nil
-		}
-		return lynxApp.eventListenerManager
-	})
-}
-
-// ClearDefaultApp clears the process-wide default Lynx application instance.
-func ClearDefaultApp() {
-	SetDefaultApp(nil)
-}
-
-// clearDefaultAppIf clears the global default only when it still points to app.
-func clearDefaultAppIf(app *LynxApp) bool {
-	lynxMu.Lock()
-	defer lynxMu.Unlock()
-	if lynxApp != app {
-		return false
-	}
-	lynxApp = nil
-	events.ClearDefaultEventBusProvider()
-	events.ClearDefaultListenerManagerProvider()
-	return true
-}
 
 // LynxApp represents the main application instance.
 // It serves as the central coordinator for all application components,
@@ -134,17 +86,6 @@ type LynxApp struct {
 	eventManager         *events.EventBusManager
 	eventListenerManager *events.EventListenerManager
 	eventAdapter         plugins.EventBusAdapter
-}
-
-// Lynx returns the process-wide default LynxApp instance.
-//
-// Deprecated: prefer passing an explicit *LynxApp and using instance helpers
-// such as GetTypedPluginFromApp, GetEventManagerFromApp, and
-// GetEventListenerManagerFromApp.
-func Lynx() *LynxApp {
-	lynxMu.RLock()
-	defer lynxMu.RUnlock()
-	return lynxApp
 }
 
 // GetEventManagerFromApp returns the event bus manager owned by app.
@@ -236,36 +177,6 @@ func GetGlobalConfigFromApp(app *LynxApp) config.Config {
 	return app.GetGlobalConfig()
 }
 
-// GetTypedPluginFromApp retrieves a typed plugin from an explicit app instance.
-func GetTypedPluginFromApp[T plugins.Plugin](app *LynxApp, name string) (T, error) {
-	var zero T
-	if app == nil {
-		return zero, fmt.Errorf("lynx application not initialized")
-	}
-
-	manager := app.GetTypedPluginManager()
-	if manager == nil {
-		return zero, fmt.Errorf("typed plugin manager not initialized")
-	}
-
-	return GetTypedPluginFromManager[T](manager, name)
-}
-
-// MustGetTypedPluginFromApp retrieves a typed plugin from an explicit app instance or panics.
-func MustGetTypedPluginFromApp[T plugins.Plugin](app *LynxApp, name string) T {
-	p, err := GetTypedPluginFromApp[T](app, name)
-	if err != nil {
-		panic(err)
-	}
-	return p
-}
-
-// GetTypedPlugin globally retrieves a type-safe plugin instance.
-// Deprecated: prefer GetTypedPluginFromApp or GetTypedPluginFromManager to avoid relying on the process-wide default app.
-func GetTypedPlugin[T plugins.Plugin](name string) (T, error) {
-	return GetTypedPluginFromApp[T](Lynx(), name)
-}
-
 // SetGlobalConfig replaces the application configuration reference.
 // Lynx core does not orchestrate runtime plugin reconfiguration; when plugins are
 // already loaded, configuration changes should be applied via process restart or
@@ -339,11 +250,6 @@ func (a *LynxApp) emitSystemEvent(eventType events.EventType, metadata map[strin
 
 	// Emit through runtime
 	rt.EmitEvent(pluginEvent)
-}
-
-// Shutdown is an alias for Close for backward compatibility
-func (a *LynxApp) Shutdown() error {
-	return a.Close()
 }
 
 // GetResourceStats returns resource statistics from the plugin manager
@@ -436,78 +342,4 @@ func (a *LynxApp) EventMetrics() map[string]interface{} {
 		return nil
 	}
 	return a.eventManager.GetMonitor().GetMetrics()
-}
-
-// RestartRequirementReport returns the current plugin manager's restart-based
-// compatibility report for configuration changes.
-func (a *LynxApp) RestartRequirementReport() RestartRequirementReport {
-	if a == nil || a.pluginManager == nil {
-		return RestartRequirementReport{}
-	}
-	return a.pluginManager.GetRestartRequirementReport()
-}
-
-// ConfigReloadPlan returns the current plugin manager's compatibility view for
-// older callers.
-//
-// Deprecated: prefer RestartRequirementReport(), which matches Lynx core's
-// restart-based configuration model.
-func (a *LynxApp) ConfigReloadPlan() ConfigReloadPlan {
-	if a == nil || a.pluginManager == nil {
-		return ConfigReloadPlan{}
-	}
-	return a.pluginManager.GetConfigReloadPlan()
-}
-
-type PluginRuntimeReport struct {
-	ID           string
-	Name         string
-	Version      string
-	Status       plugins.PluginStatus
-	Capabilities plugins.PluginCapabilities
-}
-
-type RuntimeReport struct {
-	AppName    string
-	AppVersion string
-	Host       string
-	// RestartRequirementReport is the core-facing view for config-change handling.
-	RestartRequirementReport RestartRequirementReport
-	// ConfigReloadPlan is retained only for compatibility with older callers.
-	ConfigReloadPlan ConfigReloadPlan
-	Plugins          []PluginRuntimeReport
-}
-
-func (a *LynxApp) RuntimeReport() RuntimeReport {
-	report := RuntimeReport{}
-	if a == nil {
-		return report
-	}
-
-	report.AppName = a.Name()
-	report.AppVersion = a.Version()
-	report.Host = a.Host()
-	report.RestartRequirementReport = a.RestartRequirementReport()
-	report.ConfigReloadPlan = a.ConfigReloadPlan()
-
-	if a.pluginManager == nil {
-		return report
-	}
-
-	list := Plugins(a.pluginManager)
-	report.Plugins = make([]PluginRuntimeReport, 0, len(list))
-	for _, p := range list {
-		if p == nil {
-			continue
-		}
-		report.Plugins = append(report.Plugins, PluginRuntimeReport{
-			ID:           p.ID(),
-			Name:         p.Name(),
-			Version:      p.Version(),
-			Status:       p.Status(p),
-			Capabilities: plugins.DescribePluginCapabilities(p),
-		})
-	}
-
-	return report
 }

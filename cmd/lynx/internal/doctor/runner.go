@@ -84,21 +84,21 @@ func (r *DiagnosticRunner) GetConfigChecks() []HealthCheck {
 // RunChecks executes the provided health checks
 func (r *DiagnosticRunner) RunChecks(checks []HealthCheck) []CheckResult {
 	results := make([]CheckResult, 0, len(checks))
-	
+
 	for _, check := range checks {
 		if r.verbose {
 			fmt.Printf("Running check: %s...\n", check.Name())
 		}
-		
+
 		// Run the check
 		result := check.Check()
-		
+
 		// Attempt auto-fix if enabled and available
 		if r.autoFix && result.Status != StatusOK && result.FixAvailable && check.CanAutoFix() {
 			if r.verbose {
 				fmt.Printf("  Attempting to fix %s...\n", check.Name())
 			}
-			
+
 			if err := check.Fix(); err != nil {
 				if r.verbose {
 					fmt.Printf("  Failed to fix %s: %v\n", check.Name(), err)
@@ -113,17 +113,17 @@ func (r *DiagnosticRunner) RunChecks(checks []HealthCheck) []CheckResult {
 					r.mu.Lock()
 					r.appliedFixes = append(r.appliedFixes, fmt.Sprintf("Fixed: %s", check.Name()))
 					r.mu.Unlock()
-					
+
 					if r.verbose {
 						fmt.Printf("  Successfully fixed %s\n", check.Name())
 					}
 				}
 			}
 		}
-		
+
 		results = append(results, result)
 	}
-	
+
 	return results
 }
 
@@ -131,26 +131,26 @@ func (r *DiagnosticRunner) RunChecks(checks []HealthCheck) []CheckResult {
 func (r *DiagnosticRunner) RunChecksParallel(checks []HealthCheck) []CheckResult {
 	results := make([]CheckResult, len(checks))
 	var wg sync.WaitGroup
-	
+
 	for i, check := range checks {
 		wg.Add(1)
 		go func(index int, hc HealthCheck) {
 			defer wg.Done()
-			
+
 			if r.verbose {
 				fmt.Printf("Running check: %s...\n", hc.Name())
 			}
-			
+
 			// Run the check
 			result := hc.Check()
-			
+
 			// Auto-fix is not safe in parallel mode for now
 			// Could be improved with proper locking per resource
-			
+
 			results[index] = result
 		}(i, check)
 	}
-	
+
 	wg.Wait()
 	return results
 }
@@ -158,7 +158,7 @@ func (r *DiagnosticRunner) RunChecksParallel(checks []HealthCheck) []CheckResult
 // RunCategoryChecks runs checks for a specific category
 func (r *DiagnosticRunner) RunCategoryChecks(category string) ([]CheckResult, error) {
 	var checks []HealthCheck
-	
+
 	switch category {
 	case "environment":
 		checks = r.GetEnvironmentChecks()
@@ -173,7 +173,7 @@ func (r *DiagnosticRunner) RunCategoryChecks(category string) ([]CheckResult, er
 	default:
 		return nil, fmt.Errorf("unknown category: %s", category)
 	}
-	
+
 	return r.RunChecks(checks), nil
 }
 
@@ -184,18 +184,18 @@ func (r *DiagnosticRunner) QuickCheck() []CheckResult {
 		NewGoModCheck(),
 		NewProjectStructureCheck(),
 	}
-	
+
 	return r.RunChecks(essentialChecks)
 }
 
 // CheckWithTimeout runs a check with a timeout
 func (r *DiagnosticRunner) CheckWithTimeout(check HealthCheck, timeout time.Duration) CheckResult {
 	resultChan := make(chan CheckResult, 1)
-	
+
 	go func() {
 		resultChan <- check.Check()
 	}()
-	
+
 	select {
 	case result := <-resultChan:
 		return result
@@ -214,13 +214,13 @@ func (r *DiagnosticRunner) CheckWithTimeout(check HealthCheck, timeout time.Dura
 func (r *DiagnosticRunner) ValidateEnvironment() error {
 	envChecks := r.GetEnvironmentChecks()
 	results := r.RunChecks(envChecks)
-	
+
 	for _, result := range results {
 		if result.Status == StatusError {
 			return fmt.Errorf("environment validation failed: %s - %s", result.Name, result.Message)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -228,12 +228,12 @@ func (r *DiagnosticRunner) ValidateEnvironment() error {
 func (r *DiagnosticRunner) ValidateProject() error {
 	projectChecks := r.GetProjectChecks()
 	results := r.RunChecks(projectChecks)
-	
+
 	for _, result := range results {
 		if result.Status == StatusError {
 			return fmt.Errorf("project validation failed: %s - %s", result.Name, result.Message)
 		}
 	}
-	
+
 	return nil
 }

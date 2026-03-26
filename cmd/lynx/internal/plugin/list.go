@@ -99,7 +99,7 @@ func outputTable(plugins []*PluginMetadata, showAll bool) error {
 
 	// Create table writer
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	
+
 	// Print header
 	if showAll {
 		fmt.Fprintf(w, "NAME\tTYPE\tVERSION\tSTATUS\tDESCRIPTION\n")
@@ -117,7 +117,7 @@ func outputTable(plugins []*PluginMetadata, showAll bool) error {
 		}
 
 		typeStr := colorizeType(plugin.Type)
-		
+
 		// Truncate description if too long
 		desc := plugin.Description
 		if len(desc) > 50 {

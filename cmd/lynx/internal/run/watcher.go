@@ -192,7 +192,7 @@ func (fw *FileWatcher) shouldIgnore(path string) bool {
 // shouldWatch checks if a file should be watched
 func (fw *FileWatcher) shouldWatch(path string) bool {
 	ext := filepath.Ext(path)
-	
+
 	// Watch these file types
 	watchExts := []string{
 		".go",

@@ -18,9 +18,12 @@ This package contains:
 | File | Description |
 |------|-------------|
 | `plugin.go` | Core `Plugin` interface, `Runtime` interface, and related types |
-| `base.go` | `TypedBasePlugin` and `BasePlugin` base implementations |
+| `plugin_compat.go` | Legacy compatibility plugin vocabulary such as upgrade-related statuses and config hooks |
+| `base.go` | `TypedBasePlugin` and `BasePlugin` core lifecycle implementations |
+| `base_compat.go` | Legacy compatibility upgrade hooks on `BasePlugin` |
 | `unified_runtime.go` | `UnifiedRuntime` implementation with resource and event management |
-| `events.go` | Event types and priority definitions |
+| `events.go` | Core event types and priority definitions |
+| `events_compat.go` | Legacy upgrade/rollback event vocabulary kept for compatibility |
 | `event_adapter.go` | Event bus adapter for unified event handling |
 | `deps.go` | `Dependency`, `DependencyGraph`, and version constraint utilities |
 | `errors.go` | Error types and error handling utilities |
@@ -28,7 +31,7 @@ This package contains:
 | `version.go` | Version comparison and semantic versioning utilities |
 | `id.go` | Plugin ID generation and validation utilities |
 | `conflict_resolver.go` | Plugin conflict resolution strategies |
-| `upg.go` | Legacy compatibility upgrade hooks for plugin-owned logic |
+| `upg_compat.go` | Legacy compatibility upgrade hooks for plugin-owned logic |
 
 ## Core Interfaces
 
@@ -411,7 +414,11 @@ type HealthReport struct {
 report := plugin.GetHealth()
 ```
 
-## Upgrade Capabilities
+## Legacy Upgrade Compatibility
+
+The following hooks remain available only for plugin-owned compatibility flows.
+They are not part of Lynx core's default lifecycle, and restart/external rollout
+remains the preferred model for code and deployment changes.
 
 ```go
 // Legacy compatibility capabilities for plugin-owned upgrade logic

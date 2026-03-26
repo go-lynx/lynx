@@ -34,6 +34,11 @@ config:
 
 MODULES_VERSION ?=
 MODULES ?=
+ACTIVE_CORE_FMT_FILES = $$(find . -maxdepth 1 \( -name 'app*.go' -o -name 'runtime*.go' -o -name 'recovery*.go' -o -name 'circuit_breaker*.go' \)) \
+	$$(find ./boot \( -name 'application*.go' -o -name 'configuration.go' \)) \
+	$$(find ./events \( -name 'global.go' -o -name 'listeners.go' -o -name 'lynx_event_bus*.go' \)) \
+	$$(find ./plugins -name 'unified_runtime*.go')
+REPO_FMT_FILES = $$(find . -name '*.go' -not -path './third_party/*')
 
 .PHONY: tag
 # tag modules with version
@@ -74,6 +79,88 @@ push-tags:
 .PHONY: release
 # release modules with version
 release: tag push-tags
+
+.PHONY: fmt
+# format core Go files in root, boot, events, and plugins
+fmt:
+	gofmt -w $$(find . -maxdepth 1 -name '*.go') $$(find ./boot ./events ./plugins -name '*.go')
+
+.PHONY: fmt-check
+# verify formatting for core Go files in root, boot, events, and plugins
+fmt-check:
+	@out=$$(gofmt -l $$(find . -maxdepth 1 -name '*.go') $$(find ./boot ./events ./plugins -name '*.go')); \
+	if [ -n "$$out" ]; then \
+		echo "The following files need gofmt:"; \
+		echo "$$out"; \
+		exit 1; \
+	fi
+
+.PHONY: test-core
+# run core package regression tests
+test-core:
+	go test . ./boot ./events ./plugins
+
+.PHONY: test-compat
+# run compatibility-surface regression tests
+test-compat:
+	go test . ./boot ./events ./plugins -run 'Test(Runtime|App|Application_|NewApplication_|FormatStartupElapsed|GetGlobalEventBus_UsesSharedFallbackAfterInitFailure|GlobalListenerManager_UsesProviderSafely|ExplicitManagerHelpers_DoNotRequireGlobals|PrivateResourceNamespace_DoesNotCollideWithShared|PrivateResourceInfo_ResolvesLegacyDisplayNameWithoutBreakingSharedStorage|CircuitBreaker_|ErrorRecoveryManager_)'
+
+.PHONY: test-extended
+# run broader supporting-package regression tests outside the active core surface
+test-extended:
+	go test ./cache ./subscribe ./tls ./observability/... ./pkg/... ./log
+
+.PHONY: validate
+# verify formatting plus core, compatibility, and broader supporting-package regressions
+validate: fmt-check test-core test-compat test-extended
+
+.PHONY: fmt-repo
+# format all repository Go files outside vendored third_party code
+fmt-repo:
+	gofmt -w $(REPO_FMT_FILES)
+
+.PHONY: fmt-repo-check
+# verify formatting for all repository Go files outside vendored third_party code
+fmt-repo-check:
+	@out=$$(gofmt -l $(REPO_FMT_FILES)); \
+	if [ -n "$$out" ]; then \
+		echo "The following repository files need gofmt:"; \
+		echo "$$out"; \
+		exit 1; \
+	fi
+
+.PHONY: race-core
+# run race detection for core packages when the current environment supports ThreadSanitizer
+race-core:
+	go test -race . ./boot ./events ./plugins
+
+.PHONY: fmt-active
+# format the actively refactored core surfaces
+fmt-active:
+	gofmt -w $(ACTIVE_CORE_FMT_FILES)
+
+.PHONY: fmt-active-check
+# verify formatting for the actively refactored core surfaces
+fmt-active-check:
+	@out=$$(gofmt -l $(ACTIVE_CORE_FMT_FILES)); \
+	if [ -n "$$out" ]; then \
+		echo "The following active-core files need gofmt:"; \
+		echo "$$out"; \
+		exit 1; \
+	fi
+
+.PHONY: validate-active
+# verify formatting plus compatibility regressions for the actively refactored core surfaces
+validate-active: fmt-active-check test-compat
+
+.PHONY: validate-broad
+# verify active-core regressions plus broader supporting-package regressions
+validate-broad: validate-active test-extended
+
+.PHONY: validate-repo
+# verify repository formatting plus full package test coverage
+validate-repo: fmt-repo-check
+	go test ./...
 
 # show help
 help:

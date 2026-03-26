@@ -62,7 +62,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	fmt.Printf("📦 Plugin: %s\n", color.CyanString(plugin.Name))
 	fmt.Printf("   Type: %s\n", plugin.Type)
 	fmt.Printf("   Version: %s\n", plugin.InstalledVer)
-	
+
 	// Confirmation
 	if !removeForce {
 		fmt.Printf("\n⚠️  %s\n", color.YellowString("This will remove the plugin and its files."))
@@ -71,15 +71,15 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		} else {
 			fmt.Printf("   Configuration file will be kept.\n")
 		}
-		
+
 		fmt.Printf("\nAre you sure you want to remove %s? (y/N): ", pluginName)
-		
+
 		reader := bufio.NewReader(os.Stdin)
 		response, err := reader.ReadString('\n')
 		if err != nil {
 			return err
 		}
-		
+
 		response = strings.ToLower(strings.TrimSpace(response))
 		if response != "y" && response != "yes" {
 			fmt.Println("❌ Removal cancelled")

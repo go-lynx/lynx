@@ -131,52 +131,6 @@ const (
 	EventDependencyError = "dependency.error"
 )
 
-// Upgrade and rollback event types are retained only for compatibility with
-// older plugins and external consumers. Lynx core does not use them as part of
-// the default lifecycle model, and restart/external rollout remains the
-// preferred way to apply code or deployment changes.
-const (
-	// EventUpgradeAvailable indicates new version availability.
-	// Triggered when update check finds newer version.
-	EventUpgradeAvailable = "upgrade.available"
-
-	// EventUpgradeInitiated indicates upgrade process start.
-	// Triggered when upgrade sequence begins.
-	EventUpgradeInitiated = "upgrade.initiated"
-
-	// EventUpgradeValidating indicates upgrade validation.
-	// Triggered when validating system state before upgrade.
-	EventUpgradeValidating = "upgrade.validating"
-
-	// EventUpgradeInProgress indicates that the upgrade process is ongoing.
-	// Triggered when the upgrade process is in progress.
-	EventUpgradeInProgress = "upgrade.in_progress"
-
-	// EventUpgradeCompleted indicates successful upgrade.
-	// Triggered when new version is installed and verified.
-	EventUpgradeCompleted = "upgrade.completed"
-
-	// EventUpgradeFailed indicates failed upgrade attempt.
-	// Triggered when upgrade process encounters error.
-	EventUpgradeFailed = "upgrade.failed"
-
-	// EventRollbackInitiated indicates version rollback start.
-	// Triggered when rollback to previous version begins.
-	EventRollbackInitiated = "rollback.initiated"
-
-	// EventRollbackInProgress indicates that the rollback process is ongoing.
-	// Triggered when the rollback process has started and is in progress.
-	EventRollbackInProgress = "rollback.in_progress"
-
-	// EventRollbackCompleted indicates successful rollback.
-	// Triggered when previous version is restored.
-	EventRollbackCompleted = "rollback.completed"
-
-	// EventRollbackFailed indicates failed rollback attempt.
-	// Triggered when unable to restore previous version.
-	EventRollbackFailed = "rollback.failed"
-)
-
 // Security event types for monitoring security-related events
 const (
 	// EventSecurityViolation indicates security policy breach.

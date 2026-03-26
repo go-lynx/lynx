@@ -13,13 +13,13 @@ import (
 )
 
 var (
-	watchMode   bool
-	buildArgs   string
-	runArgs     string
-	verbose     bool
-	env         []string
-	port        string
-	skipBuild   bool
+	watchMode bool
+	buildArgs string
+	runArgs   string
+	verbose   bool
+	env       []string
+	port      string
+	skipBuild bool
 )
 
 // CmdRun represents the run command
@@ -87,7 +87,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	// Setup signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	
+
 	go func() {
 		<-sigChan
 		fmt.Printf("\n⏹  %s\n", color.YellowString("Shutting down..."))

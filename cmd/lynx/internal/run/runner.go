@@ -80,7 +80,7 @@ func (r *Runner) Start(ctx context.Context) error {
 // build compiles the project
 func (r *Runner) build(ctx context.Context) error {
 	startTime := time.Now()
-	
+
 	fmt.Printf("🔨 %s\n", color.BlueString("Building project..."))
 
 	// Create bin directory if not exists
@@ -91,7 +91,7 @@ func (r *Runner) build(ctx context.Context) error {
 
 	// Prepare build command
 	args := []string{"build", "-o", r.binaryPath}
-	
+
 	// Add custom build arguments (parseBuildArgs respects quoted strings, e.g. -ldflags="-s -w")
 	if r.config.BuildArgs != "" {
 		customArgs := parseBuildArgs(r.config.BuildArgs)
@@ -115,7 +115,7 @@ func (r *Runner) build(ctx context.Context) error {
 
 	elapsed := time.Since(startTime)
 	fmt.Printf("✅ %s (%.2fs)\n\n", color.GreenString("Build successful"), elapsed.Seconds())
-	
+
 	if r.config.Verbose && len(output) > 0 {
 		fmt.Printf("Build output:\n%s\n", string(output))
 	}
@@ -165,7 +165,7 @@ func (r *Runner) run(ctx context.Context) error {
 
 	r.process = exec.CommandContext(ctx, r.binaryPath, args...)
 	r.process.Dir = r.config.ProjectPath
-	
+
 	// Setup environment
 	env := append(os.Environ(), r.config.Environment...)
 	if r.config.Port != "" {
@@ -234,7 +234,7 @@ func (r *Runner) stop() {
 	if r.process != nil && r.process.Process != nil {
 		// Try graceful shutdown first
 		r.process.Process.Signal(syscall.SIGTERM)
-		
+
 		// Wait a bit for graceful shutdown
 		done := make(chan bool, 1)
 		go func() {
@@ -256,7 +256,7 @@ func (r *Runner) stop() {
 // restart rebuilds and restarts the application
 func (r *Runner) restart(ctx context.Context) {
 	fmt.Printf("\n🔄 %s\n", color.CyanString("Restarting application..."))
-	
+
 	// Stop current process
 	r.stop()
 
@@ -309,7 +309,7 @@ func parseBuildArgs(s string) []string {
 // watchFiles monitors file changes and triggers restart
 func (r *Runner) watchFiles(ctx context.Context) {
 	debouncer := NewDebouncer(1 * time.Second)
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -319,7 +319,7 @@ func (r *Runner) watchFiles(ctx context.Context) {
 				if r.config.Verbose {
 					fmt.Printf("📝 File changed: %s\n", color.YellowString(event.Path))
 				}
-				
+
 				debouncer.Trigger(func() {
 					r.restart(ctx)
 				})

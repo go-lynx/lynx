@@ -21,16 +21,27 @@
 //
 // The root package contains the following files:
 //
-//   - app.go: App instance assembly, singleton compatibility, runtime wiring, and shutdown
+//   - app.go: App instance definition and instance-facing APIs
+//   - app_compat.go: Process-wide default app and compatibility helpers
+//   - app_report.go: Core-facing restart-based reports
+//   - app_report_compat.go: Compatibility report views retained for older callers
+//   - app_init.go: App construction and initialization flow
+//   - app_shutdown.go: App shutdown and cleanup flow
+//   - app_subscriptions.go: Subscription loading and gRPC subscription wiring
 //   - manager.go: Plugin manager interfaces and implementation
 //   - lifecycle.go: Plugin lifecycle operations (init/start/stop)
 //   - ops.go: Plugin loading and unloading operations
 //   - topology.go: Plugin dependency resolution and ordering
-//   - runtime.go: Backward-compatible runtime wrapper around plugins.UnifiedRuntime
+//   - runtime.go: Core runtime helpers for explicit plugins.Runtime usage
+//   - runtime_compat.go: Compatibility runtime wrapper around plugins.UnifiedRuntime
 //   - controlplane.go: Optional shell-facing control plane interfaces
 //   - certificate.go: TLS certificate provider interface
 //   - prepare.go: Plugin preparation and bootstrapping from configuration
-//   - recovery.go: Error recovery and resilience mechanisms
+//   - circuit_breaker.go: Shared circuit breaker implementation
+//   - recovery.go: Error recovery manager flow
+//   - recovery_strategy.go: Recovery strategy interfaces and default behavior
+//   - recovery_report.go: Recovery reporting and health views
+//   - recovery_types.go: Recovery records and error classification types
 //
 // # Quick Start
 //
