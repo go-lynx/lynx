@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/go-lynx/lynx/events"
 	"github.com/go-lynx/lynx/plugins"
 )
@@ -94,6 +95,46 @@ func MustGetTypedPluginFromApp[T plugins.Plugin](app *LynxApp, name string) T {
 // Deprecated: prefer GetTypedPluginFromApp or GetTypedPluginFromManager.
 func GetTypedPlugin[T plugins.Plugin](name string) (T, error) {
 	return GetTypedPluginFromApp[T](Lynx(), name)
+}
+
+// GetName returns the process-wide default app name for backward compatibility.
+func GetName() string {
+	if app := Lynx(); app != nil {
+		return app.Name()
+	}
+	return ""
+}
+
+// GetHost returns the process-wide default app host for backward compatibility.
+func GetHost() string {
+	if app := Lynx(); app != nil {
+		return app.Host()
+	}
+	return ""
+}
+
+// GetVersion returns the process-wide default app version for backward compatibility.
+func GetVersion() string {
+	if app := Lynx(); app != nil {
+		return app.Version()
+	}
+	return ""
+}
+
+// GetServiceRegistry returns a service registrar from the default app for backward compatibility.
+func GetServiceRegistry() (registry.Registrar, error) {
+	if app := Lynx(); app != nil {
+		return app.GetServiceRegistry()
+	}
+	return nil, nil
+}
+
+// GetServiceDiscovery returns a service discovery client from the default app for backward compatibility.
+func GetServiceDiscovery() (registry.Discovery, error) {
+	if app := Lynx(); app != nil {
+		return app.GetServiceDiscovery()
+	}
+	return nil, nil
 }
 
 // Shutdown is an alias for Close for backward compatibility.
