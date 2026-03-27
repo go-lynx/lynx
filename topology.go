@@ -45,6 +45,7 @@ func (m *DefaultPluginManager[T]) TopologicalSort(plugs []plugins.Plugin) ([]Plu
 
 	// Create a map of plugin ID to plugin for quick lookup
 	id2plugin := make(map[string]plugins.Plugin, len(plugs))
+	name2plugin := make(map[string]plugins.Plugin, len(plugs))
 	for _, p := range plugs {
 		if p == nil {
 			continue
@@ -56,6 +57,9 @@ func (m *DefaultPluginManager[T]) TopologicalSort(plugs []plugins.Plugin) ([]Plu
 				id, existing.Name(), p.Name())
 		}
 		id2plugin[id] = p
+		if name := p.Name(); name != "" {
+			name2plugin[name] = p
+		}
 	}
 
 	// Check if we have any valid plugins
@@ -87,20 +91,21 @@ func (m *DefaultPluginManager[T]) TopologicalSort(plugs []plugins.Plugin) ([]Plu
 				continue
 			}
 
-			// Check if dependency exists in our plugin set
-			if _, ok := id2plugin[dep.ID]; !ok {
+			resolvedID, ok := resolveRequiredDependencyID(id2plugin, name2plugin, dep)
+			if !ok {
 				// Track missing required dependency
-				missingDeps[p.ID()] = append(missingDeps[p.ID()], dep.ID)
+				missingDeps[p.ID()] = append(missingDeps[p.ID()], dependencyDisplayName(dep))
 				continue
 			}
 
 			d := dep
+			d.ID = resolvedID
 			// Add the dependency to the graph
 			if err := dg.AddDependency(p.ID(), &d); err != nil {
-				return nil, fmt.Errorf("failed to add dependency %s -> %s: %w", p.ID(), dep.ID, err)
+				return nil, fmt.Errorf("failed to add dependency %s -> %s: %w", p.ID(), resolvedID, err)
 			}
 			// Track this required dependency
-			requiredDeps[p.ID()] = append(requiredDeps[p.ID()], dep.ID)
+			requiredDeps[p.ID()] = append(requiredDeps[p.ID()], resolvedID)
 		}
 	}
 
@@ -270,6 +275,38 @@ func (m *DefaultPluginManager[T]) TopologicalSort(plugs []plugins.Plugin) ([]Plu
 	}
 
 	return result, nil
+}
+
+func resolveRequiredDependencyID(
+	id2plugin map[string]plugins.Plugin,
+	name2plugin map[string]plugins.Plugin,
+	dep plugins.Dependency,
+) (string, bool) {
+	if dep.ID != "" {
+		if _, ok := id2plugin[dep.ID]; ok {
+			return dep.ID, true
+		}
+		if p, ok := name2plugin[dep.ID]; ok && p != nil {
+			return p.ID(), true
+		}
+	}
+	if dep.Name != "" {
+		if p, ok := name2plugin[dep.Name]; ok && p != nil {
+			return p.ID(), true
+		}
+	}
+	return "", false
+}
+
+func dependencyDisplayName(dep plugins.Dependency) string {
+	switch {
+	case dep.Name != "":
+		return dep.Name
+	case dep.ID != "":
+		return dep.ID
+	default:
+		return "<unknown>"
+	}
 }
 
 // UnloadOrder returns a best-effort unload order (dependents first, then dependencies).

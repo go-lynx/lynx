@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	semver "github.com/Masterminds/semver/v3"
+	"golang.org/x/mod/modfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -214,6 +216,10 @@ func (m *PluginManager) InstallPlugin(name string, version string, force bool) e
 	// Check if already installed
 	if plugin.Status == StatusInstalled && !force {
 		return fmt.Errorf("plugin %s is already installed, use --force to reinstall", name)
+	}
+
+	if err := m.validatePluginCompatibility(plugin); err != nil {
+		return err
 	}
 
 	fmt.Printf("Installing plugin: %s...\n", name)
@@ -424,6 +430,67 @@ func (m *PluginManager) installFromURL(url, version string, force bool) error {
 	InvalidatePluginCache()
 	m.registry.AddCustomPlugin(plugin)
 	return m.InstallPlugin(name, version, force)
+}
+
+func (m *PluginManager) validatePluginCompatibility(plugin *PluginMetadata) error {
+	if plugin == nil || plugin.Compatible == "" {
+		return nil
+	}
+
+	current, source, strict, err := m.currentLynxVersion()
+	if err != nil || current == "" {
+		return nil
+	}
+	if !strict {
+		fmt.Printf("Warning: skipping strict compatibility check for %s; using local Lynx source (%s)\n", plugin.Name, source)
+		return nil
+	}
+
+	constraint, err := semver.NewConstraint(plugin.Compatible)
+	if err != nil {
+		return fmt.Errorf("plugin %s declares invalid compatible constraint %q: %w", plugin.Name, plugin.Compatible, err)
+	}
+	version, err := semver.NewVersion(strings.TrimPrefix(current, "v"))
+	if err != nil {
+		return nil
+	}
+	if !constraint.Check(version) {
+		return fmt.Errorf("plugin %s requires Lynx %s, but current project uses %s", plugin.Name, plugin.Compatible, current)
+	}
+	return nil
+}
+
+func (m *PluginManager) currentLynxVersion() (version string, source string, strict bool, err error) {
+	goModPath := filepath.Join(m.projectRoot, "go.mod")
+	data, err := os.ReadFile(goModPath)
+	if err != nil {
+		return "", "", false, err
+	}
+	file, err := modfile.Parse(goModPath, data, nil)
+	if err != nil {
+		return "", "", false, err
+	}
+
+	if file.Module != nil && file.Module.Mod.Path == "github.com/go-lynx/lynx" {
+		return "local", "current module", false, nil
+	}
+
+	for _, rep := range file.Replace {
+		if rep == nil {
+			continue
+		}
+		if rep.Old.Path == "github.com/go-lynx/lynx" && rep.New.Version == "" {
+			return "local", rep.New.Path, false, nil
+		}
+	}
+
+	for _, req := range file.Require {
+		if req != nil && req.Mod.Path == "github.com/go-lynx/lynx" {
+			return req.Mod.Version, "go.mod require", true, nil
+		}
+	}
+
+	return "", "", false, nil
 }
 
 // toCloneURL normalizes a repo reference to a clone URL (HTTPS or git@)
