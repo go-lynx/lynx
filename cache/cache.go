@@ -95,7 +95,11 @@ func New(name string, opts *Options) (*Cache, error) {
 	}, nil
 }
 
-// Set stores a key-value pair in the cache with the given TTL
+// Set stores a key-value pair in the cache with the given TTL.
+//
+// The write is processed asynchronously by Ristretto's internal buffer,
+// so a subsequent Get may not immediately reflect the new value.
+// Use SetSync when the caller requires read-your-writes consistency.
 func (c *Cache) Set(key interface{}, value interface{}, ttl time.Duration) error {
 	if ttl < 0 {
 		return ErrInvalidTTL
@@ -103,23 +107,34 @@ func (c *Cache) Set(key interface{}, value interface{}, ttl time.Duration) error
 
 	cost := int64(1)
 	if ttl == 0 {
-		// No expiration
 		if !c.cache.Set(key, value, cost) {
 			return ErrCacheSet
 		}
 	} else {
-		// With TTL
 		if !c.cache.SetWithTTL(key, value, cost, ttl) {
 			return ErrCacheSet
 		}
 	}
+	return nil
+}
 
-	// Wait for the value to be processed
+// SetSync stores a key-value pair and blocks until Ristretto has processed
+// all pending writes, providing read-your-writes consistency.
+//
+// Use this only when you must immediately read back the value you just wrote.
+// For bulk insertions, prefer SetMulti which calls Wait once for all items.
+func (c *Cache) SetSync(key interface{}, value interface{}, ttl time.Duration) error {
+	if err := c.Set(key, value, ttl); err != nil {
+		return err
+	}
 	c.cache.Wait()
 	return nil
 }
 
-// SetWithCost stores a key-value pair with a custom cost
+// SetWithCost stores a key-value pair with a custom cost.
+//
+// The write is processed asynchronously. Use SetWithCostSync for
+// read-your-writes consistency.
 func (c *Cache) SetWithCost(key interface{}, value interface{}, cost int64, ttl time.Duration) error {
 	if ttl < 0 {
 		return ErrInvalidTTL
@@ -134,7 +149,15 @@ func (c *Cache) SetWithCost(key interface{}, value interface{}, cost int64, ttl 
 			return ErrCacheSet
 		}
 	}
+	return nil
+}
 
+// SetWithCostSync stores a key-value pair with a custom cost and blocks until
+// Ristretto has processed all pending writes.
+func (c *Cache) SetWithCostSync(key interface{}, value interface{}, cost int64, ttl time.Duration) error {
+	if err := c.SetWithCost(key, value, cost, ttl); err != nil {
+		return err
+	}
 	c.cache.Wait()
 	return nil
 }
@@ -196,7 +219,9 @@ func (c *Cache) GetMulti(keys []interface{}) map[interface{}]interface{} {
 	return result
 }
 
-// SetMulti stores multiple key-value pairs in the cache
+// SetMulti stores multiple key-value pairs in the cache and blocks until
+// Ristretto has processed all pending writes (single Wait for all items).
+// This is more efficient than calling SetSync in a loop.
 func (c *Cache) SetMulti(items map[interface{}]interface{}, ttl time.Duration) error {
 	if ttl < 0 {
 		return ErrInvalidTTL
