@@ -8,6 +8,24 @@ import (
 	"time"
 )
 
+// initSalt is a process-level random salt computed once at startup.
+// It provides sufficient randomness to prevent ID collisions across processes
+// without paying the cost of a crypto/rand call for every event.
+var initSalt string
+
+func init() {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback: encode the current nanosecond timestamp as hex.
+		ts := time.Now().UnixNano()
+		b = []byte{
+			byte(ts), byte(ts >> 8), byte(ts >> 16), byte(ts >> 24),
+			byte(ts >> 32), byte(ts >> 40), byte(ts >> 48), byte(ts >> 56),
+		}
+	}
+	initSalt = hex.EncodeToString(b)
+}
+
 // EventType represents the type of event in the Lynx system
 type EventType uint32
 
@@ -152,22 +170,26 @@ func NewLynxEvent(eventType EventType, pluginID, source string) LynxEvent {
 }
 
 var (
-	// eventIDCounter ensures unique event IDs even in high concurrency scenarios
+	// eventIDCounter is an atomically-incremented counter that guarantees
+	// strict ordering and uniqueness within a single process.
 	eventIDCounter atomic.Uint64
 )
 
-// generateEventID generates a unique event ID for deduplication
-// Format: {pluginID}-{eventType}-{timestamp}-{nanosecond}-{randomHex}-{counter}
-// This ensures uniqueness even when multiple events are generated in the same nanosecond
+// generateEventID generates a unique event ID for deduplication.
+//
+// Format: {pluginID}-{eventType}-{unixSec}-{nano}-{initSalt}-{counter}
+//
+// Uniqueness guarantee:
+//   - initSalt (16 hex chars, random at process start) prevents collisions
+//     across different process instances sharing the same nanosecond clock.
+//   - counter monotonically increases within the process, preventing collisions
+//     even when multiple events are created in the same nanosecond.
+//
+// This replaces the previous approach that called crypto/rand on every event,
+// which caused unnecessary syscall overhead in high-throughput scenarios.
 func generateEventID(pluginID string, eventType EventType, t time.Time) string {
 	counter := eventIDCounter.Add(1)
-	randomBytes := make([]byte, 4)
-	if _, err := rand.Read(randomBytes); err != nil {
-		// Fallback: use counter as random component if crypto/rand fails
-		randomBytes = []byte{byte(counter), byte(counter >> 8), byte(counter >> 16), byte(counter >> 24)}
-	}
-	randomHex := hex.EncodeToString(randomBytes)
-	return fmt.Sprintf("%s-%d-%d-%d-%s-%d", pluginID, eventType, t.Unix(), t.Nanosecond(), randomHex, counter)
+	return fmt.Sprintf("%s-%d-%d-%d-%s-%d", pluginID, eventType, t.Unix(), t.Nanosecond(), initSalt, counter)
 }
 
 // WithPriority sets the event priority
