@@ -293,22 +293,30 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		}
 	}()
 
-	// Acquire semaphore to limit concurrent recoveries
-	// Use configurable timeout instead of hardcoded value
+	// Acquire semaphore to limit concurrent recoveries.
+	// semaphoreHeld tracks whether THIS goroutine owns a semaphore slot so that
+	// the deferred release only runs when we actually hold one.  Previously the
+	// defer was registered unconditionally while a manual release was also issued
+	// in the LoadOrStore-collision branch, causing a double-release.
+	semaphoreHeld := false
+	defer func() {
+		if semaphoreHeld {
+			<-erm.recoverySemaphore
+		}
+	}()
+
 	semaphoreTimeout := defaultRecoverySemaphoreTimeout
 	select {
 	case erm.recoverySemaphore <- struct{}{}:
 		// Acquired semaphore, proceed with recovery
-		defer func() { <-erm.recoverySemaphore }()
+		semaphoreHeld = true
 	case <-time.After(semaphoreTimeout):
 		// Semaphore acquisition timeout - too many concurrent recoveries
 		log.Warnf("Recovery semaphore timeout for %s:%s after %v, skipping recovery (too many concurrent recoveries)",
 			record.ErrorType, record.Component, semaphoreTimeout)
-		// Cancel contexts to ensure goroutines exit (defer will handle cleanup)
 		return
 	case <-ctx.Done():
 		// Context cancelled before semaphore acquisition
-		// Defer will handle cleanup
 		return
 	}
 
@@ -319,10 +327,9 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		started: true,
 	}
 	if _, loaded := erm.activeRecoveries.LoadOrStore(recoveryKey, state); loaded {
-		// Another goroutine started recovery, cleanup and return
-		// Release semaphore since we're not proceeding
-		<-erm.recoverySemaphore
-		// Defer will handle context cleanup
+		// Another goroutine started recovery between our Load check and here;
+		// release the semaphore slot we just claimed and bail out.
+		// semaphoreHeld=true so the deferred release above will handle it.
 		return
 	}
 

@@ -1,6 +1,7 @@
 package events
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/go-lynx/lynx/plugins"
@@ -136,8 +137,15 @@ func ConvertEventType(eventType plugins.EventType) EventType {
 		return EventRollbackCompleted
 	case plugins.EventRollbackFailed:
 		return EventRollbackFailed
+	// System-level infrastructure events
+	case plugins.EventPluginManagerShutdown:
+		return EventPluginManagerShutdown
 	default:
-		// For unknown event types, return a default system event
+		// Unknown event type – log a warning so missing mappings are visible
+		// instead of being silently swallowed under EventSystemError.
+		// When adding a new plugins.EventType constant, add a corresponding
+		// case here AND in ConvertEventTypeBack below.
+		fmt.Printf("[lynx-warn] ConvertEventType: unknown plugins.EventType %q mapped to EventSystemError\n", string(eventType))
 		return EventSystemError
 	}
 }
@@ -267,8 +275,12 @@ func ConvertEventTypeBack(eventType EventType) plugins.EventType {
 		return plugins.EventRollbackCompleted
 	case EventRollbackFailed:
 		return plugins.EventRollbackFailed
+	// System-level infrastructure events
+	case EventPluginManagerShutdown:
+		return plugins.EventPluginManagerShutdown
 	default:
-		// Fallback to a generic error event in plugins package
+		// Unknown event type – log a warning so missing mappings are visible.
+		fmt.Printf("[lynx-warn] ConvertEventTypeBack: unknown events.EventType %d mapped to EventErrorOccurred\n", uint32(eventType))
 		return plugins.EventErrorOccurred
 	}
 }

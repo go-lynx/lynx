@@ -166,9 +166,6 @@ func (p *TypedBasePlugin[T]) PluginProtocol() PluginProtocol {
 		HealthAware:      true,
 		ContextLifecycle: false,
 		Recoverable:      false,
-		ConfigHotReload:  false,
-		ConfigValidation: false,
-		ConfigRollback:   false,
 	}
 }
 
