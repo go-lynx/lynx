@@ -203,9 +203,7 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 				}
 				loadedNames = append(loadedNames, plugin.Name())
 			}
-			if cfg != nil {
-				_ = cfg.Close()
-			}
+			// Do not Close(cfg): the caller still owns this instance on error (e.g. control plane may retry or reuse it).
 			return fmt.Errorf("runtime configuration reload is not supported by lynx core; restart application to apply changes for plugins: %v", loadedNames)
 		}
 		pm.SetConfig(cfg)
@@ -216,7 +214,8 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 
 	a.globalConf = cfg
 
-	if oldCfg != nil {
+	// Avoid closing cfg when it is the same instance as the previous global config (no-op swap / idempotent set).
+	if oldCfg != nil && oldCfg != cfg {
 		if err := oldCfg.Close(); err != nil {
 			log.Errorf("Failed to close existing configuration: %v", err)
 			return err

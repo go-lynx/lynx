@@ -11,7 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// ============================================================
+// CustomClaims ============================================================
 // Claims Interfaces
 // ============================================================
 // CustomClaims defines a custom claims interface.
