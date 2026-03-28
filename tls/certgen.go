@@ -28,13 +28,20 @@ type CertGenResult struct {
 // Server cert uses serviceName as CN and includes hostname + SANs in SubjectAlternativeNames.
 // Validity is the duration the server cert is valid for; CA is valid for 10 years.
 func GenerateAutoCertificates(serviceName, hostname string, sans []string, validity time.Duration) (*CertGenResult, error) {
+	r, _, _, err := generateAutoStack(serviceName, hostname, sans, validity)
+	return r, err
+}
+
+// generateAutoStack creates a new in-process CA and a server certificate, and returns the CA PEM pair
+// so the caller can reissue leaf certificates without rotating the root (fixed-root rotation).
+func generateAutoStack(serviceName, hostname string, sans []string, validity time.Duration) (*CertGenResult, []byte, []byte, error) {
 	if serviceName == "" {
 		serviceName = "lynx-auto"
 	}
 	if hostname == "" {
-		var err error
-		hostname, err = os.Hostname()
-		if err != nil {
+		var e error
+		hostname, e = os.Hostname()
+		if e != nil {
 			hostname = "localhost"
 		}
 	}
@@ -42,21 +49,20 @@ func GenerateAutoCertificates(serviceName, hostname string, sans []string, valid
 		validity = conf.DefaultAutoRotationInterval
 	}
 
-	caPEM, _, caCert, caKey, err := generateCA()
+	caPEM, caKeyPEM, caCert, caKey, err := generateCA()
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	dnsNames, ipAddrs := buildServerSAN(serviceName, hostname, sans)
 
-	// Generate server key and cert
 	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return nil, fmt.Errorf("generate server key: %w", err)
+		return nil, nil, nil, fmt.Errorf("generate server key: %w", err)
 	}
 	serverSerial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
-		return nil, fmt.Errorf("generate server serial: %w", err)
+		return nil, nil, nil, fmt.Errorf("generate server serial: %w", err)
 	}
 	serverTemplate := &x509.Certificate{
 		SerialNumber: serverSerial,
@@ -73,12 +79,12 @@ func GenerateAutoCertificates(serviceName, hostname string, sans []string, valid
 	}
 	serverCertDER, err := x509.CreateCertificate(rand.Reader, serverTemplate, caCert, &serverKey.PublicKey, caKey)
 	if err != nil {
-		return nil, fmt.Errorf("create server cert: %w", err)
+		return nil, nil, nil, fmt.Errorf("create server cert: %w", err)
 	}
 	serverPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: serverCertDER})
 	serverKeyDER, err := x509.MarshalECPrivateKey(serverKey)
 	if err != nil {
-		return nil, fmt.Errorf("marshal server key: %w", err)
+		return nil, nil, nil, fmt.Errorf("marshal server key: %w", err)
 	}
 	serverKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: serverKeyDER})
 
@@ -86,7 +92,7 @@ func GenerateAutoCertificates(serviceName, hostname string, sans []string, valid
 		CertPEM:   serverPEM,
 		KeyPEM:    serverKeyPEM,
 		RootCAPEM: caPEM,
-	}, nil
+	}, caPEM, caKeyPEM, nil
 }
 
 // GenerateCAOnly generates only a root CA (cert + key PEM). Used for creating the shared mesh CA once.
@@ -267,6 +273,13 @@ func buildServerSAN(serviceName, hostname string, sans []string) (dnsNames []str
 // When cfg.SharedCA is set, the caller (CertificateManager) loads the CA and uses GenerateServerCertFromCA instead.
 // If cfg is nil, fallbacks and defaults are used.
 func GenerateAutoCertificatesFromConfig(cfg *conf.AutoConfig, fallbackServiceName, fallbackHostname string) (*CertGenResult, error) {
+	r, _, _, err := generateAutoStackFromConfig(cfg, fallbackServiceName, fallbackHostname)
+	return r, err
+}
+
+// generateAutoStackFromConfig builds parameters from AutoConfig and issues a new in-process CA plus server cert.
+// Returns CA PEM material for CertificateManager to retain for fixed-root leaf rotation.
+func generateAutoStackFromConfig(cfg *conf.AutoConfig, fallbackServiceName, fallbackHostname string) (*CertGenResult, []byte, []byte, error) {
 	var serviceName, hostname string
 	var sans []string
 	var validity time.Duration
@@ -288,5 +301,5 @@ func GenerateAutoCertificatesFromConfig(cfg *conf.AutoConfig, fallbackServiceNam
 	if validity == 0 {
 		validity = conf.DefaultAutoRotationInterval
 	}
-	return GenerateAutoCertificates(serviceName, hostname, sans, validity)
+	return generateAutoStack(serviceName, hostname, sans, validity)
 }

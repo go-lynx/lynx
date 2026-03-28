@@ -28,8 +28,10 @@ type SharedCAConfig struct {
 }
 
 // AutoConfig holds configuration for auto-generated TLS certificates.
-// Used when source_type is "auto": a temporary CA and server certificate are generated
-// and rotated periodically. Config can be loaded from config key "lynx.tls.auto".
+// Used when source_type is "auto": an in-process CA and server certificate are generated on first load;
+// periodic rotation reissues only the server leaf while keeping the same root (stable GetRootCACertificate).
+// When shared_ca is set, that external CA is used instead and reloaded per rotation policy.
+// Config can be loaded from config key "lynx.tls.auto".
 type AutoConfig struct {
 	// RotationInterval is the interval after which the server certificate is rotated.
 	// Parsed as duration string (e.g. "24h", "1h"). Default: 24h.

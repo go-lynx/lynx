@@ -39,3 +39,4 @@ bin/
 
 # CLI binary (ensure not committed)
 cmd/lynx/lynx
+.gocache
