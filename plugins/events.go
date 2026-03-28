@@ -180,6 +180,13 @@ const (
 	EventPanicRecovered = "panic.recovered"
 )
 
+// System-level event types emitted by the plugin manager infrastructure itself
+const (
+	// EventPluginManagerShutdown indicates the plugin manager has begun shutdown.
+	// Emitted once before UnloadPlugins stops individual plugins.
+	EventPluginManagerShutdown EventType = "system.plugin_manager_shutdown"
+)
+
 // PluginEvent represents a lifecycle event in the plugin system.
 // It contains detailed information about the event, including its type,
 // priority, source, and any associated metadata.

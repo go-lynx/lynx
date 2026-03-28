@@ -15,11 +15,10 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// Compile-time check: ensure DefaultPluginManager implements TypedPluginManager.
-var _ TypedPluginManager = (*DefaultPluginManager[plugins.Plugin])(nil)
+// Compile-time check: ensure DefaultPluginManager implements PluginManager.
+var _ PluginManager = (*DefaultPluginManager[plugins.Plugin])(nil)
 
 // PluginManager defines plugin management interfaces.
-// Note: TypedPluginManager is an alias for PluginManager and should be used in all public APIs.
 type PluginManager interface {
 	// Basic plugin management
 	LoadPlugins(config.Config) error
@@ -49,9 +48,6 @@ type PluginManager interface {
 	ClearUnloadFailures()
 	GetLastPrepareReport() PrepareReport
 }
-
-// TypedPluginManager is an alias for PluginManager.
-type TypedPluginManager = PluginManager
 
 // UnloadFailureRecord tracks plugin unload failures for monitoring
 type UnloadFailureRecord struct {
@@ -131,7 +127,10 @@ func NewPluginManager[T plugins.Plugin](pluginList ...T) *DefaultPluginManager[T
 }
 
 // NewTypedPluginManager creates a plugin manager with plugins.Plugin as T.
-func NewTypedPluginManager(pluginList ...plugins.Plugin) TypedPluginManager {
+//
+// Deprecated: use NewPluginManager[plugins.Plugin] or NewPluginManager directly.
+// Retained for backward compatibility; will be removed in a future version.
+func NewTypedPluginManager(pluginList ...plugins.Plugin) PluginManager {
 	return NewPluginManager[plugins.Plugin](pluginList...)
 }
 
@@ -204,24 +203,13 @@ func (m *DefaultPluginManager[T]) GetRestartRequirementReport() RestartRequireme
 		_, validator := p.(plugins.ConfigValidator)
 		_, rollbacker := p.(plugins.ConfigRollbacker)
 
+		// ConfigHotReload / ConfigValidation / ConfigRollback fields were removed
+		// from PluginProtocol because Lynx core is restart-based.  The only relevant
+		// distinction now is whether the plugin implements any of the legacy compat
+		// interfaces (Configurable, ConfigValidator, ConfigRollbacker).
 		switch {
-		case caps.ProtocolExplicit && caps.Protocol.ConfigHotReload && !configurable:
-			entry.Reason = "declares config hot reload but does not implement Configurable"
-			report.Invalid = append(report.Invalid, entry)
-		case caps.ProtocolExplicit && caps.Protocol.ConfigValidation && !validator:
-			entry.Reason = "declares config validation but does not implement ConfigValidator"
-			report.Invalid = append(report.Invalid, entry)
-		case caps.ProtocolExplicit && caps.Protocol.ConfigRollback && !rollbacker && !configurable:
-			entry.Reason = "declares config rollback but does not implement ConfigRollbacker"
-			report.Invalid = append(report.Invalid, entry)
-		case caps.ProtocolExplicit && (caps.Protocol.ConfigHotReload || caps.Protocol.ConfigValidation || caps.Protocol.ConfigRollback):
-			entry.Reason = "plugin declares runtime configuration hooks, but lynx core requires restart to apply configuration changes"
-			report.RestartRequired = append(report.RestartRequired, entry)
 		case configurable || validator || rollbacker:
 			entry.Reason = "plugin exposes configuration hooks, but lynx core requires restart to apply configuration changes"
-			report.RestartRequired = append(report.RestartRequired, entry)
-		case caps.ProtocolExplicit && !caps.Protocol.ConfigHotReload:
-			entry.Reason = "plugin requires restart for configuration changes"
 			report.RestartRequired = append(report.RestartRequired, entry)
 		default:
 			entry.Reason = "lynx core applies configuration changes by restart"
@@ -292,8 +280,8 @@ func (m *DefaultPluginManager[T]) listPluginsInternal() []plugins.Plugin {
 	return out
 }
 
-// GetTypedPluginFromManager gets a typed plugin from any TypedPluginManager.
-func GetTypedPluginFromManager[T plugins.Plugin](m TypedPluginManager, name string) (T, error) {
+// GetTypedPluginFromManager gets a typed plugin from any PluginManager.
+func GetTypedPluginFromManager[T plugins.Plugin](m PluginManager, name string) (T, error) {
 	var zero T
 	if m == nil {
 		return zero, fmt.Errorf("plugin manager is nil")
@@ -309,7 +297,7 @@ func GetTypedPluginFromManager[T plugins.Plugin](m TypedPluginManager, name stri
 }
 
 // MustGetTypedPluginFromManager gets typed plugin or panics.
-func MustGetTypedPluginFromManager[T plugins.Plugin](m TypedPluginManager, name string) T {
+func MustGetTypedPluginFromManager[T plugins.Plugin](m PluginManager, name string) T {
 	p, err := GetTypedPluginFromManager[T](m, name)
 	if err != nil {
 		panic(err)

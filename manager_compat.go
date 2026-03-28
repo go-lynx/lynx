@@ -1,5 +1,12 @@
 package lynx
 
+// TypedPluginManager is a deprecated alias for PluginManager.
+// It was removed from the core API because the "Typed" prefix added no value
+// over the base PluginManager interface; both refer to the same type.
+//
+// Deprecated: use PluginManager directly. This alias will be removed in a future version.
+type TypedPluginManager = PluginManager
+
 // ConfigReloadPlan is retained only as a compatibility report for older callers.
 // New code should prefer RestartRequirementReport, which reflects the
 // restart-based core model directly.
