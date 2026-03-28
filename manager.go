@@ -194,7 +194,6 @@ func (m *DefaultPluginManager[T]) GetRestartRequirementReport() RestartRequireme
 		if p == nil {
 			continue
 		}
-		caps := plugins.DescribePluginCapabilities(p)
 		entry := ConfigReloadEntry{
 			PluginName: p.Name(),
 			PluginID:   p.ID(),
@@ -217,6 +216,25 @@ func (m *DefaultPluginManager[T]) GetRestartRequirementReport() RestartRequireme
 		}
 	}
 	return report
+}
+
+// filterOutPluginByIdentity compacts list in place: removes nil slots, entries matching
+// name+id, and returns the shortened slice (same backing array as list).
+func filterOutPluginByIdentity(list []plugins.Plugin, name, id string) []plugins.Plugin {
+	if len(list) == 0 {
+		return list
+	}
+	filtered := list[:0]
+	for _, item := range list {
+		if item == nil {
+			continue
+		}
+		if item.Name() == name && item.ID() == id {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
 }
 
 // containsName checks if a name exists in the slice.
@@ -415,21 +433,7 @@ func (m *DefaultPluginManager[T]) removePreparedPlugin(p plugins.Plugin) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if len(m.pluginList) == 0 {
-		return
-	}
-
-	filtered := m.pluginList[:0]
-	for _, item := range m.pluginList {
-		if item == nil {
-			continue
-		}
-		if item.Name() == p.Name() && item.ID() == p.ID() {
-			continue
-		}
-		filtered = append(filtered, item)
-	}
-	m.pluginList = filtered
+	m.pluginList = filterOutPluginByIdentity(m.pluginList, p.Name(), p.ID())
 }
 
 func (m *DefaultPluginManager[T]) unregisterPlugin(p plugins.Plugin) {
@@ -437,39 +441,15 @@ func (m *DefaultPluginManager[T]) unregisterPlugin(p plugins.Plugin) {
 		return
 	}
 
-	m.pluginInstances.Delete(p.Name())
-	m.pluginIDs.Delete(p.ID())
-	m.managedInstances.Delete(p.Name())
-	m.managedIDs.Delete(p.ID())
+	name, id := p.Name(), p.ID()
+	m.pluginInstances.Delete(name)
+	m.pluginIDs.Delete(id)
+	m.managedInstances.Delete(name)
+	m.managedIDs.Delete(id)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if len(m.pluginList) > 0 {
-		filtered := m.pluginList[:0]
-		for _, item := range m.pluginList {
-			if item == nil {
-				continue
-			}
-			if item.Name() == p.Name() && item.ID() == p.ID() {
-				continue
-			}
-			filtered = append(filtered, item)
-		}
-		m.pluginList = filtered
-	}
-
-	if len(m.managedPluginList) > 0 {
-		filtered := m.managedPluginList[:0]
-		for _, item := range m.managedPluginList {
-			if item == nil {
-				continue
-			}
-			if item.Name() == p.Name() && item.ID() == p.ID() {
-				continue
-			}
-			filtered = append(filtered, item)
-		}
-		m.managedPluginList = filtered
-	}
+	m.pluginList = filterOutPluginByIdentity(m.pluginList, name, id)
+	m.managedPluginList = filterOutPluginByIdentity(m.managedPluginList, name, id)
 }
