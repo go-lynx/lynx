@@ -250,7 +250,9 @@ func (c *Cache) DeleteMulti(keys []interface{}) {
 	}
 }
 
-// GetOrSet retrieves a value from the cache or sets it if not found
+// GetOrSet retrieves a value from the cache or sets it if not found.
+// The write is synchronised (Wait is called) so that a subsequent Get
+// in the same goroutine will always observe the newly-stored value.
 func (c *Cache) GetOrSet(key interface{}, fn func() (interface{}, error), ttl time.Duration) (interface{}, error) {
 	// Try to get from cache first
 	if value, found := c.cache.Get(key); found {
@@ -263,16 +265,18 @@ func (c *Cache) GetOrSet(key interface{}, fn func() (interface{}, error), ttl ti
 		return nil, err
 	}
 
-	// Store in cache
-	if err := c.Set(key, value, ttl); err != nil {
-		// Even if cache set fails, return the value
+	// Store in cache with read-your-writes guarantee.
+	if err := c.SetSync(key, value, ttl); err != nil {
+		// Even if cache set fails, return the computed value.
 		return value, nil
 	}
 
 	return value, nil
 }
 
-// GetOrSetContext is like GetOrSet but with context support
+// GetOrSetContext is like GetOrSet but with context support.
+// The write is synchronised so that a subsequent Get in the same goroutine
+// will always observe the newly-stored value.
 func (c *Cache) GetOrSetContext(ctx context.Context, key interface{}, fn func(context.Context) (interface{}, error), ttl time.Duration) (interface{}, error) {
 	// Try to get from cache first
 	if value, found := c.cache.Get(key); found {
@@ -292,9 +296,9 @@ func (c *Cache) GetOrSetContext(ctx context.Context, key interface{}, fn func(co
 		return nil, err
 	}
 
-	// Store in cache
-	if err := c.Set(key, value, ttl); err != nil {
-		// Even if cache set fails, return the value
+	// Store in cache with read-your-writes guarantee.
+	if err := c.SetSync(key, value, ttl); err != nil {
+		// Even if cache set fails, return the computed value.
 		return value, nil
 	}
 

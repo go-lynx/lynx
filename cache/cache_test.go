@@ -14,11 +14,11 @@ func TestCache_BasicOperations(t *testing.T) {
 	}
 	defer c.Close()
 
-	// Test Set and Get
+	// Test Set and Get (use SetSync for read-your-writes consistency)
 	key := "test-key"
 	value := "test-value"
 
-	err = c.Set(key, value, 0)
+	err = c.SetSync(key, value, 0)
 	if err != nil {
 		t.Errorf("Failed to set value: %v", err)
 	}
@@ -60,8 +60,8 @@ func TestCache_TTL(t *testing.T) {
 	key := "ttl-key"
 	value := "ttl-value"
 
-	// Set with 1 second TTL
-	err = c.Set(key, value, 1*time.Second)
+	// Set with 1 second TTL (use SetSync for read-your-writes consistency)
+	err = c.SetSync(key, value, 1*time.Second)
 	if err != nil {
 		t.Errorf("Failed to set value with TTL: %v", err)
 	}
@@ -232,10 +232,10 @@ func TestCache_Clear(t *testing.T) {
 	}
 	defer c.Close()
 
-	// Add some items
-	c.Set("key1", "value1", 0)
-	c.Set("key2", "value2", 0)
-	c.Set("key3", "value3", 0)
+	// Add some items (use SetSync for read-your-writes consistency)
+	c.SetSync("key1", "value1", 0)
+	c.SetSync("key2", "value2", 0)
+	c.SetSync("key3", "value3", 0)
 
 	// Clear cache
 	c.Clear()
@@ -368,8 +368,8 @@ func TestManager_Operations(t *testing.T) {
 		t.Errorf("Expected 2 caches, got %d", len(names))
 	}
 
-	// Clear cache
-	cache1.Set("key", "value", 0)
+	// Clear cache (SetSync so the key is visible before Clear)
+	cache1.SetSync("key", "value", 0)
 	err = manager.Clear("cache1")
 	if err != nil {
 		t.Errorf("Failed to clear cache1: %v", err)

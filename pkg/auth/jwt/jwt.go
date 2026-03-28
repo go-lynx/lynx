@@ -117,7 +117,7 @@ type fixedSigningKey struct {
 	pub  interface{}
 }
 
-func (k *fixedSigningKey) Algorithm() string    { return k.alg }
+func (k *fixedSigningKey) Algorithm() string       { return k.alg }
 func (k *fixedSigningKey) PrivateKey() interface{} { return k.priv }
 func (k *fixedSigningKey) PublicKey() interface{}  { return k.pub }
 
