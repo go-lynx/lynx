@@ -206,14 +206,12 @@ func (m *DefaultPluginManager[T]) GetRestartRequirementReport() RestartRequireme
 		// from PluginProtocol because Lynx core is restart-based.  The only relevant
 		// distinction now is whether the plugin implements any of the legacy compat
 		// interfaces (Configurable, ConfigValidator, ConfigRollbacker).
-		switch {
-		case configurable || validator || rollbacker:
+		if configurable || validator || rollbacker {
 			entry.Reason = "plugin exposes configuration hooks, but lynx core requires restart to apply configuration changes"
-			report.RestartRequired = append(report.RestartRequired, entry)
-		default:
+		} else {
 			entry.Reason = "lynx core applies configuration changes by restart"
-			report.RestartRequired = append(report.RestartRequired, entry)
 		}
+		report.RestartRequired = append(report.RestartRequired, entry)
 	}
 	return report
 }

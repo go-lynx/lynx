@@ -80,13 +80,13 @@ const (
 
 // System event types
 const (
-	EventSystemStart             EventType = 0x50
-	EventSystemShutdown          EventType = 0x51
-	EventSystemError             EventType = 0x52
-	EventErrorOccurred           EventType = 0x53
-	EventErrorResolved           EventType = 0x54
-	EventPanicRecovered          EventType = 0x55
-	EventPluginManagerShutdown   EventType = 0x56 // plugin manager shutting down
+	EventSystemStart           EventType = 0x50
+	EventSystemShutdown        EventType = 0x51
+	EventSystemError           EventType = 0x52
+	EventErrorOccurred         EventType = 0x53
+	EventErrorResolved         EventType = 0x54
+	EventPanicRecovered        EventType = 0x55
+	EventPluginManagerShutdown EventType = 0x56 // plugin manager shutting down
 )
 
 // Security event types
