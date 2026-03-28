@@ -75,7 +75,7 @@ type LynxApp struct {
 
 	// pluginManager handles plugin lifecycle and dependencies.
 	// Provides type-safe plugin management with generic support.
-	pluginManager TypedPluginManager
+	pluginManager PluginManager
 
 	// grpcSubs stores upstream gRPC connections subscribed via configuration; key is the service name
 	// Protected by grpcSubsMu for concurrent access
@@ -138,7 +138,7 @@ func (a *LynxApp) Version() string {
 
 // GetPluginManager returns the plugin manager instance.
 // Returns nil if the application is not initialized.
-func (a *LynxApp) GetPluginManager() TypedPluginManager {
+func (a *LynxApp) GetPluginManager() PluginManager {
 	if a == nil {
 		return nil
 	}
@@ -147,8 +147,9 @@ func (a *LynxApp) GetPluginManager() TypedPluginManager {
 
 // GetTypedPluginManager returns the typed plugin manager instance.
 // Returns nil if the application is not initialized.
-// This is an alias for GetPluginManager() for backward compatibility.
-func (a *LynxApp) GetTypedPluginManager() TypedPluginManager {
+//
+// Deprecated: use GetPluginManager() instead.
+func (a *LynxApp) GetTypedPluginManager() PluginManager {
 	return a.GetPluginManager()
 }
 
@@ -162,7 +163,7 @@ func (a *LynxApp) GetGlobalConfig() config.Config {
 }
 
 // GetPluginManagerFromApp returns the plugin manager owned by app.
-func GetPluginManagerFromApp(app *LynxApp) TypedPluginManager {
+func GetPluginManagerFromApp(app *LynxApp) PluginManager {
 	if app == nil {
 		return nil
 	}
@@ -225,7 +226,11 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 	return nil
 }
 
-// emitSystemEvent emits a system event to the unified event system
+// emitSystemEvent emits a system event to the unified event system.
+// It converts the events.EventType (uint32) to the canonical plugins.EventType
+// (string) via ConvertEventTypeBack so that subscribers can match it correctly.
+// Previously fmt.Sprintf("system.%d", eventType) produced strings like
+// "system.80" that no subscriber could ever match.
 func (a *LynxApp) emitSystemEvent(eventType events.EventType, metadata map[string]any) {
 	if a.pluginManager == nil {
 		return
@@ -238,7 +243,7 @@ func (a *LynxApp) emitSystemEvent(eventType events.EventType, metadata map[strin
 
 	// Create system event
 	pluginEvent := plugins.PluginEvent{
-		Type:      plugins.EventType(fmt.Sprintf("system.%d", eventType)),
+		Type:      events.ConvertEventTypeBack(eventType),
 		Priority:  plugins.PriorityHigh,
 		Source:    "lynx-app",
 		Category:  "system",

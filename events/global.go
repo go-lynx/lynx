@@ -139,22 +139,21 @@ func CloseGlobalEventBus() error {
 			WithStatus("shutdown").
 			WithMetadata("reason", "event_system_close")
 
-		// Publish shutdown event to all buses with timeout
+		// Publish shutdown event to all buses with timeout.
+		// shutdownDone is a close-only notification channel: the goroutine calls
+		// close(shutdownDone) exactly once (via sync.Once) to signal completion.
+		// Using send+close on the same channel was racy and could panic.
 		shutdownTimeout := time.After(500 * time.Millisecond)
 		shutdownDone := make(chan struct{})
+		var shutdownOnce sync.Once
 
 		go func() {
 			defer func() {
-				// Always close done channel to prevent goroutine leak
-				select {
-				case shutdownDone <- struct{}{}:
-				default:
-					close(shutdownDone)
-				}
 				if r := recover(); r != nil {
-					// Log panic but don't crash
 					fmt.Printf("[lynx-error] panic in shutdown event goroutine: %v\n", r)
 				}
+				// Signal completion exactly once by closing the channel.
+				shutdownOnce.Do(func() { close(shutdownDone) })
 			}()
 			for busType := range globalManager.buses {
 				if bus := globalManager.GetBus(busType); bus != nil {
@@ -168,12 +167,12 @@ func CloseGlobalEventBus() error {
 			}
 		}()
 
-		// Wait for shutdown event to be processed or timeout
+		// Wait for shutdown event to be processed or timeout.
 		select {
 		case <-shutdownDone:
-			// Shutdown event processed successfully
+			// Shutdown event published to all buses.
 		case <-shutdownTimeout:
-			// Timeout reached, proceed with closing
+			// Timeout reached, proceed with closing.
 		}
 
 		return globalManager.Close()
