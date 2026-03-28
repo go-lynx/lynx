@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -263,37 +262,20 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 
 	// Configure console output with optimizations
 	if logConfig.GetConsoleOutput() {
-		// Get format configuration
+		// Read format configuration directly from the proto-generated accessors.
 		formatType := "json" // default
-		consoleFormat := formatType
 		consoleColor := true
-
-		// Try to get format config using reflection (until proto is regenerated)
-		if formatVal := reflect.ValueOf(&logConfig).Elem(); formatVal.IsValid() {
-			if formatField := formatVal.FieldByName("Format"); formatField.IsValid() && formatField.CanInterface() {
-				formatPtr := formatField.Interface()
-				if formatPtr != nil {
-					formatReflect := reflect.ValueOf(formatPtr).Elem()
-					if formatReflect.IsValid() {
-						if formatTypeVal := formatReflect.FieldByName("Type"); formatTypeVal.IsValid() && formatTypeVal.CanInterface() {
-							if t, ok := formatTypeVal.Interface().(string); ok && t != "" {
-								formatType = t
-							}
-						}
-						if consoleFormatVal := formatReflect.FieldByName("ConsoleFormat"); consoleFormatVal.IsValid() && consoleFormatVal.CanInterface() {
-							if cf, ok := consoleFormatVal.Interface().(string); ok && cf != "" {
-								consoleFormat = cf
-							} else {
-								consoleFormat = formatType
-							}
-						}
-						if consoleColorVal := formatReflect.FieldByName("ConsoleColor"); consoleColorVal.IsValid() && consoleColorVal.CanInterface() {
-							if cc, ok := consoleColorVal.Interface().(bool); ok {
-								consoleColor = cc
-							}
-						}
-					}
-				}
+		if f := logConfig.GetFormat(); f != nil {
+			if t := f.GetType(); t != "" {
+				formatType = t
+			}
+			consoleColor = f.GetConsoleColor()
+		}
+		// Use a separate console format if specified; fall back to the file format type.
+		consoleFormat := formatType
+		if f := logConfig.GetFormat(); f != nil {
+			if cf := f.GetConsoleFormat(); cf != "" {
+				consoleFormat = cf
 			}
 		}
 
@@ -332,37 +314,13 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		if ma < 0 {
 			ma = 0 // 0 means no age-based removal
 		}
-		// Get new configuration fields (with fallback for compatibility)
-		// Note: These fields will be available after regenerating proto files
-		// For now, use reflection to access them if they exist
-		maxTotalSizeMB := 0
-		rotationStrategyStr := ""
-		rotationIntervalStr := ""
-
-		// Try to get new fields using reflection
-		// If proto file hasn't been regenerated, use defaults
-		configVal := reflect.ValueOf(&logConfig).Elem()
-		if configVal.IsValid() {
-			if field := configVal.FieldByName("MaxTotalSizeMb"); field.IsValid() && field.CanInterface() {
-				if val, ok := field.Interface().(int32); ok {
-					maxTotalSizeMB = int(val)
-				}
-			}
-			if field := configVal.FieldByName("RotationStrategy"); field.IsValid() && field.CanInterface() {
-				if val, ok := field.Interface().(string); ok {
-					rotationStrategyStr = val
-				}
-			}
-			if field := configVal.FieldByName("RotationInterval"); field.IsValid() && field.CanInterface() {
-				if val, ok := field.Interface().(string); ok {
-					rotationIntervalStr = val
-				}
-			}
-		}
-
+		// Read rotation configuration directly from the proto-generated accessors.
+		maxTotalSizeMB := int(logConfig.GetMaxTotalSizeMb())
 		if maxTotalSizeMB < 0 {
 			maxTotalSizeMB = 0 // 0 means unlimited
 		}
+		rotationStrategyStr := logConfig.GetRotationStrategy()
+		rotationIntervalStr := logConfig.GetRotationInterval()
 
 		// Determine rotation strategy
 		rotationStrategy := RotationStrategy(strings.ToLower(rotationStrategyStr))
@@ -411,41 +369,21 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		// Format configuration mainly affects console output
 		// This ensures log files remain parseable and searchable
 
-		// Get performance configuration with defaults
+		// Read performance configuration directly from the proto-generated accessors.
 		batchSize := 64 * 1024 // 64KB default
 		batchFlushInterval := 100 * time.Millisecond
 		asyncQueueSize := 2000       // default queue size
 		enableDynamicAdjust := false // default: disabled for stability
-
-		// Try to get performance config using reflection
-		perfConfigVal := reflect.ValueOf(&logConfig).Elem()
-		if perfConfigVal.IsValid() {
-			if perfField := perfConfigVal.FieldByName("Performance"); perfField.IsValid() && perfField.CanInterface() {
-				perfPtr := perfField.Interface()
-				if perfPtr != nil {
-					perfReflect := reflect.ValueOf(perfPtr).Elem()
-					if perfReflect.IsValid() {
-						if batchSizeVal := perfReflect.FieldByName("BatchSizeBytes"); batchSizeVal.IsValid() && batchSizeVal.CanInterface() {
-							if bs, ok := batchSizeVal.Interface().(int32); ok && bs > 0 {
-								batchSize = int(bs)
-							}
-						}
-						if flushIntervalVal := perfReflect.FieldByName("BatchFlushIntervalMs"); flushIntervalVal.IsValid() && flushIntervalVal.CanInterface() {
-							if fi, ok := flushIntervalVal.Interface().(int32); ok && fi > 0 {
-								batchFlushInterval = time.Duration(fi) * time.Millisecond
-							}
-						}
-						if queueSizeVal := perfReflect.FieldByName("AsyncQueueSize"); queueSizeVal.IsValid() && queueSizeVal.CanInterface() {
-							if qs, ok := queueSizeVal.Interface().(int32); ok && qs > 0 {
-								asyncQueueSize = int(qs)
-							}
-						}
-					}
-				}
-			}
-		}
-		// EnableDynamicAdjust from config (Performance.EnableDynamicAdjust / enable_dynamic_adjust)
 		if perf := logConfig.GetPerformance(); perf != nil {
+			if bs := perf.GetBatchSizeBytes(); bs > 0 {
+				batchSize = int(bs)
+			}
+			if fi := perf.GetBatchFlushIntervalMs(); fi > 0 {
+				batchFlushInterval = time.Duration(fi) * time.Millisecond
+			}
+			if qs := perf.GetAsyncQueueSize(); qs > 0 {
+				asyncQueueSize = int(qs)
+			}
 			enableDynamicAdjust = perf.GetEnableDynamicAdjust()
 		}
 
