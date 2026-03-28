@@ -576,66 +576,58 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 	return err
 }
 
-// emitPluginEvent emits a plugin event to the unified event system
+// lynxToPluginEventEntry maps an events.EventType to its corresponding
+// plugins.EventType string and PluginStatus for observability.
+type lynxToPluginEventEntry struct {
+	pluginEventType plugins.EventType
+	status          plugins.PluginStatus
+}
+
+// lynxToPluginEventTable is the single source-of-truth mapping between
+// the unified events.EventType (uint32) and the plugin-level
+// plugins.EventType (string) + PluginStatus pair.
+// Adding a new event type only requires one entry here.
+var lynxToPluginEventTable = map[events.EventType]lynxToPluginEventEntry{
+	events.EventPluginInitializing: {plugins.EventPluginInitializing, plugins.StatusInitializing},
+	events.EventPluginInitialized:  {plugins.EventPluginInitialized, plugins.StatusInactive},
+	events.EventPluginStarting:     {plugins.EventPluginStarting, plugins.StatusInitializing},
+	events.EventPluginStarted:      {plugins.EventPluginStarted, plugins.StatusActive},
+	events.EventPluginStopping:     {plugins.EventPluginStopping, plugins.StatusStopping},
+	events.EventPluginStopped:      {plugins.EventPluginStopped, plugins.StatusTerminated},
+	events.EventErrorOccurred:      {plugins.EventErrorOccurred, plugins.StatusFailed},
+}
+
+// defaultLynxToPluginEventEntry is returned for any event type that is not
+// explicitly listed in lynxToPluginEventTable.
+var defaultLynxToPluginEventEntry = lynxToPluginEventEntry{
+	pluginEventType: plugins.EventPluginInitializing,
+	status:          plugins.StatusInactive,
+}
+
+// emitPluginEvent emits a plugin event to the unified event system.
+// It converts events.EventType to plugins.EventType and derives the
+// approximate PluginStatus using lynxToPluginEventTable.
 func (m *DefaultPluginManager[T]) emitPluginEvent(pluginID string, eventType events.EventType, metadata map[string]any) {
 	if m.runtime == nil {
 		return
 	}
 
-	// Convert events.EventType to plugins.EventType
-	var pluginEventType plugins.EventType
-	switch eventType {
-	case events.EventPluginInitializing:
-		pluginEventType = plugins.EventPluginInitializing
-	case events.EventPluginInitialized:
-		pluginEventType = plugins.EventPluginInitialized
-	case events.EventPluginStarting:
-		pluginEventType = plugins.EventPluginStarting
-	case events.EventPluginStarted:
-		pluginEventType = plugins.EventPluginStarted
-	case events.EventPluginStopping:
-		pluginEventType = plugins.EventPluginStopping
-	case events.EventPluginStopped:
-		pluginEventType = plugins.EventPluginStopped
-	case events.EventErrorOccurred:
-		pluginEventType = plugins.EventErrorOccurred
-	default:
-		pluginEventType = plugins.EventPluginInitializing
+	entry, ok := lynxToPluginEventTable[eventType]
+	if !ok {
+		entry = defaultLynxToPluginEventEntry
 	}
 
-	// Create plugin event
-	// Derive an approximate status from event type for better observability
-	var status plugins.PluginStatus
-	switch eventType {
-	case events.EventPluginInitializing:
-		status = plugins.StatusInitializing
-	case events.EventPluginInitialized:
-		status = plugins.StatusInactive
-	case events.EventPluginStarting:
-		status = plugins.StatusInitializing
-	case events.EventPluginStarted:
-		status = plugins.StatusActive
-	case events.EventPluginStopping:
-		status = plugins.StatusStopping
-	case events.EventPluginStopped:
-		status = plugins.StatusTerminated
-	case events.EventErrorOccurred:
-		status = plugins.StatusFailed
-	default:
-		status = plugins.StatusInactive
-	}
 	pluginEvent := plugins.PluginEvent{
-		Type:      pluginEventType,
+		Type:      entry.pluginEventType,
 		Priority:  plugins.PriorityNormal,
 		Source:    "plugin-manager",
 		Category:  "lifecycle",
 		PluginID:  pluginID,
-		Status:    status,
+		Status:    entry.status,
 		Timestamp: time.Now().Unix(),
 		Metadata:  metadata,
 	}
 
-	// Emit through runtime
 	m.runtime.EmitEvent(pluginEvent)
 }
 
