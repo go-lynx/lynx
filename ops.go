@@ -612,8 +612,8 @@ func (m *DefaultPluginManager[T]) ListResources() []*plugins.ResourceInfo {
 	return m.runtime.ListResources()
 }
 
-// ListPluginNames Public helpers for any TypedPluginManager.
-func ListPluginNames(m TypedPluginManager) []string {
+// ListPluginNames Public helpers for any PluginManager.
+func ListPluginNames(m PluginManager) []string {
 	if m == nil {
 		return nil
 	}
@@ -624,7 +624,7 @@ func ListPluginNames(m TypedPluginManager) []string {
 	return nil
 }
 
-func Plugins(m TypedPluginManager) []plugins.Plugin {
+func Plugins(m PluginManager) []plugins.Plugin {
 	if m == nil {
 		return nil
 	}
@@ -715,10 +715,12 @@ func (m *DefaultPluginManager[T]) emitResourceCleanupErrorEvent(pluginID, plugin
 	)
 }
 
-// emitPluginManagerShutdownEvent emits a plugin manager shutdown event
+// emitPluginManagerShutdownEvent emits a plugin manager shutdown event.
+// Uses the typed constant plugins.EventPluginManagerShutdown instead of
+// an ad-hoc string literal so that subscribers can match it reliably.
 func (m *DefaultPluginManager[T]) emitPluginManagerShutdownEvent() {
 	m.emitManagerEvent(
-		plugins.EventType("system.plugin_manager_shutdown"),
+		plugins.EventPluginManagerShutdown,
 		plugins.PriorityHigh,
 		"system",
 		"system",
@@ -739,11 +741,13 @@ func (m *DefaultPluginManager[T]) recordUnloadFailure(p plugins.Plugin, stopErr,
 	m.unloadFailuresMu.Lock()
 	defer m.unloadFailuresMu.Unlock()
 
-	// Limit the number of stored failures to prevent unbounded growth
+	// Limit the number of stored failures to prevent unbounded growth.
+	// Use copy-based rotation instead of re-slicing to avoid retaining the
+	// original backing array and causing a memory leak.
 	const maxFailures = 100
 	if len(m.unloadFailures) >= maxFailures {
-		// Remove oldest failure (FIFO)
-		m.unloadFailures = m.unloadFailures[1:]
+		copy(m.unloadFailures, m.unloadFailures[1:])
+		m.unloadFailures = m.unloadFailures[:len(m.unloadFailures)-1]
 	}
 
 	record := UnloadFailureRecord{

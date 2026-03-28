@@ -48,6 +48,8 @@ type lifecycleExecOptions struct {
 }
 
 // loadSortedPluginsByLevel starts plugins in parallel by dependency level and rolls back on failure.
+// allSorted is kept intact across batches so that rollback can unregister every plugin
+// that was prepared (not just those in the failing batch).
 func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLevel) error {
 	groups := make(map[int][]plugins.Plugin)
 	levels := make([]int, 0)
@@ -64,6 +66,9 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 	}
 	sort.Ints(levels)
 
+	// started accumulates every successfully started plugin across ALL batches.
+	// On rollback we need to stop every plugin we have already started, not just
+	// the ones in the current batch.
 	started := make([]plugins.Plugin, 0)
 	var startedMu sync.Mutex
 	par := m.getStartParallelism()
@@ -101,6 +106,8 @@ func (m *DefaultPluginManager[T]) loadSortedPluginsByLevel(sorted []PluginWithLe
 		close(errCh)
 		if len(errCh) > 0 {
 			firstErr, allErrors := collectLifecycleErrors(errCh)
+			// Pass the full `sorted` list so rollback unregisters every prepared
+			// plugin, not only those in the failing batch.
 			results, successCount := m.rollbackStartedPlugins(started, sorted, allErrors)
 			if successCount < len(results) {
 				return fmt.Errorf("plugin startup failed with %d errors, rollback had %d failures: %w",

@@ -176,19 +176,18 @@ type HealthChecker interface {
 
 // PluginProtocol declares lifecycle-related capabilities explicitly.
 // New plugins should prefer declaring protocol instead of relying on legacy runtime probing.
-// Configuration mutation flags are compatibility metadata only; Lynx core still
-// applies configuration changes by restart instead of in-process orchestration.
+//
+// Configuration-mutation flags (ConfigHotReload, ConfigValidation, ConfigRollback) have
+// been removed: Lynx core applies configuration changes by process restart, so advertising
+// in-process config-reload capability is misleading.  Plugins that previously set those
+// flags should use Configurable / ConfigValidator / ConfigRollbacker interfaces directly,
+// and callers should rely on GetRestartRequirementReport() to discover which plugins
+// need a restart after configuration changes.
 type PluginProtocol struct {
 	ManagedLifecycle bool
 	HealthAware      bool
 	ContextLifecycle bool
 	Recoverable      bool
-	// Deprecated compatibility metadata only. Core config changes are restart-based.
-	ConfigHotReload bool
-	// Deprecated compatibility metadata only. Core config changes are restart-based.
-	ConfigValidation bool
-	// Deprecated compatibility metadata only. Core config changes are restart-based.
-	ConfigRollback bool
 }
 
 // ProtocolAwarePlugin explicitly declares its lifecycle protocol.
