@@ -34,6 +34,11 @@ type CertificateManager struct {
 	privateKey  []byte
 	rootCA      []byte
 
+	// autoCACertPEM and autoCAKeyPEM hold the in-process CA when source_type is auto without shared_ca.
+	// The root is created once per process; auto rotation only reissues the leaf so cluster clients keep a stable trust anchor.
+	autoCACertPEM []byte
+	autoCAKeyPEM  []byte
+
 	// TLS configuration
 	tlsConfig *tls.Config
 
@@ -242,7 +247,8 @@ func (cm *CertificateManager) loadFromMemory() error {
 }
 
 // loadFromAuto generates server certificate in-process. When SharedCA is set, uses that CA to sign the server cert
-// so the mesh shares one root CA; otherwise generates a new CA and server cert per process.
+// so the mesh shares one root CA. Otherwise the first load creates an in-process CA and server cert; the CA is kept
+// in memory and only the leaf is reissued on rotation (fixed root for the lifetime of the process).
 func (cm *CertificateManager) loadFromAuto() error {
 	cfg := cm.autoConfig
 	if cfg == nil {
@@ -278,12 +284,22 @@ func (cm *CertificateManager) loadFromAuto() error {
 			return fmt.Errorf("generate server cert from shared CA: %w", err)
 		}
 		log.Infof("Auto server certificate generated from shared CA: service=%s hostname=%s", serviceName, hostname)
+	} else if len(cm.autoCACertPEM) > 0 && len(cm.autoCAKeyPEM) > 0 {
+		validity := cfg.ParseAutoCertValidity()
+		result, err = GenerateServerCertFromCA(cm.autoCACertPEM, cm.autoCAKeyPEM, serviceName, hostname, cfg.SANs, validity)
+		if err != nil {
+			return fmt.Errorf("reissue server cert from fixed in-process CA: %w", err)
+		}
+		log.Infof("Auto server certificate reissued (fixed in-process root): service=%s hostname=%s", serviceName, hostname)
 	} else {
-		result, err = GenerateAutoCertificatesFromConfig(cfg, serviceName, hostname)
+		var caCertPEM, caKeyPEM []byte
+		result, caCertPEM, caKeyPEM, err = generateAutoStackFromConfig(cfg, serviceName, hostname)
 		if err != nil {
 			return fmt.Errorf("generate auto certificates: %w", err)
 		}
-		log.Infof("Auto certificates generated: service=%s hostname=%s", serviceName, hostname)
+		cm.autoCACertPEM = caCertPEM
+		cm.autoCAKeyPEM = caKeyPEM
+		log.Infof("Auto certificates generated (fixed in-process root for process lifetime): service=%s hostname=%s", serviceName, hostname)
 	}
 
 	cm.certificate = result.CertPEM

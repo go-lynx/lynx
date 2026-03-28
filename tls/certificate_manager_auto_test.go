@@ -94,6 +94,7 @@ func TestCertificateManager_AutoSource_ReloadRotatesCert(t *testing.T) {
 	}
 	defer cm.Stop()
 
+	rootAfterInit := cm.GetRootCACertificate()
 	cert1 := cm.GetCertificate()
 	// Reload (simulate rotation)
 	err = cm.reloadCertificates()
@@ -115,6 +116,9 @@ func TestCertificateManager_AutoSource_ReloadRotatesCert(t *testing.T) {
 	c2, _ := x509.ParseCertificate(block2.Bytes)
 	if c1.SerialNumber.Cmp(c2.SerialNumber) == 0 {
 		t.Error("expected different serial numbers after rotation")
+	}
+	if string(rootAfterInit) != string(cm.GetRootCACertificate()) {
+		t.Error("fixed root: GetRootCACertificate should stay byte-identical across leaf rotation")
 	}
 }
 

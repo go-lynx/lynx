@@ -1,8 +1,7 @@
 name: Pull Request Checks
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 env:
   GO_VERSION: '1.25'
