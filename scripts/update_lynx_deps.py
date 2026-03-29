@@ -8,9 +8,9 @@ github.com/go-lynx/lynx 的模块的 go.mod 中的版本号改为指定版本，
 
 依赖：Python 3，本机 Go 可选（若使用 --tidy）。
 用法（在仓库根目录执行）：
-  python3 lynx/script/update_lynx_deps.py 1.5.4
-  python3 lynx/script/update_lynx_deps.py v1.5.4 --dry-run
-  python3 lynx/script/update_lynx_deps.py v1.5.4 --tidy   # 更新后在各模块执行 go mod tidy
+  python3 lynx/scripts/update_lynx_deps.py 1.5.4
+  python3 lynx/scripts/update_lynx_deps.py v1.6.0-beta --dry-run
+  python3 lynx/scripts/update_lynx_deps.py v1.5.4 --tidy   # 更新后在各模块执行 go mod tidy
 """
 
 import os
@@ -19,12 +19,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-# 项目根 = 脚本所在目录的上两级（lynx/script/update_lynx_deps.py -> 仓库根）
+# 项目根 = 脚本所在目录的上三级（lynx/scripts/update_lynx_deps.py -> 仓库根）
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 # 匹配 go.mod 中的 github.com/go-lynx/lynx 依赖行（保留缩进与 // indirect 等注释）
+# 版本段兼容预发布/伪版本等（如 v1.6.0-beta、v0.0.0-时间戳-commit）
 LYNX_REQUIRE_RE = re.compile(
-    r"^(\s*github\.com/go-lynx/lynx\s+)v[\d.]+(\s*(?://.*)?)$",
+    r"^(\s*github\.com/go-lynx/lynx\s+)(v\S+)(\s*(?://.*)?)$",
     re.MULTILINE,
 )
 
@@ -65,7 +66,7 @@ def update_lynx_version_in_gomod(content: str, new_version: str) -> tuple[str, i
     def repl(m):
         nonlocal count
         count += 1
-        return f"{m.group(1)}{new_version}{m.group(2)}"
+        return f"{m.group(1)}{new_version}{m.group(3)}"
 
     new_content = LYNX_REQUIRE_RE.sub(repl, content)
     return new_content, count
@@ -107,7 +108,7 @@ def main():
     )
     parser.add_argument(
         "version",
-        help="目标版本号，如 1.5.4 或 v1.5.4",
+        help="目标版本号，如 1.5.4、v1.5.4 或 v1.6.0-beta",
     )
     parser.add_argument(
         "--dry-run",
@@ -122,8 +123,15 @@ def main():
     args = parser.parse_args()
 
     version = args.version.strip()
-    if not re.match(r"^v?[\d.]+$", version):
-        print(f"错误：版本号格式不正确，应为纯数字或 v 开头，例如 1.5.4 或 v1.5.4", file=sys.stderr)
+    # 允许 SemVer 预发布/构建元数据（如 v1.6.0-beta、1.5.4-rc.1+build）
+    if not re.match(
+        r"^v?[\d.]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$",
+        version,
+    ):
+        print(
+            "错误：版本号格式不正确，例如 1.5.4、v1.5.4、v1.6.0-beta",
+            file=sys.stderr,
+        )
         sys.exit(1)
     if not version.startswith("v"):
         version = f"v{version}"

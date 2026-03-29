@@ -4,12 +4,11 @@ go 1.25
 
 toolchain go1.25.3
 
-replace github.com/go-lynx/lynx => ../..
-
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
+	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/fatih/color v1.16.0
-	github.com/go-lynx/lynx v1.5.4
+	github.com/go-lynx/lynx v1.6.0-beta
 	github.com/spf13/cobra v1.8.0
 	golang.org/x/mod v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -17,7 +16,6 @@ require (
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
-	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
