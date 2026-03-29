@@ -326,12 +326,12 @@ func (app *Application) gracefulShutdown() {
 		})
 	}
 
+	log.Info("Graceful shutdown completed")
+
 	// Step 4: Cleanup loggers and close all writers (should be last)
 	protectLoggerCleanup(func() {
 		log.CleanupLoggers()
 	})
-
-	log.Info("Graceful shutdown completed")
 }
 
 // loadPluginsWithProtection loads plugins with circuit breaker protection

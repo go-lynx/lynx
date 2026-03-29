@@ -2,9 +2,22 @@ package plugins
 
 import (
 	"fmt"
+	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
+
+type countingCloser struct {
+	closeCount atomic.Int32
+}
+
+func (c *countingCloser) Close() error {
+	if c.closeCount.Add(1) > 1 {
+		return net.ErrClosed
+	}
+	return nil
+}
 
 // TestWithPluginContextConcurrent verifies that using WithPluginContext across
 // many goroutines to register shared/private resources is safe (no panic/race)
@@ -130,5 +143,45 @@ func TestPrivateResourceInfo_ResolvesLegacyDisplayNameWithoutBreakingSharedStora
 	}
 	if !legacyInfo.IsPrivate {
 		t.Fatalf("expected legacy private resource info, got shared: %+v", legacyInfo)
+	}
+}
+
+func TestCleanupResources_DeduplicatesAliasedClosers(t *testing.T) {
+	base := NewUnifiedRuntime()
+	pluginRuntime := base.WithPluginContext("plugin-c")
+	closer := &countingCloser{}
+
+	if err := pluginRuntime.RegisterSharedResource("redis", closer); err != nil {
+		t.Fatalf("failed to register shared alias: %v", err)
+	}
+	if err := pluginRuntime.RegisterSharedResource("redis.client", closer); err != nil {
+		t.Fatalf("failed to register stable shared alias: %v", err)
+	}
+	if err := pluginRuntime.RegisterPrivateResource("client", closer); err != nil {
+		t.Fatalf("failed to register private alias: %v", err)
+	}
+
+	if err := base.CleanupResources("plugin-c"); err != nil {
+		t.Fatalf("cleanup should succeed for aliased resource: %v", err)
+	}
+	if got := closer.closeCount.Load(); got != 1 {
+		t.Fatalf("expected aliased closer to be closed once, got %d", got)
+	}
+}
+
+func TestCleanupResources_IgnoresAlreadyClosedErrors(t *testing.T) {
+	base := NewUnifiedRuntime()
+	pluginRuntime := base.WithPluginContext("plugin-d")
+	closer := &countingCloser{}
+
+	if err := pluginRuntime.RegisterSharedResource("redis", closer); err != nil {
+		t.Fatalf("failed to register shared resource: %v", err)
+	}
+	if err := closer.Close(); err != nil {
+		t.Fatalf("failed to pre-close resource: %v", err)
+	}
+
+	if err := base.CleanupResources("plugin-d"); err != nil {
+		t.Fatalf("cleanup should ignore already-closed resource: %v", err)
 	}
 }

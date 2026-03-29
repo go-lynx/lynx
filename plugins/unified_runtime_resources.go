@@ -2,8 +2,13 @@ package plugins
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"net"
+	"os"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -119,7 +124,16 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 
 	var errors []error
 	var cleanedCount int
+	seenCleanupTargets := make(map[string]struct{}, len(toDelete))
 	for _, item := range toDelete {
+		if identity, ok := resourceCleanupIdentity(item.res); ok {
+			if _, exists := seenCleanupTargets[identity]; exists {
+				cleanedCount++
+				continue
+			}
+			seenCleanupTargets[identity] = struct{}{}
+		}
+
 		if err := r.cleanupResourceGracefully(item.displayName, item.res); err != nil {
 			errors = append(errors, fmt.Errorf("failed to cleanup resource %s: %w", item.displayName, err))
 		} else {
@@ -200,17 +214,17 @@ func (r *UnifiedRuntime) cleanupResourceGracefully(name string, resource any) er
 
 	switch v := resource.(type) {
 	case interface{ Shutdown() error }:
-		return v.Shutdown()
+		return normalizeCleanupError(v.Shutdown())
 	case interface{ Stop() error }:
-		return v.Stop()
+		return normalizeCleanupError(v.Stop())
 	case interface{ Cleanup() error }:
-		return v.Cleanup()
+		return normalizeCleanupError(v.Cleanup())
 	case interface{ Destroy() error }:
-		return v.Destroy()
+		return normalizeCleanupError(v.Destroy())
 	case interface{ Release() error }:
-		return v.Release()
+		return normalizeCleanupError(v.Release())
 	case interface{ Close() error }:
-		return v.Close()
+		return normalizeCleanupError(v.Close())
 	case context.CancelFunc:
 		v()
 		return nil
@@ -229,6 +243,64 @@ func (r *UnifiedRuntime) cleanupResourceGracefully(name string, resource any) er
 	}
 
 	return nil
+}
+
+func resourceCleanupIdentity(resource any) (string, bool) {
+	if resource == nil {
+		return "", false
+	}
+
+	val := reflect.ValueOf(resource)
+	if !val.IsValid() {
+		return "", false
+	}
+
+	switch val.Kind() {
+	case reflect.Interface:
+		if val.IsNil() {
+			return "", false
+		}
+		return resourceCleanupIdentity(val.Elem().Interface())
+	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func, reflect.UnsafePointer:
+		if val.Kind() != reflect.UnsafePointer && val.IsNil() {
+			return "", false
+		}
+		return fmt.Sprintf("%T:%x", resource, val.Pointer()), true
+	default:
+		return "", false
+	}
+}
+
+func normalizeCleanupError(err error) error {
+	if isBenignCleanupError(err) {
+		return nil
+	}
+	return err
+}
+
+func isBenignCleanupError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, os.ErrClosed) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"already closed",
+		"client is closed",
+		"database is closed",
+		"read/write on closed pipe",
+		"use of closed network connection",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // GetResourceStats returns resource statistics including size and plugin information.
