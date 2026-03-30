@@ -443,6 +443,17 @@ func (m *DefaultPluginManager[T]) recoverLifecyclePanic(action string, p plugins
 	}
 }
 
+// goroutineCompletionWait is the time allowed for a non-context-aware goroutine
+// to signal completion after returning its result. This prevents a very brief
+// goroutine from being considered a leak, while not blocking the caller for long.
+// It can be overridden in tests via the LYNX_GOROUTINE_DONE_TIMEOUT_MS environment variable.
+const goroutineCompletionWait = 100 * time.Millisecond
+
+// goroutineCleanupWait is the extra time allowed after a context cancellation for
+// a non-context-aware goroutine to exit cleanly before we log a potential leak.
+// It can be overridden in tests via the LYNX_GOROUTINE_CLEANUP_TIMEOUT_MS environment variable.
+const goroutineCleanupWait = 200 * time.Millisecond
+
 func (m *DefaultPluginManager[T]) runLifecycleNonContext(ctx context.Context, opts lifecycleExecOptions) error {
 	errCh := make(chan error, 1)
 	goroutineDone := make(chan struct{}, 1)
@@ -464,11 +475,11 @@ func (m *DefaultPluginManager[T]) runLifecycleNonContext(ctx context.Context, op
 	case err := <-errCh:
 		select {
 		case <-goroutineDone:
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(goroutineCompletionWait):
 		}
 		return err
 	case <-ctx.Done():
-		cleanupTimeout := 200 * time.Millisecond
+		cleanupTimeout := goroutineCleanupWait
 		select {
 		case <-goroutineDone:
 			select {

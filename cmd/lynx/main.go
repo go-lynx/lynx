@@ -66,7 +66,7 @@ func init() {
 	rootCmd.PersistentFlags().Bool("verbose", false, "enable verbose logs")
 	rootCmd.PersistentFlags().Bool("quiet", false, "suppress non-error logs")
 	rootCmd.PersistentFlags().String("log-level", "info", "log level: error|warn|info|debug (overrides --quiet/--verbose)")
-	rootCmd.PersistentFlags().String("lang", "zh", "language for messages: zh|en")
+	rootCmd.PersistentFlags().String("lang", "en", "language for messages: zh|en")
 }
 
 // main function is the entry point of the program, responsible for executing the root command.

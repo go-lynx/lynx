@@ -40,3 +40,9 @@ bin/
 # CLI binary (ensure not committed)
 cmd/lynx/lynx
 .gocache
+
+# Test coverage outputs
+coverage
+coverage.out
+coverage.html
+

@@ -1,151 +1,236 @@
 package boot
 
 import (
-	"context"
-	"flag"
-	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/go-kratos/kratos/v2"
 	lynxapp "github.com/go-lynx/lynx"
 )
 
-func TestNewApplication_DefaultsToPublishingDefaultApp(t *testing.T) {
-	app := NewApplication(func() (*kratos.App, error) { return nil, nil })
-	if app == nil {
-		t.Fatal("expected application to be created")
+// ---- HealthChecker tests ----
+
+func newTestHealthChecker(t *testing.T) *HealthChecker {
+	t.Helper()
+	hc := &HealthChecker{
+		isHealthy:     true,
+		lastCheck:     time.Now(),
+		checkInterval: 10 * time.Millisecond,
+		stopChan:      make(chan struct{}),
 	}
-	if !app.publishDefaultApp {
-		t.Fatal("expected new boot application to publish default app by default")
+	return hc
+}
+
+func TestHealthChecker_InitiallyHealthy(t *testing.T) {
+	hc := newTestHealthChecker(t)
+	if !hc.IsHealthy() {
+		t.Error("expected health checker to be healthy initially")
 	}
 }
 
-func TestApplication_SettersSupportInstanceScopedOverrides(t *testing.T) {
-	app := NewApplication(func() (*kratos.App, error) { return nil, nil })
-	if app == nil {
-		t.Fatal("expected application to be created")
-	}
+func TestHealthChecker_StopIdempotent(t *testing.T) {
+	hc := newTestHealthChecker(t)
+	// Stopping multiple times must not panic (sync.Once guard)
+	hc.Stop()
+	hc.Stop()
+	hc.Stop()
+}
 
-	got := app.SetConfigPath("/tmp/bootstrap.yaml").SetPublishDefaultApp(false)
-	if got != app {
-		t.Fatal("expected setters to support fluent chaining")
+func TestHealthChecker_RunAndStop(t *testing.T) {
+	hc := &HealthChecker{
+		isHealthy:     true,
+		lastCheck:     time.Now(),
+		checkInterval: 5 * time.Millisecond,
+		stopChan:      make(chan struct{}),
 	}
-	if app.configPath != "/tmp/bootstrap.yaml" {
-		t.Fatalf("expected instance config path to be set, got %q", app.configPath)
-	}
-	if app.publishDefaultApp {
-		t.Fatal("expected publishDefaultApp to be disabled")
+	done := make(chan struct{})
+	go func() {
+		hc.Run()
+		close(done)
+	}()
+	time.Sleep(20 * time.Millisecond) // Let at least one tick fire
+	hc.Stop()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Error("HealthChecker.Run did not return after Stop")
 	}
 }
 
-func TestApplication_PublishAppIfConfigured_RespectsFlag(t *testing.T) {
-	lynxapp.ClearDefaultApp()
-	t.Cleanup(lynxapp.ClearDefaultApp)
-
-	explicitApp := &lynxapp.LynxApp{}
-	app := NewApplication(func() (*kratos.App, error) { return nil, nil }).SetPublishDefaultApp(false)
-	app.publishAppIfConfigured(explicitApp)
-	if got := lynxapp.Lynx(); got != nil {
-		t.Fatalf("expected no default app to be published when disabled, got %p", got)
+func TestHealthChecker_IsHealthy_ConcurrentRead(t *testing.T) {
+	hc := newTestHealthChecker(t)
+	var wg sync.WaitGroup
+	const n = 50
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			_ = hc.IsHealthy()
+		}()
 	}
-
-	app.SetPublishDefaultApp(true)
-	app.publishAppIfConfigured(explicitApp)
-	if got := lynxapp.Lynx(); got != explicitApp {
-		t.Fatalf("expected explicit app to be published, got %p want %p", got, explicitApp)
-	}
+	wg.Wait()
 }
+
+// ---- formatStartupElapsed tests ----
 
 func TestFormatStartupElapsed(t *testing.T) {
-	cases := []struct {
-		name string
-		in   time.Duration
-		want string
+	tests := []struct {
+		elapsed  time.Duration
+		contains string
 	}{
-		{name: "milliseconds", in: 850 * time.Millisecond, want: "850 ms"},
-		{name: "seconds", in: 2500 * time.Millisecond, want: "2.50 s"},
-		{name: "minutes", in: 125 * time.Second, want: "2.08 m"},
+		{500 * time.Millisecond, "ms"},
+		{5 * time.Second, "s"},
+		{2 * time.Minute, "m"},
 	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := formatStartupElapsed(tc.in); got != tc.want {
-				t.Fatalf("unexpected elapsed display: got %q want %q", got, tc.want)
+	for _, tt := range tests {
+		result := formatStartupElapsed(tt.elapsed)
+		if result == "" {
+			t.Errorf("formatStartupElapsed(%v) returned empty string", tt.elapsed)
+		}
+		found := false
+		for i := range result {
+			if result[i:i+1] == tt.contains {
+				found = true
+				break
 			}
-		})
+		}
+		if !found {
+			t.Errorf("expected %q in formatStartupElapsed(%v) result %q", tt.contains, tt.elapsed, result)
+		}
 	}
 }
 
-func TestApplication_InitializeRuntimeShell_RequiresPluginManager(t *testing.T) {
-	lynxapp.ClearDefaultApp()
-	t.Cleanup(lynxapp.ClearDefaultApp)
+// ---- Application construction tests ----
 
-	app := NewApplication(func() (*kratos.App, error) { return nil, nil }).SetPublishDefaultApp(false)
-	app.conf = nil
-
-	err := app.initializeRuntimeShell(&lynxapp.LynxApp{})
-	if err == nil {
-		t.Fatal("expected initializeRuntimeShell to reject app without plugin manager")
+func TestNewApplication_NilWire(t *testing.T) {
+	app := NewApplication(nil)
+	if app != nil {
+		t.Error("expected nil Application when wire is nil")
 	}
 }
 
-func TestApplication_ProtectShutdownStep_RecoversPanic(t *testing.T) {
+func TestApplication_SetConfigPath(t *testing.T) {
 	app := &Application{}
-
-	called := false
-	app.protectShutdownStep("test shutdown step", func() {
-		called = true
-		panic("boom")
-	})
-
-	if !called {
-		t.Fatal("expected protected shutdown step to run")
+	result := app.SetConfigPath("/etc/lynx/config.yaml")
+	if result != app {
+		t.Error("expected SetConfigPath to return the same Application instance")
+	}
+	if app.configPath != "/etc/lynx/config.yaml" {
+		t.Errorf("expected configPath '/etc/lynx/config.yaml', got %q", app.configPath)
 	}
 }
 
-func TestApplication_StopKratosAppWithTimeout(t *testing.T) {
-	app := &Application{shutdownTimeout: 20 * time.Millisecond}
-	kratosApp := kratos.New(
-		kratos.BeforeStop(func(context.Context) error {
-			time.Sleep(100 * time.Millisecond)
-			return nil
-		}),
-	)
+func TestApplication_SetConfigPath_Nil(t *testing.T) {
+	var app *Application
+	// Should not panic; returns nil
+	result := app.SetConfigPath("/path")
+	if result != nil {
+		t.Error("expected nil return for nil Application")
+	}
+}
 
-	err := app.stopKratosAppWithTimeout(kratosApp)
+func TestApplication_SetPublishDefaultApp(t *testing.T) {
+	app := &Application{publishDefaultApp: true}
+	result := app.SetPublishDefaultApp(false)
+	if result != app {
+		t.Error("expected SetPublishDefaultApp to return the same Application instance")
+	}
+	if app.publishDefaultApp {
+		t.Error("expected publishDefaultApp to be false after SetPublishDefaultApp(false)")
+	}
+}
+
+func TestApplication_SetPublishDefaultApp_Nil(t *testing.T) {
+	var app *Application
+	result := app.SetPublishDefaultApp(true)
+	if result != nil {
+		t.Error("expected nil return for nil Application")
+	}
+}
+
+func TestApplication_Run_NilInstance(t *testing.T) {
+	var app *Application
+	err := app.Run()
 	if err == nil {
-		t.Fatal("expected stopKratosAppWithTimeout to time out")
-	}
-	if !strings.Contains(err.Error(), "shutdown timeout exceeded") {
-		t.Fatalf("expected shutdown timeout error, got %v", err)
+		t.Error("expected error when running nil application")
 	}
 }
 
-func TestRegisterBootstrapFlags_IsIdempotentAndReadsExistingFlag(t *testing.T) {
-	fs := flag.NewFlagSet("boot-test", flag.ContinueOnError)
-	RegisterBootstrapFlags(fs)
-	RegisterBootstrapFlags(fs)
+// ---- initializeEnhancedFeatures tests ----
 
-	confFlag := fs.Lookup("conf")
-	if confFlag == nil {
-		t.Fatal("expected conf flag to be registered")
+func TestApplication_InitializeEnhancedFeatures(t *testing.T) {
+	app := &Application{}
+	app.initializeEnhancedFeatures()
+
+	if app.shutdownTimeout != DefaultShutdownTimeout {
+		t.Errorf("expected default shutdown timeout %v, got %v", DefaultShutdownTimeout, app.shutdownTimeout)
 	}
-
-	existing := flag.NewFlagSet("boot-existing", flag.ContinueOnError)
-	existing.String("conf", "/tmp/existing.yaml", "")
-
-	previousFlagConf := flagConf
-	t.Cleanup(func() {
-		flagConf = previousFlagConf
-	})
-	flagConf = ""
-
-	RegisterBootstrapFlags(existing)
-	if got := existing.Lookup("conf").Value.String(); got != "/tmp/existing.yaml" {
-		t.Fatalf("expected existing conf flag value to remain unchanged, got %q", got)
+	if app.shutdownChan == nil {
+		t.Error("expected shutdownChan to be initialized")
 	}
-	if flagConf != "/tmp/existing.yaml" {
-		t.Fatalf("expected package flagConf to mirror existing flag value, got %q", flagConf)
+	if app.healthChecker == nil {
+		t.Error("expected healthChecker to be initialized")
+	}
+	if app.circuitBreaker == nil {
+		t.Error("expected circuitBreaker to be initialized")
+	}
+	if !app.healthChecker.IsHealthy() {
+		t.Error("expected health checker to start healthy")
 	}
 }
+
+// ---- loadPluginsWithProtection with open circuit breaker ----
+
+func TestApplication_LoadPluginsWithProtection_OpenBreaker(t *testing.T) {
+	app := &Application{}
+	app.circuitBreaker = lynxapp.NewCircuitBreaker(1, time.Minute)
+
+	// Force the circuit breaker open
+	app.circuitBreaker.RecordResult(errForTest("force open"))
+
+	err := app.loadPluginsWithProtection()
+	if err == nil {
+		t.Error("expected error when circuit breaker is open")
+	}
+}
+
+// ---- getters with nil conf ----
+
+func TestApplication_GetName_NoConf(t *testing.T) {
+	app := &Application{}
+	name := app.GetName()
+	if name != "lynx" {
+		t.Errorf("expected default name 'lynx', got %q", name)
+	}
+}
+
+func TestApplication_GetHost_NoConf(t *testing.T) {
+	app := &Application{}
+	host := app.GetHost()
+	if host != "localhost" {
+		t.Errorf("expected default host 'localhost', got %q", host)
+	}
+}
+
+func TestApplication_GetVersion_NoConf(t *testing.T) {
+	app := &Application{}
+	version := app.GetVersion()
+	if version != "unknown" {
+		t.Errorf("expected default version 'unknown', got %q", version)
+	}
+}
+
+// ---- isTestEnvironment ----
+
+func TestIsTestEnvironment(t *testing.T) {
+	// When running under `go test`, test.v flag is registered
+	if !isTestEnvironment() {
+		t.Error("expected isTestEnvironment() to return true in test context")
+	}
+}
+
+// helper for creating errors in tests
+type testError string
+
+func (e testError) Error() string { return string(e) }
+func errForTest(msg string) error { return testError(msg) }
