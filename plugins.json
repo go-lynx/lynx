@@ -1,4 +1,6 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Plugin registry for the Lynx CLI. Each entry describes a first-party plugin that can be installed with `lynx plugin install <name>`. Fields: name (required) — short plugin identifier; repo (required) — GitHub organisation/repository slug; enabled (required) — whether the plugin is shown/installable; version (optional) — pin to a specific Git tag or semantic version (e.g. 'v1.2.3'); if omitted the CLI resolves the latest release.",
   "plugins": [
     {
       "name": "lynx-apollo",
@@ -132,4 +134,3 @@
     }
   ]
 }
-
