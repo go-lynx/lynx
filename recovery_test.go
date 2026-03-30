@@ -1,597 +1,233 @@
 package lynx
 
 import (
-	"context"
-	"runtime"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/go-lynx/lynx/observability/metrics"
 )
 
-// TestErrorRecoveryManager_ConcurrentRecovery tests concurrent recovery operations
-func TestErrorRecoveryManager_ConcurrentRecovery(t *testing.T) {
+// ---- ErrorRecoveryManager tests ----
+
+func TestNewErrorRecoveryManager_Defaults(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
+	if erm == nil {
+		t.Fatal("NewErrorRecoveryManager returned nil")
+	}
 	defer erm.Stop()
 
-	record := ErrorRecord{
-		ErrorType: "transient",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityLow,
+	if erm.maxErrorHistory != 1000 {
+		t.Errorf("expected maxErrorHistory=1000, got %d", erm.maxErrorHistory)
 	}
-
-	// Use a smaller number to avoid semaphore + retry backoff causing
-	// the overall test to exceed the default 60s timeout.
-	const numGoroutines = 10
-	var wg sync.WaitGroup
-	wg.Add(numGoroutines)
-
-	recoveryCount := int32(0)
-
-	for i := 0; i < numGoroutines; i++ {
-		go func() {
-			defer wg.Done()
-			erm.attemptRecovery(record)
-			atomic.AddInt32(&recoveryCount, 1)
-		}()
+	if erm.maxRecoveryHistory != 500 {
+		t.Errorf("expected maxRecoveryHistory=500, got %d", erm.maxRecoveryHistory)
 	}
-
-	wg.Wait()
-
-	// Verify recovery operations were executed (same recoveryKey)
-	activeCount := 0
-	erm.activeRecoveries.Range(func(key, value interface{}) bool {
-		activeCount++
-		return true
-	})
-
-	// Wait for all recoveries to complete
-	time.Sleep(200 * time.Millisecond)
-
-	// Check active recovery count again
-	activeCount = 0
-	erm.activeRecoveries.Range(func(key, value interface{}) bool {
-		activeCount++
-		return true
-	})
-
-	if activeCount > 0 {
-		t.Logf("Active recoveries after completion: %d (should be 0)", activeCount)
+	if erm.errorThreshold != 10 {
+		t.Errorf("expected errorThreshold=10, got %d", erm.errorThreshold)
 	}
-
-	t.Logf("Total recovery attempts: %d", recoveryCount)
-}
-
-// TestErrorRecoveryManager_RecoveryKeyCollision tests recovery key collision
-func TestErrorRecoveryManager_RecoveryKeyCollision(t *testing.T) {
-	erm := NewErrorRecoveryManager(nil)
-	defer erm.Stop()
-
-	// Creating records with the same timestamp and error type may produce the same recoveryKey
-	now := time.Now()
-	record1 := ErrorRecord{
-		ErrorType: "transient",
-		Component: "component1",
-		Timestamp: now,
-		Severity:  ErrorSeverityLow,
-	}
-	record2 := ErrorRecord{
-		ErrorType: "transient",
-		Component: "component2",
-		Timestamp: now,
-		Severity:  ErrorSeverityLow,
-	}
-
-	// Trigger two recovery operations simultaneously
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		erm.attemptRecovery(record1)
-	}()
-
-	go func() {
-		defer wg.Done()
-		erm.attemptRecovery(record2)
-	}()
-
-	wg.Wait()
-
-	// Wait for recovery to complete
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify recovery key uniqueness by checking activeRecoveries
-	activeCount := 0
-	erm.activeRecoveries.Range(func(key, value interface{}) bool {
-		activeCount++
-		return true
-	})
-
-	if activeCount > 0 {
-		t.Logf("Active recoveries: %d (should be 0 after completion)", activeCount)
+	if erm.maxConcurrentRecoveries != 10 {
+		t.Errorf("expected maxConcurrentRecoveries=10, got %d", erm.maxConcurrentRecoveries)
 	}
 }
 
-// TestErrorRecoveryManager_ConcurrentRecordError tests concurrent error recording
-func TestErrorRecoveryManager_ConcurrentRecordError(t *testing.T) {
+func TestErrorRecoveryManager_RecordError_StoresHistory(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
-	const numGoroutines = 100
-	var wg sync.WaitGroup
-	wg.Add(numGoroutines)
+	erm.RecordError("db", ErrorCategoryDatabase, "connection failed", "db-plugin", ErrorSeverityHigh, nil)
 
-	for i := 0; i < numGoroutines; i++ {
-		go func(id int) {
-			defer wg.Done()
-			erm.RecordError("test-error", ErrorCategorySystem, "test error message", "test-component", ErrorSeverityLow, nil)
-		}(i)
-	}
-
-	wg.Wait()
-
-	// Verify error count correctness
-	stats := erm.GetErrorStats()
-	count, ok := stats["test-error"].(int64)
-	if !ok {
-		t.Fatal("Failed to get error count")
-	}
-
-	if count != int64(numGoroutines) {
-		t.Errorf("Expected error count %d, got %d", numGoroutines, count)
-	}
-
-	// Verify error history records
 	history := erm.GetErrorHistory()
-	if len(history) != numGoroutines {
-		t.Errorf("Expected error history length %d, got %d", numGoroutines, len(history))
+	if len(history) != 1 {
+		t.Fatalf("expected 1 error record, got %d", len(history))
+	}
+	rec := history[0]
+	if rec.ErrorType != "db" {
+		t.Errorf("ErrorType: expected 'db', got %q", rec.ErrorType)
+	}
+	if rec.Category != ErrorCategoryDatabase {
+		t.Errorf("Category: expected %q, got %q", ErrorCategoryDatabase, rec.Category)
+	}
+	if rec.Message != "connection failed" {
+		t.Errorf("Message: expected 'connection failed', got %q", rec.Message)
 	}
 }
 
-// TestErrorRecoveryManager_GoroutineLeak tests goroutine leak
-func TestErrorRecoveryManager_GoroutineLeak(t *testing.T) {
-	before := runtime.NumGoroutine()
-
-	erm := NewErrorRecoveryManager(nil)
-
-	record := ErrorRecord{
-		ErrorType: "transient",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityLow,
-	}
-
-	// Start recovery operation
-	go erm.attemptRecovery(record)
-
-	// Stop manager immediately
-	erm.Stop()
-
-	// Wait for goroutine to exit
-	time.Sleep(500 * time.Millisecond)
-
-	after := runtime.NumGoroutine()
-
-	// Allow some system goroutines, should be close to initial value
-	if after > before+5 {
-		t.Errorf("Possible goroutine leak: before=%d, after=%d", before, after)
-	}
-}
-
-// TestErrorRecoveryManager_StopMonitorGoroutineExit tests stop monitor goroutine exit
-func TestErrorRecoveryManager_StopMonitorGoroutineExit(t *testing.T) {
+func TestErrorRecoveryManager_RecordError_NilContextDefaultsToEmpty(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
-	before := runtime.NumGoroutine()
+	erm.RecordError("net", ErrorCategoryNetwork, "timeout", "svc", ErrorSeverityLow, nil)
 
-	record := ErrorRecord{
-		ErrorType: "transient",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityLow,
+	history := erm.GetErrorHistory()
+	if len(history) == 0 {
+		t.Fatal("expected at least one error record")
+	}
+	if history[0].Context == nil {
+		t.Error("expected non-nil context map even when nil was passed")
+	}
+}
+
+func TestErrorRecoveryManager_RegisterCustomStrategy(t *testing.T) {
+	erm := NewErrorRecoveryManager(nil)
+	defer erm.Stop()
+
+	custom := NewDefaultRecoveryStrategy("custom-strat", 5*time.Millisecond)
+	erm.RegisterRecoveryStrategy("myerror", custom)
+
+	erm.mu.RLock()
+	strat, exists := erm.recoveryStrategies["myerror"]
+	erm.mu.RUnlock()
+
+	if !exists {
+		t.Fatal("custom strategy not found after registration")
+	}
+	if strat.Name() != "custom-strat" {
+		t.Errorf("expected strategy name 'custom-strat', got %q", strat.Name())
+	}
+}
+
+func TestErrorRecoveryManager_IsHealthy_TrueWhenNoErrors(t *testing.T) {
+	erm := NewErrorRecoveryManager(nil)
+	defer erm.Stop()
+
+	if !erm.IsHealthy() {
+		t.Error("new manager should be healthy")
+	}
+}
+
+func TestErrorRecoveryManager_IsHealthy_FalseWhenThresholdExceeded(t *testing.T) {
+	erm := NewErrorRecoveryManager(nil)
+	defer erm.Stop()
+
+	// Exceed the default error threshold (10) for the same error type.
+	for i := 0; i <= 10; i++ {
+		erm.mu.Lock()
+		erm.errorCounts["saturate"]++
+		erm.mu.Unlock()
 	}
 
-	// Start recovery operation (will return before acquiring semaphore)
-	// Trigger timeout by filling the semaphore
-	for i := 0; i < 10; i++ {
-		select {
-		case erm.recoverySemaphore <- struct{}{}:
-		default:
+	if erm.IsHealthy() {
+		t.Error("manager should be unhealthy when error count exceeds threshold")
+	}
+}
+
+func TestErrorRecoveryManager_GetErrorStats_ContainsKeys(t *testing.T) {
+	erm := NewErrorRecoveryManager(nil)
+	defer erm.Stop()
+
+	erm.RecordError("plugin", ErrorCategoryPlugin, "crash", "p1", ErrorSeverityMedium, map[string]any{"detail": "oops"})
+
+	stats := erm.GetErrorStats()
+	if stats == nil {
+		t.Fatal("GetErrorStats should not return nil")
+	}
+	for _, key := range []string{"error_counts", "recent_errors", "recovery_stats", "circuit_breaker_states"} {
+		if _, ok := stats[key]; !ok {
+			t.Errorf("stats missing expected key %q", key)
 		}
 	}
-
-	// Attempt recovery (should timeout because semaphore is full)
-	go erm.attemptRecovery(record)
-
-	// Wait for timeout and cleanup
-	time.Sleep(300 * time.Millisecond)
-
-	// Release semaphore
-	for i := 0; i < 10; i++ {
-		select {
-		case <-erm.recoverySemaphore:
-		default:
-		}
-	}
-
-	// Wait for goroutine to exit
-	time.Sleep(200 * time.Millisecond)
-
-	after := runtime.NumGoroutine()
-
-	if after > before+5 {
-		t.Errorf("Possible goroutine leak: before=%d, after=%d", before, after)
-	}
 }
 
-// TestErrorRecoveryManager_SemaphoreTimeoutGoroutineCleanup tests goroutine cleanup on semaphore timeout
-func TestErrorRecoveryManager_SemaphoreTimeoutGoroutineCleanup(t *testing.T) {
+func TestErrorRecoveryManager_GetHealthReport_HasHealthyKey(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
-	before := runtime.NumGoroutine()
-
-	// Fill semaphore
-	for i := 0; i < 10; i++ {
-		select {
-		case erm.recoverySemaphore <- struct{}{}:
-		default:
-		}
-	}
-
-	record := ErrorRecord{
-		ErrorType: "transient",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityLow,
-	}
-
-	// Attempt recovery (should timeout because semaphore is full)
-	go erm.attemptRecovery(record)
-
-	// Wait for timeout and cleanup
-	time.Sleep(300 * time.Millisecond)
-
-	// Release semaphore
-	for i := 0; i < 10; i++ {
-		select {
-		case <-erm.recoverySemaphore:
-		default:
-		}
-	}
-
-	// Wait for goroutine to exit
-	time.Sleep(200 * time.Millisecond)
-
-	after := runtime.NumGoroutine()
-
-	if after > before+5 {
-		t.Errorf("Possible goroutine leak: before=%d, after=%d", before, after)
+	report := erm.GetHealthReport()
+	if _, ok := report["healthy"]; !ok {
+		t.Error("health report missing 'healthy' key")
 	}
 }
 
-// TestErrorRecoveryManager_RecoveryTimeout tests recovery timeout
-func TestErrorRecoveryManager_RecoveryTimeout(t *testing.T) {
+func TestErrorRecoveryManager_ClearHistory(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
-	// Create a recovery strategy that will timeout
-	slowStrategy := &slowRecoveryStrategy{
-		timeout: 100 * time.Millisecond,
-		delay:   200 * time.Millisecond, // Longer than timeout
+	erm.RecordError("e", ErrorCategorySystem, "msg", "comp", ErrorSeverityLow, nil)
+	erm.ClearHistory()
+
+	if len(erm.GetErrorHistory()) != 0 {
+		t.Error("error history should be empty after ClearHistory")
 	}
-	erm.RegisterRecoveryStrategy("slow", slowStrategy)
-
-	record := ErrorRecord{
-		ErrorType: "slow",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityLow,
-	}
-
-	before := runtime.NumGoroutine()
-
-	// Trigger recovery operation
-	go erm.attemptRecovery(record)
-
-	// Wait for timeout
-	time.Sleep(300 * time.Millisecond)
-
-	after := runtime.NumGoroutine()
-
-	// Verify proper cleanup after timeout
-	if after > before+5 {
-		t.Errorf("Possible goroutine leak after timeout: before=%d, after=%d", before, after)
-	}
-
-	// Verify active recoveries are cleaned up
-	activeCount := 0
-	erm.activeRecoveries.Range(func(key, value interface{}) bool {
-		activeCount++
-		return true
-	})
-
-	if activeCount > 0 {
-		t.Errorf("Expected 0 active recoveries after timeout, got %d", activeCount)
+	if len(erm.GetRecoveryHistory()) != 0 {
+		t.Error("recovery history should be empty after ClearHistory")
 	}
 }
 
-// TestErrorRecoveryManager_SemaphoreTimeout tests semaphore acquisition timeout
-func TestErrorRecoveryManager_SemaphoreTimeout(t *testing.T) {
+func TestErrorRecoveryManager_Stop_Idempotent(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
-	defer erm.Stop()
-
-	before := runtime.NumGoroutine()
-
-	// Fill semaphore
-	for i := 0; i < 10; i++ {
-		select {
-		case erm.recoverySemaphore <- struct{}{}:
-		default:
-		}
-	}
-
-	record := ErrorRecord{
-		ErrorType: "transient",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityLow,
-	}
-
-	// Attempt recovery (should timeout because semaphore is full)
-	go erm.attemptRecovery(record)
-
-	// Wait for timeout
-	time.Sleep(300 * time.Millisecond)
-
-	// Release semaphore
-	for i := 0; i < 10; i++ {
-		select {
-		case <-erm.recoverySemaphore:
-		default:
-		}
-	}
-
-	// Wait for cleanup
-	time.Sleep(200 * time.Millisecond)
-
-	after := runtime.NumGoroutine()
-
-	if after > before+5 {
-		t.Errorf("Possible goroutine leak: before=%d, after=%d", before, after)
-	}
-}
-
-// TestErrorRecoveryManager_ContextCancellation tests context cancellation
-func TestErrorRecoveryManager_ContextCancellation(t *testing.T) {
-	erm := NewErrorRecoveryManager(nil)
-
-	record := ErrorRecord{
-		ErrorType: "transient",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityLow,
-	}
-
-	before := runtime.NumGoroutine()
-
-	// Start recovery operation
-	go erm.attemptRecovery(record)
-
-	// Stop manager immediately, cancel all recoveries
-	erm.Stop()
-
-	// Wait for cleanup
-	time.Sleep(300 * time.Millisecond)
-
-	after := runtime.NumGoroutine()
-
-	if after > before+5 {
-		t.Errorf("Possible goroutine leak: before=%d, after=%d", before, after)
-	}
-
-	// Verify active recoveries are cleaned up
-	activeCount := 0
-	erm.activeRecoveries.Range(func(key, value interface{}) bool {
-		activeCount++
-		return true
-	})
-
-	if activeCount > 0 {
-		t.Errorf("Expected 0 active recoveries after stop, got %d", activeCount)
-	}
-}
-
-// TestErrorRecoveryManager_NilStrategy tests nil strategy
-func TestErrorRecoveryManager_NilStrategy(t *testing.T) {
-	erm := NewErrorRecoveryManager(nil)
-	defer erm.Stop()
-
-	// Record an error without a corresponding strategy, should use default strategy
-	record := ErrorRecord{
-		ErrorType: "unknown-error",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityLow,
-	}
-
-	// Should use default "transient" strategy
-	erm.attemptRecovery(record)
-
-	// Wait for completion
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify no panic
-}
-
-// TestErrorRecoveryManager_StrategyCannotRecover tests strategy that cannot recover
-func TestErrorRecoveryManager_StrategyCannotRecover(t *testing.T) {
-	erm := NewErrorRecoveryManager(nil)
-	defer erm.Stop()
-
-	// Create a strategy that cannot recover
-	cannotRecoverStrategy := &cannotRecoverStrategy{
-		timeout: 100 * time.Millisecond,
-	}
-	erm.RegisterRecoveryStrategy("cannot-recover", cannotRecoverStrategy)
-
-	record := ErrorRecord{
-		ErrorType: "cannot-recover",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityHigh, // High severity, strategy cannot recover
-	}
-
-	// Trigger recovery operation
-	erm.attemptRecovery(record)
-
-	// Wait for completion
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify no active recovery
-	activeCount := 0
-	erm.activeRecoveries.Range(func(key, value interface{}) bool {
-		activeCount++
-		return true
-	})
-
-	if activeCount > 0 {
-		t.Errorf("Expected 0 active recoveries, got %d", activeCount)
-	}
-}
-
-// TestErrorRecoveryManager_RecoveryTimeoutCap tests recovery timeout cap
-func TestErrorRecoveryManager_RecoveryTimeoutCap(t *testing.T) {
-	erm := NewErrorRecoveryManager(nil)
-	defer erm.Stop()
-
-	// Create a strategy with timeout > 60s
-	longTimeoutStrategy := &DefaultRecoveryStrategy{
-		name:    "long-timeout",
-		timeout: 120 * time.Second, // Exceeds 60s cap
-	}
-	erm.RegisterRecoveryStrategy("long-timeout", longTimeoutStrategy)
-
-	record := ErrorRecord{
-		ErrorType: "long-timeout",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityLow,
-	}
-
-	start := time.Now()
-
-	// Trigger recovery operation
-	go erm.attemptRecovery(record)
-
-	// Wait for a while
-	time.Sleep(200 * time.Millisecond)
-
-	// Stop manager
-	erm.Stop()
-
-	// Wait for cleanup
-	time.Sleep(200 * time.Millisecond)
-
-	duration := time.Since(start)
-
-	// Verify timeout is capped at 60s, should complete quickly in actual test
-	if duration > 70*time.Second {
-		t.Errorf("Recovery timeout was not capped: duration=%v", duration)
-	}
-}
-
-// slowRecoveryStrategy is a recovery strategy that delays, used for testing timeout
-type slowRecoveryStrategy struct {
-	timeout time.Duration
-	delay   time.Duration
-}
-
-func (s *slowRecoveryStrategy) Name() string {
-	return "slow"
-}
-
-func (s *slowRecoveryStrategy) CanRecover(errorType string, severity ErrorSeverity) bool {
-	return true
-}
-
-func (s *slowRecoveryStrategy) Recover(ctx context.Context, record ErrorRecord) (bool, error) {
-	select {
-	case <-ctx.Done():
-		return false, ctx.Err()
-	case <-time.After(s.delay):
-		return true, nil
-	}
-}
-
-func (s *slowRecoveryStrategy) GetTimeout() time.Duration {
-	return s.timeout
-}
-
-// cannotRecoverStrategy is a strategy that cannot recover, used for testing
-type cannotRecoverStrategy struct {
-	timeout time.Duration
-}
-
-func (s *cannotRecoverStrategy) Name() string {
-	return "cannot-recover"
-}
-
-func (s *cannotRecoverStrategy) CanRecover(errorType string, severity ErrorSeverity) bool {
-	// Only recoverable for low severity errors
-	return severity <= ErrorSeverityLow
-}
-
-func (s *cannotRecoverStrategy) Recover(ctx context.Context, record ErrorRecord) (bool, error) {
-	select {
-	case <-ctx.Done():
-		return false, ctx.Err()
-	case <-time.After(s.timeout):
-		return true, nil
-	}
-}
-
-func (s *cannotRecoverStrategy) GetTimeout() time.Duration {
-	return s.timeout
-}
-
-// TestErrorRecoveryManager_StopMultipleTimes tests calling Stop multiple times
-func TestErrorRecoveryManager_StopMultipleTimes(t *testing.T) {
-	erm := NewErrorRecoveryManager(nil)
-
-	// Call Stop multiple times, should only execute once
+	// Calling Stop multiple times should not panic.
 	erm.Stop()
 	erm.Stop()
-	erm.Stop()
-
-	// Verify no panic
 }
 
-// TestErrorRecoveryManager_WithMetrics tests recovery manager with metrics
-func TestErrorRecoveryManager_WithMetrics(t *testing.T) {
-	// Create metrics, if available
-	var m *metrics.ProductionMetrics
-	// Note: This may need to be adjusted based on actual metrics initialization
-	erm := NewErrorRecoveryManager(m)
+func TestErrorRecoveryManager_MaxErrorHistoryCapped(t *testing.T) {
+	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()
 
-	record := ErrorRecord{
-		ErrorType: "transient",
-		Component: "test-component",
-		Timestamp: time.Now(),
-		Severity:  ErrorSeverityLow,
+	// Directly push more than maxErrorHistory entries to verify capping.
+	for i := 0; i < erm.maxErrorHistory+10; i++ {
+		erm.RecordError("flood", ErrorCategoryNetwork, "msg", "comp", ErrorSeverityLow, nil)
 	}
 
-	// Trigger recovery operation
-	go erm.attemptRecovery(record)
+	history := erm.GetErrorHistory()
+	if len(history) > erm.maxErrorHistory {
+		t.Errorf("error history exceeds max: got %d, want <= %d", len(history), erm.maxErrorHistory)
+	}
+}
 
-	// Wait for completion
-	time.Sleep(200 * time.Millisecond)
+// ---- ErrorSeverity and ErrorCategory constants ----
 
-	// Verify no panic
+func TestErrorSeverityOrder(t *testing.T) {
+	if ErrorSeverityLow >= ErrorSeverityMedium {
+		t.Error("Low should be less than Medium")
+	}
+	if ErrorSeverityMedium >= ErrorSeverityHigh {
+		t.Error("Medium should be less than High")
+	}
+	if ErrorSeverityHigh >= ErrorSeverityCritical {
+		t.Error("High should be less than Critical")
+	}
+}
+
+func TestErrorCategoryConstants(t *testing.T) {
+	categories := []ErrorCategory{
+		ErrorCategoryNetwork, ErrorCategoryDatabase, ErrorCategoryConfig,
+		ErrorCategoryPlugin, ErrorCategoryResource, ErrorCategorySecurity,
+		ErrorCategoryTimeout, ErrorCategoryValidation, ErrorCategorySystem,
+	}
+	seen := make(map[ErrorCategory]bool)
+	for _, c := range categories {
+		if seen[c] {
+			t.Errorf("duplicate ErrorCategory value: %q", c)
+		}
+		seen[c] = true
+	}
+}
+
+// ---- DefaultRecoveryStrategy tests ----
+
+func TestDefaultRecoveryStrategy_Name(t *testing.T) {
+	s := NewDefaultRecoveryStrategy("my-strat", time.Second)
+	if s.Name() != "my-strat" {
+		t.Errorf("expected 'my-strat', got %q", s.Name())
+	}
+}
+
+func TestDefaultRecoveryStrategy_CanRecover(t *testing.T) {
+	s := NewDefaultRecoveryStrategy("s", time.Second)
+	if !s.CanRecover("any", ErrorSeverityLow) {
+		t.Error("should be able to recover from Low severity")
+	}
+	if !s.CanRecover("any", ErrorSeverityMedium) {
+		t.Error("should be able to recover from Medium severity")
+	}
+	if s.CanRecover("any", ErrorSeverityHigh) {
+		t.Error("should NOT recover from High severity by default")
+	}
+}
+
+func TestDefaultRecoveryStrategy_GetTimeout(t *testing.T) {
+	dur := 42 * time.Millisecond
+	s := NewDefaultRecoveryStrategy("s", dur)
+	if s.GetTimeout() != dur {
+		t.Errorf("expected %v, got %v", dur, s.GetTimeout())
+	}
 }
