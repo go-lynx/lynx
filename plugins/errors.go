@@ -166,7 +166,7 @@ type PluginError struct {
 	Code ErrorCode `json:"code,omitempty"`
 
 	// Context provides additional context information
-	Context map[string]interface{} `json:"context,omitempty"`
+	Context map[string]any `json:"context,omitempty"`
 
 	// Timestamp when the error occurred
 	Timestamp time.Time `json:"timestamp"`
@@ -212,9 +212,9 @@ func (e *PluginError) Unwrap() error {
 }
 
 // WithContext adds context information to the error
-func (e *PluginError) WithContext(key string, value interface{}) *PluginError {
+func (e *PluginError) WithContext(key string, value any) *PluginError {
 	if e.Context == nil {
-		e.Context = make(map[string]interface{})
+		e.Context = make(map[string]any)
 	}
 	e.Context[key] = value
 	return e

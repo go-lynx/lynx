@@ -705,7 +705,7 @@ func (dg *DependencyGraph) ValidateDependencies(plugins map[string]Plugin) ([]De
 }
 
 // GetDependencyTree gets the dependency tree structure
-func (dg *DependencyGraph) GetDependencyTree(pluginID string) map[string]interface{} {
+func (dg *DependencyGraph) GetDependencyTree(pluginID string) map[string]any {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
 
@@ -713,9 +713,9 @@ func (dg *DependencyGraph) GetDependencyTree(pluginID string) map[string]interfa
 }
 
 // buildDependencyTree recursively builds the dependency tree
-func (dg *DependencyGraph) buildDependencyTree(pluginID string, visited map[string]bool) map[string]interface{} {
+func (dg *DependencyGraph) buildDependencyTree(pluginID string, visited map[string]bool) map[string]any {
 	if visited[pluginID] {
-		return map[string]interface{}{
+		return map[string]any{
 			"id":       pluginID,
 			"circular": true,
 		}
@@ -724,15 +724,15 @@ func (dg *DependencyGraph) buildDependencyTree(pluginID string, visited map[stri
 	visited[pluginID] = true
 	defer delete(visited, pluginID)
 
-	tree := map[string]interface{}{
+	tree := map[string]any{
 		"id":           pluginID,
-		"dependencies": []map[string]interface{}{},
+		"dependencies": []map[string]any{},
 	}
 
 	if deps, exists := dg.dependencies[pluginID]; exists {
 		for _, dep := range deps {
 			depTree := dg.buildDependencyTree(dep.ID, visited)
-			depInfo := map[string]interface{}{
+			depInfo := map[string]any{
 				"id":          dep.ID,
 				"type":        dep.Type,
 				"required":    dep.Required,
@@ -744,7 +744,7 @@ func (dg *DependencyGraph) buildDependencyTree(pluginID string, visited map[stri
 				depInfo["version_constraint"] = dep.VersionConstraint
 			}
 
-			tree["dependencies"] = append(tree["dependencies"].([]map[string]interface{}), depInfo)
+			tree["dependencies"] = append(tree["dependencies"].([]map[string]any), depInfo)
 		}
 	}
 
@@ -752,11 +752,11 @@ func (dg *DependencyGraph) buildDependencyTree(pluginID string, visited map[stri
 }
 
 // GetDependencyStats gets dependency statistics
-func (dg *DependencyGraph) GetDependencyStats() map[string]interface{} {
+func (dg *DependencyGraph) GetDependencyStats() map[string]any {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
 
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"total_plugins":        len(dg.plugins),
 		"total_dependencies":   0,
 		"required_deps":        0,
