@@ -661,13 +661,15 @@ Ignored paths:
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+We welcome contributions to Lynx! Here's how you can help:
 
-### 🐛 Report Bugs
-Found a bug? Please [open an issue](https://github.com/go-lynx/lynx/issues).
+1. **Report Issues**: Found a bug? Please [open an issue](https://github.com/go-lynx/lynx/issues).
+2. **Suggest Features**: Have an idea? [Start a discussion](https://github.com/go-lynx/lynx/discussions).
+3. **Submit Pull Requests**: Submit PRs for bug fixes or new features.
+4. **Improve Documentation**: Help improve documentation or add examples.
+5. **Spread the Word**: Star the repository and share it with others.
 
-### 💡 Suggest Features
-Have an idea? We'd love to hear it! [Start a discussion](https://github.com/go-lynx/lynx/discussions).
+Please read our [Contributing Guide](CONTRIBUTING.md) for detailed instructions on development setup, coding conventions, testing, and the pull request process.
 
 ---
 
@@ -675,45 +677,14 @@ Have an idea? We'd love to hear it! [Start a discussion](https://github.com/go-l
 
 - 📖 [User Guide](https://go-lynx.cn/docs)
 - 🔧 [API Reference](https://pkg.go.dev/github.com/go-lynx/lynx)
-- 🎯 [Examples](https://github.com/go-lynx/lynx/examples)
+- 🎯 [Examples](https://github.com/go-lynx/lynx/tree/main/examples)
 - 🚀 [Quick Start](https://go-lynx.cn/docs/quick-start)
 
 ---
 
 ## 📄 License
 
-This project is licensed under the [Apache License 2.0](LICENSE).
-
----
-
-## 🤝 Contributing
-
-We welcome contributions to Lynx! Here's how you can help:
-
-1. **Report Issues**: Report bugs or suggest features by opening an issue.
-2. **Submit Pull Requests**: Submit PRs for bug fixes or new features.
-3. **Improve Documentation**: Help improve documentation or add examples.
-4. **Spread the Word**: Star the repository and share it with others.
-
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
-
-## 📚 Documentation
-
-For more detailed documentation, please visit:
-
-- [Lynx Documentation](https://lynx.go-lynx.com)
-- [API Reference](https://pkg.go.dev/github.com/go-lynx/lynx)
-- [Examples](https://github.com/go-lynx/lynx/tree/main/examples)
-
-## 📜 License
-
-Lynx is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for the full license text.
+Lynx is licensed under the [Apache License 2.0](LICENSE).
 
 ## ⭐ Star History
 
