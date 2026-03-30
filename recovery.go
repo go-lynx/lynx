@@ -118,13 +118,13 @@ func (erm *ErrorRecoveryManager) RegisterRecoveryStrategy(errorType string, stra
 }
 
 // RecordError records an error with enhanced context and classification
-func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCategory, message, component string, severity ErrorSeverity, context map[string]interface{}) {
+func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCategory, message, component string, severity ErrorSeverity, context map[string]any) {
 	erm.mu.Lock()
 	defer erm.mu.Unlock()
 
 	// Enrich context information
 	if context == nil {
-		context = make(map[string]interface{})
+		context = make(map[string]any)
 	}
 
 	// Add system information

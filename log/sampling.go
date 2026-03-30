@@ -37,7 +37,7 @@ var (
 // rngPool is a pool of random number generators for lock-free sampling
 // Each goroutine can get its own RNG from the pool, avoiding lock contention
 var rngPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		var seed int64
 		var b [8]byte
 		if _, err := crand.Read(b[:]); err == nil {

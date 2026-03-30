@@ -10,7 +10,7 @@ type ErrorRecord struct {
 	Message      string
 	Component    string
 	Severity     ErrorSeverity
-	Context      map[string]interface{}
+	Context      map[string]any
 	Recovered    bool
 	RecoveryTime *time.Time
 	StackTrace   string
