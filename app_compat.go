@@ -82,7 +82,11 @@ func GetTypedPluginFromApp[T plugins.Plugin](app *LynxApp, name string) (T, erro
 	return GetTypedPluginFromManager[T](manager, name)
 }
 
-// MustGetTypedPluginFromApp retrieves a typed plugin from an explicit app instance or panics.
+// MustGetTypedPluginFromApp retrieves a typed plugin from an explicit app instance.
+// It panics if the plugin cannot be found or is not of the expected type.
+// This function is intended for use in application startup code where a missing
+// plugin is a fatal misconfiguration. For runtime lookups where the plugin may
+// legitimately be absent, prefer GetTypedPluginFromApp instead.
 func MustGetTypedPluginFromApp[T plugins.Plugin](app *LynxApp, name string) T {
 	p, err := GetTypedPluginFromApp[T](app, name)
 	if err != nil {

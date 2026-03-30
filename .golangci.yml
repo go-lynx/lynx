@@ -2,15 +2,10 @@ run:
   timeout: 5m
   issues-exit-code: 1
   tests: true
-  skip-dirs:
-    - vendor
-    - third_party
-  skip-files:
-    - ".*\\.pb\\.go$"
-    - ".*\\.gen\\.go$"
 
 output:
-  format: colored-line-number
+  formats:
+    - format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
 
@@ -82,6 +77,12 @@ linters:
     - whitespace
 
 issues:
+  exclude-dirs:
+    - vendor
+    - third_party
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.gen\\.go$"
   exclude-rules:
     - path: _test\.go
       linters:
