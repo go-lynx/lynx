@@ -1,6 +1,7 @@
 package lynx
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -57,6 +58,10 @@ func TestCircuitBreaker_StateTransitions(t *testing.T) {
 	}
 }
 
+// TestCircuitBreaker_ConcurrentCanExecuteAfterTimeout verifies that when many
+// goroutines call CanExecute simultaneously after the open timeout expires,
+// the breaker transitions to HalfOpen exactly once (via CAS) and no panic or
+// double-unlock occurs.  Run with -race to catch data races.
 func TestCircuitBreaker_ConcurrentCanExecuteAfterTimeout(t *testing.T) {
 	cb := NewCircuitBreaker(1, 5*time.Millisecond)
 	cb.RecordResult(fmt.Errorf("boom"))
@@ -77,8 +82,41 @@ func TestCircuitBreaker_ConcurrentCanExecuteAfterTimeout(t *testing.T) {
 	}
 	wg.Wait()
 
+	// After the timeout all goroutines should see HalfOpen (or have raced
+	// through it and been closed by RecordResult, but since we did not
+	// call RecordResult here it must still be HalfOpen).
 	if cb.GetState() != CircuitStateHalfOpen {
 		t.Fatalf("expected breaker to stabilize in half-open, got %v", cb.GetState())
+	}
+}
+
+// TestCircuitBreaker_NoPanicOnConcurrentTransition is a targeted regression
+// test for the original double-unlock bug.  It checks that no panic occurs
+// when hundreds of goroutines hammer CanExecute just as the timeout fires.
+func TestCircuitBreaker_NoPanicOnConcurrentTransition(t *testing.T) {
+	const rounds = 20
+	for r := 0; r < rounds; r++ {
+		cb := NewCircuitBreaker(1, time.Millisecond)
+		cb.RecordResult(errors.New("err"))
+
+		// Spin up goroutines before the timeout fires so some race the transition.
+		const n = 64
+		var wg sync.WaitGroup
+		wg.Add(n)
+		// Small sleep so the timeout is imminent but not necessarily expired.
+		time.Sleep(500 * time.Microsecond)
+		for i := 0; i < n; i++ {
+			go func() {
+				defer wg.Done()
+				_ = cb.CanExecute()
+			}()
+		}
+		wg.Wait()
+		// State must be Open or HalfOpen; Closed is impossible without a success.
+		st := cb.GetState()
+		if st != CircuitStateOpen && st != CircuitStateHalfOpen {
+			t.Fatalf("round %d: unexpected state %v", r, st)
+		}
 	}
 }
 
@@ -148,6 +186,8 @@ func TestCircuitBreaker_ResetCountersOnClose(t *testing.T) {
 	}
 }
 
+// TestCircuitBreaker_GetState_DataRace runs with -race to verify no data race
+// when RecordResult and GetState are called concurrently.
 func TestCircuitBreaker_GetState_DataRace(t *testing.T) {
 	cb := NewCircuitBreaker(5, 5*time.Millisecond)
 	var wg sync.WaitGroup
@@ -166,4 +206,43 @@ func TestCircuitBreaker_GetState_DataRace(t *testing.T) {
 	}
 	wg.Wait()
 	// No assertions needed — test verifies no data race with -race flag.
+}
+
+// TestCircuitBreaker_FullConcurrency hammers all three public methods
+// concurrently to exercise every concurrent path.  Run with -race.
+func TestCircuitBreaker_FullConcurrency(t *testing.T) {
+	cb := NewCircuitBreaker(3, 5*time.Millisecond)
+	var wg sync.WaitGroup
+	const n = 100
+
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			switch idx % 3 {
+			case 0:
+				_ = cb.CanExecute()
+			case 1:
+				cb.RecordResult(fmt.Errorf("concurrent-err"))
+			case 2:
+				cb.RecordResult(nil)
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
+// TestCircuitBreaker_OpenRejectsBeforeTimeout asserts that an open breaker
+// rejects calls before the timeout elapses (no accidental early transition).
+func TestCircuitBreaker_OpenRejectsBeforeTimeout(t *testing.T) {
+	cb := NewCircuitBreaker(1, 10*time.Second) // long timeout
+	cb.RecordResult(errors.New("err"))
+	if cb.GetState() != CircuitStateOpen {
+		t.Fatalf("expected open state, got %v", cb.GetState())
+	}
+	for i := 0; i < 5; i++ {
+		if cb.CanExecute() {
+			t.Fatal("open breaker with long timeout must reject execution")
+		}
+	}
 }
