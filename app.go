@@ -341,7 +341,7 @@ func (a *LynxApp) EventSystemHealth() *events.EventSystemHealth {
 }
 
 // EventMetrics returns the app-owned event monitor metrics.
-func (a *LynxApp) EventMetrics() map[string]interface{} {
+func (a *LynxApp) EventMetrics() map[string]any {
 	if a == nil || a.eventManager == nil || a.eventManager.GetMonitor() == nil {
 		return nil
 	}

@@ -8,11 +8,11 @@ import (
 )
 
 // GetErrorStats returns error statistics.
-func (erm *ErrorRecoveryManager) GetErrorStats() map[string]interface{} {
+func (erm *ErrorRecoveryManager) GetErrorStats() map[string]any {
 	erm.mu.RLock()
 	defer erm.mu.RUnlock()
 
-	stats := make(map[string]interface{})
+	stats := make(map[string]any)
 
 	errorCounts := make(map[string]int64, len(erm.errorCounts))
 	for errorType, count := range erm.errorCounts {
@@ -21,10 +21,10 @@ func (erm *ErrorRecoveryManager) GetErrorStats() map[string]interface{} {
 	}
 	stats["error_counts"] = errorCounts
 
-	recentErrors := make([]map[string]interface{}, 0)
+	recentErrors := make([]map[string]any, 0)
 	for i := len(erm.errorHistory) - 1; i >= 0 && len(recentErrors) < 10; i-- {
 		record := erm.errorHistory[i]
-		recentErrors = append(recentErrors, map[string]interface{}{
+		recentErrors = append(recentErrors, map[string]any{
 			"timestamp":     record.Timestamp,
 			"error_type":    record.ErrorType,
 			"component":     record.Component,
@@ -36,7 +36,7 @@ func (erm *ErrorRecoveryManager) GetErrorStats() map[string]interface{} {
 	}
 	stats["recent_errors"] = recentErrors
 
-	recoveryStats := make(map[string]interface{})
+	recoveryStats := make(map[string]any)
 	totalRecoveries := len(erm.recoveryHistory)
 	successfulRecoveries := 0
 	for _, record := range erm.recoveryHistory {
@@ -53,9 +53,9 @@ func (erm *ErrorRecoveryManager) GetErrorStats() map[string]interface{} {
 	}
 	stats["recovery_stats"] = recoveryStats
 
-	circuitBreakerStates := make(map[string]interface{})
+	circuitBreakerStates := make(map[string]any)
 	for errorType, cb := range erm.circuitBreakers {
-		circuitBreakerStates[errorType] = map[string]interface{}{
+		circuitBreakerStates[errorType] = map[string]any{
 			"state": cb.GetState(),
 		}
 	}
@@ -99,7 +99,7 @@ func (erm *ErrorRecoveryManager) Stop() {
 	erm.stopOnce.Do(func() {
 		close(erm.stopChan)
 
-		erm.activeRecoveries.Range(func(key, value interface{}) bool {
+		erm.activeRecoveries.Range(func(key, value any) bool {
 			if cancel, ok := value.(context.CancelFunc); ok {
 				cancel()
 			} else if state, ok := value.(*recoveryState); ok && state != nil && state.cancel != nil {
@@ -154,10 +154,10 @@ func (erm *ErrorRecoveryManager) IsHealthy() bool {
 }
 
 // GetHealthReport returns a detailed health report.
-func (erm *ErrorRecoveryManager) GetHealthReport() map[string]interface{} {
+func (erm *ErrorRecoveryManager) GetHealthReport() map[string]any {
 	stats := erm.GetErrorStats()
 
-	report := map[string]interface{}{
+	report := map[string]any{
 		"healthy":           erm.IsHealthy(),
 		"error_stats":       stats,
 		"error_threshold":   erm.errorThreshold,

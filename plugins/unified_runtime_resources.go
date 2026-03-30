@@ -66,7 +66,7 @@ func (r *UnifiedRuntime) resolveResourceInfoLookupKey(name string) string {
 func (r *UnifiedRuntime) ListResources() []*ResourceInfo {
 	var resources []*ResourceInfo
 
-	r.resourceInfo.Range(func(key, value interface{}) bool {
+	r.resourceInfo.Range(func(key, value any) bool {
 		if info, ok := value.(*ResourceInfo); ok {
 			resources = append(resources, copyResourceInfo(info))
 		}
@@ -100,7 +100,7 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	}
 	var toDelete []resItem
 
-	r.resourceInfo.Range(func(key, value interface{}) bool {
+	r.resourceInfo.Range(func(key, value any) bool {
 		if info, ok := value.(*ResourceInfo); ok && info.PluginID == pluginID {
 			storageKey := key.(string)
 			if resource, exists := r.resources.Load(storageKey); exists {
@@ -309,7 +309,7 @@ func (r *UnifiedRuntime) GetResourceStats() map[string]any {
 	var totalSize int64
 	pluginSet := make(map[string]bool)
 
-	r.resourceInfo.Range(func(key, value interface{}) bool {
+	r.resourceInfo.Range(func(key, value any) bool {
 		if info, ok := value.(*ResourceInfo); ok {
 			totalResources++
 			totalSize += atomic.LoadInt64(&info.Size)
