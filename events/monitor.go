@@ -209,14 +209,14 @@ func (m *EventMonitor) SetError(err error) {
 }
 
 // GetMetrics returns all monitoring metrics
-func (m *EventMonitor) GetMetrics() map[string]interface{} {
+func (m *EventMonitor) GetMetrics() map[string]any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	// compute percentiles from samples snapshot
 	p95, p99 := m.computePercentilesLocked()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"healthy":                m.healthy,
 		"last_check":             m.lastCheck,
 		"total_events_published": m.totalEventsPublished,

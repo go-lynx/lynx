@@ -58,9 +58,9 @@ type SigningKey interface {
 	// Algorithm returns the JWT signing algorithm name (e.g. "ES256", "RS256", "HS256").
 	Algorithm() string
 	// PrivateKey returns the key used for signing (may equal the public key for symmetric algorithms).
-	PrivateKey() interface{}
+	PrivateKey() any
 	// PublicKey returns the key used for verification.
-	PublicKey() interface{}
+	PublicKey() any
 }
 
 // ECDSAKey builds a SigningKey from an ECDSA private key.
@@ -113,13 +113,13 @@ func HMACKeyWithAlg(secret []byte, alg string) SigningKey {
 // fixedSigningKey is the internal implementation of SigningKey.
 type fixedSigningKey struct {
 	alg  string
-	priv interface{}
-	pub  interface{}
+	priv any
+	pub  any
 }
 
-func (k *fixedSigningKey) Algorithm() string       { return k.alg }
-func (k *fixedSigningKey) PrivateKey() interface{} { return k.priv }
-func (k *fixedSigningKey) PublicKey() interface{}  { return k.pub }
+func (k *fixedSigningKey) Algorithm() string { return k.alg }
+func (k *fixedSigningKey) PrivateKey() any   { return k.priv }
+func (k *fixedSigningKey) PublicKey() any    { return k.pub }
 
 // ecdsaAlgorithm selects the ECDSA algorithm name from the curve bit size.
 func ecdsaAlgorithm(pub *ecdsa.PublicKey) string {
@@ -284,7 +284,7 @@ type VerifyOptions struct {
 	PublicKey *ecdsa.PublicKey
 
 	// verifyKey is the internal field used by VerifyWithKey; it accepts any key type.
-	verifyKey interface{}
+	verifyKey any
 }
 
 // VerifyWithOptions validates a JWT token using the supplied options.
@@ -293,7 +293,7 @@ func VerifyWithOptions(token string, c CustomClaims, opts VerifyOptions) (bool, 
 	var kf jwt.Keyfunc
 	switch {
 	case opts.KeyFunc != nil:
-		kf = func(t *jwt.Token) (interface{}, error) {
+		kf = func(t *jwt.Token) (any, error) {
 			if opts.ExpectedAlg != "" {
 				if t.Method == nil || t.Method.Alg() != opts.ExpectedAlg {
 					return nil, ErrUnexpectedSigningMethod
@@ -304,7 +304,7 @@ func VerifyWithOptions(token string, c CustomClaims, opts VerifyOptions) (bool, 
 	case opts.verifyKey != nil:
 		expectedAlg := opts.ExpectedAlg
 		vk := opts.verifyKey
-		kf = func(t *jwt.Token) (interface{}, error) {
+		kf = func(t *jwt.Token) (any, error) {
 			if expectedAlg != "" {
 				if t.Method == nil || t.Method.Alg() != expectedAlg {
 					return nil, ErrUnexpectedSigningMethod
@@ -314,7 +314,7 @@ func VerifyWithOptions(token string, c CustomClaims, opts VerifyOptions) (bool, 
 		}
 	case opts.PublicKey != nil:
 		expectedAlg := opts.ExpectedAlg
-		kf = func(t *jwt.Token) (interface{}, error) {
+		kf = func(t *jwt.Token) (any, error) {
 			if expectedAlg != "" {
 				if t.Method == nil || t.Method.Alg() != expectedAlg {
 					return nil, ErrUnexpectedSigningMethod
@@ -375,7 +375,7 @@ func VerifyWithKeyFunc(token string, c CustomClaims, expectedAlg string, keyFunc
 		return false, errors.New("keyFunc cannot be nil")
 	}
 
-	wrapped := func(tok *jwt.Token) (interface{}, error) {
+	wrapped := func(tok *jwt.Token) (any, error) {
 		if expectedAlg != "" {
 			if tok.Method == nil || tok.Method.Alg() != expectedAlg {
 				return nil, ErrUnexpectedSigningMethod
@@ -402,7 +402,7 @@ func VerifyWithKeyFunc(token string, c CustomClaims, expectedAlg string, keyFunc
 //
 // Deprecated: use VerifyWithKey or VerifyWithAlg for clearer naming and safer defaults.
 func Check(token string, c CustomClaims, key ecdsa.PublicKey) (bool, error) {
-	parse, err := jwt.ParseWithClaims(token, c, func(token *jwt.Token) (interface{}, error) {
+	parse, err := jwt.ParseWithClaims(token, c, func(token *jwt.Token) (any, error) {
 		return &key, nil
 	})
 	if err != nil {
@@ -421,7 +421,7 @@ func Check(token string, c CustomClaims, key ecdsa.PublicKey) (bool, error) {
 //
 // Deprecated: use VerifyWithAlg instead.
 func CheckSecure(token string, c CustomClaims, key ecdsa.PublicKey, expectedAlg string) (bool, error) {
-	keyFunc := func(tok *jwt.Token) (interface{}, error) {
+	keyFunc := func(tok *jwt.Token) (any, error) {
 		if expectedAlg != "" {
 			if tok.Method == nil || tok.Method.Alg() != expectedAlg {
 				return nil, ErrUnexpectedSigningMethod
@@ -449,7 +449,7 @@ func CheckWithKeyFunc(token string, c CustomClaims, expectedAlg string, keyFunc 
 		return false, errors.New("keyFunc cannot be nil")
 	}
 
-	wrapped := func(tok *jwt.Token) (interface{}, error) {
+	wrapped := func(tok *jwt.Token) (any, error) {
 		if expectedAlg != "" {
 			if tok.Method == nil || tok.Method.Alg() != expectedAlg {
 				return nil, ErrUnexpectedSigningMethod

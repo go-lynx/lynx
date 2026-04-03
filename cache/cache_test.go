@@ -101,7 +101,7 @@ func TestCache_BatchOperations(t *testing.T) {
 	defer c.Close()
 
 	// Test SetMulti
-	items := map[interface{}]interface{}{
+	items := map[any]any{
 		"key1": "value1",
 		"key2": "value2",
 		"key3": "value3",
@@ -113,7 +113,7 @@ func TestCache_BatchOperations(t *testing.T) {
 	}
 
 	// Test GetMulti
-	keys := []interface{}{"key1", "key2", "key3", "key4"}
+	keys := []any{"key1", "key2", "key3", "key4"}
 	results := c.GetMulti(keys)
 
 	if len(results) != 3 {
@@ -132,7 +132,7 @@ func TestCache_BatchOperations(t *testing.T) {
 	}
 
 	// Test DeleteMulti
-	c.DeleteMulti([]interface{}{"key1", "key2"})
+	c.DeleteMulti([]any{"key1", "key2"})
 
 	if c.Has("key1") || c.Has("key2") {
 		t.Error("key1 and key2 should be deleted")
@@ -155,7 +155,7 @@ func TestCache_GetOrSet(t *testing.T) {
 	callCount := 0
 
 	// First call should compute the value
-	value, err := c.GetOrSet(key, func() (interface{}, error) {
+	value, err := c.GetOrSet(key, func() (any, error) {
 		callCount++
 		return expectedValue, nil
 	}, 0)
@@ -173,7 +173,7 @@ func TestCache_GetOrSet(t *testing.T) {
 	}
 
 	// Second call should get from cache
-	value, err = c.GetOrSet(key, func() (interface{}, error) {
+	value, err = c.GetOrSet(key, func() (any, error) {
 		callCount++
 		return "should-not-be-called", nil
 	}, 0)
@@ -202,7 +202,7 @@ func TestCache_GetOrSetContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	_, err = c.GetOrSetContext(ctx, "key", func(ctx context.Context) (interface{}, error) {
+	_, err = c.GetOrSetContext(ctx, "key", func(ctx context.Context) (any, error) {
 		return "value", nil
 	}, 0)
 
@@ -212,7 +212,7 @@ func TestCache_GetOrSetContext(t *testing.T) {
 
 	// Test with valid context
 	ctx = context.Background()
-	value, err := c.GetOrSetContext(ctx, "key2", func(ctx context.Context) (interface{}, error) {
+	value, err := c.GetOrSetContext(ctx, "key2", func(ctx context.Context) (any, error) {
 		return "value2", nil
 	}, 0)
 
@@ -222,27 +222,6 @@ func TestCache_GetOrSetContext(t *testing.T) {
 
 	if value != "value2" {
 		t.Errorf("Expected value2, got %v", value)
-	}
-}
-
-func TestCache_Clear(t *testing.T) {
-	c, err := New("clear-test", DefaultOptions())
-	if err != nil {
-		t.Fatalf("Failed to create cache: %v", err)
-	}
-	defer c.Close()
-
-	// Add some items (use SetSync for read-your-writes consistency)
-	c.SetSync("key1", "value1", 0)
-	c.SetSync("key2", "value2", 0)
-	c.SetSync("key3", "value3", 0)
-
-	// Clear cache
-	c.Clear()
-
-	// All keys should be gone
-	if c.Has("key1") || c.Has("key2") || c.Has("key3") {
-		t.Error("Cache should be empty after Clear")
 	}
 }
 

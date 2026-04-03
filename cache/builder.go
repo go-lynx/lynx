@@ -70,19 +70,19 @@ func (b *Builder) WithRejectionCallback(fn func(item *ristretto.Item)) *Builder 
 }
 
 // WithExitCallback sets the exit callback
-func (b *Builder) WithExitCallback(fn func(interface{})) *Builder {
+func (b *Builder) WithExitCallback(fn func(any)) *Builder {
 	b.options.OnExit = fn
 	return b
 }
 
 // WithHashFunction sets a custom hash function
-func (b *Builder) WithHashFunction(fn func(key interface{}) (uint64, uint64)) *Builder {
+func (b *Builder) WithHashFunction(fn func(key any) (uint64, uint64)) *Builder {
 	b.options.KeyToHash = fn
 	return b
 }
 
 // WithCostFunction sets a custom cost calculation function
-func (b *Builder) WithCostFunction(fn func(value interface{}) int64) *Builder {
+func (b *Builder) WithCostFunction(fn func(value any) int64) *Builder {
 	b.options.Cost = fn
 	return b
 }
@@ -154,7 +154,7 @@ func ObjectCacheBuilder(name string) *Builder {
 		WithMaxCost(1 << 30). // 1GB
 		WithBufferItems(64).
 		WithMetrics(true).
-		WithCostFunction(func(value interface{}) int64 {
+		WithCostFunction(func(value any) int64 {
 			// Calculate cost based on object size
 			// This is a simple example, adjust based on your needs
 			switch v := value.(type) {

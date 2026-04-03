@@ -350,11 +350,12 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
+				panicErr := normalizeRecoveredPanic(r)
 				select {
 				case recoveryDone <- struct {
 					success bool
 					err     error
-				}{false, fmt.Errorf("panic during recovery: %v", r)}:
+				}{false, fmt.Errorf("panic during recovery: %w", panicErr)}:
 				case <-ctx.Done():
 					// Context cancelled, ignore result
 				}
@@ -469,6 +470,19 @@ func getStackTrace() string {
 		}
 	}
 	return trace.String()
+}
+
+func normalizeRecoveredPanic(value any) error {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case error:
+		return v
+	case string:
+		return fmt.Errorf("%s", v)
+	default:
+		return fmt.Errorf("panic value (%T): %v", v, v)
+	}
 }
 
 // Optimized: Cache memory stats to avoid stop-the-world pauses during error recording

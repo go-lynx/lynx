@@ -62,7 +62,7 @@ func (b *LynxEventBus) Close() error {
 			b.workerPool.Release()
 		}
 
-		b.processedEvents.Range(func(key, value interface{}) bool {
+		b.processedEvents.Range(func(key, value any) bool {
 			b.processedEvents.Delete(key)
 			return true
 		})
@@ -93,7 +93,7 @@ func (b *LynxEventBus) cleanupProcessedEvents() {
 		case <-b.done:
 			now := time.Now()
 			cleaned := 0
-			b.processedEvents.Range(func(key, value interface{}) bool {
+			b.processedEvents.Range(func(key, value any) bool {
 				if lastTime, ok := value.(time.Time); ok && now.Sub(lastTime) > b.dedupWindow {
 					b.processedEvents.Delete(key)
 					cleaned++
@@ -108,13 +108,13 @@ func (b *LynxEventBus) cleanupProcessedEvents() {
 			now := time.Now()
 			cleaned := 0
 			entryCount := 0
-			b.processedEvents.Range(func(key, value interface{}) bool {
+			b.processedEvents.Range(func(key, value any) bool {
 				entryCount++
 				return true
 			})
 
 			if entryCount > 0 {
-				b.processedEvents.Range(func(key, value interface{}) bool {
+				b.processedEvents.Range(func(key, value any) bool {
 					if lastTime, ok := value.(time.Time); ok && now.Sub(lastTime) > b.dedupWindow {
 						b.processedEvents.Delete(key)
 						cleaned++

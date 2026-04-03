@@ -62,20 +62,25 @@ func (a *PluginEventBusAdapter) SubscribeTo(eventType plugins.EventType, handler
 	return a.eventManager.SubscribeTo(lynxEventType, wrapperHandler)
 }
 
-// AddListener bridges a generic listener registration from plugins runtime into the unified event system.
-// Signature matches the dynamic assertion used by plugins runtime (UnifiedRuntime).
-func (a *PluginEventBusAdapter) AddListener(id string, filter *plugins.EventFilter, handler func(interface{}), bus string) error {
+// AddTypedListener bridges a type-safe listener registration from plugins runtime into the unified event system.
+func (a *PluginEventBusAdapter) AddTypedListener(id string, filter *plugins.EventFilter, handler func(plugins.Event[plugins.PluginEvent]), bus string) error {
 	if a == nil || a.eventManager == nil || a.listenerManager == nil {
 		return fmt.Errorf("event manager not initialized")
 	}
 	ef := convertPluginFilter(filter)
 	busType := busFromString(bus)
 	lynxHandler := func(ev LynxEvent) {
-		// Convert LynxEvent back to PluginEvent and pass via interface{}
-		pluginEvent := ConvertLynxEvent(ev)
-		handler(pluginEvent)
+		handler(plugins.NewEvent(ConvertLynxEvent(ev)))
 	}
 	return a.listenerManager.AddListener(id, ef, lynxHandler, busType)
+}
+
+// AddListener bridges a generic listener registration from plugins runtime into the unified event system.
+// Signature matches the legacy dynamic assertion used by plugins runtime (UnifiedRuntime).
+func (a *PluginEventBusAdapter) AddListener(id string, filter *plugins.EventFilter, handler func(any), bus string) error {
+	return a.AddTypedListener(id, filter, func(event plugins.Event[plugins.PluginEvent]) {
+		handler(event.Unwrap())
+	}, bus)
 }
 
 // RemoveListener removes a previously added listener by ID.
@@ -87,9 +92,8 @@ func (a *PluginEventBusAdapter) RemoveListener(id string) error {
 	return a.listenerManager.RemoveListener(id)
 }
 
-// AddPluginListener registers a listener bound to a specific plugin namespace.
-// Signature matches the dynamic assertion used by plugins runtime (UnifiedRuntime).
-func (a *PluginEventBusAdapter) AddPluginListener(pluginName string, id string, filter *plugins.EventFilter, handler func(interface{})) error {
+// AddTypedPluginListener registers a type-safe listener bound to a specific plugin namespace.
+func (a *PluginEventBusAdapter) AddTypedPluginListener(pluginName string, id string, filter *plugins.EventFilter, handler func(plugins.Event[plugins.PluginEvent])) error {
 	if a == nil || a.eventManager == nil || a.listenerManager == nil {
 		return fmt.Errorf("event manager not initialized")
 	}
@@ -101,10 +105,17 @@ func (a *PluginEventBusAdapter) AddPluginListener(pluginName string, id string, 
 	ensurePluginID(ef, pluginName)
 
 	lynxHandler := func(ev LynxEvent) {
-		pluginEvent := ConvertLynxEvent(ev)
-		handler(pluginEvent)
+		handler(plugins.NewEvent(ConvertLynxEvent(ev)))
 	}
 	return a.listenerManager.AddListener(id, ef, lynxHandler, BusTypePlugin)
+}
+
+// AddPluginListener registers a listener bound to a specific plugin namespace.
+// Signature matches the legacy dynamic assertion used by plugins runtime (UnifiedRuntime).
+func (a *PluginEventBusAdapter) AddPluginListener(pluginName string, id string, filter *plugins.EventFilter, handler func(any)) error {
+	return a.AddTypedPluginListener(pluginName, id, filter, func(event plugins.Event[plugins.PluginEvent]) {
+		handler(event.Unwrap())
+	})
 }
 
 // GetEventHistory returns historical plugin events via the unified event manager

@@ -296,7 +296,7 @@ func newManualContext() (*manualContext, func()) {
 }
 
 func (m *manualContext) Deadline() (time.Time, bool) { return time.Time{}, false }
-func (m *manualContext) Done() <-chan struct{}         { return m.done }
+func (m *manualContext) Done() <-chan struct{}       { return m.done }
 func (m *manualContext) Err() error {
 	select {
 	case <-m.done:

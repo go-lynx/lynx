@@ -125,7 +125,7 @@ func (m *EventMetrics) GetLastUpdateTime() time.Time {
 }
 
 // GetMetrics returns all metrics as a map
-func (m *EventMetrics) GetMetrics() map[string]interface{} {
+func (m *EventMetrics) GetMetrics() map[string]any {
 	totalLatency := atomic.LoadInt64(&m.totalLatency)
 	latencyCount := atomic.LoadInt64(&m.latencyCount)
 	minLatency := atomic.LoadInt64(&m.minLatency)
@@ -136,7 +136,7 @@ func (m *EventMetrics) GetMetrics() map[string]interface{} {
 		avgLatency = time.Duration(totalLatency / latencyCount)
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"published":        m.GetPublished(),
 		"processed":        m.GetProcessed(),
 		"dropped":          m.GetDropped(),

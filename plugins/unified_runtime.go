@@ -83,7 +83,7 @@ type UnifiedRuntime struct {
 	ownerSeq             *atomic.Uint64
 
 	// Event system - uses a unified event bus
-	eventManager interface{} // avoid circular dependency; set at runtime
+	eventManager any // avoid circular dependency; set at runtime
 	eventAdapter EventBusAdapter
 
 	// Runtime state

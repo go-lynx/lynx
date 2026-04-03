@@ -207,7 +207,7 @@ func GenerateServerCertFromCA(caCertPEM, caKeyPEM []byte, serviceName, hostname 
 }
 
 // parseCAFromPEM decodes CA cert and key from PEM; supports EC and RSA private keys.
-func parseCAFromPEM(caCertPEM, caKeyPEM []byte) (*x509.Certificate, interface{}, error) {
+func parseCAFromPEM(caCertPEM, caKeyPEM []byte) (*x509.Certificate, any, error) {
 	block, _ := pem.Decode(caCertPEM)
 	if block == nil {
 		return nil, nil, fmt.Errorf("failed to decode CA cert PEM")
@@ -220,7 +220,7 @@ func parseCAFromPEM(caCertPEM, caKeyPEM []byte) (*x509.Certificate, interface{},
 	if keyBlock == nil {
 		return nil, nil, fmt.Errorf("failed to decode CA key PEM")
 	}
-	var caKey interface{}
+	var caKey any
 	switch keyBlock.Type {
 	case "EC PRIVATE KEY":
 		caKey, err = x509.ParseECPrivateKey(keyBlock.Bytes)
