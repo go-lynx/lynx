@@ -7,6 +7,19 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
+type legacyEventListenerAdapter struct {
+	EventListener
+}
+
+func (a legacyEventListenerAdapter) HandleTypedEvent(event Event[PluginEvent]) {
+	a.HandleEvent(event.Unwrap())
+}
+
+// EmitTypedEvent publishes a typed event envelope.
+func (r *UnifiedRuntime) EmitTypedEvent(event Event[PluginEvent]) {
+	r.EmitEvent(event.Unwrap())
+}
+
 // EmitEvent publishes an event.
 func (r *UnifiedRuntime) EmitEvent(event PluginEvent) {
 	if r.isClosed() || event.Type == "" {
@@ -42,6 +55,14 @@ func (r *UnifiedRuntime) AddListener(listener EventListener, filter *EventFilter
 	if listener == nil {
 		return
 	}
+	r.AddTypedListener(legacyEventListenerAdapter{EventListener: listener}, filter)
+}
+
+// AddTypedListener adds a type-safe event listener.
+func (r *UnifiedRuntime) AddTypedListener(listener TypedEventListener[PluginEvent], filter *EventFilter) {
+	if listener == nil {
+		return
+	}
 
 	adapter := r.getEventAdapter()
 	if adapter == nil {
@@ -53,13 +74,23 @@ func (r *UnifiedRuntime) AddListener(listener EventListener, filter *EventFilter
 		id = fmt.Sprintf("listener-%d", time.Now().UnixNano())
 	}
 
+	type addTypedListenerIface interface {
+		AddTypedListener(id string, filter *EventFilter, handler func(Event[PluginEvent]), bus string) error
+	}
+	if al, ok := adapter.(addTypedListenerIface); ok {
+		_ = al.AddTypedListener(id, filter, func(event Event[PluginEvent]) {
+			listener.HandleTypedEvent(event)
+		}, "plugin")
+		return
+	}
+
 	type addListenerIface interface {
-		AddListener(id string, filter *EventFilter, handler func(interface{}), bus string) error
+		AddListener(id string, filter *EventFilter, handler func(any), bus string) error
 	}
 	if al, ok := adapter.(addListenerIface); ok {
-		_ = al.AddListener(id, filter, func(ev interface{}) {
+		_ = al.AddListener(id, filter, func(ev any) {
 			if pe, ok := ev.(PluginEvent); ok {
-				listener.HandleEvent(pe)
+				listener.HandleTypedEvent(NewEvent(pe))
 			}
 		}, "plugin")
 		return
@@ -68,7 +99,7 @@ func (r *UnifiedRuntime) AddListener(listener EventListener, filter *EventFilter
 	if filter != nil && len(filter.Types) > 0 {
 		for _, t := range filter.Types {
 			_ = adapter.SubscribeTo(t, func(pe PluginEvent) {
-				listener.HandleEvent(pe)
+				listener.HandleTypedEvent(NewEvent(pe))
 			})
 		}
 	}
@@ -76,6 +107,14 @@ func (r *UnifiedRuntime) AddListener(listener EventListener, filter *EventFilter
 
 // RemoveListener removes an event listener.
 func (r *UnifiedRuntime) RemoveListener(listener EventListener) {
+	if listener == nil {
+		return
+	}
+	r.RemoveTypedListener(legacyEventListenerAdapter{EventListener: listener})
+}
+
+// RemoveTypedListener removes a type-safe event listener.
+func (r *UnifiedRuntime) RemoveTypedListener(listener TypedEventListener[PluginEvent]) {
 	if listener == nil {
 		return
 	}
@@ -100,6 +139,14 @@ func (r *UnifiedRuntime) AddPluginListener(pluginName string, listener EventList
 	if listener == nil {
 		return
 	}
+	r.AddTypedPluginListener(pluginName, legacyEventListenerAdapter{EventListener: listener}, filter)
+}
+
+// AddTypedPluginListener adds a type-safe plugin-specific event listener.
+func (r *UnifiedRuntime) AddTypedPluginListener(pluginName string, listener TypedEventListener[PluginEvent], filter *EventFilter) {
+	if listener == nil {
+		return
+	}
 	adapter := r.getEventAdapter()
 	if adapter == nil {
 		return
@@ -108,13 +155,24 @@ func (r *UnifiedRuntime) AddPluginListener(pluginName string, listener EventList
 	if id == "" {
 		id = fmt.Sprintf("plugin-listener-%s-%d", pluginName, time.Now().UnixNano())
 	}
+
+	type addTypedPluginListenerIface interface {
+		AddTypedPluginListener(pluginName string, id string, filter *EventFilter, handler func(Event[PluginEvent])) error
+	}
+	if apl, ok := adapter.(addTypedPluginListenerIface); ok {
+		_ = apl.AddTypedPluginListener(pluginName, id, filter, func(event Event[PluginEvent]) {
+			listener.HandleTypedEvent(event)
+		})
+		return
+	}
+
 	type addPluginListenerIface interface {
-		AddPluginListener(pluginName string, id string, filter *EventFilter, handler func(interface{})) error
+		AddPluginListener(pluginName string, id string, filter *EventFilter, handler func(any)) error
 	}
 	if apl, ok := adapter.(addPluginListenerIface); ok {
-		_ = apl.AddPluginListener(pluginName, id, filter, func(ev interface{}) {
+		_ = apl.AddPluginListener(pluginName, id, filter, func(ev any) {
 			if pe, ok := ev.(PluginEvent); ok {
-				listener.HandleEvent(pe)
+				listener.HandleTypedEvent(NewEvent(pe))
 			}
 		})
 		return
@@ -124,7 +182,7 @@ func (r *UnifiedRuntime) AddPluginListener(pluginName string, listener EventList
 		for _, t := range filter.Types {
 			_ = adapter.SubscribeTo(t, func(pe PluginEvent) {
 				if pe.PluginID == pluginName {
-					listener.HandleEvent(pe)
+					listener.HandleTypedEvent(NewEvent(pe))
 				}
 			})
 		}
@@ -144,6 +202,19 @@ func (r *UnifiedRuntime) GetEventHistory(filter EventFilter) []PluginEvent {
 		return hi.GetEventHistory(&filter)
 	}
 	return nil
+}
+
+// GetTypedEventHistory returns event history wrapped in typed envelopes.
+func (r *UnifiedRuntime) GetTypedEventHistory(filter EventFilter) []Event[PluginEvent] {
+	history := r.GetEventHistory(filter)
+	if len(history) == 0 {
+		return nil
+	}
+	out := make([]Event[PluginEvent], 0, len(history))
+	for _, event := range history {
+		out = append(out, NewEvent(event))
+	}
+	return out
 }
 
 // GetPluginEventHistory returns plugin event history.

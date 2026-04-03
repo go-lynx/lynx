@@ -222,7 +222,7 @@ type OptimizedCacheWrapper struct {
 	name   string
 }
 
-func (w *OptimizedCacheWrapper) Get(key interface{}) (interface{}, error) {
+func (w *OptimizedCacheWrapper) Get(key any) (any, error) {
 	keyStr := fmt.Sprintf("%v", key)
 	value, exists := w.cache.Get(keyStr)
 	if !exists {
@@ -231,7 +231,7 @@ func (w *OptimizedCacheWrapper) Get(key interface{}) (interface{}, error) {
 	return value, nil
 }
 
-func (w *OptimizedCacheWrapper) Set(key interface{}, value interface{}, ttl time.Duration) error {
+func (w *OptimizedCacheWrapper) Set(key any, value any, ttl time.Duration) error {
 	keyStr := fmt.Sprintf("%v", key)
 	// Estimate value size (simplified implementation)
 	size := int64(len(fmt.Sprintf("%v", value)))
@@ -239,18 +239,18 @@ func (w *OptimizedCacheWrapper) Set(key interface{}, value interface{}, ttl time
 	return nil
 }
 
-func (w *OptimizedCacheWrapper) SetWithCost(key interface{}, value interface{}, cost int64, ttl time.Duration) error {
+func (w *OptimizedCacheWrapper) SetWithCost(key any, value any, cost int64, ttl time.Duration) error {
 	keyStr := fmt.Sprintf("%v", key)
 	w.cache.Set(keyStr, value, cost)
 	return nil
 }
 
-func (w *OptimizedCacheWrapper) GetWithExpiration(key interface{}) (interface{}, bool) {
+func (w *OptimizedCacheWrapper) GetWithExpiration(key any) (any, bool) {
 	keyStr := fmt.Sprintf("%v", key)
 	return w.cache.Get(keyStr)
 }
 
-func (w *OptimizedCacheWrapper) Delete(key interface{}) {
+func (w *OptimizedCacheWrapper) Delete(key any) {
 	keyStr := fmt.Sprintf("%v", key)
 	w.cache.Delete(keyStr)
 }
@@ -259,7 +259,7 @@ func (w *OptimizedCacheWrapper) Clear() {
 	w.cache.Clear()
 }
 
-func (w *OptimizedCacheWrapper) Has(key interface{}) bool {
+func (w *OptimizedCacheWrapper) Has(key any) bool {
 	keyStr := fmt.Sprintf("%v", key)
 	_, exists := w.cache.Get(keyStr)
 	return exists
@@ -278,8 +278,8 @@ func (w *OptimizedCacheWrapper) Name() string {
 	return w.name
 }
 
-func (w *OptimizedCacheWrapper) GetMulti(keys []interface{}) map[interface{}]interface{} {
-	result := make(map[interface{}]interface{})
+func (w *OptimizedCacheWrapper) GetMulti(keys []any) map[any]any {
+	result := make(map[any]any)
 	for _, key := range keys {
 		if value, err := w.Get(key); err == nil {
 			result[key] = value
@@ -288,7 +288,7 @@ func (w *OptimizedCacheWrapper) GetMulti(keys []interface{}) map[interface{}]int
 	return result
 }
 
-func (w *OptimizedCacheWrapper) SetMulti(items map[interface{}]interface{}, ttl time.Duration) error {
+func (w *OptimizedCacheWrapper) SetMulti(items map[any]any, ttl time.Duration) error {
 	for key, value := range items {
 		if err := w.Set(key, value, ttl); err != nil {
 			return err
@@ -297,13 +297,13 @@ func (w *OptimizedCacheWrapper) SetMulti(items map[interface{}]interface{}, ttl 
 	return nil
 }
 
-func (w *OptimizedCacheWrapper) DeleteMulti(keys []interface{}) {
+func (w *OptimizedCacheWrapper) DeleteMulti(keys []any) {
 	for _, key := range keys {
 		w.Delete(key)
 	}
 }
 
-func (w *OptimizedCacheWrapper) GetOrSet(key interface{}, fn func() (interface{}, error), ttl time.Duration) (interface{}, error) {
+func (w *OptimizedCacheWrapper) GetOrSet(key any, fn func() (any, error), ttl time.Duration) (any, error) {
 	// Try to get first
 	if value, err := w.Get(key); err == nil {
 		return value, nil

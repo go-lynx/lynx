@@ -12,7 +12,7 @@ import (
 
 // BuildGrpcSubscriptionsWithPlugin builds gRPC subscription connections using the gRPC client plugin
 // This is the new integrated version that uses the gRPC client plugin
-func BuildGrpcSubscriptionsWithPlugin(cfg *conf.Subscriptions, discovery registry.Discovery, routerFactory func(string) selector.NodeFilter, pluginManager interface{}) (map[string]*ggrpc.ClientConn, error) {
+func BuildGrpcSubscriptionsWithPlugin(cfg *conf.Subscriptions, discovery registry.Discovery, routerFactory func(string) selector.NodeFilter, pluginManager any) (map[string]*ggrpc.ClientConn, error) {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, fall back to legacy method to avoid circular dependency
 	// TLS providers are nil in this path; TLS-enabled subscriptions may fail
@@ -27,7 +27,7 @@ func BuildGrpcSubscriptionsLegacy(cfg *conf.Subscriptions, discovery registry.Di
 }
 
 // GetGrpcConnection gets a gRPC connection for a specific service using the plugin
-func GetGrpcConnection(serviceName string, pluginManager interface{}) (*ggrpc.ClientConn, error) {
+func GetGrpcConnection(serviceName string, pluginManager any) (*ggrpc.ClientConn, error) {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, return an error to indicate this needs to be implemented
 	log.Warnf("GetGrpcConnection temporarily disabled due to circular dependency refactoring")
@@ -35,7 +35,7 @@ func GetGrpcConnection(serviceName string, pluginManager interface{}) (*ggrpc.Cl
 }
 
 // CloseGrpcConnection closes a gRPC connection for a specific service
-func CloseGrpcConnection(serviceName string, pluginManager interface{}) error {
+func CloseGrpcConnection(serviceName string, pluginManager any) error {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, return an error to indicate this needs to be implemented
 	log.Warnf("CloseGrpcConnection temporarily disabled due to circular dependency refactoring")
@@ -43,7 +43,7 @@ func CloseGrpcConnection(serviceName string, pluginManager interface{}) error {
 }
 
 // GetGrpcConnectionStatus returns the status of all gRPC connections
-func GetGrpcConnectionStatus(pluginManager interface{}) (map[string]string, error) {
+func GetGrpcConnectionStatus(pluginManager any) (map[string]string, error) {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, return an error to indicate this needs to be implemented
 	log.Warnf("GetGrpcConnectionStatus temporarily disabled due to circular dependency refactoring")
@@ -51,7 +51,7 @@ func GetGrpcConnectionStatus(pluginManager interface{}) (map[string]string, erro
 }
 
 // GetGrpcConnectionCount returns the number of active gRPC connections
-func GetGrpcConnectionCount(pluginManager interface{}) (int, error) {
+func GetGrpcConnectionCount(pluginManager any) (int, error) {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, return an error to indicate this needs to be implemented
 	log.Warnf("GetGrpcConnectionCount temporarily disabled due to circular dependency refactoring")
@@ -59,7 +59,7 @@ func GetGrpcConnectionCount(pluginManager interface{}) (int, error) {
 }
 
 // HealthCheckGrpcConnections performs health check on all gRPC connections
-func HealthCheckGrpcConnections(pluginManager interface{}) error {
+func HealthCheckGrpcConnections(pluginManager any) error {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, return an error to indicate this needs to be implemented
 	log.Warnf("HealthCheckGrpcConnections temporarily disabled due to circular dependency refactoring")
@@ -67,7 +67,7 @@ func HealthCheckGrpcConnections(pluginManager interface{}) error {
 }
 
 // GetGrpcMetrics returns gRPC client metrics
-func GetGrpcMetrics(pluginManager interface{}) (*interface{}, error) {
+func GetGrpcMetrics(pluginManager any) (any, error) {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, return an error to indicate this needs to be implemented
 	log.Warnf("GetGrpcMetrics temporarily disabled due to circular dependency refactoring")
@@ -76,7 +76,7 @@ func GetGrpcMetrics(pluginManager interface{}) (*interface{}, error) {
 
 // InitializeGrpcClientIntegration initializes the gRPC client integration
 // This should be called during application startup
-func InitializeGrpcClientIntegration(pluginManager interface{}) error {
+func InitializeGrpcClientIntegration(pluginManager any) error {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, return an error to indicate this needs to be implemented
 	log.Warnf("InitializeGrpcClientIntegration temporarily disabled due to circular dependency refactoring")
@@ -84,7 +84,7 @@ func InitializeGrpcClientIntegration(pluginManager interface{}) error {
 }
 
 // CreateGrpcConnectionWithConfig creates a gRPC connection with custom configuration
-func CreateGrpcConnectionWithConfig(config interface{}, pluginManager interface{}) (*ggrpc.ClientConn, error) {
+func CreateGrpcConnectionWithConfig(config any, pluginManager any) (*ggrpc.ClientConn, error) {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, return an error to indicate this needs to be implemented
 	log.Warnf("CreateGrpcConnectionWithConfig temporarily disabled due to circular dependency refactoring")
@@ -92,7 +92,7 @@ func CreateGrpcConnectionWithConfig(config interface{}, pluginManager interface{
 }
 
 // GetGrpcClientPlugin returns the gRPC client plugin instance
-func GetGrpcClientPlugin(pluginManager interface{}) (interface{}, error) {
+func GetGrpcClientPlugin(pluginManager any) (any, error) {
 	// Note: This function needs to be refactored to use dependency injection
 	// For now, return an error to indicate this needs to be implemented
 	log.Warnf("GetGrpcClientPlugin temporarily disabled due to circular dependency refactoring")

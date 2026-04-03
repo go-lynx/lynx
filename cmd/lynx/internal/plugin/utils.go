@@ -8,14 +8,14 @@ import (
 )
 
 // exportJSON exports data as JSON
-func exportJSON(w io.Writer, data interface{}) error {
+func exportJSON(w io.Writer, data any) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
 }
 
 // exportYAML exports data as YAML
-func exportYAML(w io.Writer, data interface{}) error {
+func exportYAML(w io.Writer, data any) error {
 	encoder := yaml.NewEncoder(w)
 	defer encoder.Close()
 	return encoder.Encode(data)

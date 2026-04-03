@@ -1,6 +1,7 @@
 package lynx
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -229,5 +230,42 @@ func TestDefaultRecoveryStrategy_GetTimeout(t *testing.T) {
 	s := NewDefaultRecoveryStrategy("s", dur)
 	if s.GetTimeout() != dur {
 		t.Errorf("expected %v, got %v", dur, s.GetTimeout())
+	}
+}
+
+func TestNormalizeRecoveredPanic(t *testing.T) {
+	sentinel := errors.New("boom")
+	tests := []struct {
+		name     string
+		input    any
+		expected string
+	}{
+		{
+			name:     "error value",
+			input:    sentinel,
+			expected: "boom",
+		},
+		{
+			name:     "string value",
+			input:    "panic-text",
+			expected: "panic-text",
+		},
+		{
+			name:     "arbitrary value",
+			input:    42,
+			expected: "panic value (int): 42",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := normalizeRecoveredPanic(tt.input)
+			if err == nil {
+				t.Fatal("expected non-nil error")
+			}
+			if err.Error() != tt.expected {
+				t.Fatalf("expected %q, got %q", tt.expected, err.Error())
+			}
+		})
 	}
 }

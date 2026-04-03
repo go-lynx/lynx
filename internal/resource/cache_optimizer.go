@@ -63,13 +63,13 @@ func (o *CacheOptimizer) CreateCache(name string, maxSize int64, ttl time.Durati
 }
 
 // Get retrieves a value and whether it exists.
-func (c *OptimizedCache) Get(key string) (interface{}, bool) {
+func (c *OptimizedCache) Get(key string) (any, bool) {
 	v, ok := c.items.Load(key)
 	return v, ok
 }
 
 // Set stores a value with an associated cost (ignored in stub).
-func (c *OptimizedCache) Set(key string, value interface{}, cost int64) {
+func (c *OptimizedCache) Set(key string, value any, cost int64) {
 	c.items.Store(key, value)
 }
 
@@ -78,7 +78,7 @@ func (c *OptimizedCache) Delete(key string) { c.items.Delete(key) }
 
 // Clear removes all items.
 func (c *OptimizedCache) Clear() {
-	c.items.Range(func(k, _ interface{}) bool {
+	c.items.Range(func(k, _ any) bool {
 		c.items.Delete(k)
 		return true
 	})

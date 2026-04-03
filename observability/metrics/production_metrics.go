@@ -723,14 +723,14 @@ func (pm *ProductionMetrics) UpdateOverallHealthStatus(status float64) {
 }
 
 // GetMetrics returns current metrics snapshot
-func (pm *ProductionMetrics) GetMetrics() map[string]interface{} {
+func (pm *ProductionMetrics) GetMetrics() map[string]any {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	return map[string]interface{}{
+	return map[string]any{
 		"app_start_time":      pm.startTime.Unix(),
 		"app_uptime_seconds":  time.Since(pm.startTime).Seconds(),
 		"system_memory_bytes": m.Alloc,

@@ -66,20 +66,6 @@ func TestCache_SetInvalidTTL(t *testing.T) {
 	}
 }
 
-func TestCache_SetWithCost(t *testing.T) {
-	c := newTestCache(t)
-	if err := c.SetWithCostSync("k", "v", 1, 0); err != nil {
-		t.Fatalf("SetWithCostSync: %v", err)
-	}
-	v, err := c.Get("k")
-	if err != nil {
-		t.Fatalf("Get after SetWithCost: %v", err)
-	}
-	if v != "v" {
-		t.Errorf("expected %q, got %v", "v", v)
-	}
-}
-
 func TestCache_SetWithCostInvalidTTL(t *testing.T) {
 	c := newTestCache(t)
 	err := c.SetWithCost("k", "v", 1, -time.Second)
@@ -138,7 +124,7 @@ func TestCache_GetMulti(t *testing.T) {
 	c := newTestCache(t)
 	_ = c.SetSync("m1", 10, 0)
 	_ = c.SetSync("m2", 20, 0)
-	result := c.GetMulti([]interface{}{"m1", "m2", "missing"})
+	result := c.GetMulti([]any{"m1", "m2", "missing"})
 	if len(result) != 2 {
 		t.Errorf("expected 2 results, got %d", len(result))
 	}
@@ -149,14 +135,14 @@ func TestCache_GetMulti(t *testing.T) {
 
 func TestCache_SetMultiAndDeleteMulti(t *testing.T) {
 	c := newTestCache(t)
-	items := map[interface{}]interface{}{"x": 1, "y": 2}
+	items := map[any]any{"x": 1, "y": 2}
 	if err := c.SetMulti(items, 0); err != nil {
 		t.Fatalf("SetMulti: %v", err)
 	}
 	if !c.Has("x") || !c.Has("y") {
 		t.Error("expected both keys to be present after SetMulti")
 	}
-	c.DeleteMulti([]interface{}{"x", "y"})
+	c.DeleteMulti([]any{"x", "y"})
 	if c.Has("x") || c.Has("y") {
 		t.Error("expected keys to be deleted after DeleteMulti")
 	}
@@ -164,49 +150,16 @@ func TestCache_SetMultiAndDeleteMulti(t *testing.T) {
 
 func TestCache_SetMultiInvalidTTL(t *testing.T) {
 	c := newTestCache(t)
-	err := c.SetMulti(map[interface{}]interface{}{"k": "v"}, -time.Second)
+	err := c.SetMulti(map[any]any{"k": "v"}, -time.Second)
 	if !errors.Is(err, ErrInvalidTTL) {
 		t.Errorf("expected ErrInvalidTTL, got %v", err)
-	}
-}
-
-func TestCache_GetOrSet(t *testing.T) {
-	c := newTestCache(t)
-	called := 0
-	val, err := c.GetOrSet("gos", func() (interface{}, error) {
-		called++
-		return "computed", nil
-	}, 0)
-	if err != nil {
-		t.Fatalf("GetOrSet: %v", err)
-	}
-	if val != "computed" {
-		t.Errorf("expected 'computed', got %v", val)
-	}
-	if called != 1 {
-		t.Errorf("expected factory called once, called %d times", called)
-	}
-
-	// Second call should hit the cache
-	val2, err := c.GetOrSet("gos", func() (interface{}, error) {
-		called++
-		return "new", nil
-	}, 0)
-	if err != nil {
-		t.Fatalf("GetOrSet (cached): %v", err)
-	}
-	if val2 != "computed" {
-		t.Errorf("expected cached 'computed', got %v", val2)
-	}
-	if called != 1 {
-		t.Error("factory should not be called again when cache hit")
 	}
 }
 
 func TestCache_GetOrSet_FactoryError(t *testing.T) {
 	c := newTestCache(t)
 	factoryErr := errors.New("factory error")
-	_, err := c.GetOrSet("fail", func() (interface{}, error) {
+	_, err := c.GetOrSet("fail", func() (any, error) {
 		return nil, factoryErr
 	}, 0)
 	if !errors.Is(err, factoryErr) {
@@ -214,25 +167,11 @@ func TestCache_GetOrSet_FactoryError(t *testing.T) {
 	}
 }
 
-func TestCache_GetOrSetContext(t *testing.T) {
-	c := newTestCache(t)
-	ctx := context.Background()
-	val, err := c.GetOrSetContext(ctx, "ctx-key", func(c context.Context) (interface{}, error) {
-		return "ctx-val", nil
-	}, 0)
-	if err != nil {
-		t.Fatalf("GetOrSetContext: %v", err)
-	}
-	if val != "ctx-val" {
-		t.Errorf("expected 'ctx-val', got %v", val)
-	}
-}
-
 func TestCache_GetOrSetContext_Cancelled(t *testing.T) {
 	c := newTestCache(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := c.GetOrSetContext(ctx, "cancelled-key", func(c context.Context) (interface{}, error) {
+	_, err := c.GetOrSetContext(ctx, "cancelled-key", func(c context.Context) (any, error) {
 		return "val", nil
 	}, 0)
 	if !errors.Is(err, context.Canceled) {

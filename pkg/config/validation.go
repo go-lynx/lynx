@@ -18,7 +18,7 @@ type ValidationContext struct {
 // ValidationIssue represents a single validation message.
 type ValidationIssue struct {
 	Field   string
-	Value   interface{}
+	Value   any
 	Message string
 }
 
@@ -41,7 +41,7 @@ func (r *ValidationResult) ensureInit() {
 }
 
 // AddError records a validation error and marks the result invalid.
-func (r *ValidationResult) AddError(field string, value interface{}, message string) {
+func (r *ValidationResult) AddError(field string, value any, message string) {
 	r.ensureInit()
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -50,7 +50,7 @@ func (r *ValidationResult) AddError(field string, value interface{}, message str
 }
 
 // AddWarning records a validation warning but does not change validity.
-func (r *ValidationResult) AddWarning(field string, value interface{}, message string) {
+func (r *ValidationResult) AddWarning(field string, value any, message string) {
 	r.ensureInit()
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -68,7 +68,7 @@ func (r *ValidationResult) AddWarning(field string, value interface{}, message s
 type ValidationRule struct {
 	Name        string
 	Description string
-	Validator   func(value interface{}, ctx ValidationContext) error
+	Validator   func(value any, ctx ValidationContext) error
 	Required    bool
 }
 
@@ -98,7 +98,7 @@ func (cv *ConfigValidator) AddRule(field string, rule ValidationRule) {
 
 // ValidateConfig validates the provided config struct using registered rules.
 // config should be a struct or pointer to struct.
-func (cv *ConfigValidator) ValidateConfig(config interface{}, prefix string) *ValidationResult {
+func (cv *ConfigValidator) ValidateConfig(config any, prefix string) *ValidationResult {
 	res := &ValidationResult{Valid: true}
 	if config == nil {
 		res.AddError(prefix, nil, "config is nil")
@@ -122,7 +122,7 @@ func (cv *ConfigValidator) ValidateConfig(config interface{}, prefix string) *Va
 			}
 			continue
 		}
-		var val interface{}
+		var val any
 		if fv.CanInterface() {
 			val = fv.Interface()
 		}
@@ -151,8 +151,8 @@ func isZeroValue(v reflect.Value) bool {
 }
 
 // ValidateRange returns a validator ensuring a numeric value is in [min, max].
-func ValidateRange(min, max int64) func(value interface{}, ctx ValidationContext) error {
-	return func(value interface{}, ctx ValidationContext) error {
+func ValidateRange(min, max int64) func(value any, ctx ValidationContext) error {
+	return func(value any, ctx ValidationContext) error {
 		if value == nil {
 			return nil
 		}
@@ -168,8 +168,8 @@ func ValidateRange(min, max int64) func(value interface{}, ctx ValidationContext
 }
 
 // ValidateDuration returns a validator ensuring a duration is in [min, max].
-func ValidateDuration(min, max time.Duration) func(value interface{}, ctx ValidationContext) error {
-	return func(value interface{}, ctx ValidationContext) error {
+func ValidateDuration(min, max time.Duration) func(value any, ctx ValidationContext) error {
+	return func(value any, ctx ValidationContext) error {
 		if value == nil {
 			return nil
 		}
@@ -184,7 +184,7 @@ func ValidateDuration(min, max time.Duration) func(value interface{}, ctx Valida
 	}
 }
 
-func toInt64(v interface{}) (int64, bool) {
+func toInt64(v any) (int64, bool) {
 	switch x := v.(type) {
 	case int:
 		return int64(x), true
@@ -221,30 +221,30 @@ func toInt64(v interface{}) (int64, bool) {
 
 // DefaultValueSetter applies default values to struct fields by name.
 type DefaultValueSetter struct {
-	static map[string]interface{}
-	funcs  map[string]func(interface{}) interface{}
+	static map[string]any
+	funcs  map[string]func(any) any
 }
 
 func NewDefaultValueSetter() *DefaultValueSetter {
-	return &DefaultValueSetter{static: make(map[string]interface{}), funcs: make(map[string]func(interface{}) interface{})}
+	return &DefaultValueSetter{static: make(map[string]any), funcs: make(map[string]func(any) any)}
 }
 
-func (d *DefaultValueSetter) SetDefault(field string, value interface{}) {
+func (d *DefaultValueSetter) SetDefault(field string, value any) {
 	if d.static == nil {
-		d.static = make(map[string]interface{})
+		d.static = make(map[string]any)
 	}
 	d.static[field] = value
 }
 
-func (d *DefaultValueSetter) SetDefaultFunc(field string, fn func(interface{}) interface{}) {
+func (d *DefaultValueSetter) SetDefaultFunc(field string, fn func(any) any) {
 	if d.funcs == nil {
-		d.funcs = make(map[string]func(interface{}) interface{})
+		d.funcs = make(map[string]func(any) any)
 	}
 	d.funcs[field] = fn
 }
 
 // ApplyDefaults sets default values for zero-value fields in the struct pointed to by cfg.
-func (d *DefaultValueSetter) ApplyDefaults(cfg interface{}) error {
+func (d *DefaultValueSetter) ApplyDefaults(cfg any) error {
 	if cfg == nil {
 		return errors.New("nil config")
 	}
@@ -271,7 +271,7 @@ func (d *DefaultValueSetter) ApplyDefaults(cfg interface{}) error {
 			continue
 		}
 		if isZeroValue(f) {
-			cur := interface{}(nil)
+			cur := any(nil)
 			if f.CanInterface() {
 				cur = f.Interface()
 			}
@@ -286,7 +286,7 @@ func (d *DefaultValueSetter) ApplyDefaults(cfg interface{}) error {
 }
 
 // toDuration tries to coerce a variety of types to time.Duration.
-func toDuration(v interface{}) (time.Duration, bool) {
+func toDuration(v any) (time.Duration, bool) {
 	switch x := v.(type) {
 	case time.Duration:
 		return x, true

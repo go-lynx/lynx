@@ -38,11 +38,11 @@ type Options struct {
 	// OnReject is called when an item is rejected from the cache
 	OnReject func(item *ristretto.Item)
 	// OnExit is called when cache.Close() is called
-	OnExit func(interface{})
+	OnExit func(any)
 	// KeyToHash is a custom hash function for keys
-	KeyToHash func(key interface{}) (uint64, uint64)
+	KeyToHash func(key any) (uint64, uint64)
 	// Cost is a function to calculate the cost of a value
-	Cost func(value interface{}) int64
+	Cost func(value any) int64
 }
 
 // DefaultOptions returns default cache options
@@ -100,7 +100,7 @@ func New(name string, opts *Options) (*Cache, error) {
 // The write is processed asynchronously by Ristretto's internal buffer,
 // so a subsequent Get may not immediately reflect the new value.
 // Use SetSync when the caller requires read-your-writes consistency.
-func (c *Cache) Set(key interface{}, value interface{}, ttl time.Duration) error {
+func (c *Cache) Set(key any, value any, ttl time.Duration) error {
 	if ttl < 0 {
 		return ErrInvalidTTL
 	}
@@ -123,7 +123,7 @@ func (c *Cache) Set(key interface{}, value interface{}, ttl time.Duration) error
 //
 // Use this only when you must immediately read back the value you just wrote.
 // For bulk insertions, prefer SetMulti which calls Wait once for all items.
-func (c *Cache) SetSync(key interface{}, value interface{}, ttl time.Duration) error {
+func (c *Cache) SetSync(key any, value any, ttl time.Duration) error {
 	if err := c.Set(key, value, ttl); err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func (c *Cache) SetSync(key interface{}, value interface{}, ttl time.Duration) e
 //
 // The write is processed asynchronously. Use SetWithCostSync for
 // read-your-writes consistency.
-func (c *Cache) SetWithCost(key interface{}, value interface{}, cost int64, ttl time.Duration) error {
+func (c *Cache) SetWithCost(key any, value any, cost int64, ttl time.Duration) error {
 	if ttl < 0 {
 		return ErrInvalidTTL
 	}
@@ -154,7 +154,7 @@ func (c *Cache) SetWithCost(key interface{}, value interface{}, cost int64, ttl 
 
 // SetWithCostSync stores a key-value pair with a custom cost and blocks until
 // Ristretto has processed all pending writes.
-func (c *Cache) SetWithCostSync(key interface{}, value interface{}, cost int64, ttl time.Duration) error {
+func (c *Cache) SetWithCostSync(key any, value any, cost int64, ttl time.Duration) error {
 	if err := c.SetWithCost(key, value, cost, ttl); err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func (c *Cache) SetWithCostSync(key interface{}, value interface{}, cost int64, 
 }
 
 // Get retrieves a value from the cache by key
-func (c *Cache) Get(key interface{}) (interface{}, error) {
+func (c *Cache) Get(key any) (any, error) {
 	value, found := c.cache.Get(key)
 	if !found {
 		return nil, ErrCacheMiss
@@ -172,13 +172,13 @@ func (c *Cache) Get(key interface{}) (interface{}, error) {
 }
 
 // GetWithExpiration retrieves a value and checks if it exists
-func (c *Cache) GetWithExpiration(key interface{}) (interface{}, bool) {
+func (c *Cache) GetWithExpiration(key any) (any, bool) {
 	value, found := c.cache.Get(key)
 	return value, found
 }
 
 // Delete removes a key from the cache
-func (c *Cache) Delete(key interface{}) {
+func (c *Cache) Delete(key any) {
 	c.cache.Del(key)
 }
 
@@ -188,7 +188,7 @@ func (c *Cache) Clear() {
 }
 
 // Has checks if a key exists in the cache
-func (c *Cache) Has(key interface{}) bool {
+func (c *Cache) Has(key any) bool {
 	_, found := c.cache.Get(key)
 	return found
 }
@@ -209,8 +209,8 @@ func (c *Cache) Name() string {
 }
 
 // GetMulti retrieves multiple values from the cache
-func (c *Cache) GetMulti(keys []interface{}) map[interface{}]interface{} {
-	result := make(map[interface{}]interface{})
+func (c *Cache) GetMulti(keys []any) map[any]any {
+	result := make(map[any]any)
 	for _, key := range keys {
 		if value, found := c.cache.Get(key); found {
 			result[key] = value
@@ -222,7 +222,7 @@ func (c *Cache) GetMulti(keys []interface{}) map[interface{}]interface{} {
 // SetMulti stores multiple key-value pairs in the cache and blocks until
 // Ristretto has processed all pending writes (single Wait for all items).
 // This is more efficient than calling SetSync in a loop.
-func (c *Cache) SetMulti(items map[interface{}]interface{}, ttl time.Duration) error {
+func (c *Cache) SetMulti(items map[any]any, ttl time.Duration) error {
 	if ttl < 0 {
 		return ErrInvalidTTL
 	}
@@ -244,7 +244,7 @@ func (c *Cache) SetMulti(items map[interface{}]interface{}, ttl time.Duration) e
 }
 
 // DeleteMulti removes multiple keys from the cache
-func (c *Cache) DeleteMulti(keys []interface{}) {
+func (c *Cache) DeleteMulti(keys []any) {
 	for _, key := range keys {
 		c.cache.Del(key)
 	}
@@ -253,7 +253,7 @@ func (c *Cache) DeleteMulti(keys []interface{}) {
 // GetOrSet retrieves a value from the cache or sets it if not found.
 // The write is synchronised (Wait is called) so that a subsequent Get
 // in the same goroutine will always observe the newly-stored value.
-func (c *Cache) GetOrSet(key interface{}, fn func() (interface{}, error), ttl time.Duration) (interface{}, error) {
+func (c *Cache) GetOrSet(key any, fn func() (any, error), ttl time.Duration) (any, error) {
 	// Try to get from cache first
 	if value, found := c.cache.Get(key); found {
 		return value, nil
@@ -277,7 +277,7 @@ func (c *Cache) GetOrSet(key interface{}, fn func() (interface{}, error), ttl ti
 // GetOrSetContext is like GetOrSet but with context support.
 // The write is synchronised so that a subsequent Get in the same goroutine
 // will always observe the newly-stored value.
-func (c *Cache) GetOrSetContext(ctx context.Context, key interface{}, fn func(context.Context) (interface{}, error), ttl time.Duration) (interface{}, error) {
+func (c *Cache) GetOrSetContext(ctx context.Context, key any, fn func(context.Context) (any, error), ttl time.Duration) (any, error) {
 	// Try to get from cache first
 	if value, found := c.cache.Get(key); found {
 		return value, nil

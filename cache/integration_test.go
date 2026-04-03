@@ -86,9 +86,9 @@ func TestAPICache_Integration(t *testing.T) {
 	defer apiCache.cache.Close()
 
 	// Test caching API response
-	response := map[string]interface{}{
+	response := map[string]any{
 		"status": "success",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"items": []string{"item1", "item2", "item3"},
 			"total": 3,
 		},
@@ -100,7 +100,7 @@ func TestAPICache_Integration(t *testing.T) {
 	}
 
 	// Retrieve cached response
-	var cached map[string]interface{}
+	var cached map[string]any
 	err = apiCache.GetCachedResponse("/api/items", &cached)
 	if err != nil {
 		t.Errorf("Failed to get cached response: %v", err)
@@ -111,7 +111,7 @@ func TestAPICache_Integration(t *testing.T) {
 	}
 
 	// Test cache miss
-	var notCached map[string]interface{}
+	var notCached map[string]any
 	err = apiCache.GetCachedResponse("/api/not-cached", &notCached)
 	if err != ErrCacheMiss {
 		t.Error("Expected cache miss error")
@@ -241,7 +241,7 @@ func BenchmarkAPICache_CacheResponse(b *testing.B) {
 	}
 	defer apiCache.cache.Close()
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"status": "success",
 		"data":   "test data",
 	}

@@ -1,5 +1,51 @@
 # Changelog
 
+## [v1.6.0] - 2026-04-02
+
+> Draft release notes for the stable `v1.6.0` cut. This section is intentionally limited to landed changes with evidence in the current workspace. It does not mark `P1-3`, `P2-2`, `P2-3`, or `P2-4` as complete.
+
+### 🎯 Breaking Changes
+
+- **`lynx-layout` bootstrap now returns startup errors instead of panicking**: `server.NewGRPCServer` and `server.NewHTTPServer` now return `(*Server, error)`, and the generated bootstrap path propagates those errors to `main`. Projects that relied on panic-on-registration behavior must switch to normal error handling.
+- **`lynx-redis` deprecated lifetime aliases are now enforced consistently**: `idle_timeout` and `max_conn_age` are treated as compatibility aliases for `conn_max_idle_time` and `conn_max_lifetime`. If both the legacy and preferred fields are set, they must match. Configurations that previously relied on inconsistent mixed values may now fail validation fast.
+
+---
+
+### ✨ Features
+
+- **Template login auth now has a real outbound gRPC skeleton**: `lynx-layout` no longer leaves `LoginAuth()` as an empty-token stub. The template now validates input, propagates `context`, reads `lynx.layout.auth.grpc.*` or `LYNX_LAYOUT_AUTH_GRPC_*`, invokes a configured downstream gRPC method, and extracts a token from the response payload. Until a concrete auth proto is wired in, the scaffold uses a generic structured payload so projects can plug in their real auth service without rewriting the call path.
+- **Core packages completed the remaining `interface{}` -> `any` cleanup**: the remaining `lynx/` code, tests, and relevant docs now use `any`, aligning the codebase with the typed event/runtime work already merged and removing the last old-style empty-interface usages in the core tree.
+- **Startup failure propagation is now explicit across nacos/etcd/kafka**: `lynx-nacos` verifies connectivity before declaring startup success, `lynx-etcd` actively probes connectivity instead of trusting lazy client creation, and `lynx-kafka` returns broker connectivity failures instead of logging and continuing in a disconnected state. This is the shipped core of `P1-4`; broader cross-plugin integration coverage remains a separate follow-up task.
+
+---
+
+### 🐛 Fixes
+
+- **`lynx-layout` server initialization now exits via the normal error path**: gRPC/HTTP getter failures and service registration panics are converted into returned errors, so startup can fail cleanly without bypassing graceful shutdown handling.
+- **`lynx-layout` login auth failures are no longer silent**: missing config, invalid request state, empty token responses, or downstream gRPC failures now surface as explicit errors instead of `"" , nil`.
+- **`lynx-redis` connection-pool field mapping now matches go-redis semantics**: `max_idle_conns`, `idle_timeout`, and `max_conn_age` are wired to the intended runtime options, `conn_max_lifetime` is present in generated config, and validation/defaulting logic now covers the compatibility aliases instead of leaving `ConnMaxLifetime` mismatched or ineffective.
+
+---
+
+### 🚚 Beta Exit / Upgrade Notes
+
+- **Stable-release draft scope**: this draft covers landed work for `P0-1`, `P0-2`, `P1-1`, `P1-2`, and `P1-4` only. It intentionally does not promote `P1-3`, `P2-2`, `P2-3`, or `P2-4` to done.
+- **Completed verification evidence**
+  - `lynx`: `go build ./...`
+  - `lynx`: `go test ./plugins ./subscribe ./pkg/auth/jwt ./log ./pkg/errx`
+  - `lynx-redis`: `go test ./... -run 'Test(BuildUniversalOptions|ValidateRedisConfig|ValidateAndSetDefaults|SetDefaultValues)'`
+  - `lynx-layout`: `gofmt` and `go generate ./cmd/user`
+- **Still blocked before a final stable-release sign-off**
+  - `lynx`: `go test ./plugins/... ./...` is still blocked by pre-existing `cache` and `tls` duplicate test names, plus current `boot` and `events` test failures.
+  - `lynx-layout`: `go test ./...` is still blocked by the pre-existing sibling-module `../lynx-redis` compile issue that was discovered while validating the auth/server fixes.
+  - `P1-4`: source-level changes are landed, and `lynx-etcd/lifecycle_test.go` already covers the unreachable-endpoint startup failure path, but wider cross-plugin regression coverage still depends on the pending `P1-3` integration-test task.
+- **Upgrade checklist from `v1.6.0-beta`**
+  - Handle returned startup errors in custom `lynx-layout` bootstrap code instead of assuming panic-driven failure.
+  - Normalize Redis config to `conn_max_idle_time` / `conn_max_lifetime`; do not keep conflicting deprecated aliases in the same config block.
+  - If you adopt the updated login template, set `lynx.layout.auth.grpc.service`, `lynx.layout.auth.grpc.method`, and optional timeout/env overrides before expecting non-empty login tokens.
+
+---
+
 ## [v1.5.0-beta] - 2024-12-02
 
 ### 🎯 Breaking Changes

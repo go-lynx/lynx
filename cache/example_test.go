@@ -44,7 +44,7 @@ func ExampleCache_GetOrSet() {
 	defer c.Close()
 
 	// This function is only called if the key doesn't exist
-	value, err := c.GetOrSet("expensive-data", func() (interface{}, error) {
+	value, err := c.GetOrSet("expensive-data", func() (any, error) {
 		// Simulate expensive operation
 		time.Sleep(100 * time.Millisecond)
 		return "computed value", nil
@@ -56,7 +56,7 @@ func ExampleCache_GetOrSet() {
 	fmt.Println(value)
 
 	// Second call will get from cache (no sleep)
-	value, _ = c.GetOrSet("expensive-data", func() (interface{}, error) {
+	value, _ = c.GetOrSet("expensive-data", func() (any, error) {
 		return "this won't be called", nil
 	}, 10*time.Minute)
 	fmt.Println(value)
@@ -74,7 +74,7 @@ func ExampleCache_batch() {
 	defer c.Close()
 
 	// Set multiple values at once
-	items := map[interface{}]interface{}{
+	items := map[any]any{
 		"key1": "value1",
 		"key2": "value2",
 		"key3": "value3",
@@ -85,7 +85,7 @@ func ExampleCache_batch() {
 	}
 
 	// Get multiple values at once
-	keys := []interface{}{"key1", "key2", "key3", "key4"}
+	keys := []any{"key1", "key2", "key3", "key4"}
 	values := c.GetMulti(keys)
 
 	for _, key := range keys {
@@ -211,7 +211,7 @@ func ExampleCache_GetOrSetContext() {
 
 	// Fetch with context support
 	value, err := c.GetOrSetContext(ctx, "api-data",
-		func(ctx context.Context) (interface{}, error) {
+		func(ctx context.Context) (any, error) {
 			// Simulate API call
 			select {
 			case <-time.After(1 * time.Second):

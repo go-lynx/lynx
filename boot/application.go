@@ -417,7 +417,7 @@ func (app *Application) startHealthChecker() {
 }
 
 // handlePanic recovers from panic and ensures proper resource cleanup
-func (app *Application) handlePanic(r interface{}) {
+func (app *Application) handlePanic(r any) {
 	var err error
 	// Convert panic to error based on its type
 	switch v := r.(type) {

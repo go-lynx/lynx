@@ -378,7 +378,7 @@ func (manager *EventBusManager) UpdateBusConfig(busType BusType, cfg BusConfig) 
 
 // GetBusMetrics returns metrics map for a specific bus combining bus metrics and manager monitor snapshot.
 // Fixed: Get bus reference without holding lock to avoid deadlock
-func (manager *EventBusManager) GetBusMetrics(busType BusType) (map[string]interface{}, error) {
+func (manager *EventBusManager) GetBusMetrics(busType BusType) (map[string]any, error) {
 	// Get bus reference without holding lock
 	manager.mu.RLock()
 	bus, exists := manager.buses[busType]
@@ -389,7 +389,7 @@ func (manager *EventBusManager) GetBusMetrics(busType BusType) (map[string]inter
 	}
 
 	// Call bus methods without holding manager lock to prevent deadlock
-	result := map[string]interface{}{
+	result := map[string]any{
 		"bus_type":    busType,
 		"is_paused":   bus.IsPaused(),
 		"is_healthy":  bus.IsHealthy(),
@@ -408,14 +408,14 @@ func (manager *EventBusManager) GetBusMetrics(busType BusType) (map[string]inter
 }
 
 // GetAllBusesMetrics returns metrics for all buses
-func (manager *EventBusManager) GetAllBusesMetrics() map[BusType]map[string]interface{} {
+func (manager *EventBusManager) GetAllBusesMetrics() map[BusType]map[string]any {
 	manager.mu.RLock()
 	defer manager.mu.RUnlock()
-	out := make(map[BusType]map[string]interface{}, len(manager.buses))
+	out := make(map[BusType]map[string]any, len(manager.buses))
 	for bt, bus := range manager.buses {
 		pauseDur, _ := bus.GetPauseStats()
 		cap, running, free, waiting := bus.GetWorkerPoolStats()
-		m := map[string]interface{}{
+		m := map[string]any{
 			"bus_type":    bt,
 			"is_paused":   bus.IsPaused(),
 			"is_healthy":  bus.IsHealthy(),

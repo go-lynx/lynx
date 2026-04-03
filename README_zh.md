@@ -267,7 +267,7 @@ func handleError(erm *app.ErrorRecoveryManager, err error) {
         err.Error(),
         "user_service",
         app.ErrorSeverityHigh,
-        map[string]interface{}{
+        map[string]any{
             "operation": "query",
             "table":    "users",
         },

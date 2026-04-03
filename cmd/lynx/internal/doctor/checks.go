@@ -188,7 +188,7 @@ func (c *GoVersionCheck) Check() CheckResult {
 		Category:     c.Category(),
 		FixAvailable: false,
 		Duration:     time.Since(start),
-		Details:      make(map[string]interface{}),
+		Details:      make(map[string]any),
 	}
 
 	// Check if Go is installed
@@ -260,7 +260,7 @@ func (c *GoEnvCheck) Check() CheckResult {
 	result := CheckResult{
 		Name:     c.Name(),
 		Category: c.Category(),
-		Details:  make(map[string]interface{}),
+		Details:  make(map[string]any),
 	}
 
 	// Check GOPATH
@@ -318,7 +318,7 @@ func (c *ProtocCheck) Check() CheckResult {
 		Name:         c.Name(),
 		Category:     c.Category(),
 		FixAvailable: true,
-		Details:      make(map[string]interface{}),
+		Details:      make(map[string]any),
 	}
 
 	// Check if protoc is installed
@@ -379,7 +379,7 @@ func (c *WireCheck) Check() CheckResult {
 		Name:         c.Name(),
 		Category:     c.Category(),
 		FixAvailable: true,
-		Details:      make(map[string]interface{}),
+		Details:      make(map[string]any),
 	}
 
 	// Check if wire is installed
@@ -445,7 +445,7 @@ func (c *ProjectStructureCheck) Check() CheckResult {
 	result := CheckResult{
 		Name:     c.Name(),
 		Category: c.Category(),
-		Details:  make(map[string]interface{}),
+		Details:  make(map[string]any),
 	}
 
 	// Expected directories (aligned with "lynx new" layout: cmd/, configs/, internal/)
@@ -505,7 +505,7 @@ func (c *GoModCheck) Check() CheckResult {
 		Name:         c.Name(),
 		Category:     c.Category(),
 		FixAvailable: true,
-		Details:      make(map[string]interface{}),
+		Details:      make(map[string]any),
 	}
 
 	// Check if go.mod exists
@@ -591,7 +591,7 @@ func (c *ConfigFileCheck) Check() CheckResult {
 	result := CheckResult{
 		Name:     c.Name(),
 		Category: c.Category(),
-		Details:  make(map[string]interface{}),
+		Details:  make(map[string]any),
 	}
 
 	configFiles := []string{}
@@ -617,7 +617,7 @@ func (c *ConfigFileCheck) Check() CheckResult {
 				if err != nil {
 					invalidFiles = append(invalidFiles, path)
 				} else {
-					var data interface{}
+					var data any
 					if err := yaml.Unmarshal(content, &data); err != nil {
 						invalidFiles = append(invalidFiles, path)
 					}
@@ -670,7 +670,7 @@ func (c *MakefileCheck) Check() CheckResult {
 	result := CheckResult{
 		Name:     c.Name(),
 		Category: c.Category(),
-		Details:  make(map[string]interface{}),
+		Details:  make(map[string]any),
 	}
 
 	// Check if Makefile exists
@@ -740,7 +740,7 @@ func (c *GitCheck) Check() CheckResult {
 	result := CheckResult{
 		Name:     c.Name(),
 		Category: c.Category(),
-		Details:  make(map[string]interface{}),
+		Details:  make(map[string]any),
 	}
 
 	// Check if git is installed

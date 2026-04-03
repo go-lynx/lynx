@@ -550,7 +550,7 @@ func main() {
         "connection timeout",
         "mysql-plugin",
         lynx.ErrorSeverityMedium,
-        map[string]interface{}{
+        map[string]any{
             "timeout": "5s",
             "retries": 3,
         },

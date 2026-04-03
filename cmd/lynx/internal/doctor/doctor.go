@@ -71,14 +71,14 @@ type SystemInfo struct {
 
 // CheckResult represents a single check result
 type CheckResult struct {
-	Name         string                 `json:"name"`
-	Category     string                 `json:"category"`
-	Status       Status                 `json:"status"`
-	Message      string                 `json:"message"`
-	Details      map[string]interface{} `json:"details,omitempty"`
-	FixAvailable bool                   `json:"fix_available"`
-	FixApplied   bool                   `json:"fix_applied,omitempty"`
-	Duration     time.Duration          `json:"duration"`
+	Name         string         `json:"name"`
+	Category     string         `json:"category"`
+	Status       Status         `json:"status"`
+	Message      string         `json:"message"`
+	Details      map[string]any `json:"details,omitempty"`
+	FixAvailable bool           `json:"fix_available"`
+	FixApplied   bool           `json:"fix_applied,omitempty"`
+	Duration     time.Duration  `json:"duration"`
 }
 
 // Status represents the check status

@@ -62,7 +62,7 @@ var (
 // proxyLogger forwards Log calls to an inner logger stored atomically.
 type proxyLogger struct{ inner atomic.Value } // of log.Logger
 
-func (p *proxyLogger) Log(level log.Level, keys ...interface{}) error {
+func (p *proxyLogger) Log(level log.Level, keys ...any) error {
 	if p == nil {
 		return nil
 	}

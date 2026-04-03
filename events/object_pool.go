@@ -13,7 +13,7 @@ type EventBufferPool struct {
 func NewEventBufferPool() *EventBufferPool {
 	return &EventBufferPool{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				// Pre-allocate with larger capacity to match typical batch sizes
 				return make([]LynxEvent, 0, 64)
 			},
@@ -54,7 +54,7 @@ type MetadataPool struct {
 func NewMetadataPool() *MetadataPool {
 	return &MetadataPool{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return make(map[string]any, 8) // Pre-allocate with reasonable size
 			},
 		},

@@ -117,14 +117,14 @@ for name, metrics := range stats {
 
 ```go
 // Lazy loading with GetOrSet
-value, err := cache.GetOrSet("expensive-key", func() (interface{}, error) {
+value, err := cache.GetOrSet("expensive-key", func() (any, error) {
     // This function is only called if key doesn't exist
     return expensiveOperation(), nil
 }, 1*time.Hour)
 
 // With context support
 value, err := cache.GetOrSetContext(ctx, "api-key", 
-    func(ctx context.Context) (interface{}, error) {
+    func(ctx context.Context) (any, error) {
         return fetchFromAPI(ctx)
     }, 5*time.Minute)
 ```
@@ -133,7 +133,7 @@ value, err := cache.GetOrSetContext(ctx, "api-key",
 
 ```go
 // Set multiple values
-items := map[interface{}]interface{}{
+items := map[any]any{
     "key1": "value1",
     "key2": "value2",
     "key3": "value3",
@@ -141,7 +141,7 @@ items := map[interface{}]interface{}{
 err := cache.SetMulti(items, 10*time.Minute)
 
 // Get multiple values
-keys := []interface{}{"key1", "key2", "key3"}
+keys := []any{"key1", "key2", "key3"}
 values := cache.GetMulti(keys)
 for k, v := range values {
     fmt.Printf("%v: %v\n", k, v)
@@ -156,7 +156,7 @@ cache.DeleteMulti(keys)
 ```go
 cache, err := cache.NewBuilder("object-cache").
     WithMaxCost(1 << 30). // 1GB total cost
-    WithCostFunction(func(value interface{}) int64 {
+    WithCostFunction(func(value any) int64 {
         // Calculate actual memory usage
         switch v := value.(type) {
         case string:

@@ -52,7 +52,7 @@ func (s *UserService) GetUser(ctx context.Context, userID string) (*User, error)
 
 	// Try to get from cache first
 	value, err := s.cache.GetOrSetContext(ctx, cacheKey,
-		func(ctx context.Context) (interface{}, error) {
+		func(ctx context.Context) (any, error) {
 			// Simulate database fetch
 			return s.fetchUserFromDB(ctx, userID)
 		}, 5*time.Minute) // Cache for 5 minutes
@@ -91,7 +91,7 @@ func (s *UserService) GetUsersByRole(ctx context.Context, role string) ([]*User,
 	cacheKey := fmt.Sprintf("users:role:%s", role)
 
 	value, err := s.cache.GetOrSetContext(ctx, cacheKey,
-		func(ctx context.Context) (interface{}, error) {
+		func(ctx context.Context) (any, error) {
 			// Simulate fetching multiple users from DB
 			return s.fetchUsersByRoleFromDB(ctx, role)
 		}, 3*time.Minute) // Shorter TTL for list queries
@@ -111,8 +111,8 @@ func (s *UserService) GetUsersByRole(ctx context.Context, role string) ([]*User,
 // GetMultipleUsers demonstrates batch get
 func (s *UserService) GetMultipleUsers(ctx context.Context, userIDs []string) (map[string]*User, error) {
 	// Prepare cache keys
-	keys := make([]interface{}, len(userIDs))
-	keyMap := make(map[interface{}]string)
+	keys := make([]any, len(userIDs))
+	keyMap := make(map[any]string)
 	for i, id := range userIDs {
 		key := fmt.Sprintf("user:%s", id)
 		keys[i] = key
@@ -143,7 +143,7 @@ func (s *UserService) GetMultipleUsers(ctx context.Context, userIDs []string) (m
 		}
 
 		// Cache the fetched users
-		toCache := make(map[interface{}]interface{})
+		toCache := make(map[any]any)
 		for id, user := range missing {
 			key := fmt.Sprintf("user:%s", id)
 			toCache[key] = user
@@ -166,7 +166,7 @@ func (s *UserService) InvalidateUserCache() {
 // GetCacheStats returns cache statistics
 func (s *UserService) GetCacheStats() string {
 	if metrics := s.cache.Metrics(); metrics != nil {
-		stats := map[string]interface{}{
+		stats := map[string]any{
 			"hits":         metrics.Hits(),
 			"misses":       metrics.Misses(),
 			"keys_added":   metrics.KeysAdded(),
@@ -270,7 +270,7 @@ func NewAPICache() (*APICache, error) {
 }
 
 // CacheResponse caches an API response
-func (a *APICache) CacheResponse(endpoint string, response interface{}, ttl time.Duration) error {
+func (a *APICache) CacheResponse(endpoint string, response any, ttl time.Duration) error {
 	data, err := json.Marshal(response)
 	if err != nil {
 		return err
@@ -279,7 +279,7 @@ func (a *APICache) CacheResponse(endpoint string, response interface{}, ttl time
 }
 
 // GetCachedResponse retrieves a cached API response
-func (a *APICache) GetCachedResponse(endpoint string, result interface{}) error {
+func (a *APICache) GetCachedResponse(endpoint string, result any) error {
 	data, err := a.cache.Get(endpoint)
 	if err != nil {
 		return err
@@ -300,10 +300,10 @@ type SessionCache struct {
 
 // Session represents a user session
 type Session struct {
-	ID        string                 `json:"id"`
-	UserID    string                 `json:"user_id"`
-	Data      map[string]interface{} `json:"data"`
-	ExpiresAt time.Time              `json:"expires_at"`
+	ID        string         `json:"id"`
+	UserID    string         `json:"user_id"`
+	Data      map[string]any `json:"data"`
+	ExpiresAt time.Time      `json:"expires_at"`
 }
 
 // NewSessionCache creates a new session cache
@@ -320,7 +320,7 @@ func (s *SessionCache) CreateSession(userID string, ttl time.Duration) (*Session
 	session := &Session{
 		ID:        fmt.Sprintf("sess_%d", time.Now().UnixNano()),
 		UserID:    userID,
-		Data:      make(map[string]interface{}),
+		Data:      make(map[string]any),
 		ExpiresAt: time.Now().Add(ttl),
 	}
 

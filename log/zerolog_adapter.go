@@ -14,7 +14,7 @@ type zeroLogLogger struct {
 
 // Log implements the log.Logger interface.
 // It converts Kratos log levels to zerolog levels and handles structured logging.
-func (l zeroLogLogger) Log(level log.Level, keyvals ...interface{}) error {
+func (l zeroLogLogger) Log(level log.Level, keyvals ...any) error {
 	// sampling / rate limit
 	if !allowLog(level) {
 		return nil

@@ -543,9 +543,9 @@ func (m *PluginManager) generateConfigTemplate(plugin *PluginMetadata, configFil
 }
 
 // generatePluginConfig creates plugin-specific configuration templates
-func (m *PluginManager) generatePluginConfig(plugin *PluginMetadata) map[string]interface{} {
-	baseConfig := map[string]interface{}{
-		"lynx": map[string]interface{}{
+func (m *PluginManager) generatePluginConfig(plugin *PluginMetadata) map[string]any {
+	baseConfig := map[string]any{
+		"lynx": map[string]any{
 			plugin.Name: m.getPluginSpecificConfig(plugin),
 		},
 	}
@@ -553,7 +553,7 @@ func (m *PluginManager) generatePluginConfig(plugin *PluginMetadata) map[string]
 }
 
 // getPluginSpecificConfig returns plugin-specific configuration based on plugin type and name
-func (m *PluginManager) getPluginSpecificConfig(plugin *PluginMetadata) map[string]interface{} {
+func (m *PluginManager) getPluginSpecificConfig(plugin *PluginMetadata) map[string]any {
 	switch plugin.Type {
 	case TypeService:
 		return m.getServicePluginConfig(plugin.Name)
@@ -573,22 +573,22 @@ func (m *PluginManager) getPluginSpecificConfig(plugin *PluginMetadata) map[stri
 }
 
 // getServicePluginConfig returns service plugin configuration templates
-func (m *PluginManager) getServicePluginConfig(name string) map[string]interface{} {
+func (m *PluginManager) getServicePluginConfig(name string) map[string]any {
 	switch name {
 	case "http":
-		return map[string]interface{}{
+		return map[string]any{
 			"network": "tcp",
 			"addr":    ":8080",
 			"timeout": "30s",
-			"monitoring": map[string]interface{}{
+			"monitoring": map[string]any{
 				"enable_metrics":         true,
 				"metrics_path":           "/metrics",
 				"health_path":            "/health",
 				"enable_request_logging": true,
 			},
-			"security": map[string]interface{}{
+			"security": map[string]any{
 				"max_request_size": 10485760,
-				"rate_limit": map[string]interface{}{
+				"rate_limit": map[string]any{
 					"enabled":         true,
 					"rate_per_second": 100,
 					"burst_limit":     200,
@@ -596,16 +596,16 @@ func (m *PluginManager) getServicePluginConfig(name string) map[string]interface
 			},
 		}
 	case "grpc":
-		return map[string]interface{}{
+		return map[string]any{
 			"network": "tcp",
 			"addr":    ":9090",
 			"timeout": "30s",
-			"client": map[string]interface{}{
+			"client": map[string]any{
 				"default_timeout":    "10s",
 				"default_keep_alive": "30s",
 				"max_retries":        3,
 				"connection_pooling": true,
-				"subscribe_services": []map[string]interface{}{
+				"subscribe_services": []map[string]any{
 					{
 						"name":     "example-service",
 						"timeout":  "5s",
@@ -615,7 +615,7 @@ func (m *PluginManager) getServicePluginConfig(name string) map[string]interface
 			},
 		}
 	default:
-		return map[string]interface{}{
+		return map[string]any{
 			"addr":    ":8080",
 			"timeout": "30s",
 			"# Note":  "Configure service-specific settings here",
@@ -624,17 +624,17 @@ func (m *PluginManager) getServicePluginConfig(name string) map[string]interface
 }
 
 // getMQPluginConfig returns message queue plugin configuration templates
-func (m *PluginManager) getMQPluginConfig(name string) map[string]interface{} {
+func (m *PluginManager) getMQPluginConfig(name string) map[string]any {
 	switch name {
 	case "kafka":
-		return map[string]interface{}{
+		return map[string]any{
 			"brokers": []string{"localhost:9092"},
-			"consumer": map[string]interface{}{
+			"consumer": map[string]any{
 				"group_id":           "lynx-consumer-group",
 				"auto_offset_reset":  "earliest",
 				"enable_auto_commit": true,
 			},
-			"producer": map[string]interface{}{
+			"producer": map[string]any{
 				"acks":       "all",
 				"retries":    3,
 				"batch_size": 16384,
@@ -642,7 +642,7 @@ func (m *PluginManager) getMQPluginConfig(name string) map[string]interface{} {
 			},
 		}
 	case "rabbitmq":
-		return map[string]interface{}{
+		return map[string]any{
 			"url":           "amqp://guest:guest@localhost:5672/",
 			"exchange":      "lynx-exchange",
 			"exchange_type": "topic",
@@ -652,7 +652,7 @@ func (m *PluginManager) getMQPluginConfig(name string) map[string]interface{} {
 			"auto_delete":   false,
 		}
 	default:
-		return map[string]interface{}{
+		return map[string]any{
 			"brokers": []string{"localhost:9092"},
 			"# Note":  "Configure message queue specific settings here",
 		}
@@ -660,10 +660,10 @@ func (m *PluginManager) getMQPluginConfig(name string) map[string]interface{} {
 }
 
 // getSQLPluginConfig returns SQL database plugin configuration templates
-func (m *PluginManager) getSQLPluginConfig(name string) map[string]interface{} {
+func (m *PluginManager) getSQLPluginConfig(name string) map[string]any {
 	switch name {
 	case "mysql":
-		return map[string]interface{}{
+		return map[string]any{
 			"dsn":               "user:password@tcp(localhost:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local",
 			"max_open_conns":    25,
 			"max_idle_conns":    10,
@@ -671,7 +671,7 @@ func (m *PluginManager) getSQLPluginConfig(name string) map[string]interface{} {
 			"enable_metrics":    true,
 		}
 	case "postgresql", "pgsql":
-		return map[string]interface{}{
+		return map[string]any{
 			"dsn":               "host=localhost user=username password=password dbname=mydb port=5432 sslmode=disable TimeZone=Asia/Shanghai",
 			"max_open_conns":    25,
 			"max_idle_conns":    10,
@@ -679,7 +679,7 @@ func (m *PluginManager) getSQLPluginConfig(name string) map[string]interface{} {
 			"enable_metrics":    true,
 		}
 	default:
-		return map[string]interface{}{
+		return map[string]any{
 			"dsn":            "user:password@tcp(localhost:3306)/dbname",
 			"max_open_conns": 25,
 			"max_idle_conns": 10,
@@ -689,10 +689,10 @@ func (m *PluginManager) getSQLPluginConfig(name string) map[string]interface{} {
 }
 
 // getNoSQLPluginConfig returns NoSQL database plugin configuration templates
-func (m *PluginManager) getNoSQLPluginConfig(name string) map[string]interface{} {
+func (m *PluginManager) getNoSQLPluginConfig(name string) map[string]any {
 	switch name {
 	case "redis":
-		return map[string]interface{}{
+		return map[string]any{
 			"addr":                "localhost:6379",
 			"password":            "",
 			"db":                  0,
@@ -703,7 +703,7 @@ func (m *PluginManager) getNoSQLPluginConfig(name string) map[string]interface{}
 			"enable_health_check": true,
 		}
 	case "mongodb":
-		return map[string]interface{}{
+		return map[string]any{
 			"uri":            "mongodb://localhost:27017",
 			"database":       "lynx_db",
 			"max_pool_size":  100,
@@ -712,7 +712,7 @@ func (m *PluginManager) getNoSQLPluginConfig(name string) map[string]interface{}
 			"enable_metrics": true,
 		}
 	case "elasticsearch":
-		return map[string]interface{}{
+		return map[string]any{
 			"addresses":       []string{"http://localhost:9200"},
 			"username":        "",
 			"password":        "",
@@ -721,7 +721,7 @@ func (m *PluginManager) getNoSQLPluginConfig(name string) map[string]interface{}
 			"enable_metrics":  true,
 		}
 	default:
-		return map[string]interface{}{
+		return map[string]any{
 			"addr":     "localhost:6379",
 			"database": "lynx_db",
 			"# Note":   "Configure NoSQL database specific settings here",
@@ -730,16 +730,16 @@ func (m *PluginManager) getNoSQLPluginConfig(name string) map[string]interface{}
 }
 
 // getTracerPluginConfig returns tracer plugin configuration templates
-func (m *PluginManager) getTracerPluginConfig(name string) map[string]interface{} {
-	return map[string]interface{}{
+func (m *PluginManager) getTracerPluginConfig(name string) map[string]any {
+	return map[string]any{
 		"service_name":    "lynx-service",
 		"service_version": "v1.0.0",
 		"endpoint":        "http://localhost:14268/api/traces",
-		"sampler": map[string]interface{}{
+		"sampler": map[string]any{
 			"type":  "const",
 			"param": 1,
 		},
-		"reporter": map[string]interface{}{
+		"reporter": map[string]any{
 			"log_spans":             true,
 			"buffer_flush_interval": "1s",
 		},
@@ -747,17 +747,17 @@ func (m *PluginManager) getTracerPluginConfig(name string) map[string]interface{
 }
 
 // getDTXPluginConfig returns distributed transaction plugin configuration templates
-func (m *PluginManager) getDTXPluginConfig(name string) map[string]interface{} {
+func (m *PluginManager) getDTXPluginConfig(name string) map[string]any {
 	switch name {
 	case "seata":
-		return map[string]interface{}{
+		return map[string]any{
 			"application_id":                "lynx-app",
 			"tx_service_group":              "lynx_tx_group",
 			"enable_auto_data_source_proxy": true,
 			"data_source_proxy_mode":        "AT",
-			"registry": map[string]interface{}{
+			"registry": map[string]any{
 				"type": "nacos",
-				"nacos": map[string]interface{}{
+				"nacos": map[string]any{
 					"application": "seata-server",
 					"server_addr": "127.0.0.1:8848",
 					"group":       "SEATA_GROUP",
@@ -767,14 +767,14 @@ func (m *PluginManager) getDTXPluginConfig(name string) map[string]interface{} {
 			},
 		}
 	case "dtm":
-		return map[string]interface{}{
+		return map[string]any{
 			"server":         "http://localhost:36789/api/dtmsvr",
 			"timeout":        "30s",
 			"retry_interval": "15s",
 			"max_retry":      3,
 		}
 	default:
-		return map[string]interface{}{
+		return map[string]any{
 			"server":  "http://localhost:8080",
 			"timeout": "30s",
 			"# Note":  "Configure distributed transaction specific settings here",
@@ -783,10 +783,10 @@ func (m *PluginManager) getDTXPluginConfig(name string) map[string]interface{} {
 }
 
 // getGenericPluginConfig returns generic plugin configuration template
-func (m *PluginManager) getGenericPluginConfig(name string) map[string]interface{} {
+func (m *PluginManager) getGenericPluginConfig(name string) map[string]any {
 	switch name {
 	case "polaris":
-		return map[string]interface{}{
+		return map[string]any{
 			"namespace":             "default",
 			"server_addresses":      []string{"127.0.0.1:8091"},
 			"enable_retry":          true,
@@ -795,7 +795,7 @@ func (m *PluginManager) getGenericPluginConfig(name string) map[string]interface
 			"health_check_interval": "5s",
 		}
 	case "swagger":
-		return map[string]interface{}{
+		return map[string]any{
 			"title":       "Lynx API Documentation",
 			"description": "API documentation for Lynx service",
 			"version":     "1.0.0",
@@ -804,7 +804,7 @@ func (m *PluginManager) getGenericPluginConfig(name string) map[string]interface
 			"schemes":     []string{"http", "https"},
 		}
 	default:
-		return map[string]interface{}{
+		return map[string]any{
 			"enabled": true,
 			"# Note":  fmt.Sprintf("Configure %s plugin specific settings here", name),
 			"# Docs":  fmt.Sprintf("Refer to the plugin documentation for available configuration options"),
