@@ -14,9 +14,13 @@
 package lynx
 
 import (
+	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/go-lynx/lynx/log"
+	"github.com/go-lynx/lynx/plugins"
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/middleware"
@@ -78,6 +82,171 @@ type MultiConfigControlPlane interface {
 	ControlPlane
 	// GetConfigSources retrieves all configuration sources for multi-config loading
 	GetConfigSources() ([]config.Source, error)
+}
+
+// ControlPlaneCapability describes a single provider-facing capability exposed by a control plane.
+type ControlPlaneCapability string
+
+const (
+	ControlPlaneCapabilityConfig            ControlPlaneCapability = "config"
+	ControlPlaneCapabilityRegistry          ControlPlaneCapability = "registry"
+	ControlPlaneCapabilityDiscovery         ControlPlaneCapability = "discovery"
+	ControlPlaneCapabilityRouter            ControlPlaneCapability = "router"
+	ControlPlaneCapabilityRateLimit         ControlPlaneCapability = "rate_limit"
+	ControlPlaneCapabilityTrafficProtection ControlPlaneCapability = "traffic_protection"
+	ControlPlaneCapabilityWatcher           ControlPlaneCapability = "watcher"
+)
+
+// ControlPlaneCapabilityReporter allows providers to declare an explicit capability set.
+type ControlPlaneCapabilityReporter interface {
+	ControlPlaneCapabilities() []ControlPlaneCapability
+}
+
+// ControlPlaneConfigTarget describes a remote config item that belongs to the control plane.
+type ControlPlaneConfigTarget struct {
+	FileName      string
+	Group         string
+	Priority      int
+	MergeStrategy string
+}
+
+// Key returns a stable identifier for a config target.
+func (t ControlPlaneConfigTarget) Key() string {
+	return fmt.Sprintf("%s|%s|%d|%s", t.FileName, t.Group, t.Priority, t.MergeStrategy)
+}
+
+// ControlPlaneConfigWatcherProvider exposes watcher-based remote config backfill hooks.
+type ControlPlaneConfigWatcherProvider interface {
+	GetConfigWatchTargets(appName string) ([]ControlPlaneConfigTarget, error)
+	WatchControlPlaneConfig(ctx context.Context, target ControlPlaneConfigTarget) (config.Watcher, error)
+}
+
+type controlPlaneBackfillState struct {
+	cancel context.CancelFunc
+}
+
+var controlPlaneBackfills sync.Map
+
+// ControlPlaneCapabilityResourceName returns the shared runtime resource name for a capability alias.
+func ControlPlaneCapabilityResourceName(provider string, capability ControlPlaneCapability) string {
+	return fmt.Sprintf("%s.%s", provider, capability)
+}
+
+// ControlPlaneCapabilitiesOf returns the explicit plus inferred capability set of a control plane.
+func ControlPlaneCapabilitiesOf(plane any) []ControlPlaneCapability {
+	if plane == nil {
+		return nil
+	}
+
+	seen := make(map[ControlPlaneCapability]struct{}, 8)
+	caps := make([]ControlPlaneCapability, 0, 8)
+	add := func(capability ControlPlaneCapability) {
+		if capability == "" {
+			return
+		}
+		if _, exists := seen[capability]; exists {
+			return
+		}
+		seen[capability] = struct{}{}
+		caps = append(caps, capability)
+	}
+
+	if reporter, ok := plane.(ControlPlaneCapabilityReporter); ok {
+		for _, capability := range reporter.ControlPlaneCapabilities() {
+			add(capability)
+		}
+	}
+	if _, ok := plane.(ConfigManager); ok {
+		add(ControlPlaneCapabilityConfig)
+	}
+	if _, ok := plane.(ServiceRegistry); ok {
+		add(ControlPlaneCapabilityRegistry)
+		add(ControlPlaneCapabilityDiscovery)
+	}
+	if _, ok := plane.(RouteManager); ok {
+		add(ControlPlaneCapabilityRouter)
+	}
+	if _, ok := plane.(RateLimiter); ok {
+		add(ControlPlaneCapabilityRateLimit)
+	}
+	if _, ok := plane.(ControlPlaneConfigWatcherProvider); ok {
+		add(ControlPlaneCapabilityWatcher)
+	}
+
+	return caps
+}
+
+// StartControlPlaneWatcher normalizes different watcher-start semantics under one contract.
+func StartControlPlaneWatcher(ctx context.Context, watcher config.Watcher) error {
+	if watcher == nil {
+		return fmt.Errorf("control plane watcher is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	switch starter := any(watcher).(type) {
+	case interface{ Start(context.Context) error }:
+		if err := starter.Start(ctx); err != nil {
+			return err
+		}
+	case interface{ Start() }:
+		starter.Start()
+	}
+
+	go func() {
+		<-ctx.Done()
+		_ = watcher.Stop()
+	}()
+
+	return nil
+}
+
+// RegisterControlPlaneCapabilityResources publishes standardized shared resource aliases for a provider.
+func RegisterControlPlaneCapabilityResources(rt plugins.Runtime, provider string, plane any) error {
+	if rt == nil || provider == "" || plane == nil {
+		return nil
+	}
+	if err := rt.RegisterSharedResource(provider, plane); err != nil {
+		return err
+	}
+
+	aliases := map[ControlPlaneCapability]any{
+		ControlPlaneCapabilityConfig:    plane,
+		ControlPlaneCapabilityRegistry:  plane,
+		ControlPlaneCapabilityDiscovery: plane,
+		ControlPlaneCapabilityRouter:    plane,
+		ControlPlaneCapabilityRateLimit: plane,
+		ControlPlaneCapabilityWatcher:   plane,
+	}
+	if cm, ok := plane.(ConfigManager); ok {
+		aliases[ControlPlaneCapabilityConfig] = cm
+	}
+	if sr, ok := plane.(ServiceRegistry); ok {
+		aliases[ControlPlaneCapabilityRegistry] = sr
+		aliases[ControlPlaneCapabilityDiscovery] = sr
+	}
+	if rm, ok := plane.(RouteManager); ok {
+		aliases[ControlPlaneCapabilityRouter] = rm
+	}
+	if rl, ok := plane.(RateLimiter); ok {
+		aliases[ControlPlaneCapabilityRateLimit] = rl
+	}
+	if watcherProvider, ok := plane.(ControlPlaneConfigWatcherProvider); ok {
+		aliases[ControlPlaneCapabilityWatcher] = watcherProvider
+	}
+
+	for _, capability := range ControlPlaneCapabilitiesOf(plane) {
+		alias := aliases[capability]
+		if alias == nil {
+			alias = plane
+		}
+		if err := rt.RegisterSharedResource(ControlPlaneCapabilityResourceName(provider, capability), alias); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // DefaultControlPlane provides a basic implementation of the ControlPlane interface
@@ -281,6 +450,7 @@ func (a *LynxApp) SetControlPlane(plane ControlPlane) error {
 	if sc, ok := plane.(SystemCore); ok {
 		a.systemCore = sc
 	}
+	a.stopControlPlaneConfigBackfill()
 	return nil
 }
 
@@ -376,6 +546,9 @@ func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
 	if err := a.SetGlobalConfig(cfg); err != nil {
 		return nil, fmt.Errorf("failed to set global configuration: %w", err)
 	}
+	if err := a.startControlPlaneConfigBackfill(cfg); err != nil {
+		return nil, fmt.Errorf("failed to start control plane config backfill: %w", err)
+	}
 
 	return cfg, nil
 }
@@ -423,6 +596,11 @@ func (a *LynxApp) GetServiceRegistry() (registry.Registrar, error) {
 }
 
 // GetServiceDiscovery returns a new service discovery instance for this app.
+// This app-level lookup is the compatibility fallback for callers that do not
+// (or cannot yet) rely on unified runtime resource aliases. Transport/client
+// integrations should remain functional as long as the default app exposes a
+// discovery capability, even if provider-specific alias wiring is still being
+// converged.
 func (a *LynxApp) GetServiceDiscovery() (registry.Discovery, error) {
 	if a == nil || a.GetControlPlane() == nil {
 		// No control plane available, return nil discovery (no service discovery)
@@ -431,4 +609,142 @@ func (a *LynxApp) GetServiceDiscovery() (registry.Discovery, error) {
 	disc := a.GetControlPlane().NewServiceDiscovery()
 	// Return the discovery even if it's nil (no service discovery)
 	return disc, nil
+}
+
+// GetControlPlaneCapabilities returns the merged capability set currently exposed by the app.
+func (a *LynxApp) GetControlPlaneCapabilities() []ControlPlaneCapability {
+	if a == nil {
+		return nil
+	}
+	return ControlPlaneCapabilitiesOf(a.GetControlPlane())
+}
+
+func (a *LynxApp) stopControlPlaneConfigBackfill() {
+	if a == nil {
+		return
+	}
+	if stateValue, ok := controlPlaneBackfills.LoadAndDelete(a); ok {
+		if state, ok := stateValue.(*controlPlaneBackfillState); ok && state != nil && state.cancel != nil {
+			state.cancel()
+		}
+	}
+}
+
+func (a *LynxApp) startControlPlaneConfigBackfill(cfg config.Config) error {
+	if a == nil || cfg == nil {
+		return nil
+	}
+
+	provider, ok := a.GetControlPlane().(ControlPlaneConfigWatcherProvider)
+	if !ok || provider == nil {
+		a.stopControlPlaneConfigBackfill()
+		return nil
+	}
+
+	targets, err := provider.GetConfigWatchTargets(a.name)
+	if err != nil {
+		return err
+	}
+
+	a.stopControlPlaneConfigBackfill()
+	if len(targets) == 0 {
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	controlPlaneBackfills.Store(a, &controlPlaneBackfillState{cancel: cancel})
+
+	for _, target := range targets {
+		target := target
+		go a.consumeControlPlaneConfigTarget(ctx, cfg, provider, target)
+	}
+
+	return nil
+}
+
+func (a *LynxApp) consumeControlPlaneConfigTarget(
+	ctx context.Context,
+	cfg config.Config,
+	provider ControlPlaneConfigWatcherProvider,
+	target ControlPlaneConfigTarget,
+) {
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		watcher, err := provider.WatchControlPlaneConfig(ctx, target)
+		if err != nil {
+			log.Warnf("failed to start control plane config watcher for %s: %v", target.Key(), err)
+			if waitControlPlaneWatchRetry(ctx, 2*time.Second) {
+				return
+			}
+			continue
+		}
+		if watcher == nil {
+			log.Warnf("control plane config watcher for %s is nil", target.Key())
+			return
+		}
+
+		err = a.runControlPlaneWatcherLoop(ctx, cfg, watcher, target)
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
+			log.Warnf("control plane config watcher for %s stopped, retrying: %v", target.Key(), err)
+		}
+		if waitControlPlaneWatchRetry(ctx, 2*time.Second) {
+			return
+		}
+	}
+}
+
+func (a *LynxApp) runControlPlaneWatcherLoop(
+	ctx context.Context,
+	cfg config.Config,
+	watcher config.Watcher,
+	target ControlPlaneConfigTarget,
+) error {
+	defer func() {
+		_ = watcher.Stop()
+	}()
+
+	for {
+		kvs, err := watcher.Next()
+		if err != nil {
+			return err
+		}
+		if len(kvs) == 0 {
+			continue
+		}
+		if err := cfg.Load(); err != nil {
+			log.Warnf("failed to reload config snapshot after control plane update %s: %v", target.Key(), err)
+			continue
+		}
+
+		managedPlugins := 0
+		if pm := a.GetPluginManager(); pm != nil {
+			managedPlugins = len(Plugins(pm))
+		}
+
+		if managedPlugins > 0 {
+			log.Warnf(
+				"control plane config updated for %s; global config snapshot reloaded in place, but %d managed plugins may still require restart to consume the new values",
+				target.Key(),
+				managedPlugins,
+			)
+			continue
+		}
+
+		log.Infof("control plane config updated for %s and reloaded into the global config snapshot", target.Key())
+	}
+}
+
+func waitControlPlaneWatchRetry(ctx context.Context, delay time.Duration) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	case <-time.After(delay):
+		return false
+	}
 }

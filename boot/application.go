@@ -187,11 +187,14 @@ func (app *Application) initializeRuntimeShell(lynxApp *lynxapp.LynxApp) error {
 		return fmt.Errorf("lynx application is nil: cannot initialize runtime shell")
 	}
 
-	app.publishAppIfConfigured(lynxApp)
 	app.lynxApp = lynxApp
 
-	if err := log.InitLogger(app.GetName(), app.GetHost(), app.GetVersion(), app.conf); err != nil {
+	if err := log.InitLogger(lynxApp.Name(), lynxApp.Host(), lynxApp.Version(), app.conf); err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+
+	if lynxApp.GetPluginManager() == nil {
+		return fmt.Errorf("plugin manager is nil: cannot manage plugins")
 	}
 
 	app.setupSignalHandling()
@@ -202,9 +205,9 @@ func (app *Application) initializeRuntimeShell(lynxApp *lynxapp.LynxApp) error {
 
 	log.Info("lynx application is starting up")
 
-	if lynxApp.GetPluginManager() == nil {
-		return fmt.Errorf("plugin manager is nil: cannot manage plugins")
-	}
+	// Publish the default singleton only after the shell has a valid core app and
+	// the process-facing bootstrap has successfully attached to it.
+	app.publishAppIfConfigured(lynxApp)
 
 	return nil
 }
