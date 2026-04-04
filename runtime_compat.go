@@ -1,6 +1,7 @@
 package lynx
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -38,119 +39,234 @@ func (r *TypedRuntimePlugin) UnderlyingRuntime() plugins.Runtime {
 	return r.runtime
 }
 
+func (r *TypedRuntimePlugin) compatRuntime() (plugins.Runtime, error) {
+	if runtime := r.UnderlyingRuntime(); runtime != nil {
+		return runtime, nil
+	}
+	return nil, fmt.Errorf("runtime compatibility wrapper is not initialized")
+}
+
 // GetResource retrieves a shared plugin resource by name.
 func (r *TypedRuntimePlugin) GetResource(name string) (any, error) {
-	return r.runtime.GetResource(name)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.GetResource(name)
 }
 
 // RegisterResource registers a resource to be shared with other plugins.
 func (r *TypedRuntimePlugin) RegisterResource(name string, resource any) error {
-	return r.runtime.RegisterResource(name, resource)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return err
+	}
+	return runtime.RegisterResource(name, resource)
 }
 
 // GetConfig returns the plugin configuration manager.
 func (r *TypedRuntimePlugin) GetConfig() config.Config {
-	return r.runtime.GetConfig()
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil
+	}
+	return runtime.GetConfig()
 }
 
 // GetLogger returns the plugin logger instance.
 func (r *TypedRuntimePlugin) GetLogger() log.Logger {
-	return r.runtime.GetLogger()
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil
+	}
+	return runtime.GetLogger()
 }
 
 // EmitEvent broadcasts a plugin event to the unified event bus.
 func (r *TypedRuntimePlugin) EmitEvent(event plugins.PluginEvent) {
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return
+	}
 	if event.Timestamp == 0 {
 		event.Timestamp = time.Now().Unix()
 	}
-	r.runtime.EmitEvent(event)
+	runtime.EmitEvent(event)
 }
 
 // Close stops the runtime.
 func (r *TypedRuntimePlugin) Close() {
-	r.runtime.Shutdown()
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return
+	}
+	runtime.Shutdown()
 }
 
 func (r *TypedRuntimePlugin) AddListener(listener plugins.EventListener, filter *plugins.EventFilter) {
-	r.runtime.AddListener(listener, filter)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return
+	}
+	runtime.AddListener(listener, filter)
 }
 
 func (r *TypedRuntimePlugin) RemoveListener(listener plugins.EventListener) {
-	r.runtime.RemoveListener(listener)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return
+	}
+	runtime.RemoveListener(listener)
 }
 
 func (r *TypedRuntimePlugin) GetEventHistory(filter plugins.EventFilter) []plugins.PluginEvent {
-	return r.runtime.GetEventHistory(filter)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil
+	}
+	return runtime.GetEventHistory(filter)
 }
 
 func (r *TypedRuntimePlugin) GetPrivateResource(name string) (any, error) {
-	return r.runtime.GetPrivateResource(name)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.GetPrivateResource(name)
 }
 
 func (r *TypedRuntimePlugin) RegisterPrivateResource(name string, resource any) error {
-	return r.runtime.RegisterPrivateResource(name, resource)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return err
+	}
+	return runtime.RegisterPrivateResource(name, resource)
 }
 
 func (r *TypedRuntimePlugin) GetSharedResource(name string) (any, error) {
-	return r.runtime.GetSharedResource(name)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.GetSharedResource(name)
 }
 
 func (r *TypedRuntimePlugin) RegisterSharedResource(name string, resource any) error {
-	return r.runtime.RegisterSharedResource(name, resource)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return err
+	}
+	return runtime.RegisterSharedResource(name, resource)
 }
 
 func (r *TypedRuntimePlugin) EmitPluginEvent(pluginName string, eventType string, data map[string]any) {
-	r.runtime.EmitPluginEvent(pluginName, eventType, data)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return
+	}
+	runtime.EmitPluginEvent(pluginName, eventType, data)
 }
 
 func (r *TypedRuntimePlugin) AddPluginListener(pluginName string, listener plugins.EventListener, filter *plugins.EventFilter) {
-	r.runtime.AddPluginListener(pluginName, listener, filter)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return
+	}
+	runtime.AddPluginListener(pluginName, listener, filter)
 }
 
 func (r *TypedRuntimePlugin) GetPluginEventHistory(pluginName string, filter plugins.EventFilter) []plugins.PluginEvent {
-	return r.runtime.GetPluginEventHistory(pluginName, filter)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil
+	}
+	return runtime.GetPluginEventHistory(pluginName, filter)
 }
 
 func (r *TypedRuntimePlugin) SetEventDispatchMode(mode string) error {
-	return r.runtime.SetEventDispatchMode(mode)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return err
+	}
+	return runtime.SetEventDispatchMode(mode)
 }
 
 func (r *TypedRuntimePlugin) SetEventWorkerPoolSize(size int) {
-	r.runtime.SetEventWorkerPoolSize(size)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return
+	}
+	runtime.SetEventWorkerPoolSize(size)
 }
 
 func (r *TypedRuntimePlugin) SetEventTimeout(timeout time.Duration) {
-	r.runtime.SetEventTimeout(timeout)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return
+	}
+	runtime.SetEventTimeout(timeout)
 }
 
 func (r *TypedRuntimePlugin) GetEventStats() map[string]any {
-	return r.runtime.GetEventStats()
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil
+	}
+	return runtime.GetEventStats()
 }
 
 func (r *TypedRuntimePlugin) WithPluginContext(pluginName string) plugins.Runtime {
-	return r.runtime.WithPluginContext(pluginName)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil
+	}
+	return runtime.WithPluginContext(pluginName)
 }
 
 func (r *TypedRuntimePlugin) GetCurrentPluginContext() string {
-	return r.runtime.GetCurrentPluginContext()
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return ""
+	}
+	return runtime.GetCurrentPluginContext()
 }
 
 func (r *TypedRuntimePlugin) SetConfig(conf config.Config) {
-	r.runtime.SetConfig(conf)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return
+	}
+	runtime.SetConfig(conf)
 }
 
 func (r *TypedRuntimePlugin) GetResourceInfo(name string) (*plugins.ResourceInfo, error) {
-	return r.runtime.GetResourceInfo(name)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.GetResourceInfo(name)
 }
 
 func (r *TypedRuntimePlugin) ListResources() []*plugins.ResourceInfo {
-	return r.runtime.ListResources()
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil
+	}
+	return runtime.ListResources()
 }
 
 func (r *TypedRuntimePlugin) CleanupResources(pluginID string) error {
-	return r.runtime.CleanupResources(pluginID)
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return err
+	}
+	return runtime.CleanupResources(pluginID)
 }
 
 func (r *TypedRuntimePlugin) GetResourceStats() map[string]any {
-	return r.runtime.GetResourceStats()
+	runtime, err := r.compatRuntime()
+	if err != nil {
+		return nil
+	}
+	return runtime.GetResourceStats()
 }

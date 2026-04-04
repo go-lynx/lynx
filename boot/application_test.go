@@ -1,14 +1,65 @@
 package boot
 
 import (
+	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-kratos/kratos/v2/config"
 	lynxapp "github.com/go-lynx/lynx"
 )
 
 // ---- HealthChecker tests ----
+
+type testConfigSource struct {
+	kv *config.KeyValue
+}
+
+type testConfigWatcher struct {
+	stop     chan struct{}
+	stopOnce sync.Once
+}
+
+func (s *testConfigSource) Load() ([]*config.KeyValue, error) {
+	return []*config.KeyValue{s.kv}, nil
+}
+
+func (s *testConfigSource) Watch() (config.Watcher, error) {
+	return &testConfigWatcher{stop: make(chan struct{})}, nil
+}
+
+func (w *testConfigWatcher) Next() ([]*config.KeyValue, error) {
+	<-w.stop
+	return nil, context.Canceled
+}
+
+func (w *testConfigWatcher) Stop() error {
+	w.stopOnce.Do(func() {
+		close(w.stop)
+	})
+	return nil
+}
+
+func newBootTestConfig(t *testing.T, name string) config.Config {
+	t.Helper()
+
+	cfg := config.New(
+		config.WithSource(&testConfigSource{kv: &config.KeyValue{
+			Key:    t.Name() + ".yaml",
+			Format: "yaml",
+			Value:  []byte("lynx:\n  application:\n    name: " + name + "\n    version: v0.0.1\n    close_banner: true\n"),
+		}}),
+	)
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("failed to load boot test config: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = cfg.Close()
+	})
+	return cfg
+}
 
 func newTestHealthChecker(t *testing.T) *HealthChecker {
 	t.Helper()
@@ -87,14 +138,7 @@ func TestFormatStartupElapsed(t *testing.T) {
 		if result == "" {
 			t.Errorf("formatStartupElapsed(%v) returned empty string", tt.elapsed)
 		}
-		found := false
-		for i := range result {
-			if result[i:i+1] == tt.contains {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !strings.Contains(result, tt.contains) {
 			t.Errorf("expected %q in formatStartupElapsed(%v) result %q", tt.contains, tt.elapsed, result)
 		}
 	}
@@ -153,6 +197,48 @@ func TestApplication_Run_NilInstance(t *testing.T) {
 	err := app.Run()
 	if err == nil {
 		t.Error("expected error when running nil application")
+	}
+}
+
+func TestApplication_PublishAppIfConfigured(t *testing.T) {
+	lynxapp.ClearDefaultApp()
+	t.Cleanup(lynxapp.ClearDefaultApp)
+
+	cfg := newBootTestConfig(t, "boot-publish")
+	coreApp, err := lynxapp.NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("expected standalone app: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = coreApp.Close()
+	})
+
+	shell := &Application{publishDefaultApp: true}
+	shell.publishAppIfConfigured(coreApp)
+
+	if got := lynxapp.Lynx(); got != coreApp {
+		t.Fatalf("expected published default app, got %p want %p", got, coreApp)
+	}
+}
+
+func TestApplication_PublishAppIfConfigured_Disabled(t *testing.T) {
+	lynxapp.ClearDefaultApp()
+	t.Cleanup(lynxapp.ClearDefaultApp)
+
+	cfg := newBootTestConfig(t, "boot-no-publish")
+	coreApp, err := lynxapp.NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("expected standalone app: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = coreApp.Close()
+	})
+
+	shell := &Application{publishDefaultApp: false}
+	shell.publishAppIfConfigured(coreApp)
+
+	if got := lynxapp.Lynx(); got != nil {
+		t.Fatalf("expected default app to remain nil when publication is disabled, got %p", got)
 	}
 }
 

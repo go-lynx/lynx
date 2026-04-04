@@ -17,19 +17,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-var (
-	// initMu protects initialization state.
-	initMu sync.Mutex
-	// initErr stores the last initialization error.
-	initErr error
-	// initCompleted indicates whether at least one initialization attempt finished.
-	initCompleted bool
-	// initInProgress indicates whether an initialization attempt is currently running.
-	initInProgress bool
-	// initDone channel signals current initialization attempt completion.
-	initDone chan struct{}
-)
-
 // LynxApp represents the main application instance.
 // It serves as the central coordinator for all application components,
 // managing configuration, logging, plugins, and the control plane.
