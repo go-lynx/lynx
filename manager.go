@@ -29,9 +29,6 @@ type PluginManager interface {
 	GetPluginByID(id string) plugins.Plugin
 	GetPluginCapabilities(name string) (plugins.PluginCapabilities, error)
 	GetRestartRequirementReport() RestartRequirementReport
-	// Deprecated: prefer GetRestartRequirementReport, which reflects Lynx core's
-	// restart-based configuration model directly.
-	GetConfigReloadPlan() ConfigReloadPlan
 	PreparePlug(config config.Config) ([]plugins.Plugin, error)
 
 	// Runtime and config

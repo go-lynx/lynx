@@ -98,6 +98,12 @@ type LynxEventBus struct {
 	// Event deduplication
 	processedEvents sync.Map // map[string]time.Time - eventID -> processing timestamp
 	dedupWindow     time.Duration
+
+	// Catch-all subscribers (used by Subscribe/SubscribeWithFilter).
+	// kelindar/event routes by ev.Type(), so Subscribe[LynxEvent] would only
+	// match events whose Type()==0. We maintain our own list instead.
+	catchAllSubs sync.Map    // map[uint64]func(LynxEvent)
+	catchAllSeq  atomic.Uint64
 }
 
 // NewLynxEventBus creates a new LynxEventBus with the given configuration

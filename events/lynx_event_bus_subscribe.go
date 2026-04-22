@@ -6,6 +6,16 @@ import (
 	kelindarEvent "github.com/kelindar/event"
 )
 
+// dispatchCatchAll calls all catch-all subscribers registered via Subscribe/SubscribeWithFilter.
+func (b *LynxEventBus) dispatchCatchAll(ev LynxEvent) {
+	b.catchAllSubs.Range(func(_, v any) bool {
+		if h, ok := v.(func(LynxEvent)); ok {
+			h(ev)
+		}
+		return true
+	})
+}
+
 // wrapHandler wraps user handler with retry & panic recovery.
 func (b *LynxEventBus) wrapHandler(handler func(LynxEvent)) func(LynxEvent) {
 	return func(ev LynxEvent) {
@@ -13,16 +23,19 @@ func (b *LynxEventBus) wrapHandler(handler func(LynxEvent)) func(LynxEvent) {
 	}
 }
 
-// Subscribe subscribes to events on this bus.
+// Subscribe subscribes to ALL events on this bus.
+// We maintain our own catch-all list because kelindar/event routes by ev.Type(),
+// so using kelindarEvent.Subscribe would only match events whose Type()==0.
 func (b *LynxEventBus) Subscribe(handler func(LynxEvent)) context.CancelFunc {
 	if b.isClosed.Load() {
 		return func() {}
 	}
 	wrapped := b.wrapHandler(handler)
-	cancel := kelindarEvent.Subscribe(b.dispatcher, wrapped)
+	id := b.catchAllSeq.Add(1)
+	b.catchAllSubs.Store(id, wrapped)
 	b.subscriberCount.Add(1)
 	return func() {
-		cancel()
+		b.catchAllSubs.Delete(id)
 		b.subscriberCount.Add(-1)
 	}
 }
@@ -49,7 +62,7 @@ func (b *LynxEventBus) SubscribeTo(eventType EventType, handler func(LynxEvent))
 	}
 }
 
-// SubscribeWithFilter subscribes with a predicate filter.
+// SubscribeWithFilter subscribes with a predicate filter (catch-all with guard).
 func (b *LynxEventBus) SubscribeWithFilter(filter func(LynxEvent) bool, handler func(LynxEvent)) context.CancelFunc {
 	if b.isClosed.Load() {
 		return func() {}
@@ -59,10 +72,11 @@ func (b *LynxEventBus) SubscribeWithFilter(filter func(LynxEvent) bool, handler 
 			handler(ev)
 		}
 	})
-	cancel := kelindarEvent.Subscribe(b.dispatcher, wrapped)
+	id := b.catchAllSeq.Add(1)
+	b.catchAllSubs.Store(id, wrapped)
 	b.subscriberCount.Add(1)
 	return func() {
-		cancel()
+		b.catchAllSubs.Delete(id)
 		b.subscriberCount.Add(-1)
 	}
 }

@@ -19,8 +19,8 @@ func ExampleCache_basic() {
 	}
 	defer c.Close()
 
-	// Set a value with 5 minute TTL
-	err = c.Set("user:123", "John Doe", 5*time.Minute)
+	// SetSync ensures the write is committed before the next read.
+	err = c.SetSync("user:123", "John Doe", 5*time.Minute)
 	if err != nil {
 		log.Fatal(err)
 	}

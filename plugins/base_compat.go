@@ -89,3 +89,15 @@ func (p *TypedBasePlugin[T]) SupportsCapability(cap UpgradeCapability) bool {
 	}
 	return false
 }
+
+// Deprecated: retained only for legacy compatibility; base plugin does not
+// support runtime configuration reload.
+func (p *TypedBasePlugin[T]) Configure(conf any) error {
+	return NewPluginError(p.id, "Configure", "Runtime configuration reload is not supported by the base plugin", ErrRuntimeConfigNotSupported)
+}
+
+// Deprecated: retained only for legacy compatibility; base plugin does not
+// support runtime configuration rollback.
+func (p *TypedBasePlugin[T]) RollbackConfig(previous any) error {
+	return NewPluginError(p.id, "RollbackConfig", "Runtime configuration rollback is not supported by the base plugin", ErrRuntimeConfigNotSupported)
+}

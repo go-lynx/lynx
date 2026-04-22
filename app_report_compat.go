@@ -8,7 +8,13 @@ func (a *LynxApp) ConfigReloadPlan() ConfigReloadPlan {
 	if a == nil || a.pluginManager == nil {
 		return ConfigReloadPlan{}
 	}
-	return a.pluginManager.GetConfigReloadPlan()
+	report := a.pluginManager.GetRestartRequirementReport()
+	return ConfigReloadPlan{
+		HotReloadable:   make([]ConfigReloadEntry, 0),
+		RestartRequired: append([]ConfigReloadEntry(nil), report.RestartRequired...),
+		Unsupported:     make([]ConfigReloadEntry, 0),
+		Invalid:         append([]ConfigReloadEntry(nil), report.Invalid...),
+	}
 }
 
 // RuntimeReport is retained as a compatibility report shape for older callers.

@@ -204,9 +204,6 @@ type PluginCapabilities struct {
 	HasStartupTasks     bool
 	HasCleanupTasks     bool
 	HasHealthCheck      bool
-	HasConfigurable     bool
-	HasConfigValidator  bool
-	HasConfigRollback   bool
 	HasLifecycleWithCtx bool
 	IsTrulyContextAware bool
 	IsManagedPlugin     bool
@@ -223,9 +220,6 @@ func DescribePluginCapabilities(plugin any) PluginCapabilities {
 	_, hasStartupTasks := plugin.(StartupTasker)
 	_, hasCleanupTasks := plugin.(CleanupTasker)
 	_, hasHealthCheck := plugin.(HealthChecker)
-	_, hasConfigurable := plugin.(Configurable)
-	_, hasConfigValidator := plugin.(ConfigValidator)
-	_, hasConfigRollback := plugin.(ConfigRollbacker)
 	_, hasLifecycleWithCtx := plugin.(LifecycleWithContext)
 	isContextAware := false
 	if ca, ok := plugin.(ContextAwareness); ok {
@@ -246,9 +240,6 @@ func DescribePluginCapabilities(plugin any) PluginCapabilities {
 		HasStartupTasks:     hasStartupTasks,
 		HasCleanupTasks:     hasCleanupTasks,
 		HasHealthCheck:      hasHealthCheck,
-		HasConfigurable:     hasConfigurable,
-		HasConfigValidator:  hasConfigValidator,
-		HasConfigRollback:   hasConfigRollback,
 		HasLifecycleWithCtx: hasLifecycleWithCtx,
 		IsTrulyContextAware: isContextAware,
 		IsManagedPlugin:     isManaged,
