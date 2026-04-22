@@ -304,11 +304,11 @@ func TestGenerateAutoCertificates_EmptyServiceName(t *testing.T) {
 	}
 }
 
-func TestGenerateAutoCertificates_WithSANs(t *testing.T) {
+func TestGenerateAutoCertificates_WithK8sSANs(t *testing.T) {
 	sans := []string{"127.0.0.1", "my-service.default.svc.cluster.local"}
 	result, err := GenerateAutoCertificates("my-svc", "my-host", sans, time.Hour)
 	if err != nil {
-		t.Fatalf("GenerateAutoCertificates with SANs: %v", err)
+		t.Fatalf("GenerateAutoCertificates with k8s SANs: %v", err)
 	}
 	if len(result.CertPEM) == 0 {
 		t.Error("expected non-empty CertPEM")

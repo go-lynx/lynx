@@ -132,6 +132,7 @@ func (b *LynxEventBus) publish(ev LynxEvent) {
 	} else {
 		kelindarEvent.Publish(b.dispatcher, ev)
 	}
+	b.dispatchCatchAll(ev)
 	b.monitor().UpdateQueueSize(b.totalQueueSize())
 }
 
@@ -157,20 +158,27 @@ func (b *LynxEventBus) publishBatch(events []LynxEvent) {
 	if b.workerPool != nil {
 		for i := 0; i < limit; i++ {
 			ev := events[i]
-			if err := b.workerPool.Submit(func() { kelindarEvent.Publish(b.dispatcher, ev) }); err != nil {
+			if err := b.workerPool.Submit(func() {
+				kelindarEvent.Publish(b.dispatcher, ev)
+				b.dispatchCatchAll(ev)
+			}); err != nil {
 				if b.logger != nil {
 					log.NewHelper(b.logger).Warnf("worker pool submit failed: %v", err)
 				}
 				b.monitor().SetError(fmt.Errorf("worker_pool_submit_failed: %v", err))
 				kelindarEvent.Publish(b.dispatcher, ev)
+				b.dispatchCatchAll(ev)
 			}
 		}
 		for i := limit; i < len(events); i++ {
-			kelindarEvent.Publish(b.dispatcher, events[i])
+			ev := events[i]
+			kelindarEvent.Publish(b.dispatcher, ev)
+			b.dispatchCatchAll(ev)
 		}
 	} else {
 		for i := range events {
 			kelindarEvent.Publish(b.dispatcher, events[i])
+			b.dispatchCatchAll(events[i])
 		}
 	}
 	b.monitor().UpdateQueueSize(b.totalQueueSize())

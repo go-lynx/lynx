@@ -416,12 +416,6 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 			Category: "health",
 		})
 		return report
-	case StatusUpgrading:
-		p.applyLegacyTransitionalHealth(&report, "Plugin is in a legacy upgrade compatibility state")
-		return report
-	case StatusRollback:
-		p.applyLegacyTransitionalHealth(&report, "Plugin is in a legacy rollback compatibility state")
-		return report
 	case StatusInitializing:
 		report.Status = "initializing"
 		report.Message = "Plugin is being initialized"
@@ -503,18 +497,6 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 	}
 
 	return report
-}
-
-// Configure is intentionally unsupported by the base plugin.
-// Plugins that really need plugin-local runtime configuration must implement
-// their own configuration flow explicitly.
-func (p *TypedBasePlugin[T]) Configure(conf any) error {
-	return NewPluginError(p.id, "Configure", "Runtime configuration reload is not supported by the base plugin", ErrRuntimeConfigNotSupported)
-}
-
-// RollbackConfig is intentionally unsupported by the base plugin.
-func (p *TypedBasePlugin[T]) RollbackConfig(previous any) error {
-	return NewPluginError(p.id, "RollbackConfig", "Runtime configuration rollback is not supported by the base plugin", ErrRuntimeConfigNotSupported)
 }
 
 // GetDependencies returns a copy of the plugin dependencies so callers cannot

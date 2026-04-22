@@ -76,12 +76,10 @@ func (s *UserService) UpdateUser(ctx context.Context, user *User) error {
 		return err
 	}
 
-	// Invalidate cache
+	// Invalidate and immediately re-populate cache with updated data.
 	cacheKey := fmt.Sprintf("user:%s", user.ID)
 	s.cache.Delete(cacheKey)
-
-	// Optionally, pre-warm the cache with updated data
-	s.cache.Set(cacheKey, user, 5*time.Minute)
+	_ = s.cache.SetSync(cacheKey, user, 5*time.Minute)
 
 	return nil
 }
@@ -269,13 +267,14 @@ func NewAPICache() (*APICache, error) {
 	return &APICache{cache: cache}, nil
 }
 
-// CacheResponse caches an API response
+// CacheResponse caches an API response.
+// Uses SetSync to ensure read-your-writes consistency.
 func (a *APICache) CacheResponse(endpoint string, response any, ttl time.Duration) error {
 	data, err := json.Marshal(response)
 	if err != nil {
 		return err
 	}
-	return a.cache.Set(endpoint, data, ttl)
+	return a.cache.SetSync(endpoint, data, ttl)
 }
 
 // GetCachedResponse retrieves a cached API response
@@ -324,8 +323,7 @@ func (s *SessionCache) CreateSession(userID string, ttl time.Duration) (*Session
 		ExpiresAt: time.Now().Add(ttl),
 	}
 
-	err := s.cache.Set(session.ID, session, ttl)
-	if err != nil {
+	if err := s.cache.SetSync(session.ID, session, ttl); err != nil {
 		return nil, err
 	}
 
@@ -353,13 +351,14 @@ func (s *SessionCache) GetSession(sessionID string) (*Session, error) {
 	return session, nil
 }
 
-// UpdateSession updates session data
+// UpdateSession updates session data.
+// Uses SetSync to ensure read-your-writes consistency.
 func (s *SessionCache) UpdateSession(session *Session) error {
 	ttl := time.Until(session.ExpiresAt)
 	if ttl <= 0 {
 		return fmt.Errorf("session expired")
 	}
-	return s.cache.Set(session.ID, session, ttl)
+	return s.cache.SetSync(session.ID, session, ttl)
 }
 
 // DeleteSession removes a session
