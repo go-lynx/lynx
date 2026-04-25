@@ -67,6 +67,22 @@ func TestValidateAutoConfig_IntervalOutOfRange(t *testing.T) {
 	}
 }
 
+func TestValidateAutoConfig_CertValidity(t *testing.T) {
+	v := NewConfigValidator()
+	if err := v.ValidateAutoConfig(&conf.AutoConfig{RotationInterval: "24h", CertValidity: "48h"}); err != nil {
+		t.Fatalf("expected valid cert_validity: %v", err)
+	}
+	if err := v.ValidateAutoConfig(&conf.AutoConfig{CertValidity: "invalid"}); err == nil {
+		t.Fatal("expected invalid cert_validity to fail")
+	}
+	if err := v.ValidateAutoConfig(&conf.AutoConfig{CertValidity: "30m"}); err == nil {
+		t.Fatal("expected too short cert_validity to fail")
+	}
+	if err := v.ValidateAutoConfig(&conf.AutoConfig{RotationInterval: "24h", CertValidity: "12h"}); err == nil {
+		t.Fatal("expected cert_validity shorter than rotation_interval to fail")
+	}
+}
+
 func TestValidateSharedCAConfig_Nil(t *testing.T) {
 	v := NewConfigValidator()
 	if err := v.ValidateSharedCAConfig(nil); err != nil {

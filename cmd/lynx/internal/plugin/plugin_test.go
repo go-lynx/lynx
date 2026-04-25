@@ -6,17 +6,33 @@ import (
 
 func TestPluginRegistry(t *testing.T) {
 	registry := NewPluginRegistry()
+	registry.plugins["redis"] = &PluginMetadata{
+		Name:        "redis",
+		Type:        TypeNoSQL,
+		Description: "Redis database plugin",
+		Tags:        []string{"database", "cache"},
+		Official:    true,
+		Status:      StatusNotInstalled,
+	}
+	registry.plugins["http"] = &PluginMetadata{
+		Name:        "http",
+		Type:        TypeService,
+		Description: "HTTP service plugin",
+		Tags:        []string{"service"},
+		Official:    true,
+		Status:      StatusNotInstalled,
+	}
 
 	// Test getting all plugins
 	plugins := registry.GetAllPlugins()
 	if len(plugins) == 0 {
-		t.Error("Expected some plugins in registry")
+		t.Fatal("Expected some plugins in registry")
 	}
 
 	// Test getting specific plugin
 	redis, err := registry.GetPlugin("redis")
 	if err != nil {
-		t.Errorf("Failed to get redis plugin: %v", err)
+		t.Fatalf("Failed to get redis plugin: %v", err)
 	}
 	if redis.Name != "redis" {
 		t.Errorf("Expected plugin name 'redis', got %s", redis.Name)

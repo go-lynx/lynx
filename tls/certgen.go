@@ -1,9 +1,11 @@
 package tls
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -202,12 +204,12 @@ func GenerateServerCertFromCA(caCertPEM, caKeyPEM []byte, serviceName, hostname 
 	return &CertGenResult{
 		CertPEM:   serverPEM,
 		KeyPEM:    serverKeyPEM,
-		RootCAPEM: caCertPEM,
+		RootCAPEM: append([]byte(nil), caCertPEM...),
 	}, nil
 }
 
 // parseCAFromPEM decodes CA cert and key from PEM; supports EC and RSA private keys.
-func parseCAFromPEM(caCertPEM, caKeyPEM []byte) (*x509.Certificate, any, error) {
+func parseCAFromPEM(caCertPEM, caKeyPEM []byte) (*x509.Certificate, crypto.Signer, error) {
 	block, _ := pem.Decode(caCertPEM)
 	if block == nil {
 		return nil, nil, fmt.Errorf("failed to decode CA cert PEM")
@@ -216,21 +218,35 @@ func parseCAFromPEM(caCertPEM, caKeyPEM []byte) (*x509.Certificate, any, error) 
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse CA cert: %w", err)
 	}
+	if !caCert.IsCA || caCert.KeyUsage&x509.KeyUsageCertSign == 0 {
+		return nil, nil, fmt.Errorf("CA cert must be a certificate authority with keyCertSign usage")
+	}
 	keyBlock, _ := pem.Decode(caKeyPEM)
 	if keyBlock == nil {
 		return nil, nil, fmt.Errorf("failed to decode CA key PEM")
 	}
-	var caKey any
+	var parsedKey any
 	switch keyBlock.Type {
 	case "EC PRIVATE KEY":
-		caKey, err = x509.ParseECPrivateKey(keyBlock.Bytes)
+		parsedKey, err = x509.ParseECPrivateKey(keyBlock.Bytes)
+	case "RSA PRIVATE KEY":
+		parsedKey, err = x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
 	case "PRIVATE KEY":
-		caKey, err = x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
+		parsedKey, err = x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
 	default:
 		return nil, nil, fmt.Errorf("unsupported CA key PEM type: %s", keyBlock.Type)
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse CA key: %w", err)
+	}
+	caKey, ok := parsedKey.(crypto.Signer)
+	if !ok {
+		return nil, nil, fmt.Errorf("unsupported CA key type: %T", parsedKey)
+	}
+	switch caKey.(type) {
+	case *ecdsa.PrivateKey, *rsa.PrivateKey:
+	default:
+		return nil, nil, fmt.Errorf("unsupported CA signer key type: %T", caKey)
 	}
 	return caCert, caKey, nil
 }
@@ -238,8 +254,12 @@ func parseCAFromPEM(caCertPEM, caKeyPEM []byte) (*x509.Certificate, any, error) 
 // buildServerSAN returns DNS names and IP addresses for SAN from serviceName, hostname, sans.
 func buildServerSAN(serviceName, hostname string, sans []string) (dnsNames []string, ipAddrs []net.IP) {
 	names := make(map[string]struct{})
-	names[hostname] = struct{}{}
-	names[serviceName] = struct{}{}
+	if hostname = strings.TrimSpace(hostname); hostname != "" {
+		names[hostname] = struct{}{}
+	}
+	if serviceName = strings.TrimSpace(serviceName); serviceName != "" {
+		names[serviceName] = struct{}{}
+	}
 	for _, s := range sans {
 		s = strings.TrimSpace(s)
 		if s != "" {

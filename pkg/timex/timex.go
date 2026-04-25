@@ -2,9 +2,12 @@ package timex
 
 import (
 	"fmt"
-	"math/rand"
+	"os"
+	"sync/atomic"
 	"time"
 )
+
+var jitterSeq atomic.Uint64
 
 // NowUTC returns the current time in UTC.
 func NowUTC() time.Time { return time.Now().UTC() }
@@ -47,9 +50,75 @@ func Jitter(d time.Duration, ratio float64) time.Duration {
 	} else if ratio > 1 {
 		ratio = 1
 	}
-	// Generate a random float in [0, ratio]
-	f := rand.Float64() * ratio
+	f := randFloat64() * ratio
 	return time.Duration(float64(d) * (1 + f))
+}
+
+// JitterAround returns d multiplied by a factor in [1-ratio, 1+ratio].
+func JitterAround(d time.Duration, ratio float64) time.Duration {
+	if d <= 0 || ratio == 0 {
+		return d
+	}
+	if ratio < 0 {
+		ratio = 0
+	} else if ratio > 1 {
+		ratio = 1
+	}
+	factor := 1 - ratio + randFloat64()*2*ratio
+	if factor <= 0 {
+		return d
+	}
+	return time.Duration(float64(d) * factor)
+}
+
+// ExponentialBackoff returns base*2^attempt capped at max, then applies +/- jitterRatio.
+func ExponentialBackoff(base, max time.Duration, attempt int, jitterRatio float64) time.Duration {
+	if base <= 0 {
+		return 0
+	}
+	if attempt < 0 {
+		attempt = 0
+	}
+	delay := base
+	for i := 0; i < attempt; i++ {
+		if max > 0 && delay >= max/2 {
+			delay = max
+			break
+		}
+		delay *= 2
+	}
+	if max > 0 && delay > max {
+		delay = max
+	}
+	delay = JitterAround(delay, jitterRatio)
+	if max > 0 && delay > max {
+		return max
+	}
+	return delay
+}
+
+// RandomDuration returns a pseudo-random duration in [min, max].
+func RandomDuration(min, max time.Duration) time.Duration {
+	if max <= min {
+		return min
+	}
+	span := uint64((max - min).Nanoseconds())
+	if span == 0 {
+		return min
+	}
+	return min + time.Duration(randUint64()%(span+1))
+}
+
+func randFloat64() float64 {
+	return float64(randUint64()>>11) * (1.0 / (1 << 53))
+}
+
+func randUint64() uint64 {
+	x := jitterSeq.Add(0x9e3779b97f4a7c15)
+	x += uint64(time.Now().UnixNano()) ^ uint64(os.Getpid())
+	x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9
+	x = (x ^ (x >> 27)) * 0x94d049bb133111eb
+	return x ^ (x >> 31)
 }
 
 // Within reports whether t is within the closed interval [start, end].

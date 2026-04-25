@@ -159,6 +159,17 @@ func TestErrorRecoveryManager_Stop_Idempotent(t *testing.T) {
 	erm.Stop()
 }
 
+func TestMemoryStatsCache_CanRestartAfterCleanup(t *testing.T) {
+	first := getMemoryStats()
+	cleanupMemoryStatsCache()
+	second := getMemoryStats()
+	cleanupMemoryStatsCache()
+
+	if first == 0 && second == 0 {
+		t.Fatal("expected memory stats cache to initialize and restart")
+	}
+}
+
 func TestErrorRecoveryManager_MaxErrorHistoryCapped(t *testing.T) {
 	erm := NewErrorRecoveryManager(nil)
 	defer erm.Stop()

@@ -53,6 +53,8 @@ var (
 	globalMetrics  *LogPerformanceMetrics
 	metricsEnabled bool
 
+	loggerLifecycleMu sync.Mutex
+
 	// Logger initialization state
 	loggerInitialized atomic.Bool
 	monitorStopCh     chan struct{} // channel to stop performance monitor
@@ -225,6 +227,13 @@ func rebuildLogger() {
 // Returns:
 //   - error: An error if initialization fails, nil otherwise
 func InitLogger(name string, host string, version string, cfg kconf.Config) error {
+	loggerLifecycleMu.Lock()
+	defer loggerLifecycleMu.Unlock()
+
+	if loggerInitialized.Load() {
+		cleanupLoggersLocked()
+	}
+
 	// Validate input parameters
 	if name == "" {
 		return fmt.Errorf("service name cannot be empty")
@@ -494,9 +503,11 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	// Initialize stop channels for background goroutines
 	monitorStopCh = make(chan struct{})
 	configWatchStopCh = make(chan struct{})
+	monitorCh := monitorStopCh
+	watchStopCh := configWatchStopCh
 
 	// Start performance monitoring goroutine
-	go monitorLogPerformance()
+	go monitorLogPerformance(monitorCh)
 
 	// Mark logger as initialized
 	loggerInitialized.Store(true)
@@ -578,7 +589,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			defer ticker.Stop()
 			for {
 				select {
-				case <-configWatchStopCh:
+				case <-watchStopCh:
 					return
 				case <-ticker.C:
 					var nc lconf.Log
@@ -603,13 +614,13 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 }
 
 // monitorLogPerformance monitors logging performance and reports metrics
-func monitorLogPerformance() {
+func monitorLogPerformance(stopCh <-chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second) // Report every 30 seconds
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-monitorStopCh:
+		case <-stopCh:
 			return
 		case <-ticker.C:
 			if !metricsEnabled {
@@ -681,6 +692,12 @@ func EnablePerformanceMonitoring(enabled bool) {
 
 // CleanupLoggers properly closes all writers and cleans up resources
 func CleanupLoggers() {
+	loggerLifecycleMu.Lock()
+	defer loggerLifecycleMu.Unlock()
+	cleanupLoggersLocked()
+}
+
+func cleanupLoggersLocked() {
 	// Mark logger as not initialized
 	loggerInitialized.Store(false)
 

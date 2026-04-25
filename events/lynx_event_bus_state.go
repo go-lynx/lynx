@@ -108,7 +108,7 @@ func (b *LynxEventBus) GetWorkerPoolStats() (cap int, running int, free int, wai
 // checkDegradation toggles degradation state based on configured thresholds and queue usage.
 func (b *LynxEventBus) checkDegradation() {
 	capTotal := b.totalQueueCap()
-	thr := b.config.DegradationThreshold
+	thr := b.configSnapshot().DegradationThreshold
 	if capTotal <= 0 || thr <= 0 {
 		return
 	}
@@ -117,7 +117,8 @@ func (b *LynxEventBus) checkDegradation() {
 
 // checkDegradationWithSize checks degradation using pre-calculated queue size and capacity.
 func (b *LynxEventBus) checkDegradationWithSize(queueSize, queueCap int) {
-	thr := b.config.DegradationThreshold
+	cfg := b.configSnapshot()
+	thr := cfg.DegradationThreshold
 	if queueCap <= 0 || thr <= 0 {
 		return
 	}
@@ -127,18 +128,18 @@ func (b *LynxEventBus) checkDegradationWithSize(queueSize, queueCap int) {
 		if usage >= thr {
 			b.isDegraded.Store(true)
 			b.degradationStartTime = time.Now()
-			if b.config.DegradationMode == DegradationModePause {
+			if cfg.DegradationMode == DegradationModePause {
 				b.Pause()
 			}
 			if b.logger != nil {
-				log.NewHelper(b.logger).Warnf("bus degraded: bus=%d usage=%d%% thr=%d%% mode=%s", b.busType, usage, thr, b.config.DegradationMode)
+				log.NewHelper(b.logger).Warnf("bus degraded: bus=%d usage=%d%% thr=%d%% mode=%s", b.busType, usage, thr, cfg.DegradationMode)
 			}
 			b.monitor().UpdateHealth(false)
 		}
 		return
 	}
 
-	rec := b.config.DegradationRecoverThreshold
+	rec := cfg.DegradationRecoverThreshold
 	if rec <= 0 {
 		rec = thr - 10
 		if rec < 1 {
@@ -147,7 +148,7 @@ func (b *LynxEventBus) checkDegradationWithSize(queueSize, queueCap int) {
 	}
 	if usage <= rec {
 		b.isDegraded.Store(false)
-		if b.config.DegradationMode == DegradationModePause {
+		if cfg.DegradationMode == DegradationModePause {
 			b.Resume()
 		}
 		if b.logger != nil {
@@ -159,18 +160,20 @@ func (b *LynxEventBus) checkDegradationWithSize(queueSize, queueCap int) {
 
 // GetEventHistory returns events from history that match the given filter.
 func (b *LynxEventBus) GetEventHistory(filter *EventFilter) []LynxEvent {
-	if b.history == nil {
+	_, _, history, _, _ := b.runtimeSnapshot()
+	if history == nil {
 		return []LynxEvent{}
 	}
 	if filter == nil {
-		return b.history.GetEvents()
+		return history.GetEvents()
 	}
-	return b.history.GetEventsByFilter(filter)
+	return history.GetEventsByFilter(filter)
 }
 
 // GetPluginEventHistory returns events from history for a specific plugin.
 func (b *LynxEventBus) GetPluginEventHistory(pluginID string, filter *EventFilter) []LynxEvent {
-	if b.history == nil {
+	_, _, history, _, _ := b.runtimeSnapshot()
+	if history == nil {
 		return []LynxEvent{}
 	}
 	pluginFilter := &EventFilter{PluginIDs: []string{pluginID}}
@@ -198,7 +201,7 @@ func (b *LynxEventBus) GetPluginEventHistory(pluginID string, filter *EventFilte
 			pluginFilter.Statuses = filter.Statuses
 		}
 	}
-	return b.history.GetEventsByFilter(pluginFilter)
+	return history.GetEventsByFilter(pluginFilter)
 }
 
 func (b *LynxEventBus) monitor() *EventMonitor {

@@ -82,7 +82,9 @@ func (r *UnifiedRuntime) RegisterSharedResource(name string, resource any) error
 	r.resourceOpMu.Unlock()
 
 	if oldResource != nil {
-		_ = r.cleanupResourceGracefully(name, oldResource)
+		if err := r.cleanupResourceGracefully(name, oldResource); err != nil {
+			return fmt.Errorf("cleanup replaced shared resource %q: %w", name, err)
+		}
 	}
 	r.scheduleResourceSizeEstimate(key, resource)
 	return nil
@@ -144,7 +146,9 @@ func (r *UnifiedRuntime) RegisterPrivateResource(name string, resource any) erro
 	r.resourceOpMu.Unlock()
 
 	if oldResource != nil {
-		_ = r.cleanupResourceGracefully(displayName, oldResource)
+		if err := r.cleanupResourceGracefully(displayName, oldResource); err != nil {
+			return fmt.Errorf("cleanup replaced private resource %q: %w", displayName, err)
+		}
 	}
 	r.scheduleResourceSizeEstimate(key, resource)
 	return nil

@@ -1,8 +1,12 @@
 package tls
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
+	"math/big"
 	"net"
 	"testing"
 	"time"
@@ -168,6 +172,58 @@ func TestGenerateServerCertFromCA(t *testing.T) {
 	caCert, _ := x509.ParseCertificate(caBlock.Bytes)
 	if err := certB.CheckSignatureFrom(caCert); err != nil {
 		t.Errorf("server cert should be signed by CA: %v", err)
+	}
+}
+
+func TestGenerateServerCertFromCA_RSAKey(t *testing.T) {
+	caKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA CA key: %v", err)
+	}
+	caTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "rsa-ca"},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatalf("create RSA CA cert: %v", err)
+	}
+	caCertPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
+	caKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(caKey)})
+
+	result, err := GenerateServerCertFromCA(caCertPEM, caKeyPEM, "svc-rsa", "host-rsa", nil, time.Hour)
+	if err != nil {
+		t.Fatalf("GenerateServerCertFromCA with RSA CA failed: %v", err)
+	}
+	block, _ := pem.Decode(result.CertPEM)
+	if block == nil {
+		t.Fatal("failed to decode server cert")
+	}
+	serverCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse server cert: %v", err)
+	}
+	caCert, err := x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatalf("parse CA cert: %v", err)
+	}
+	if err := serverCert.CheckSignatureFrom(caCert); err != nil {
+		t.Fatalf("server cert should be signed by RSA CA: %v", err)
+	}
+}
+
+func TestGenerateServerCertFromCA_RejectsNonCA(t *testing.T) {
+	leaf, err := GenerateAutoCertificates("leaf", "leaf-host", nil, time.Hour)
+	if err != nil {
+		t.Fatalf("GenerateAutoCertificates failed: %v", err)
+	}
+	if _, err := GenerateServerCertFromCA(leaf.CertPEM, leaf.KeyPEM, "svc", "host", nil, time.Hour); err == nil {
+		t.Fatal("expected non-CA certificate to be rejected")
 	}
 }
 

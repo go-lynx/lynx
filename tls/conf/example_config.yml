@@ -83,7 +83,7 @@ lynx:
 #       min_tls_version: "1.3"
 #       cipher_suites: "TLS_AES_256_GCM_SHA384,TLS_CHACHA20_POLY1305_SHA256"
 #       session_cache_size: 128
-#       session_ticket_key: "your-session-ticket-key-here"
+#       session_ticket_key: ""
 
 # Authentication Type Reference:
 # 0: No client authentication (default)

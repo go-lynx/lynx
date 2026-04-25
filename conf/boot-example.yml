@@ -12,8 +12,8 @@ lynx:
   polaris:
     # Polaris namespace used to isolate resources of different environments or businesses
     namespace: dev
-    # Authentication token for accessing Polaris service
-    token: polaris-token
+    # Authentication token for accessing Polaris service; inject per environment
+    token: ""
     # Service instance weight for load balancing, higher value means higher probability of being selected
     weight: 100
     # Service instance Time To Live (TTL) in seconds, used for heartbeat detection

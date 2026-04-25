@@ -1,6 +1,7 @@
 package events
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -142,10 +143,12 @@ func CloseGlobalEventBus() error {
 		// Publish shutdown event to all buses with timeout.
 		// shutdownDone is a close-only notification channel: the goroutine calls
 		// close(shutdownDone) exactly once (via sync.Once) to signal completion.
-		// Using send+close on the same channel was racy and could panic.
-		shutdownTimeout := time.After(500 * time.Millisecond)
+		// A context prevents two receivers from racing over one timer channel.
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancelShutdown()
 		shutdownDone := make(chan struct{})
 		var shutdownOnce sync.Once
+		manager := globalManager
 
 		go func() {
 			defer func() {
@@ -155,10 +158,10 @@ func CloseGlobalEventBus() error {
 				// Signal completion exactly once by closing the channel.
 				shutdownOnce.Do(func() { close(shutdownDone) })
 			}()
-			for busType := range globalManager.buses {
-				if bus := globalManager.GetBus(busType); bus != nil {
+			for busType := range manager.buses {
+				if bus := manager.GetBus(busType); bus != nil {
 					select {
-					case <-shutdownTimeout:
+					case <-shutdownCtx.Done():
 						return
 					default:
 						bus.Publish(shutdownEvent)
@@ -171,11 +174,11 @@ func CloseGlobalEventBus() error {
 		select {
 		case <-shutdownDone:
 			// Shutdown event published to all buses.
-		case <-shutdownTimeout:
+		case <-shutdownCtx.Done():
 			// Timeout reached, proceed with closing.
 		}
 
-		return globalManager.Close()
+		return manager.Close()
 	}
 
 	if globalFallbackManager != nil {

@@ -40,7 +40,9 @@ type CertificateManager struct {
 	autoCAKeyPEM  []byte
 
 	// TLS configuration
-	tlsConfig *tls.Config
+	tlsConfig            *tls.Config
+	parsedCertificate    tls.Certificate
+	hasParsedCertificate bool
 
 	// File monitoring
 	watchTicker *time.Ticker
@@ -87,6 +89,9 @@ func (cm *CertificateManager) Initialize() error {
 
 	if cm.initialized {
 		return nil
+	}
+	if cm.stopChan == nil {
+		cm.stopChan = make(chan struct{})
 	}
 
 	// Set default source type if not specified
@@ -208,6 +213,11 @@ func (cm *CertificateManager) loadFromControlPlane() error {
 		return fmt.Errorf("failed to get config from control plane: %w", err)
 	}
 	c := config.New(config.WithSource(cfgSource))
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Warnf("Failed to close TLS control plane config: %v", err)
+		}
+	}()
 	if err := c.Load(); err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
@@ -343,6 +353,11 @@ func (cm *CertificateManager) loadSharedCA(shared *conf.SharedCAConfig) (caCertP
 			return nil, nil, fmt.Errorf("get shared CA config from control plane: %w", err)
 		}
 		c := config.New(config.WithSource(cfgSource))
+		defer func() {
+			if err := c.Close(); err != nil {
+				log.Warnf("Failed to close shared CA control plane config: %v", err)
+			}
+		}()
 		if err := c.Load(); err != nil {
 			return nil, nil, fmt.Errorf("load shared CA config: %w", err)
 		}
@@ -369,12 +384,13 @@ func (cm *CertificateManager) startAutoRotation() {
 		cfg = &conf.AutoConfig{}
 	}
 	interval := cfg.ParseAutoRotationInterval()
+	stopChan := cm.stopChan
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-cm.stopChan:
+			case <-stopChan:
 				return
 			case <-ticker.C:
 				log.Infof("Auto certificate rotation triggered")
@@ -425,6 +441,19 @@ func (cm *CertificateManager) buildTLSConfig() error {
 	if len(cm.privateKey) == 0 {
 		return fmt.Errorf("private key data is empty")
 	}
+	parsedCert, err := tls.X509KeyPair(cm.certificate, cm.privateKey)
+	if err != nil {
+		return fmt.Errorf("load X509 key pair: %w", err)
+	}
+	if len(parsedCert.Certificate) > 0 {
+		leaf, err := x509.ParseCertificate(parsedCert.Certificate[0])
+		if err != nil {
+			return fmt.Errorf("parse leaf certificate: %w", err)
+		}
+		parsedCert.Leaf = leaf
+	}
+	cm.parsedCertificate = parsedCert
+	cm.hasParsedCertificate = true
 
 	// Create certificate pool for root CA (client auth / mutual TLS)
 	var certPool *x509.CertPool
@@ -435,22 +464,14 @@ func (cm *CertificateManager) buildTLSConfig() error {
 		}
 	}
 
-	// Use GetCertificate so each new TLS handshake reads the current cert from the manager.
+	// Use GetCertificate so each new TLS handshake reads the parsed current cert from the manager.
 	// After rotation, new connections get the new certificate without process restart.
 	cm.tlsConfig = &tls.Config{
 		GetCertificate: func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			certPEM := cm.GetCertificate()
-			keyPEM := cm.GetPrivateKey()
-			if len(certPEM) == 0 || len(keyPEM) == 0 {
-				return nil, fmt.Errorf("no certificate or key")
-			}
-			cert, err := tls.X509KeyPair(certPEM, keyPEM)
-			if err != nil {
-				return nil, fmt.Errorf("load X509 key pair: %w", err)
-			}
-			return &cert, nil
+			return cm.currentTLSCertificate()
 		},
-		ClientCAs: certPool,
+		ClientCAs:  certPool,
+		MinVersion: tls.VersionTLS12,
 	}
 
 	// Apply common configuration if available
@@ -459,6 +480,34 @@ func (cm *CertificateManager) buildTLSConfig() error {
 	}
 
 	return nil
+}
+
+func (cm *CertificateManager) currentTLSCertificate() (*tls.Certificate, error) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	if !cm.hasParsedCertificate {
+		return nil, fmt.Errorf("no certificate or key")
+	}
+	cert := cloneTLSCertificate(cm.parsedCertificate)
+	return &cert, nil
+}
+
+func cloneTLSCertificate(cert tls.Certificate) tls.Certificate {
+	clone := cert
+	if cert.Certificate != nil {
+		clone.Certificate = make([][]byte, len(cert.Certificate))
+		for i := range cert.Certificate {
+			clone.Certificate[i] = append([]byte(nil), cert.Certificate[i]...)
+		}
+	}
+	clone.OCSPStaple = append([]byte(nil), cert.OCSPStaple...)
+	if cert.SignedCertificateTimestamps != nil {
+		clone.SignedCertificateTimestamps = make([][]byte, len(cert.SignedCertificateTimestamps))
+		for i := range cert.SignedCertificateTimestamps {
+			clone.SignedCertificateTimestamps[i] = append([]byte(nil), cert.SignedCertificateTimestamps[i]...)
+		}
+	}
+	return clone
 }
 
 // applyCommonConfig applies common TLS configuration options
@@ -529,23 +578,26 @@ func (cm *CertificateManager) startFileMonitoring() {
 	cm.watcher.Start(reloadInterval)
 
 	// Start monitoring goroutine
-	go cm.monitorFiles(reloadInterval)
+	go cm.monitorFiles(cm.stopChan, reloadInterval)
 	log.Infof("File monitoring started with reload interval: %v", reloadInterval)
 }
 
 // monitorFiles monitors certificate files for changes
-func (cm *CertificateManager) monitorFiles(reloadInterval time.Duration) {
+func (cm *CertificateManager) monitorFiles(stopChan <-chan struct{}, reloadInterval time.Duration) {
 	// Use file watcher for change detection
 	for {
 		select {
-		case <-cm.watcher.changeChan:
+		case _, ok := <-cm.watcher.changeChan:
+			if !ok {
+				return
+			}
 			log.Infof("Certificate files changed, reloading...")
 			if err := cm.reloadCertificates(); err != nil {
 				log.Errorf("Failed to reload certificates: %v", err)
 			} else {
 				log.Infof("Certificates reloaded successfully")
 			}
-		case <-cm.stopChan:
+		case <-stopChan:
 			return
 		}
 	}
@@ -590,28 +642,31 @@ func (cm *CertificateManager) reloadCertificates() error {
 func (cm *CertificateManager) GetCertificate() []byte {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.certificate
+	return append([]byte(nil), cm.certificate...)
 }
 
 // GetPrivateKey returns the current private key data
 func (cm *CertificateManager) GetPrivateKey() []byte {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.privateKey
+	return append([]byte(nil), cm.privateKey...)
 }
 
 // GetRootCACertificate returns the current root CA certificate data
 func (cm *CertificateManager) GetRootCACertificate() []byte {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.rootCA
+	return append([]byte(nil), cm.rootCA...)
 }
 
 // GetTLSConfig returns the current TLS configuration
 func (cm *CertificateManager) GetTLSConfig() *tls.Config {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.tlsConfig
+	if cm.tlsConfig == nil {
+		return nil
+	}
+	return cm.tlsConfig.Clone()
 }
 
 // GetLastError returns the last error that occurred
@@ -638,16 +693,15 @@ func (cm *CertificateManager) Stop() {
 		return
 	}
 
-	// Stop file monitoring
+	if cm.watcher != nil {
+		cm.watcher.Close()
+		cm.watcher = nil
+	}
+
+	// Stop manager-owned monitoring loops after watcher shutdown.
 	if cm.stopChan != nil {
 		close(cm.stopChan)
 		cm.stopChan = nil
-	}
-
-	if cm.watcher != nil {
-		cm.watcher.Stop()
-		cm.watcher.Close()
-		cm.watcher = nil
 	}
 
 	cm.initialized = false

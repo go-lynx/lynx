@@ -44,6 +44,9 @@ var (
 
 // SetLevel sets the global logging level.
 func SetLevel(level Level) {
+	loggerLifecycleMu.Lock()
+	defer loggerLifecycleMu.Unlock()
+
 	// map public Level to Kratos level, apply, and rebuild logger
 	var lvl log.Level
 	switch level {

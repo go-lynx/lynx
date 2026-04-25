@@ -643,7 +643,7 @@ func (m *PluginManager) getMQPluginConfig(name string) map[string]any {
 		}
 	case "rabbitmq":
 		return map[string]any{
-			"url":           "amqp://guest:guest@localhost:5672/",
+			"url":           "amqp://localhost:5672/",
 			"exchange":      "lynx-exchange",
 			"exchange_type": "topic",
 			"queue":         "lynx-queue",
@@ -664,7 +664,7 @@ func (m *PluginManager) getSQLPluginConfig(name string) map[string]any {
 	switch name {
 	case "mysql":
 		return map[string]any{
-			"dsn":               "user:password@tcp(localhost:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local",
+			"dsn":               "",
 			"max_open_conns":    25,
 			"max_idle_conns":    10,
 			"conn_max_lifetime": "5m",
@@ -672,7 +672,7 @@ func (m *PluginManager) getSQLPluginConfig(name string) map[string]any {
 		}
 	case "postgresql", "pgsql":
 		return map[string]any{
-			"dsn":               "host=localhost user=username password=password dbname=mydb port=5432 sslmode=disable TimeZone=Asia/Shanghai",
+			"dsn":               "",
 			"max_open_conns":    25,
 			"max_idle_conns":    10,
 			"conn_max_lifetime": "5m",
@@ -680,7 +680,7 @@ func (m *PluginManager) getSQLPluginConfig(name string) map[string]any {
 		}
 	default:
 		return map[string]any{
-			"dsn":            "user:password@tcp(localhost:3306)/dbname",
+			"dsn":            "",
 			"max_open_conns": 25,
 			"max_idle_conns": 10,
 			"# Note":         "Configure database specific connection settings here",

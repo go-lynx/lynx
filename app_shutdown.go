@@ -11,7 +11,13 @@ func (a *LynxApp) Close() error {
 	if a == nil {
 		return nil
 	}
+	a.closeOnce.Do(func() {
+		a.closeErr = a.close()
+	})
+	return a.closeErr
+}
 
+func (a *LynxApp) close() error {
 	a.emitSystemEvent(events.EventSystemShutdown, map[string]any{
 		"app_name":    a.name,
 		"app_version": a.version,

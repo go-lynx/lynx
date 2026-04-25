@@ -1,6 +1,7 @@
 package tls
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"os"
@@ -206,6 +207,73 @@ func TestCertificateManager_AutoSource_SharedCA_File(t *testing.T) {
 	}
 	if serverCert.Subject.CommonName != "svc-a" {
 		t.Errorf("expected CN svc-a, got %s", serverCert.Subject.CommonName)
+	}
+}
+
+func TestCertificateManager_ReturnsDefensiveCopies(t *testing.T) {
+	config := &conf.Tls{SourceType: conf.SourceTypeAuto}
+	cm := NewCertificateManagerWithAuto(config, nil)
+	if err := cm.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+	defer cm.Stop()
+
+	cert := cm.GetCertificate()
+	key := cm.GetPrivateKey()
+	rootCA := cm.GetRootCACertificate()
+	if len(cert) == 0 || len(key) == 0 || len(rootCA) == 0 {
+		t.Fatal("expected certificate material")
+	}
+	cert[0] ^= 0xff
+	key[0] ^= 0xff
+	rootCA[0] ^= 0xff
+
+	if _, err := tls.X509KeyPair(cm.GetCertificate(), cm.GetPrivateKey()); err != nil {
+		t.Fatalf("internal certificate material should not be mutable by callers: %v", err)
+	}
+	if string(cm.GetCertificate()) == string(cert) {
+		t.Fatal("expected GetCertificate to return a copy")
+	}
+	if string(cm.GetPrivateKey()) == string(key) {
+		t.Fatal("expected GetPrivateKey to return a copy")
+	}
+	if string(cm.GetRootCACertificate()) == string(rootCA) {
+		t.Fatal("expected GetRootCACertificate to return a copy")
+	}
+}
+
+func TestCertificateManager_TLSConfigUsesDefensiveSnapshot(t *testing.T) {
+	config := &conf.Tls{SourceType: conf.SourceTypeAuto}
+	cm := NewCertificateManagerWithAuto(config, nil)
+	if err := cm.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+	defer cm.Stop()
+
+	cfg := cm.GetTLSConfig()
+	if cfg == nil || cfg.GetCertificate == nil {
+		t.Fatal("expected TLS config with GetCertificate")
+	}
+	first, err := cfg.GetCertificate(nil)
+	if err != nil {
+		t.Fatalf("GetCertificate failed: %v", err)
+	}
+	if len(first.Certificate) == 0 || len(first.Certificate[0]) == 0 {
+		t.Fatal("expected parsed certificate chain")
+	}
+	first.Certificate[0][0] ^= 0xff
+
+	second, err := cfg.GetCertificate(nil)
+	if err != nil {
+		t.Fatalf("GetCertificate failed after caller mutation: %v", err)
+	}
+	if second.Certificate[0][0] == first.Certificate[0][0] {
+		t.Fatal("expected TLS certificate callback to return an isolated snapshot")
+	}
+
+	cfg.MinVersion = tls.VersionTLS10
+	if got := cm.GetTLSConfig().MinVersion; got != tls.VersionTLS12 {
+		t.Fatalf("external TLS config mutation leaked into manager: got %x", got)
 	}
 }
 

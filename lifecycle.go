@@ -328,11 +328,12 @@ func (m *DefaultPluginManager[T]) rollbackSinglePlugin(p plugins.Plugin, timeout
 }
 
 func (m *DefaultPluginManager[T]) getBoundedDurationConfig(key string, defaultValue, minValue, maxValue time.Duration) time.Duration {
-	if m == nil || m.config == nil {
+	conf := m.getConfigSnapshot()
+	if conf == nil {
 		return defaultValue
 	}
 	var confStr string
-	if err := m.config.Value(key).Scan(&confStr); err == nil {
+	if err := conf.Value(key).Scan(&confStr); err == nil {
 		if parsed, err2 := time.ParseDuration(confStr); err2 == nil {
 			if parsed < minValue {
 				log.Warnf("%s too short (%v), using minimum %v", key, parsed, minValue)
@@ -349,11 +350,12 @@ func (m *DefaultPluginManager[T]) getBoundedDurationConfig(key string, defaultVa
 }
 
 func (m *DefaultPluginManager[T]) getBoundedIntConfig(key string, defaultValue, minValue, maxValue int) int {
-	if m == nil || m.config == nil {
+	conf := m.getConfigSnapshot()
+	if conf == nil {
 		return defaultValue
 	}
 	var v int
-	if err := m.config.Value(key).Scan(&v); err == nil {
+	if err := conf.Value(key).Scan(&v); err == nil {
 		if v < minValue {
 			return defaultValue
 		}
@@ -473,13 +475,17 @@ func (m *DefaultPluginManager[T]) runLifecycleNonContext(ctx context.Context, op
 
 	select {
 	case err := <-errCh:
+		doneTimer := time.NewTimer(goroutineCompletionWait)
+		defer doneTimer.Stop()
 		select {
 		case <-goroutineDone:
-		case <-time.After(goroutineCompletionWait):
+		case <-doneTimer.C:
 		}
 		return err
 	case <-ctx.Done():
 		cleanupTimeout := goroutineCleanupWait
+		cleanupTimer := time.NewTimer(cleanupTimeout)
+		defer cleanupTimer.Stop()
 		select {
 		case <-goroutineDone:
 			select {
@@ -489,7 +495,7 @@ func (m *DefaultPluginManager[T]) runLifecycleNonContext(ctx context.Context, op
 				}
 			default:
 			}
-		case <-time.After(cleanupTimeout):
+		case <-cleanupTimer.C:
 			if opts.cleanupLeakWarn != nil {
 				opts.cleanupLeakWarn(cleanupTimeout)
 			}

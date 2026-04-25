@@ -157,8 +157,55 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	return nil
 }
 
+func (r *UnifiedRuntime) cleanupAllResources() error {
+	r.resourceOpMu.Lock()
+	type resItem struct {
+		key         string
+		displayName string
+		res         any
+	}
+	var toDelete []resItem
+	r.resourceInfo.Range(func(key, value any) bool {
+		storageKey, ok := key.(string)
+		if !ok {
+			return true
+		}
+		displayName := storageKey
+		if info, ok := value.(*ResourceInfo); ok && info.Name != "" {
+			displayName = info.Name
+		}
+		if resource, exists := r.resources.Load(storageKey); exists {
+			toDelete = append(toDelete, resItem{key: storageKey, displayName: displayName, res: resource})
+		}
+		return true
+	})
+	for _, item := range toDelete {
+		r.resources.Delete(item.key)
+		r.resourceInfo.Delete(item.key)
+	}
+	r.resourceOpMu.Unlock()
+
+	var cleanupErrors []error
+	seenCleanupTargets := make(map[string]struct{}, len(toDelete))
+	for _, item := range toDelete {
+		if identity, ok := resourceCleanupIdentity(item.res); ok {
+			if _, exists := seenCleanupTargets[identity]; exists {
+				continue
+			}
+			seenCleanupTargets[identity] = struct{}{}
+		}
+		if err := r.cleanupResourceGracefully(item.displayName, item.res); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("failed to cleanup resource %s: %w", item.displayName, err))
+		}
+	}
+	if len(cleanupErrors) > 0 {
+		return fmt.Errorf("runtime resource cleanup had %d errors: %v", len(cleanupErrors), cleanupErrors[0])
+	}
+	return nil
+}
+
 // cleanupResourceGracefully attempts to gracefully cleanup a resource.
-func (r *UnifiedRuntime) cleanupResourceGracefully(name string, resource any) error {
+func (r *UnifiedRuntime) cleanupResourceGracefully(name string, resource any) (err error) {
 	if resource == nil {
 		return nil
 	}
@@ -168,6 +215,7 @@ func (r *UnifiedRuntime) cleanupResourceGracefully(name string, resource any) er
 			if logger := r.GetLogger(); logger != nil {
 				logger.Log(log.LevelWarn, "msg", "panic during resource cleanup", "resource", name, "panic", rec)
 			}
+			err = fmt.Errorf("panic during resource cleanup for %s: %v", name, rec)
 		}
 	}()
 
@@ -186,27 +234,27 @@ func (r *UnifiedRuntime) cleanupResourceGracefully(name string, resource any) er
 
 	switch v := resource.(type) {
 	case interface{ ShutdownContext(context.Context) error }:
-		if err := v.ShutdownContext(ctx); err != nil {
+		if err := r.runResourceCleanupWithTimeout(ctx, name, func() error { return v.ShutdownContext(ctx) }); err != nil {
 			return fmt.Errorf("shutdown (ctx) failed: %w", err)
 		}
 		return nil
 	case interface{ StopContext(context.Context) error }:
-		if err := v.StopContext(ctx); err != nil {
+		if err := r.runResourceCleanupWithTimeout(ctx, name, func() error { return v.StopContext(ctx) }); err != nil {
 			return fmt.Errorf("stop (ctx) failed: %w", err)
 		}
 		return nil
 	case interface{ CloseContext(context.Context) error }:
-		if err := v.CloseContext(ctx); err != nil {
+		if err := r.runResourceCleanupWithTimeout(ctx, name, func() error { return v.CloseContext(ctx) }); err != nil {
 			return fmt.Errorf("close (ctx) failed: %w", err)
 		}
 		return nil
 	case interface{ CleanupContext(context.Context) error }:
-		if err := v.CleanupContext(ctx); err != nil {
+		if err := r.runResourceCleanupWithTimeout(ctx, name, func() error { return v.CleanupContext(ctx) }); err != nil {
 			return fmt.Errorf("cleanup (ctx) failed: %w", err)
 		}
 		return nil
 	case interface{ DestroyContext(context.Context) error }:
-		if err := v.DestroyContext(ctx); err != nil {
+		if err := r.runResourceCleanupWithTimeout(ctx, name, func() error { return v.DestroyContext(ctx) }); err != nil {
 			return fmt.Errorf("destroy (ctx) failed: %w", err)
 		}
 		return nil
@@ -214,34 +262,64 @@ func (r *UnifiedRuntime) cleanupResourceGracefully(name string, resource any) er
 
 	switch v := resource.(type) {
 	case interface{ Shutdown() error }:
-		return normalizeCleanupError(v.Shutdown())
+		return r.runResourceCleanupWithTimeout(ctx, name, func() error { return normalizeCleanupError(v.Shutdown()) })
 	case interface{ Stop() error }:
-		return normalizeCleanupError(v.Stop())
+		return r.runResourceCleanupWithTimeout(ctx, name, func() error { return normalizeCleanupError(v.Stop()) })
 	case interface{ Cleanup() error }:
-		return normalizeCleanupError(v.Cleanup())
+		return r.runResourceCleanupWithTimeout(ctx, name, func() error { return normalizeCleanupError(v.Cleanup()) })
 	case interface{ Destroy() error }:
-		return normalizeCleanupError(v.Destroy())
+		return r.runResourceCleanupWithTimeout(ctx, name, func() error { return normalizeCleanupError(v.Destroy()) })
 	case interface{ Release() error }:
-		return normalizeCleanupError(v.Release())
+		return r.runResourceCleanupWithTimeout(ctx, name, func() error { return normalizeCleanupError(v.Release()) })
 	case interface{ Close() error }:
-		return normalizeCleanupError(v.Close())
+		return r.runResourceCleanupWithTimeout(ctx, name, func() error { return normalizeCleanupError(v.Close()) })
 	case context.CancelFunc:
-		v()
-		return nil
+		return r.runResourceCleanupWithTimeout(ctx, name, func() error {
+			v()
+			return nil
+		})
 	case func():
-		v()
-		return nil
+		return r.runResourceCleanupWithTimeout(ctx, name, func() error {
+			v()
+			return nil
+		})
 	}
 
 	if val := reflect.ValueOf(resource); val.Kind() == reflect.Chan && val.Type().ChanDir() != reflect.RecvDir {
-		defer func() {
-			if r := recover(); r != nil {
-			}
-		}()
-		val.Close()
-		return nil
+		return r.runResourceCleanupWithTimeout(ctx, name, func() error { return closeChannelResource(val) })
 	}
 
+	return nil
+}
+
+func (r *UnifiedRuntime) runResourceCleanupWithTimeout(ctx context.Context, name string, cleanup func() error) error {
+	if cleanup == nil {
+		return nil
+	}
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				done <- fmt.Errorf("panic during resource cleanup for %s: %v", name, rec)
+			}
+		}()
+		done <- cleanup()
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func closeChannelResource(val reflect.Value) (err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("close channel failed: %v", rec)
+		}
+	}()
+	val.Close()
 	return nil
 }
 

@@ -175,14 +175,9 @@ func TestEventListenerManager_ListenerReceivesEvents(t *testing.T) {
 	event := NewLynxEvent(EventPluginStarted, "test", "test")
 	_ = PublishEventWithManager(mgr, event)
 
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		if count.Load() > 0 {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+	if !waitUntil(time.Second, func() bool { return count.Load() > 0 }) {
+		t.Errorf("listener did not receive published event within 1s (count=%d)", count.Load())
 	}
-	t.Errorf("listener did not receive published event within 1s (count=%d)", count.Load())
 }
 
 func TestEventListenerManager_AddListenerWithContext_CleansUpOnCancel(t *testing.T) {
@@ -212,17 +207,14 @@ func TestEventListenerManager_AddListenerWithContext_CleansUpOnCancel(t *testing
 
 	// Cancel the context – the goroutine should remove the listener.
 	cancel()
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
+	if !waitUntil(time.Second, func() bool {
 		lm.mu.RLock()
 		_, exists = lm.listeners["ctx-listener"]
 		lm.mu.RUnlock()
-		if !exists {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+		return !exists
+	}) {
+		t.Error("listener was not cleaned up after context cancellation")
 	}
-	t.Error("listener was not cleaned up after context cancellation")
 }
 
 func TestEventListenerManager_NilEventBus_ReturnsError(t *testing.T) {
@@ -251,11 +243,21 @@ func TestEventListenerManager_FilteredListener(t *testing.T) {
 
 	// Publish a matching event.
 	_ = PublishEventWithManager(mgr, NewLynxEvent(EventPluginStarted, "src", "comp"))
-	time.Sleep(200 * time.Millisecond)
 
-	if received.Load() == 0 {
+	if !waitUntil(time.Second, func() bool { return received.Load() > 0 }) {
 		t.Error("filtered listener did not receive matching event")
 	}
+}
+
+func waitUntil(timeout time.Duration, condition func() bool) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return condition()
 }
 
 func TestGetGlobalBusStatus_ReturnsMap(t *testing.T) {

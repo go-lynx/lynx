@@ -636,6 +636,37 @@ func TestStandaloneClose_DoesNotClearOtherDefaultApp(t *testing.T) {
 	_ = defaultApp.Close()
 }
 
+func TestLynxAppClose_IsConcurrentIdempotent(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	app, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("failed to initialize standalone app: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- app.Close()
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("close returned error: %v", err)
+		}
+	}
+	if err := app.Close(); err != nil {
+		t.Fatalf("close should remain idempotent: %v", err)
+	}
+}
+
 func TestNewApp_GoroutineLeak(t *testing.T) {
 	resetGlobalState()
 

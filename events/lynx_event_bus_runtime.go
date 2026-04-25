@@ -8,7 +8,12 @@ import (
 
 // run drains the queue and publishes to the dispatcher.
 func (b *LynxEventBus) run() {
-	ticker := time.NewTicker(b.config.FlushInterval)
+	cfg := b.configSnapshot()
+	flushInterval := cfg.FlushInterval
+	if flushInterval <= 0 {
+		flushInterval = DefaultBusConfig().FlushInterval
+	}
+	ticker := time.NewTicker(flushInterval)
 	defer ticker.Stop()
 	defer b.wg.Done()
 
@@ -18,7 +23,7 @@ func (b *LynxEventBus) run() {
 			drainDeadline := time.Now().Add(200 * time.Millisecond)
 			for time.Now().Before(drainDeadline) {
 				drained := false
-				bs := max(b.config.BatchSize, 1)
+				bs := max(b.configSnapshot().BatchSize, 1)
 				buf := b.bufferPool.GetWithCapacity(bs)
 				for len(buf) < bs {
 					if ev, ok := b.tryRecvShared(); ok {
@@ -45,7 +50,7 @@ func (b *LynxEventBus) run() {
 				time.Sleep(10 * time.Millisecond)
 				continue
 			}
-			batchSize := max(b.config.BatchSize, 1)
+			batchSize := max(b.configSnapshot().BatchSize, 1)
 			buf := b.bufferPool.GetWithCapacity(batchSize)
 			for len(buf) < batchSize {
 				if ev, ok := b.tryRecvShared(); ok {
@@ -67,9 +72,10 @@ func (b *LynxEventBus) run() {
 				b.monitor().UpdateQueueSize(b.totalQueueSize())
 			case ev := <-b.queue:
 				b.queueSize.Add(-1)
-				buf := b.bufferPool.GetWithCapacity(max(b.config.BatchSize, 1))
+				batchSize := max(b.configSnapshot().BatchSize, 1)
+				buf := b.bufferPool.GetWithCapacity(batchSize)
 				buf = append(buf, ev)
-				for len(buf) < max(b.config.BatchSize, 1) {
+				for len(buf) < batchSize {
 					if ev2, ok := b.tryRecvShared(); ok {
 						buf = append(buf, ev2)
 					} else {
@@ -82,6 +88,12 @@ func (b *LynxEventBus) run() {
 			}
 		}
 	}
+}
+
+func (b *LynxEventBus) configSnapshot() BusConfig {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.config
 }
 
 // UpdateConfig applies a subset of configuration at runtime (non-destructive).

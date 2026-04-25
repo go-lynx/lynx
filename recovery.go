@@ -285,10 +285,12 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		parentCancel()
 		timeoutCancel()
 		// Wait for stop monitor goroutine to exit (with timeout)
+		stopWaitTimer := time.NewTimer(50 * time.Millisecond)
+		defer stopWaitTimer.Stop()
 		select {
 		case <-stopMonitorDone:
 			// Goroutine exited cleanly
-		case <-time.After(50 * time.Millisecond):
+		case <-stopWaitTimer.C:
 			// Timeout - goroutine should exit on its own when context is cancelled
 		}
 	}()
@@ -306,11 +308,13 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	}()
 
 	semaphoreTimeout := defaultRecoverySemaphoreTimeout
+	semaphoreTimer := time.NewTimer(semaphoreTimeout)
+	defer semaphoreTimer.Stop()
 	select {
 	case erm.recoverySemaphore <- struct{}{}:
 		// Acquired semaphore, proceed with recovery
 		semaphoreHeld = true
-	case <-time.After(semaphoreTimeout):
+	case <-semaphoreTimer.C:
 		// Semaphore acquisition timeout - too many concurrent recoveries
 		log.Warnf("Recovery semaphore timeout for %s:%s after %v, skipping recovery (too many concurrent recoveries)",
 			record.ErrorType, record.Component, semaphoreTimeout)
@@ -489,6 +493,7 @@ func normalizeRecoveredPanic(value any) error {
 var (
 	cachedMemoryAlloc atomic.Uint64
 	memStatsOnce      sync.Once
+	memStatsMu        sync.Mutex
 	memStatsStop      chan struct{}
 )
 
@@ -501,8 +506,12 @@ var (
 
 // initMemoryStatsCache initializes the background goroutine for memory stats updates
 func initMemoryStatsCache() {
+	memStatsMu.Lock()
+	defer memStatsMu.Unlock()
+
 	memStatsOnce.Do(func() {
-		memStatsStop = make(chan struct{})
+		stop := make(chan struct{})
+		memStatsStop = stop
 		// Initial update
 		updateMemoryStats()
 		// Start background goroutine to update memory stats periodically
@@ -514,7 +523,7 @@ func initMemoryStatsCache() {
 				select {
 				case <-ticker.C:
 					updateMemoryStats()
-				case <-memStatsStop:
+				case <-stop:
 					return
 				}
 			}
@@ -526,6 +535,9 @@ func initMemoryStatsCache() {
 // Fix Bug 2: Provides a way to gracefully shut down the memory stats goroutine
 // This should be called during application shutdown to prevent goroutine leaks
 func cleanupMemoryStatsCache() {
+	memStatsMu.Lock()
+	defer memStatsMu.Unlock()
+
 	if memStatsStop != nil {
 		select {
 		case <-memStatsStop:
@@ -533,7 +545,9 @@ func cleanupMemoryStatsCache() {
 		default:
 			close(memStatsStop)
 		}
+		memStatsStop = nil
 	}
+	memStatsOnce = sync.Once{}
 }
 
 // updateMemoryStats updates the cached memory statistics

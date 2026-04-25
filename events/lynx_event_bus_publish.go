@@ -3,7 +3,6 @@ package events
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -120,9 +119,28 @@ func (b *LynxEventBus) tryRecvShared() (LynxEvent, bool) {
 	}
 }
 
+func (b *LynxEventBus) shouldSampleDegradationCheck(probability float64) bool {
+	if probability <= 0 {
+		return false
+	}
+	if probability >= 1 {
+		return true
+	}
+
+	seq := b.degradationSampleSeq.Add(1)
+	x := seq + 0x9e3779b97f4a7c15
+	x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9
+	x = (x ^ (x >> 27)) * 0x94d049bb133111eb
+	x ^= x >> 31
+
+	threshold := uint64(probability * float64(^uint64(0)))
+	return x <= threshold
+}
+
 func (b *LynxEventBus) publish(ev LynxEvent) {
-	if b.workerPool != nil {
-		if err := b.workerPool.Submit(func() { kelindarEvent.Publish(b.dispatcher, ev) }); err != nil {
+	_, _, _, workerPool, _ := b.runtimeSnapshot()
+	if workerPool != nil {
+		if err := workerPool.Submit(func() { kelindarEvent.Publish(b.dispatcher, ev) }); err != nil {
 			if b.logger != nil {
 				log.NewHelper(b.logger).Warnf("worker pool submit failed: %v", err)
 			}
@@ -137,10 +155,11 @@ func (b *LynxEventBus) publish(ev LynxEvent) {
 }
 
 func (b *LynxEventBus) publishBatch(events []LynxEvent) {
-	if b.isDegraded.Load() && b.throttler != nil {
+	cfg, throttler, _, workerPool, _ := b.runtimeSnapshot()
+	if b.isDegraded.Load() && throttler != nil {
 		throttledEvents := make([]LynxEvent, 0, len(events))
 		for _, ev := range events {
-			if b.throttler.Allow() {
+			if throttler.Allow() {
 				throttledEvents = append(throttledEvents, ev)
 			} else if b.logger != nil {
 				log.NewHelper(b.logger).Debugf("event throttled during degradation: type=%d, plugin=%s", ev.EventType, ev.PluginID)
@@ -150,15 +169,15 @@ func (b *LynxEventBus) publishBatch(events []LynxEvent) {
 	}
 
 	limit := len(events)
-	if b.config.WorkerCount > 0 {
-		if m := b.config.WorkerCount * 2; m < limit {
+	if cfg.WorkerCount > 0 {
+		if m := cfg.WorkerCount * 2; m < limit {
 			limit = m
 		}
 	}
-	if b.workerPool != nil {
+	if workerPool != nil {
 		for i := 0; i < limit; i++ {
 			ev := events[i]
-			if err := b.workerPool.Submit(func() {
+			if err := workerPool.Submit(func() {
 				kelindarEvent.Publish(b.dispatcher, ev)
 				b.dispatchCatchAll(ev)
 			}); err != nil {
@@ -216,19 +235,24 @@ func (t *SimpleThrottler) Allow() bool {
 
 // Publish publishes an event to this bus.
 func (b *LynxEventBus) Publish(event LynxEvent) {
+	b.enqueueMu.RLock()
+	defer b.enqueueMu.RUnlock()
+
 	if b.isClosed.Load() {
 		return
 	}
 
-	if b.throttler != nil && !b.throttler.Allow() {
+	cfg, throttler, history, _, _ := b.runtimeSnapshot()
+
+	if throttler != nil && !throttler.Allow() {
 		if b.metrics != nil {
 			b.metrics.IncrementDropped()
 		}
 		b.monitor().IncrementDroppedByReason("throttled")
 		throttleErr := fmt.Errorf("event throttled: bus=%d prio=%d type=%d", b.busType, event.Priority, event.EventType)
 		b.monitor().SetError(throttleErr)
-		if b.config.ErrorCallback != nil {
-			b.config.ErrorCallback(event, "throttled", throttleErr)
+		if cfg.ErrorCallback != nil {
+			cfg.ErrorCallback(event, "throttled", throttleErr)
 		}
 		if b.logger != nil {
 			log.NewHelper(b.logger).Warnf("event throttled: bus=%d prio=%d type=%d", b.busType, event.Priority, event.EventType)
@@ -240,8 +264,8 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 		b.metrics.IncrementPublished()
 	}
 	b.monitor().IncrementPublishedByPriority(event.Priority)
-	if b.history != nil {
-		b.history.Add(event)
+	if history != nil {
+		history.Add(event)
 	}
 
 	queueSize := int(b.queueSize.Load())
@@ -271,7 +295,7 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 			checkProbability = 0.20
 		}
 
-		shouldCheck := (now-lastCheck > checkInterval) || (rand.Float64() < checkProbability)
+		shouldCheck := now-lastCheck > checkInterval || b.shouldSampleDegradationCheck(checkProbability)
 		if queueUsage > 90 {
 			shouldCheck = true
 		}
@@ -280,8 +304,8 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 		}
 	}
 
-	if b.config.ReserveForCritical > 0 && event.Priority != PriorityCritical {
-		if b.totalQueueSize() >= max(b.totalQueueCap()-b.config.ReserveForCritical, 0) {
+	if cfg.ReserveForCritical > 0 && event.Priority != PriorityCritical {
+		if b.totalQueueSize() >= max(b.totalQueueCap()-cfg.ReserveForCritical, 0) {
 			b.handleEnqueueOverflow(event, "reserve_for_critical")
 			return
 		}
@@ -292,9 +316,9 @@ func (b *LynxEventBus) Publish(event LynxEvent) {
 		newSize := b.queueSize.Add(1)
 		b.monitor().UpdateQueueSize(int(newSize))
 	default:
-		switch b.config.DropPolicy {
+		switch cfg.DropPolicy {
 		case DropBlock:
-			timeout := b.config.EnqueueBlockTimeout
+			timeout := cfg.EnqueueBlockTimeout
 			if timeout <= 0 {
 				timeout = 5 * time.Millisecond
 			}

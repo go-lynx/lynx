@@ -67,6 +67,26 @@ func TestManager_PrepareSkipsAlreadyManagedPlugin(t *testing.T) {
 	}
 }
 
+func TestNewPluginManagerWithError_ReturnsInitialRegistrationError(t *testing.T) {
+	plugin := newStartupControlledPlugin("duplicate-init", nil)
+
+	if _, err := NewPluginManagerWithError[plugins.Plugin](plugin, plugin); err == nil {
+		t.Fatal("expected duplicate initial plugin registration to return an error")
+	}
+}
+
+func TestNewPluginManager_PanicsOnInitialRegistrationError(t *testing.T) {
+	plugin := newStartupControlledPlugin("duplicate-panic", nil)
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("expected NewPluginManager to panic for duplicate initial plugins")
+		}
+	}()
+
+	_ = NewPluginManager[plugins.Plugin](plugin, plugin)
+}
+
 type startupControlledPlugin struct {
 	*plugins.BasePlugin
 	startErr error

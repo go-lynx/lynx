@@ -9,7 +9,7 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes --requirepass lynx123456
+    command: redis-server --appendonly yes --requirepass $${LYNX_REDIS_PASSWORD:-lynx-local-password}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -25,10 +25,10 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: lynx123456
+      MYSQL_ROOT_PASSWORD: ${LYNX_MYSQL_ROOT_PASSWORD:-lynx-local-root-password}
       MYSQL_DATABASE: lynx_test
       MYSQL_USER: lynx
-      MYSQL_PASSWORD: lynx123456
+      MYSQL_PASSWORD: ${LYNX_MYSQL_PASSWORD:-lynx-local-password}
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -47,7 +47,7 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_USER: lynx
-      POSTGRES_PASSWORD: lynx123456
+      POSTGRES_PASSWORD: ${LYNX_POSTGRES_PASSWORD:-lynx-local-password}
       POSTGRES_DB: lynx_test
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -121,7 +121,7 @@ services:
       - "27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: lynx
-      MONGO_INITDB_ROOT_PASSWORD: lynx123456
+      MONGO_INITDB_ROOT_PASSWORD: ${LYNX_MONGO_PASSWORD:-lynx-local-password}
       MONGO_INITDB_DATABASE: lynx_test
     volumes:
       - mongo-data:/data/db
@@ -142,7 +142,7 @@ services:
       - "15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: lynx
-      RABBITMQ_DEFAULT_PASS: lynx123456
+      RABBITMQ_DEFAULT_PASS: ${LYNX_RABBITMQ_PASSWORD:-lynx-local-password}
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
@@ -287,7 +287,7 @@ services:
       STORE_DRIVER: redis
       STORE_HOST: redis
       STORE_PORT: 6379
-      STORE_PASSWORD: lynx123456
+      STORE_PASSWORD: ${LYNX_REDIS_PASSWORD:-lynx-local-password}
       STORE_DB: 0
     depends_on:
       redis:
@@ -344,12 +344,12 @@ services:
       - "1433:1433"
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Lynx123456!"
+      MSSQL_SA_PASSWORD: "${LYNX_MSSQL_SA_PASSWORD:-Lynx-local-password-123!}"
       MSSQL_PID: "Developer"
     volumes:
       - mssql-data:/var/opt/mssql
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Lynx123456!' -Q 'SELECT 1' || exit 1"]
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \"$${LYNX_MSSQL_SA_PASSWORD:-Lynx-local-password-123!}\" -Q 'SELECT 1' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -371,7 +371,7 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/ApolloConfigDB?characterEncoding=utf8
       SPRING_DATASOURCE_USERNAME: lynx
-      SPRING_DATASOURCE_PASSWORD: lynx123456
+      SPRING_DATASOURCE_PASSWORD: ${LYNX_MYSQL_PASSWORD:-lynx-local-password}
       EUREKA_INSTANCE_IP_ADDRESS: apollo-configservice
     depends_on:
       mysql:
@@ -396,7 +396,7 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/ApolloConfigDB?characterEncoding=utf8
       SPRING_DATASOURCE_USERNAME: lynx
-      SPRING_DATASOURCE_PASSWORD: lynx123456
+      SPRING_DATASOURCE_PASSWORD: ${LYNX_MYSQL_PASSWORD:-lynx-local-password}
       EUREKA_SERVICE_URL: http://apollo-configservice:8080/eureka/
       EUREKA_INSTANCE_IP_ADDRESS: apollo-adminservice
     depends_on:
@@ -424,7 +424,7 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/ApolloPortalDB?characterEncoding=utf8
       SPRING_DATASOURCE_USERNAME: lynx
-      SPRING_DATASOURCE_PASSWORD: lynx123456
+      SPRING_DATASOURCE_PASSWORD: ${LYNX_MYSQL_PASSWORD:-lynx-local-password}
       APOLLO_PORTAL_ENVS: dev
       DEV_META: http://apollo-configservice:8080
       EUREKA_INSTANCE_IP_ADDRESS: apollo-portal

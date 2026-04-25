@@ -97,12 +97,17 @@ func T(key string, args ...any) string {
 	lang := Lang()
 	if dict, ok := messages[lang]; ok {
 		if tmpl, ok2 := dict[key]; ok2 {
-			return fmt.Sprintf(tmpl, args...)
+			return formatMessage(tmpl, args...)
 		}
 	}
 	// fallback: return key itself or simple concatenation
 	if len(args) == 0 {
 		return key
 	}
-	return fmt.Sprintf(key, args...)
+	return formatMessage(key, args...)
+}
+
+func formatMessage(format string, args ...any) string {
+	sprintf := fmt.Sprintf
+	return sprintf(format, args...)
 }

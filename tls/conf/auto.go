@@ -76,9 +76,13 @@ func (a *AutoConfig) ParseAutoCertValidity() time.Duration {
 	if a == nil || a.CertValidity == "" {
 		return a.ParseAutoRotationInterval()
 	}
+	rotationInterval := a.ParseAutoRotationInterval()
 	d, err := time.ParseDuration(a.CertValidity)
 	if err != nil || d < MinAutoRotationInterval {
-		return a.ParseAutoRotationInterval()
+		return rotationInterval
+	}
+	if d < rotationInterval {
+		return rotationInterval
 	}
 	return d
 }
