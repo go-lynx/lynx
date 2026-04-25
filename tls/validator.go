@@ -183,6 +183,7 @@ func (v *ConfigValidator) ValidateAutoConfig(autoConfig *conf.AutoConfig) error 
 	if autoConfig == nil {
 		return nil
 	}
+	rotationInterval := conf.DefaultAutoRotationInterval
 	if autoConfig.RotationInterval != "" {
 		d, err := time.ParseDuration(autoConfig.RotationInterval)
 		if err != nil {
@@ -190,6 +191,19 @@ func (v *ConfigValidator) ValidateAutoConfig(autoConfig *conf.AutoConfig) error 
 		}
 		if d < conf.MinAutoRotationInterval || d > conf.MaxAutoRotationInterval {
 			return fmt.Errorf("rotation_interval must be between %v and %v", conf.MinAutoRotationInterval, conf.MaxAutoRotationInterval)
+		}
+		rotationInterval = d
+	}
+	if autoConfig.CertValidity != "" {
+		d, err := time.ParseDuration(autoConfig.CertValidity)
+		if err != nil {
+			return fmt.Errorf("invalid cert_validity: %w", err)
+		}
+		if d < conf.MinAutoRotationInterval {
+			return fmt.Errorf("cert_validity must be at least %v", conf.MinAutoRotationInterval)
+		}
+		if d < rotationInterval {
+			return fmt.Errorf("cert_validity must be greater than or equal to rotation_interval")
 		}
 	}
 	if err := v.ValidateSharedCAConfig(autoConfig.SharedCA); err != nil {

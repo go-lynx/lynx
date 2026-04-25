@@ -18,8 +18,9 @@ func (b *LynxEventBus) handleEnqueueOverflow(event LynxEvent, reason string) {
 	dropErr := fmt.Errorf("event dropped due to overflow: bus=%d prio=%d type=%d reason=%s", b.busType, event.Priority, event.EventType, reason)
 	b.monitor().SetError(dropErr)
 
-	if b.config.ErrorCallback != nil {
-		b.config.ErrorCallback(event, reason, dropErr)
+	cfg := b.configSnapshot()
+	if cfg.ErrorCallback != nil {
+		cfg.ErrorCallback(event, reason, dropErr)
 	}
 	if b.logger != nil {
 		log.NewHelper(b.logger).Warnf("event bus overflow: bus=%d prio=%d type=%d reason=%s", b.busType, event.Priority, event.EventType, reason)
@@ -67,7 +68,7 @@ func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), at
 			log.NewHelper(b.logger).Errorf("event handler panic: bus=%d type=%d attempt=%d", b.busType, ev.EventType, attempt)
 		}
 
-		maxRetries := max(b.config.MaxRetries, 0)
+		maxRetries := max(b.configSnapshot().MaxRetries, 0)
 		if attempt <= maxRetries {
 			b.scheduleRetry(ev, handler, attempt, calculateBackoffDelay(attempt, maxRetries))
 			return
@@ -90,9 +91,10 @@ func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), at
 }
 
 func (b *LynxEventBus) scheduleRetry(ev LynxEvent, handler func(LynxEvent), attempt int, backoffDelay time.Duration) {
-	if b.retrySem != nil {
+	_, _, _, _, retrySem := b.runtimeSnapshot()
+	if retrySem != nil {
 		select {
-		case b.retrySem <- struct{}{}:
+		case retrySem <- struct{}{}:
 			timer := time.NewTimer(backoffDelay)
 			go func() {
 				defer func() {
@@ -102,7 +104,7 @@ func (b *LynxEventBus) scheduleRetry(ev LynxEvent, handler func(LynxEvent), atte
 						default:
 						}
 					}
-					<-b.retrySem
+					<-retrySem
 					if r := recover(); r != nil && b.logger != nil {
 						log.NewHelper(b.logger).Errorf("panic in retry goroutine: %v", r)
 					}
@@ -143,8 +145,9 @@ func (b *LynxEventBus) executeRetry(timer *time.Timer, ev LynxEvent, handler fun
 		if b.isClosed.Load() {
 			return
 		}
-		if b.workerPool != nil {
-			if err := b.workerPool.Submit(func() { b.handleWithRetry(ev, handler, attempt+1) }); err != nil {
+		_, _, _, workerPool, _ := b.runtimeSnapshot()
+		if workerPool != nil {
+			if err := workerPool.Submit(func() { b.handleWithRetry(ev, handler, attempt+1) }); err != nil {
 				if !b.isClosed.Load() {
 					go b.handleWithRetry(ev, handler, attempt+1)
 				}

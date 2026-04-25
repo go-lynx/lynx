@@ -73,6 +73,9 @@ type LynxApp struct {
 	eventManager         *events.EventBusManager
 	eventListenerManager *events.EventListenerManager
 	eventAdapter         plugins.EventBusAdapter
+
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // GetEventManagerFromApp returns the event bus manager owned by app.

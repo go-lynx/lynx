@@ -170,6 +170,11 @@ func (t *LoaderTls) startupOldMethod() error {
 	}
 
 	c := config.New(config.WithSource(cfg))
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Warnf("Failed to close TLS control plane config: %v", err)
+		}
+	}()
 	if err := c.Load(); err != nil {
 		return err
 	}

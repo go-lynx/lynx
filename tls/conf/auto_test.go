@@ -63,3 +63,11 @@ func TestAutoConfig_ParseAutoCertValidity_Explicit(t *testing.T) {
 		t.Errorf("expected 48h, got %v", d)
 	}
 }
+
+func TestAutoConfig_ParseAutoCertValidity_ShorterThanRotationUsesRotation(t *testing.T) {
+	ac := &AutoConfig{RotationInterval: "24h", CertValidity: "12h"}
+	d := ac.ParseAutoCertValidity()
+	if d != 24*time.Hour {
+		t.Errorf("expected rotation interval fallback, got %v", d)
+	}
+}

@@ -101,25 +101,38 @@ type DefaultPluginManager[T plugins.Plugin] struct {
 	unloadFailuresMu sync.RWMutex
 }
 
-// NewPluginManager creates a generic plugin manager.
-func NewPluginManager[T plugins.Plugin](pluginList ...T) *DefaultPluginManager[T] {
-	manager := &DefaultPluginManager[T]{
+func newPluginManagerBase[T plugins.Plugin]() *DefaultPluginManager[T] {
+	return &DefaultPluginManager[T]{
 		pluginList:        make([]plugins.Plugin, 0),
 		managedPluginList: make([]plugins.Plugin, 0),
 		factory:           factory.GlobalTypedFactory(),
 		runtime:           plugins.NewUnifiedRuntime(),
 	}
+}
+
+// NewPluginManagerWithError creates a generic plugin manager and reports invalid initial plugins.
+func NewPluginManagerWithError[T plugins.Plugin](pluginList ...T) (*DefaultPluginManager[T], error) {
+	manager := newPluginManagerBase[T]()
 
 	// register initial plugins
 	for _, plugin := range pluginList {
 		var p plugins.Plugin = plugin
 		if p != nil {
 			if err := manager.registerPreparedPlugin(p); err != nil {
-				panic(err)
+				return nil, err
 			}
 		}
 	}
 
+	return manager, nil
+}
+
+// NewPluginManager creates a generic plugin manager.
+func NewPluginManager[T plugins.Plugin](pluginList ...T) *DefaultPluginManager[T] {
+	manager, err := NewPluginManagerWithError(pluginList...)
+	if err != nil {
+		panic(err)
+	}
 	return manager
 }
 
@@ -133,10 +146,25 @@ func NewTypedPluginManager(pluginList ...plugins.Plugin) PluginManager {
 
 // SetConfig sets global config.
 func (m *DefaultPluginManager[T]) SetConfig(conf config.Config) {
-	m.config = conf
-	if m.runtime != nil {
-		m.runtime.SetConfig(conf)
+	if m == nil {
+		return
 	}
+	m.mu.Lock()
+	m.config = conf
+	rt := m.runtime
+	m.mu.Unlock()
+	if rt != nil {
+		rt.SetConfig(conf)
+	}
+}
+
+func (m *DefaultPluginManager[T]) getConfigSnapshot() config.Config {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.config
 }
 
 // GetRuntime returns the shared runtime.

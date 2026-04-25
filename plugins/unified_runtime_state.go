@@ -62,7 +62,11 @@ func (r *UnifiedRuntime) Shutdown() {
 	state.mu.Unlock()
 
 	if r.shutdownCancel != nil {
-		r.shutdownCancel()
+		defer r.shutdownCancel()
+	}
+
+	if err := r.cleanupAllResources(); err != nil && logger != nil {
+		logger.Log(log.LevelWarn, "msg", "failed to cleanup runtime resources during shutdown", "error", err)
 	}
 
 	if adapter != nil {

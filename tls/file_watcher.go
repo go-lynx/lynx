@@ -24,9 +24,10 @@ type FileWatcher struct {
 	changeChan     chan struct{}
 
 	// Control
-	stopChan chan struct{}
-	running  bool
-	stopped  bool // Guard against double-close of stopChan
+	stopChan         chan struct{}
+	running          bool
+	stopped          bool // Guard against double-close of stopChan
+	changeChanClosed bool
 }
 
 // MonitoredFile represents a file being monitored
@@ -105,6 +106,9 @@ func (fw *FileWatcher) Start(checkInterval time.Duration) {
 
 	if fw.running || fw.stopped {
 		return
+	}
+	if checkInterval <= 0 {
+		checkInterval = time.Second
 	}
 
 	fw.running = true
@@ -255,8 +259,8 @@ func (fw *FileWatcher) ResetChanged() {
 // WaitForChange waits for a file change to be detected
 func (fw *FileWatcher) WaitForChange(timeout time.Duration) bool {
 	select {
-	case <-fw.changeChan:
-		return true
+	case _, ok := <-fw.changeChan:
+		return ok
 	case <-time.After(timeout):
 		return false
 	case <-fw.stopChan:
@@ -284,5 +288,11 @@ func (fw *FileWatcher) GetMonitoredFiles() map[string]*MonitoredFile {
 // Close closes the file watcher and cleans up resources
 func (fw *FileWatcher) Close() {
 	fw.Stop()
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+	if fw.changeChanClosed {
+		return
+	}
 	close(fw.changeChan)
+	fw.changeChanClosed = true
 }

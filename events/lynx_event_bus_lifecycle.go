@@ -11,9 +11,12 @@ import (
 // Close closes the event bus.
 func (b *LynxEventBus) Close() error {
 	if b.isClosed.CompareAndSwap(false, true) {
+		b.enqueueMu.Lock()
 		close(b.done)
+		b.enqueueMu.Unlock()
 
-		closeTimeout := b.config.CloseTimeout
+		cfg, _, _, workerPool, _ := b.runtimeSnapshot()
+		closeTimeout := cfg.CloseTimeout
 		if closeTimeout <= 0 {
 			closeTimeout = 30 * time.Second
 		}
@@ -47,19 +50,16 @@ func (b *LynxEventBus) Close() error {
 					"event bus close timeout after %v: %d goroutines may still be running (before: %d, after: %d), forcing cleanup",
 					closeTimeout, leakedGoroutines, goroutinesBefore, goroutinesAfter)
 			}
-			if b.dispatcher != nil {
-				if err := b.dispatcher.Close(); err != nil && b.logger != nil {
-					log.NewHelper(b.logger).Errorf("failed to force close dispatcher: %v", err)
-				}
-			}
 			select {
 			case <-done:
 			default:
 			}
 		}
 
-		if b.workerPool != nil {
-			b.workerPool.Release()
+		if workerPool != nil {
+			if err := workerPool.ReleaseTimeout(closeTimeout); err != nil && b.logger != nil {
+				log.NewHelper(b.logger).Warnf("worker pool release timeout: %v", err)
+			}
 		}
 
 		b.processedEvents.Range(func(key, value any) bool {

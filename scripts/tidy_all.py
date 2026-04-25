@@ -44,6 +44,15 @@ def find_go_modules(root: Path) -> list[str]:
     return sorted(modules, key=_module_sort_key)
 
 
+def parse_skip_modules(value: str) -> set[str]:
+    skipped = set()
+    for item in value.split(","):
+        item = item.strip().strip("/")
+        if item:
+            skipped.add(item)
+    return skipped
+
+
 def _module_sort_key(name: str) -> tuple:
     """排序：优先顺序内的靠前，其余按字母序。"""
     name_norm = name.replace("\\", "/")
@@ -115,11 +124,15 @@ def main():
     print("=" * 60)
 
     modules = find_go_modules(ROOT)
+    skipped = parse_skip_modules(os.environ.get("LYNX_SKIP_MODULES", ""))
+    modules = [module for module in modules if module not in skipped]
     if not modules:
         print("未找到任何 go.mod，请确认在 lynx 项目根目录下运行本脚本。")
         sys.exit(1)
 
     print(f"\n共发现 {len(modules)} 个模块，开始执行 go mod tidy...\n")
+    if skipped:
+        print("跳过模块:", ", ".join(sorted(skipped)))
 
     results = []
     for i, rel in enumerate(modules, 1):

@@ -39,10 +39,13 @@ func (s *DefaultRecoveryStrategy) CanRecover(errorType string, severity ErrorSev
 
 // Recover attempts to recover from the error.
 func (s *DefaultRecoveryStrategy) Recover(ctx context.Context, record ErrorRecord) (bool, error) {
+	timer := time.NewTimer(s.timeout)
+	defer timer.Stop()
+
 	select {
 	case <-ctx.Done():
 		return false, ctx.Err()
-	case <-time.After(s.timeout):
+	case <-timer.C:
 		return true, nil
 	}
 }

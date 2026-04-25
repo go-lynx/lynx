@@ -57,7 +57,11 @@ func TestMemoryOptimization(t *testing.T) {
 	// With object pooling, we expect significantly less allocation
 	// Note: The threshold is set higher to account for Go's memory management
 	// and the fact that we're processing 1,000 events in a short time
-	if allocDiff > 50*1024*1024 { // 50MB threshold (reduced since we're processing fewer events)
+	threshold := uint64(50 * 1024 * 1024)
+	if raceEnabled {
+		threshold = 120 * 1024 * 1024
+	}
+	if allocDiff > threshold {
 		t.Errorf("Memory allocation too high: %d bytes", allocDiff)
 	}
 }

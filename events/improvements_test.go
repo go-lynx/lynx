@@ -326,3 +326,60 @@ func TestGetGlobalEventBus_UsesSharedFallbackAfterInitFailure(t *testing.T) {
 		t.Fatal("expected repeated fallback resolution to return the same manager instance")
 	}
 }
+
+func TestEventBusCloseRejectsLatePublish(t *testing.T) {
+	cfg := DefaultBusConfig()
+	cfg.MaxQueue = 64
+	cfg.BatchSize = 8
+	cfg.FlushInterval = time.Millisecond
+	cfg.CloseTimeout = time.Second
+
+	bus := NewLynxEventBus(cfg, BusTypeSystem, nil)
+	var publishers sync.WaitGroup
+	stop := make(chan struct{})
+
+	for i := 0; i < 8; i++ {
+		publishers.Add(1)
+		go func() {
+			defer publishers.Done()
+			event := NewLynxEvent(EventSystemStart, "system", "close-test")
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					bus.Publish(event)
+				}
+			}
+		}()
+	}
+
+	time.Sleep(10 * time.Millisecond)
+	if err := bus.Close(); err != nil {
+		t.Fatalf("close failed: %v", err)
+	}
+	close(stop)
+	publishers.Wait()
+
+	for i := 0; i < 128; i++ {
+		bus.Publish(NewLynxEvent(EventSystemStart, "system", "late-publish"))
+	}
+	if got := bus.GetQueueSize(); got != 0 {
+		t.Fatalf("closed bus accepted late events, queue size=%d", got)
+	}
+}
+
+func TestEventBusInvalidDirectConfigDoesNotPanic(t *testing.T) {
+	cfg := BusConfig{
+		MaxQueue:      1,
+		BatchSize:     1,
+		WorkerCount:   1,
+		CloseTimeout:  time.Second,
+		EnableMetrics: true,
+	}
+
+	bus := NewLynxEventBus(cfg, BusTypeSystem, nil)
+	defer bus.Close()
+
+	bus.Publish(NewLynxEvent(EventSystemStart, "system", "zero-flush"))
+}

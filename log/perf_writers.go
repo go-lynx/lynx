@@ -56,7 +56,7 @@ func (b *BufferedWriter) Write(p []byte) (int, error) {
 	// Strategy: flush on newline or if buffer is close to full; bufio handles flushing on its policy
 	if err == nil && (len(p) > 0 && p[len(p)-1] == '\n') {
 		if ferr := b.buf.Flush(); ferr == nil {
-			b.metrics.FlushCount++
+			atomic.AddInt64(&b.metrics.FlushCount, 1)
 		}
 	}
 	b.mu.Unlock()
@@ -91,7 +91,7 @@ func (b *BufferedWriter) Flush() error {
 		atomic.AddInt64(&b.metrics.ErrorCount, 1)
 		return err
 	}
-	b.metrics.FlushCount++
+	atomic.AddInt64(&b.metrics.FlushCount, 1)
 	return nil
 }
 
@@ -106,28 +106,36 @@ func (b *BufferedWriter) Close() error {
 		atomic.AddInt64(&b.metrics.ErrorCount, 1)
 		return err
 	}
-	b.metrics.FlushCount++
+	atomic.AddInt64(&b.metrics.FlushCount, 1)
 	return nil
 }
 
 // GetMetrics returns a snapshot of metrics.
 func (b *BufferedWriter) GetMetrics() LogPerformanceMetrics {
+	b.mu.Lock()
+	bufferUtilization := b.metrics.BufferUtilization
+	lastReset := b.metrics.lastReset
+	b.mu.Unlock()
+
 	// Use atomic value for avg write time
 	avgNs := b.avgWriteTimeAtomic.Load()
 	return LogPerformanceMetrics{
 		TotalLogs:         atomic.LoadInt64(&b.metrics.TotalLogs),
 		DroppedLogs:       atomic.LoadInt64(&b.metrics.DroppedLogs),
 		AvgWriteTime:      time.Duration(avgNs),
-		BufferUtilization: b.metrics.BufferUtilization,
+		BufferUtilization: bufferUtilization,
 		FlushCount:        atomic.LoadInt64(&b.metrics.FlushCount),
 		ErrorCount:        atomic.LoadInt64(&b.metrics.ErrorCount),
-		lastReset:         b.metrics.lastReset,
+		lastReset:         lastReset,
 	}
 }
 
 // ResetMetrics resets counters.
 func (b *BufferedWriter) ResetMetrics() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.metrics = LogPerformanceMetrics{lastReset: time.Now()}
+	b.avgWriteTimeAtomic.Store(0)
 }
 
 // AsyncLogWriter is a non-blocking writer that writes in background.

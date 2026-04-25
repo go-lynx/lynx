@@ -32,13 +32,22 @@ func (b *LynxEventBus) GetLogger() log.Logger { return b.logger }
 func (b *LynxEventBus) GetBusType() BusType { return b.busType }
 
 // GetConfig returns the bus configuration
-func (b *LynxEventBus) GetConfig() BusConfig { return b.config }
+func (b *LynxEventBus) GetConfig() BusConfig { return b.configSnapshot() }
 
 // GetHistory returns the event history (if enabled)
-func (b *LynxEventBus) GetHistory() *EventHistory { return b.history }
+func (b *LynxEventBus) GetHistory() *EventHistory {
+	_, _, history, _, _ := b.runtimeSnapshot()
+	return history
+}
 
 // GetMetrics returns the event metrics (if enabled)
 func (b *LynxEventBus) GetMetrics() *EventMetrics { return b.metrics }
+
+func (b *LynxEventBus) runtimeSnapshot() (BusConfig, *SimpleThrottler, *EventHistory, *ants.Pool, chan struct{}) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.config, b.throttler, b.history, b.workerPool, b.retrySem
+}
 
 // LynxEventBus represents a single event bus for a specific bus type
 type LynxEventBus struct {
@@ -56,11 +65,12 @@ type LynxEventBus struct {
 	logger  log.Logger
 
 	// State management
-	done     chan struct{}
-	mu       sync.RWMutex
-	isClosed atomic.Bool
-	wg       sync.WaitGroup
-	paused   atomic.Bool
+	done      chan struct{}
+	mu        sync.RWMutex
+	enqueueMu sync.RWMutex
+	isClosed  atomic.Bool
+	wg        sync.WaitGroup
+	paused    atomic.Bool
 
 	// Backpressure queue (single shared queue)
 	queue chan LynxEvent
@@ -81,6 +91,7 @@ type LynxEventBus struct {
 	degradationStartTime time.Time
 	// Performance optimization: sample degradation checks instead of checking every event
 	lastDegradationCheck atomic.Int64 // Unix timestamp in nanoseconds
+	degradationSampleSeq atomic.Uint64
 
 	// Throttling for degradation mode
 	throttler *SimpleThrottler
@@ -102,7 +113,7 @@ type LynxEventBus struct {
 	// Catch-all subscribers (used by Subscribe/SubscribeWithFilter).
 	// kelindar/event routes by ev.Type(), so Subscribe[LynxEvent] would only
 	// match events whose Type()==0. We maintain our own list instead.
-	catchAllSubs sync.Map    // map[uint64]func(LynxEvent)
+	catchAllSubs sync.Map // map[uint64]func(LynxEvent)
 	catchAllSeq  atomic.Uint64
 }
 
