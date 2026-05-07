@@ -270,16 +270,21 @@ func (app *Application) initiateShutdown() {
 	})
 }
 
-func (app *Application) protectShutdownStep(stepName string, fn func()) {
+func (app *Application) protectShutdownStep(stepName string, fn func()) error {
 	if fn == nil {
-		return
+		return nil
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			log.Errorf("Panic in %s: %v", stepName, r)
-		}
+	var stepErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				stepErr = fmt.Errorf("panic in %s: %v", stepName, r)
+				log.Errorf("Panic in %s: %v", stepName, r)
+			}
+		}()
+		fn()
 	}()
-	fn()
+	return stepErr
 }
 
 func protectLoggerCleanup(fn func()) {
@@ -294,10 +299,9 @@ func protectLoggerCleanup(fn func()) {
 	fn()
 }
 
-// gracefulShutdown performs graceful shutdown of the application
+// gracefulShutdown performs graceful shutdown of the application.
 // Shutdown order: health checker -> plugins -> application -> cleanup -> loggers
 func (app *Application) gracefulShutdown() {
-	// Protect against panic during shutdown
 	defer func() {
 		if r := recover(); r != nil {
 			log.Errorf("Panic during graceful shutdown: %v", r)
@@ -306,32 +310,56 @@ func (app *Application) gracefulShutdown() {
 
 	log.Info("Starting graceful shutdown...")
 
-	// Step 1: Stop health checker first to prevent new health checks during shutdown
+	var shutdownErrs []error
+
+	// Step 1: Stop health checker first to prevent new health checks during shutdown.
 	if app.healthChecker != nil {
-		app.protectShutdownStep("stopping health checker", func() {
+		if err := app.protectShutdownStep("stopping health checker", func() {
 			app.healthChecker.Stop()
-		})
+		}); err != nil {
+			shutdownErrs = append(shutdownErrs, err)
+		}
 	}
 
-	// Step 2: Close Lynx application (this will unload plugins in reverse dependency order)
+	// Step 2: Close Lynx application (unloads plugins in reverse dependency order).
+	// Wrap with app.shutdownTimeout so a stuck plugin cannot block K8s pod termination.
 	if app.lynxApp != nil {
-		app.protectShutdownStep("closing Lynx application", func() {
-			if err := app.lynxApp.Close(); err != nil {
-				log.Errorf("Error during Lynx application shutdown: %v", err)
+		if err := app.protectShutdownStep("closing Lynx application", func() {
+			done := make(chan error, 1)
+			go func() { done <- app.lynxApp.Close() }()
+			select {
+			case err := <-done:
+				if err != nil {
+					log.Errorf("Error during Lynx application shutdown: %v", err)
+					shutdownErrs = append(shutdownErrs, fmt.Errorf("lynx close: %w", err))
+				}
+			case <-time.After(app.shutdownTimeout):
+				err := fmt.Errorf("lynx application close timed out after %v", app.shutdownTimeout)
+				log.Error(err)
+				shutdownErrs = append(shutdownErrs, err)
 			}
-		})
+		}); err != nil {
+			shutdownErrs = append(shutdownErrs, err)
+		}
 	}
 
-	// Step 3: Execute custom cleanup functions
+	// Step 3: Execute custom cleanup functions.
 	if app.cleanup != nil {
-		app.protectShutdownStep("custom cleanup", func() {
+		if err := app.protectShutdownStep("custom cleanup", func() {
 			app.cleanup()
-		})
+		}); err != nil {
+			shutdownErrs = append(shutdownErrs, err)
+		}
 	}
 
-	log.Info("Graceful shutdown completed")
+	if len(shutdownErrs) > 0 {
+		log.Errorf("Graceful shutdown completed with %d error(s): %v",
+			len(shutdownErrs), errors.Join(shutdownErrs...))
+	} else {
+		log.Info("Graceful shutdown completed")
+	}
 
-	// Step 4: Cleanup loggers and close all writers (should be last)
+	// Step 4: Cleanup loggers and close all writers (must be last).
 	protectLoggerCleanup(func() {
 		log.CleanupLoggers()
 	})

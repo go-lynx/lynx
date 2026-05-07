@@ -1,3 +1,5 @@
+//go:build !v2
+
 // Compatibility layer — legacy report shapes.
 //
 // ConfigReloadPlan and RuntimeReport are retained only for callers that predate

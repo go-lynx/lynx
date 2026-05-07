@@ -21,8 +21,8 @@ func (r *UnifiedRuntime) WithPluginContext(pluginName string) Runtime {
 			resources:            r.resources,
 			resourceInfo:         r.resourceInfo,
 			resourceOpMu:         r.resourceOpMu,
-			config:               r.GetConfig(),
-			logger:               r.GetLogger(),
+			config:               r.config,
+			logger:               r.logger,
 			shared:               r.sharedState(),
 			currentPluginContext: pluginName,
 			contextMu:            sync.RWMutex{},
@@ -30,16 +30,16 @@ func (r *UnifiedRuntime) WithPluginContext(pluginName string) Runtime {
 			ownerHandles:         r.ownerHandles,
 			ownerSeq:             r.ownerSeq,
 			eventManager:         r.eventManager,
-			eventAdapter:         nil,
-			closed:               false,
+			eventAdapter:         r.eventAdapter,
+			closed:               r.closed,
 			mu:                   sync.RWMutex{},
 			shutdownCtx:          r.shutdownCtx,
 			shutdownCancel:       nil,
 		}
 	}
 
-	if logger := r.GetLogger(); logger != nil {
-		logger.Log(log.LevelWarn, "msg", "denied WithPluginContext switch", "from", cur, "to", pluginName)
+	if r.logger != nil {
+		r.logger.Log(log.LevelWarn, "msg", "denied WithPluginContext switch", "from", cur, "to", pluginName)
 	}
 	return r
 }

@@ -8,6 +8,14 @@ import (
 // Runtime lifecycle metrics — registered with the default prometheus registry so
 // they appear automatically in the unified /metrics endpoint (see handler.go).
 var (
+	// runtimeCleanupAllDuration tracks the total wall-clock time for a full
+	// runtime-wide resource sweep (global shutdown path, i.e. cleanupAllResources).
+	// High values here mean pods will exceed their K8s grace period.
+	runtimeCleanupAllDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "lynx_runtime_cleanup_all_duration_seconds",
+		Help:    "Total duration of runtime-wide resource cleanup during global shutdown.",
+		Buckets: []float64{.01, .05, .1, .25, .5, 1, 2.5, 5, 10, 30},
+	})
 	// pluginStartupDuration tracks how long each plugin's Initialize step takes.
 	// High values here indicate slow plugin boot, not slow requests.
 	pluginStartupDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -36,6 +44,12 @@ var (
 		Help: "Total resource cleanup calls that exceeded 5 seconds.",
 	}, []string{"resource_name"})
 )
+
+// RecordRuntimeCleanupDuration records the total wall-clock time for a full
+// runtime-wide cleanup (cleanupAllResources during global shutdown).
+func RecordRuntimeCleanupDuration(seconds float64) {
+	runtimeCleanupAllDuration.Observe(seconds)
+}
 
 // RecordPluginStartupDuration records how long a plugin's Initialize step took.
 func RecordPluginStartupDuration(pluginID, pluginName string, seconds float64) {

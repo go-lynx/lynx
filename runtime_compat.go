@@ -1,3 +1,5 @@
+//go:build !v2
+
 // Compatibility layer — legacy runtime wrapper types.
 //
 // TypedRuntimePlugin / RuntimePlugin wrap plugins.Runtime in a struct that was
