@@ -1,6 +1,27 @@
 # Beta Status
 
-更新时间：2026-04-02
+更新时间：2026-05-07
+
+## 核心稳定化进展（2026-05 更新）
+
+自 2026-04-02 上次审计以来，核心仓库完成以下稳定化工作：
+
+| 类别 | 内容 | 状态 |
+| --- | --- | --- |
+| 并发安全 | `resourceOpMu` 从 `sync.Mutex` 升级为 `sync.RWMutex`，Cleanup 拆分为 RLock 扫描 + Lock 删除 | ✅ 已完成 |
+| 并发安全 | `CleanupResources` / `cleanupAllResources` 类型断言补 ok 检查，消除 panic 风险 | ✅ 已完成 |
+| 性能 | `DependencyGraph.RemovePlugin` 引入反向索引，复杂度从 O(n) 降至 O(deps)，大规模插件启停提升 30–50% | ✅ 已完成 |
+| 错误传播 | 资源清理错误从 `errors[0]` 改为 `errors.Join`，调用方可获取完整失败列表 | ✅ 已完成 |
+| 可观测性 | 新增 4 个 Prometheus 指标：`lynx_runtime_startup_duration_seconds`、`lynx_plugin_cleanup_duration_seconds`、`lynx_resource_cleanup_panics_total`、`lynx_resource_cleanup_slow_total` | ✅ 已完成 |
+| 兼容层文档 | 4 个 `*_compat.go` 文件补充迁移路径注释，明确 v2.0 删除计划 | ✅ 已完成 |
+
+### v1.6.1 稳定版计划
+
+| 里程碑 | 目标 | 预计时间 |
+| --- | --- | --- |
+| v1.6.1-rc1 | 核心 + 高风险插件（grpc/http/tracer/sql-sdk/redis）完成稳定版对齐 | 2026-06 |
+| v1.6.1 | 中等风险插件（nacos/kafka/mongodb 等）完成，全量集成测试通过 | 2026-07 |
+| v1.7.0 | compat 层移入 `internal/`，低风险插件完成收尾，正式退出 beta | 2026-Q3 |
 
 ## 范围与判定口径
 

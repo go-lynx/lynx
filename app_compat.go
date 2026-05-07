@@ -1,3 +1,21 @@
+// Compatibility layer — process-wide singleton helpers.
+//
+// All exported symbols in this file are deprecated. They exist solely to give
+// existing callers time to migrate to the instance-oriented API introduced in
+// v1.6. They will be removed in v2.0.
+//
+// Migration guide:
+//   - Replace NewApp(...) with NewStandaloneApp(...) and call SetDefaultApp only
+//     at your application's main entry point.
+//   - Replace Lynx() / GetName() / GetHost() / GetVersion() with an explicit
+//     *LynxApp reference passed through your dependency graph.
+//   - Replace GetTypedPlugin[T](...) with GetTypedPluginFromApp[T](app, ...).
+//
+// v1.7 goal: move this file to internal/app/compat.go and gate with
+//
+//	//go:build !v2
+//
+// v2.0: delete entirely.
 package lynx
 
 import (

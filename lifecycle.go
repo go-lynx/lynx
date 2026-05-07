@@ -594,6 +594,7 @@ func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Ru
 		setPluginStatusIfSupported(p, plugins.StatusFailed)
 	}
 	duration := time.Since(t0)
+	metrics.RecordPluginStartupDuration(p.ID(), p.Name(), duration.Seconds())
 	if duration > timeout/2 {
 		log.Warnf("Plugin %s initialize took %v (50%% of timeout %v)", p.Name(), duration, timeout)
 	}

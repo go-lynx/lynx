@@ -1,3 +1,14 @@
+// Compatibility layer — legacy report shapes.
+//
+// ConfigReloadPlan and RuntimeReport are retained only for callers that predate
+// the restart-based configuration model introduced in v1.6. All types and
+// methods in this file are deprecated and will be removed in v2.0.
+//
+// Migration guide:
+//   - Replace ConfigReloadPlan() with GetRestartRequirementReport().
+//   - Replace RuntimeReport() with CoreRuntimeReport().
+//
+// v2.0: delete entirely.
 package lynx
 
 // ConfigReloadPlan returns the current plugin manager's compatibility view for older callers.

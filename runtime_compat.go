@@ -1,3 +1,17 @@
+// Compatibility layer — legacy runtime wrapper types.
+//
+// TypedRuntimePlugin / RuntimePlugin wrap plugins.Runtime in a struct that was
+// previously required by the plugin interface. Since v1.6 plugins receive a
+// plugins.Runtime directly; the wrapper is no longer needed.
+//
+// Deprecated: all symbols in this file will be removed in v2.0.
+//
+// Migration guide:
+//   - Replace TypedRuntimePlugin / RuntimePlugin fields with plugins.Runtime.
+//   - Replace NewTypedRuntimePlugin() / NewRuntimePlugin() with
+//     plugins.NewUnifiedRuntime() or NewDefaultRuntime().
+//
+// v2.0: delete entirely.
 package lynx
 
 import (

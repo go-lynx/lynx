@@ -8,6 +8,8 @@ import (
 	"net"
 	"os"
 	"reflect"
+
+	"github.com/go-lynx/lynx/observability/metrics"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -81,6 +83,11 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	if pluginID == "" {
 		return fmt.Errorf("plugin ID cannot be empty")
 	}
+
+	t0 := time.Now()
+	defer func() {
+		metrics.RecordPluginCleanupDuration(pluginID, time.Since(t0).Seconds())
+	}()
 
 	callerOwner := r.getCurrentOwner()
 	caller := r.ownerPluginID(callerOwner)
@@ -225,6 +232,7 @@ func (r *UnifiedRuntime) cleanupResourceGracefully(name string, resource any) (e
 
 	defer func() {
 		if rec := recover(); rec != nil {
+			metrics.RecordResourceCleanupPanic(name)
 			if logger := r.GetLogger(); logger != nil {
 				logger.Log(log.LevelWarn, "msg", "panic during resource cleanup", "resource", name, "panic", rec)
 			}
@@ -235,6 +243,7 @@ func (r *UnifiedRuntime) cleanupResourceGracefully(name string, resource any) (e
 	startTime := time.Now()
 	defer func() {
 		if duration := time.Since(startTime); duration > 5*time.Second {
+			metrics.RecordResourceCleanupSlow(name)
 			if logger := r.GetLogger(); logger != nil {
 				logger.Log(log.LevelWarn, "msg", "slow resource cleanup", "resource", name, "duration", duration)
 			}
