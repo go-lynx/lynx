@@ -1,3 +1,12 @@
+// Compatibility layer — plugin manager aliases and legacy config-reload vocabulary.
+//
+// Deprecated: all symbols in this file will be removed in v2.0.
+//
+// Migration guide:
+//   - Replace TypedPluginManager with PluginManager.
+//   - Replace GetConfigReloadPlan() with GetRestartRequirementReport().
+//
+// v2.0: delete entirely.
 package lynx
 
 // TypedPluginManager is a deprecated alias for PluginManager.
