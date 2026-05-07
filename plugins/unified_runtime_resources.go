@@ -102,7 +102,10 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	r.resourceOpMu.RLock()
 	r.resourceInfo.Range(func(key, value any) bool {
 		if info, ok := value.(*ResourceInfo); ok && info.PluginID == pluginID {
-			storageKey := key.(string)
+			storageKey, ok := key.(string)
+			if !ok {
+				return true
+			}
 			if resource, exists := r.resources.Load(storageKey); exists {
 				toDelete = append(toDelete, resItem{key: storageKey, displayName: info.Name, res: resource})
 			}
@@ -124,7 +127,7 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 		}
 	}
 
-	var errors []error
+	var cleanupErrs []error
 	var cleanedCount int
 	seenCleanupTargets := make(map[string]struct{}, len(toDelete))
 	for _, item := range toDelete {
@@ -137,7 +140,7 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 		}
 
 		if err := r.cleanupResourceGracefully(item.displayName, item.res); err != nil {
-			errors = append(errors, fmt.Errorf("failed to cleanup resource %s: %w", item.displayName, err))
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("failed to cleanup resource %s: %w", item.displayName, err))
 		} else {
 			cleanedCount++
 		}
@@ -149,24 +152,28 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 				"plugin_id", pluginID,
 				"total", len(toDelete),
 				"cleaned", cleanedCount,
-				"errors", len(errors))
+				"errors", len(cleanupErrs))
 		}
 	}
 
-	if len(errors) > 0 {
-		return fmt.Errorf("resource cleanup had %d errors: %v", len(errors), errors[0])
+	if len(cleanupErrs) > 0 {
+		return fmt.Errorf("resource cleanup had %d errors: %w", len(cleanupErrs), errors.Join(cleanupErrs...))
 	}
 	return nil
 }
 
 func (r *UnifiedRuntime) cleanupAllResources() error {
-	r.resourceOpMu.Lock()
 	type resItem struct {
 		key         string
 		displayName string
 		res         any
 	}
 	var toDelete []resItem
+
+	// Scan with read lock — sync.Map Range is concurrency-safe and does not
+	// need a write lock; holding a write lock here blocks every concurrent
+	// GetResource / ListResources call for the full scan duration.
+	r.resourceOpMu.RLock()
 	r.resourceInfo.Range(func(key, value any) bool {
 		storageKey, ok := key.(string)
 		if !ok {
@@ -181,6 +188,10 @@ func (r *UnifiedRuntime) cleanupAllResources() error {
 		}
 		return true
 	})
+	r.resourceOpMu.RUnlock()
+
+	// Delete with write lock — brief, bounded by the number of resources.
+	r.resourceOpMu.Lock()
 	for _, item := range toDelete {
 		r.resources.Delete(item.key)
 		r.resourceInfo.Delete(item.key)
@@ -201,7 +212,7 @@ func (r *UnifiedRuntime) cleanupAllResources() error {
 		}
 	}
 	if len(cleanupErrors) > 0 {
-		return fmt.Errorf("runtime resource cleanup had %d errors: %v", len(cleanupErrors), cleanupErrors[0])
+		return fmt.Errorf("runtime resource cleanup had %d errors: %w", len(cleanupErrors), errors.Join(cleanupErrors...))
 	}
 	return nil
 }
