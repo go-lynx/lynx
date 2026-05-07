@@ -170,6 +170,11 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 }
 
 func (r *UnifiedRuntime) cleanupAllResources() error {
+	t0 := time.Now()
+	defer func() {
+		metrics.RecordRuntimeCleanupDuration(time.Since(t0).Seconds())
+	}()
+
 	type resItem struct {
 		key         string
 		displayName string
@@ -205,19 +210,40 @@ func (r *UnifiedRuntime) cleanupAllResources() error {
 	}
 	r.resourceOpMu.Unlock()
 
+	if len(toDelete) > 0 {
+		if logger := r.GetLogger(); logger != nil {
+			logger.Log(log.LevelInfo, "msg", "runtime full cleanup initiated", "total", len(toDelete))
+		}
+	}
+
 	var cleanupErrors []error
+	var cleanedCount int
 	seenCleanupTargets := make(map[string]struct{}, len(toDelete))
 	for _, item := range toDelete {
 		if identity, ok := resourceCleanupIdentity(item.res); ok {
 			if _, exists := seenCleanupTargets[identity]; exists {
+				cleanedCount++
 				continue
 			}
 			seenCleanupTargets[identity] = struct{}{}
 		}
 		if err := r.cleanupResourceGracefully(item.displayName, item.res); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("failed to cleanup resource %s: %w", item.displayName, err))
+		} else {
+			cleanedCount++
 		}
 	}
+
+	if len(toDelete) > 0 {
+		if logger := r.GetLogger(); logger != nil {
+			logger.Log(log.LevelInfo, "msg", "runtime full cleanup completed",
+				"total", len(toDelete),
+				"cleaned", cleanedCount,
+				"errors", len(cleanupErrors),
+				"duration_ms", time.Since(t0).Milliseconds())
+		}
+	}
+
 	if len(cleanupErrors) > 0 {
 		return fmt.Errorf("runtime resource cleanup had %d errors: %w", len(cleanupErrors), errors.Join(cleanupErrors...))
 	}

@@ -1,3 +1,5 @@
+//go:build !v2
+
 // Compatibility layer — process-wide singleton helpers.
 //
 // All exported symbols in this file are deprecated. They exist solely to give

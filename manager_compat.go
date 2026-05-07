@@ -1,3 +1,5 @@
+//go:build !v2
+
 // Compatibility layer — plugin manager aliases and legacy config-reload vocabulary.
 //
 // Deprecated: all symbols in this file will be removed in v2.0.
