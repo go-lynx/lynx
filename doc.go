@@ -1,12 +1,8 @@
-// Package lynx provides the core plugin orchestration framework used by Lynx applications.
+// Package lynx provides the core application framework for building Go microservices.
 //
-// Lynx is built around plugin orchestration, dependency-aware lifecycle
-// management, and a unified runtime for plugin-based applications built on top
-// of Kratos.
-//
-// The root package should be understood primarily as framework core. Optional
-// bootstrap/process helpers live in the boot package, while some singleton and
-// legacy integration surfaces remain for compatibility.
+// The implementation lives in internal/app; this file and facade.go re-export the
+// public API so that callers continue to use import paths of the form
+// github.com/go-lynx/lynx.
 //
 // # Architecture
 //
@@ -17,31 +13,12 @@
 //   - UnifiedRuntime: Provides resource sharing, event handling, and plugin-scoped runtime views
 //   - Control Plane: Optional shell-facing integration for discovery, routing, and config sources
 //
-// # File Organization
+// # Package Organization
 //
-// The root package contains the following files:
+// The root package is a thin facade over internal/app. All implementation lives in:
 //
-//   - app.go: App instance definition and instance-facing APIs
-//   - app_compat.go: Process-wide default app and compatibility helpers
-//   - app_report.go: Core-facing restart-based reports
-//   - app_report_compat.go: Compatibility report views retained for older callers
-//   - app_init.go: App construction and initialization flow
-//   - app_shutdown.go: App shutdown and cleanup flow
-//   - app_subscriptions.go: Subscription loading and gRPC subscription wiring
-//   - manager.go: Plugin manager interfaces and implementation
-//   - lifecycle.go: Plugin lifecycle operations (init/start/stop)
-//   - ops.go: Plugin loading and unloading operations
-//   - topology.go: Plugin dependency resolution and ordering
-//   - runtime.go: Core runtime helpers for explicit plugins.Runtime usage
-//   - runtime_compat.go: Compatibility runtime wrapper around plugins.UnifiedRuntime
-//   - controlplane.go: Optional shell-facing control plane interfaces
-//   - certificate.go: TLS certificate provider interface
-//   - prepare.go: Plugin preparation and bootstrapping from configuration
-//   - circuit_breaker.go: Shared circuit breaker implementation
-//   - recovery.go: Error recovery manager flow
-//   - recovery_strategy.go: Recovery strategy interfaces and default behavior
-//   - recovery_report.go: Recovery reporting and health views
-//   - recovery_types.go: Recovery records and error classification types
+//   - internal/app/: Core implementation (LynxApp, managers, lifecycle, etc.)
+//   - internal/app/compat/: Deprecated TypedRuntimePlugin wrapper (removed in v2.0)
 //
 // # Quick Start
 //
@@ -62,52 +39,20 @@
 //	    cfg.Load()
 //
 //	    // Create application with plugins
-//	    app, err := lynx.NewApp(cfg)
+//	    app, err := lynx.NewStandaloneApp(cfg)
 //	    if err != nil {
 //	        panic(err)
 //	    }
 //	    defer app.Close()
 //
 //	    // Load and start plugins
-//	    if err := app.GetPluginManager().LoadPlugins(cfg); err != nil {
+//	    if err := app.LoadPlugins(); err != nil {
 //	        panic(err)
 //	    }
 //
 //	    // Or hand the app to the optional boot package
-//	    boot.Run(app)
+//	    // boot.NewApplication(wire).Run()
 //	}
-//
-// # Plugin Development
-//
-// To create a custom plugin, implement the plugins.Plugin interface:
-//
-//	type MyPlugin struct {
-//	    *plugins.BasePlugin
-//	}
-//
-//	func (p *MyPlugin) Name() string { return "my-plugin" }
-//	func (p *MyPlugin) ID() string   { return "my-plugin-v1" }
-//
-//	func (p *MyPlugin) Initialize(plugin plugins.Plugin, rt plugins.Runtime) error {
-//	    // Initialization logic
-//	    return nil
-//	}
-//
-//	func (p *MyPlugin) Start(plugin plugins.Plugin) error {
-//	    // Startup logic
-//	    return nil
-//	}
-//
-//	func (p *MyPlugin) Stop(plugin plugins.Plugin) error {
-//	    // Shutdown logic
-//	    return nil
-//	}
-//
-// # Configuration
-//
-// The framework uses YAML configuration files. Configuration changes that affect
-// loaded plugins are expected to be applied by restart or external rollout
-// tooling rather than in-process orchestration by the core.
 //
 // # For More Information
 //

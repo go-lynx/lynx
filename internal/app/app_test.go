@@ -1,0 +1,936 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"runtime"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-lynx/lynx/events"
+	"github.com/go-lynx/lynx/plugins"
+)
+
+type typedPluginForAppLookup struct {
+	*plugins.BasePlugin
+}
+
+func newTypedPluginForAppLookup(name string) *typedPluginForAppLookup {
+	return &typedPluginForAppLookup{
+		BasePlugin: plugins.NewBasePlugin("test."+name+".v1", name, "typed lookup plugin", "v1.0.0", "test."+name, 0),
+	}
+}
+
+type staticSource struct {
+	kv *config.KeyValue
+}
+
+type staticWatcher struct {
+	stop     chan struct{}
+	stopOnce sync.Once
+}
+
+func (s *staticSource) Load() ([]*config.KeyValue, error) {
+	return []*config.KeyValue{s.kv}, nil
+}
+
+func (s *staticSource) Watch() (config.Watcher, error) {
+	return &staticWatcher{stop: make(chan struct{})}, nil
+}
+
+func (w *staticWatcher) Next() ([]*config.KeyValue, error) {
+	<-w.stop
+	return nil, context.Canceled
+}
+
+func (w *staticWatcher) Stop() error {
+	w.stopOnce.Do(func() {
+		close(w.stop)
+	})
+	return nil
+}
+
+// TestNewApp_ConcurrentInit tests concurrent initialization
+func TestNewApp_ConcurrentInit(t *testing.T) {
+	// Reset global state
+	resetGlobalState()
+
+	const numGoroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	apps := make([]*LynxApp, numGoroutines)
+	errors := make([]error, numGoroutines)
+
+	// Create test config
+	cfg := createTestConfig(t)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			app, err := NewApp(cfg)
+			apps[idx] = app
+			errors[idx] = err
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify all goroutines return the same instance or error
+	firstApp := apps[0]
+	firstErr := errors[0]
+
+	for i := 1; i < numGoroutines; i++ {
+		if errors[i] != nil && firstErr == nil {
+			t.Errorf("Goroutine %d got error but first didn't: %v", i, errors[i])
+		}
+		if errors[i] == nil && firstErr != nil {
+			t.Errorf("Goroutine %d got no error but first did: %v", i, firstErr)
+		}
+		if apps[i] != firstApp && firstErr == nil {
+			t.Errorf("Goroutine %d got different app instance", i)
+		}
+	}
+
+	// Cleanup
+	if firstApp != nil {
+		firstApp.Close()
+	}
+}
+
+// TestNewApp_InitStateTransitions tests initialization state transitions
+func TestNewApp_InitStateTransitions(t *testing.T) {
+	resetGlobalState()
+
+	cfg := createTestConfig(t)
+
+	// Start initialization
+	app, err := NewApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize app: %v", err)
+	}
+
+	// Verify app was created
+	if app == nil {
+		t.Error("Expected app to be initialized")
+	}
+
+	// Cleanup
+	app.Close()
+}
+
+// TestNewApp_InitLockAcquisition tests initialization lock acquisition
+func TestNewApp_InitLockAcquisition(t *testing.T) {
+	resetGlobalState()
+
+	cfg := createTestConfig(t)
+
+	// Test that initialization can be called
+	app, err := NewApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize app: %v", err)
+	}
+
+	// Verify app was created
+	if app == nil {
+		t.Error("Expected app to be initialized")
+	}
+
+	// Cleanup
+	app.Close()
+}
+
+// TestNewApp_InitFailureRetry tests initialization failure retry
+func TestNewApp_InitFailureRetry(t *testing.T) {
+	resetGlobalState()
+
+	// First initialization fails (using invalid config)
+	invalidCfg := createInvalidConfig(t)
+	app1, err1 := NewApp(invalidCfg)
+
+	if err1 == nil {
+		t.Error("Expected error for invalid config")
+		if app1 != nil {
+			app1.Close()
+		}
+		return
+	}
+
+	// Second initialization succeeds (sync.Once prevents re-initialization, so this will return the same error or nil)
+	validCfg := createTestConfig(t)
+	app2, err2 := NewApp(validCfg)
+
+	// Note: sync.Once means second call will return cached result
+	// If first failed, second will also fail; if first succeeded, second will return same instance
+	if err2 != nil && err1 == nil {
+		t.Logf("Second initialization got error (may be expected due to sync.Once): %v", err2)
+	}
+
+	// Cleanup
+	if app2 != nil {
+		app2.Close()
+	}
+}
+
+// TestNewApp_InitFailureAfterSuccess tests failure handling after success
+func TestNewApp_InitFailureAfterSuccess(t *testing.T) {
+	resetGlobalState()
+
+	cfg := createTestConfig(t)
+
+	// First initialization succeeds
+	app1, err1 := NewApp(cfg)
+	if err1 != nil {
+		t.Fatalf("Failed to initialize app: %v", err1)
+	}
+
+	// Close the app
+	app1.Close()
+
+	// Reset state (simulating app being closed)
+	lynxMu.Lock()
+	lynxApp = nil
+	lynxMu.Unlock()
+	initMu.Lock()
+	initCompleted = false
+	initErr = nil
+	initDone = nil
+	initMu.Unlock()
+
+	// Reinitialize
+	app2, err2 := NewApp(cfg)
+	if err2 != nil {
+		t.Fatalf("Failed to reinitialize app: %v", err2)
+	}
+
+	// Cleanup
+	if app2 != nil {
+		app2.Close()
+	}
+}
+
+// TestNewApp_NilConfig tests nil config handling
+func TestNewApp_NilConfig(t *testing.T) {
+	resetGlobalState()
+
+	app, err := NewApp(nil)
+
+	if err == nil {
+		t.Error("Expected error for nil config")
+		if app != nil {
+			app.Close()
+		}
+		return
+	}
+
+	if app != nil {
+		t.Error("Expected nil app for nil config")
+	}
+}
+
+// TestNewApp_InitTimeout tests initialization timeout
+func TestNewApp_InitTimeout(t *testing.T) {
+	resetGlobalState()
+
+	cfg := createTestConfig(t)
+
+	// First goroutine starts initialization
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	var app1 *LynxApp
+	var err1 error
+
+	go func() {
+		defer wg.Done()
+		// Simulate long initialization
+		time.Sleep(100 * time.Millisecond)
+		app1, err1 = NewApp(cfg)
+	}()
+
+	// Second goroutine waits for initialization
+	time.Sleep(10 * time.Millisecond) // Ensure first goroutine starts first
+
+	app2, err2 := NewApp(cfg)
+
+	// Wait for first goroutine to complete
+	wg.Wait()
+
+	// Verify second goroutine either gets same instance or timeout error
+	if err2 != nil {
+		// May be timeout error
+		t.Logf("Second goroutine got error (may be timeout): %v", err2)
+	} else if app2 != app1 {
+		t.Error("Second goroutine got different app instance")
+	}
+
+	// Check first goroutine result
+	if err1 != nil {
+		t.Logf("First goroutine got error: %v", err1)
+	}
+
+	// Cleanup
+	if app1 != nil {
+		app1.Close()
+	}
+}
+
+func TestGetTypedPluginFromApp_DoesNotRequireDefaultSingleton(t *testing.T) {
+	resetGlobalState()
+
+	plugin := newTypedPluginForAppLookup("typed-explicit")
+	manager := NewTypedPluginManager(plugin)
+	app := &LynxApp{pluginManager: manager}
+
+	got, err := GetTypedPluginFromApp[*typedPluginForAppLookup](app, plugin.Name())
+	if err != nil {
+		t.Fatalf("expected typed plugin lookup from explicit app to succeed: %v", err)
+	}
+	if got != plugin {
+		t.Fatalf("expected explicit app lookup to return the same plugin pointer")
+	}
+
+	if Lynx() != nil {
+		t.Fatal("expected no default singleton app to be published in this test")
+	}
+}
+
+func TestMustGetTypedPluginFromApp_PanicsOnMissingPlugin(t *testing.T) {
+	resetGlobalState()
+
+	app := &LynxApp{pluginManager: NewTypedPluginManager()}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected MustGetTypedPluginFromApp to panic for missing plugin")
+		}
+	}()
+
+	_ = MustGetTypedPluginFromApp[*typedPluginForAppLookup](app, "missing")
+}
+
+func TestGetEventManagersFromApp_DoesNotRequireDefaultSingleton(t *testing.T) {
+	resetGlobalState()
+
+	eventManager, err := events.NewEventBusManager(events.DefaultBusConfigs())
+	if err != nil {
+		t.Fatalf("failed to create event manager: %v", err)
+	}
+	defer eventManager.Close()
+
+	listenerManager := events.NewEventListenerManagerWithEventBus(eventManager)
+	app := &LynxApp{
+		eventManager:         eventManager,
+		eventListenerManager: listenerManager,
+	}
+
+	if got := GetEventManagerFromApp(app); got != eventManager {
+		t.Fatalf("expected app-owned event manager, got %p want %p", got, eventManager)
+	}
+	if got := GetEventListenerManagerFromApp(app); got != listenerManager {
+		t.Fatalf("expected app-owned listener manager, got %p want %p", got, listenerManager)
+	}
+	if Lynx() != nil {
+		t.Fatalf("expected no default app to be required")
+	}
+}
+
+func TestGetCoreStateFromApp_DoesNotRequireDefaultSingleton(t *testing.T) {
+	resetGlobalState()
+
+	cfg := createTestConfig(t)
+	manager := NewTypedPluginManager()
+	app := &LynxApp{
+		globalConf:    cfg,
+		pluginManager: manager,
+	}
+
+	if got := GetGlobalConfigFromApp(app); got != cfg {
+		t.Fatalf("expected app-owned config, got %p want %p", got, cfg)
+	}
+	if got := GetPluginManagerFromApp(app); got != manager {
+		t.Fatalf("expected app-owned plugin manager, got %p want %p", got, manager)
+	}
+	if Lynx() != nil {
+		t.Fatalf("expected no default app to be required")
+	}
+}
+
+func TestClearDefaultAppIf_ClearsEventProviders(t *testing.T) {
+	resetGlobalState()
+
+	eventManager, err := events.NewEventBusManager(events.DefaultBusConfigs())
+	if err != nil {
+		t.Fatalf("failed to create event manager: %v", err)
+	}
+	defer eventManager.Close()
+
+	listenerManager := events.NewEventListenerManagerWithEventBus(eventManager)
+	app := &LynxApp{
+		eventManager:         eventManager,
+		eventListenerManager: listenerManager,
+	}
+
+	SetDefaultApp(app)
+	if !clearDefaultAppIf(app) {
+		t.Fatalf("expected default app to be cleared")
+	}
+	if got := Lynx(); got != nil {
+		t.Fatalf("expected default app to be nil, got %p", got)
+	}
+	if got := events.GetGlobalEventBus(); got == eventManager {
+		t.Fatalf("expected provider-backed event manager to be cleared")
+	}
+	if got := events.GetGlobalListenerManager(); got == listenerManager {
+		t.Fatalf("expected provider-backed listener manager to be cleared")
+	}
+}
+
+// TestNewApp_AppClosedAfterInit tests app closure after initialization
+func TestNewApp_AppClosedAfterInit(t *testing.T) {
+	resetGlobalState()
+
+	cfg := createTestConfig(t)
+
+	// Initialize app
+	app1, err1 := NewApp(cfg)
+	if err1 != nil {
+		t.Fatalf("Failed to initialize app: %v", err1)
+	}
+
+	// Close app
+	app1.Close()
+
+	// Reset state
+	resetGlobalState()
+
+	// Another goroutine checks state
+	app2, err2 := NewApp(cfg)
+
+	if err2 != nil {
+		t.Logf("Got error (expected if app was closed): %v", err2)
+	} else if app2 == nil {
+		t.Error("Got nil app without error")
+	} else {
+		app2.Close()
+	}
+}
+
+// TestNewApp_InitLockVerification tests initialization lock verification
+func TestNewApp_InitLockVerification(t *testing.T) {
+	resetGlobalState()
+
+	cfg := createTestConfig(t)
+
+	// Try to initialize
+	app, err := NewApp(cfg)
+
+	// Verify result
+	if err != nil {
+		t.Logf("Got error (may be expected): %v", err)
+	} else if app != nil {
+		app.Close()
+	}
+}
+
+// TestNewApp_MultipleInitAttempts tests multiple initialization attempts
+func TestNewApp_MultipleInitAttempts(t *testing.T) {
+	resetGlobalState()
+
+	cfg := createTestConfig(t)
+
+	const numAttempts = 10
+	apps := make([]*LynxApp, numAttempts)
+	errors := make([]error, numAttempts)
+
+	for i := 0; i < numAttempts; i++ {
+		apps[i], errors[i] = NewApp(cfg)
+		time.Sleep(10 * time.Millisecond) // Small delay
+	}
+
+	// Verify all attempts return the same instance
+	firstApp := apps[0]
+	firstErr := errors[0]
+
+	for i := 1; i < numAttempts; i++ {
+		if apps[i] != firstApp && firstErr == nil {
+			t.Errorf("Attempt %d got different app instance", i)
+		}
+	}
+
+	// Cleanup
+	if firstApp != nil {
+		firstApp.Close()
+	}
+}
+
+// TestNewApp_ConcurrentInitWithFailure tests concurrent initialization with failures
+func TestNewApp_ConcurrentInitWithFailure(t *testing.T) {
+	resetGlobalState()
+
+	const numGoroutines = 20
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	apps := make([]*LynxApp, numGoroutines)
+	errors := make([]error, numGoroutines)
+
+	// Some use valid config, some use invalid config
+	for i := 0; i < numGoroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			var cfg config.Config
+			if idx%2 == 0 {
+				cfg = createTestConfig(t)
+			} else {
+				cfg = createInvalidConfig(t)
+			}
+			apps[idx], errors[idx] = NewApp(cfg)
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify at least one success (using valid config)
+	hasSuccess := false
+	for i := 0; i < numGoroutines; i++ {
+		if errors[i] == nil && apps[i] != nil {
+			hasSuccess = true
+			apps[i].Close()
+			break
+		}
+	}
+
+	if !hasSuccess {
+		t.Error("Expected at least one successful initialization")
+	}
+}
+
+// resetGlobalState resets global state for testing
+func resetGlobalState() {
+	ClearDefaultApp()
+	initMu.Lock()
+	initErr = nil
+	initCompleted = false
+	initInProgress = false
+	initDone = nil
+	initMu.Unlock()
+}
+
+// createTestConfig creates test config
+func createTestConfig(t *testing.T) config.Config {
+	t.Helper()
+	cfg := config.New(
+		config.WithSource(&staticSource{kv: &config.KeyValue{
+			Key:    t.Name() + "-test.yaml",
+			Format: "yaml",
+			Value:  []byte("lynx:\n  application:\n    name: test-app\n    version: v0.0.1\n"),
+		}}),
+	)
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("failed to load test config: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = cfg.Close()
+	})
+	return cfg
+}
+
+// createInvalidConfig creates invalid config for testing failure scenarios
+func createInvalidConfig(t *testing.T) config.Config {
+	// Return nil or invalid config
+	return nil
+}
+
+// TestNewApp_GoroutineLeak tests goroutine leaks
+func TestNewStandaloneApp_DoesNotPublishGlobal(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	app, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize standalone app: %v", err)
+	}
+	if app == nil {
+		t.Fatal("expected standalone app")
+	}
+	if Lynx() != nil {
+		t.Fatal("standalone app should not publish global singleton")
+	}
+	_ = app.Close()
+}
+
+func TestSetDefaultApp_AndClearDefaultApp(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	app, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize standalone app: %v", err)
+	}
+	SetDefaultApp(app)
+	if Lynx() != app {
+		t.Fatal("expected published default app")
+	}
+	ClearDefaultApp()
+	if Lynx() != nil {
+		t.Fatal("expected default app to be cleared")
+	}
+	_ = app.Close()
+}
+
+func TestClearDefaultApp_ClearsGlobalEventProviders(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	app, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize standalone app: %v", err)
+	}
+	defer app.Close()
+
+	SetDefaultApp(app)
+
+	if got := events.GetGlobalEventBus(); got != app.eventManager {
+		t.Fatal("expected global event bus to resolve to app-owned manager while default app is published")
+	}
+	if got := events.GetGlobalListenerManager(); got != app.eventListenerManager {
+		t.Fatal("expected global listener manager to resolve to app-owned manager while default app is published")
+	}
+
+	ClearDefaultApp()
+
+	if Lynx() != nil {
+		t.Fatal("expected default app to be cleared")
+	}
+	if got := events.GetGlobalEventBus(); got == nil || got == app.eventManager {
+		t.Fatal("expected global event bus provider to detach from cleared default app")
+	}
+	if got := events.GetGlobalListenerManager(); got == nil || got == app.eventListenerManager {
+		t.Fatal("expected global listener manager provider to detach from cleared default app")
+	}
+}
+
+func TestStandaloneClose_DoesNotClearOtherDefaultApp(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	defaultApp, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize default app: %v", err)
+	}
+	SetDefaultApp(defaultApp)
+
+	otherApp, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize other app: %v", err)
+	}
+	if err := otherApp.Close(); err != nil {
+		t.Fatalf("Failed to close other app: %v", err)
+	}
+	if Lynx() != defaultApp {
+		t.Fatal("closing standalone app should not clear published default app")
+	}
+	_ = defaultApp.Close()
+}
+
+func TestLynxAppClose_IsConcurrentIdempotent(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	app, err := NewStandaloneApp(cfg)
+	if err != nil {
+		t.Fatalf("failed to initialize standalone app: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- app.Close()
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("close returned error: %v", err)
+		}
+	}
+	if err := app.Close(); err != nil {
+		t.Fatalf("close should remain idempotent: %v", err)
+	}
+}
+
+func TestNewApp_GoroutineLeak(t *testing.T) {
+	resetGlobalState()
+
+	before := runtime.NumGoroutine()
+
+	cfg := createTestConfig(t)
+
+	const numGoroutines = 20
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			_, _ = NewApp(cfg)
+		}()
+	}
+
+	wg.Wait()
+
+	app := Lynx()
+	if app == nil {
+		t.Fatal("expected initialized app")
+	}
+	if err := app.Close(); err != nil {
+		t.Fatalf("failed to close app: %v", err)
+	}
+	resetGlobalState()
+
+	// Give background cleanup goroutines a small window to exit.
+	time.Sleep(200 * time.Millisecond)
+
+	after := runtime.NumGoroutine()
+
+	// Allow a small amount of runtime noise, but verify Close() actually releases most work.
+	if after > before+3 {
+		t.Errorf("Possible goroutine leak after Close(): before=%d, after=%d", before, after)
+	}
+}
+
+type configurableTestPlugin struct {
+	*plugins.BasePlugin
+	mu          sync.Mutex
+	calls       []config.Config
+	failOn      config.Config
+	validateOn  config.Config
+	validateErr error
+	protocol    plugins.PluginProtocol
+}
+
+func newConfigurableTestPlugin(name string) *configurableTestPlugin {
+	p := &configurableTestPlugin{
+		BasePlugin: plugins.NewBasePlugin("test."+name+".v1", name, "test configurable plugin", "v1.0.0", "test."+name, 0),
+	}
+	p.protocol = p.BasePlugin.PluginProtocol()
+	return p
+}
+
+func (p *configurableTestPlugin) Configure(conf any) error {
+	cfg, _ := conf.(config.Config)
+	p.mu.Lock()
+	p.calls = append(p.calls, cfg)
+	p.mu.Unlock()
+	if p.failOn != nil && cfg == p.failOn {
+		return fmt.Errorf("configure failed for %s", p.Name())
+	}
+	return nil
+}
+
+func (p *configurableTestPlugin) ValidateConfig(conf any) error {
+	cfg, _ := conf.(config.Config)
+	if p.validateOn != nil && cfg == p.validateOn {
+		return p.validateErr
+	}
+	return nil
+}
+
+func (p *configurableTestPlugin) PluginProtocol() plugins.PluginProtocol {
+	return p.protocol
+}
+
+func (p *configurableTestPlugin) callCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.calls)
+}
+
+func (p *configurableTestPlugin) callAt(i int) config.Config {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if i < 0 || i >= len(p.calls) {
+		return nil
+	}
+	return p.calls[i]
+}
+
+func TestSetGlobalConfig_AllowsConfigSwapBeforePluginsAreManaged(t *testing.T) {
+	resetGlobalState()
+	oldCfg := createTestConfig(t)
+	newCfg := config.New(
+		config.WithSource(&staticSource{kv: &config.KeyValue{
+			Key:    t.Name() + "-new.yaml",
+			Format: "yaml",
+			Value:  []byte("lynx:\n  application:\n    name: test-app\n    version: v0.0.2\n"),
+		}}),
+	)
+	if err := newCfg.Load(); err != nil {
+		t.Fatalf("failed to load new config: %v", err)
+	}
+	t.Cleanup(func() { _ = newCfg.Close() })
+
+	okPlugin := newConfigurableTestPlugin("config-ok")
+	failPlugin := newConfigurableTestPlugin("config-fail")
+
+	app, err := NewStandaloneApp(oldCfg, okPlugin, failPlugin)
+	if err != nil {
+		t.Fatalf("failed to initialize app: %v", err)
+	}
+	defer app.Close()
+
+	if err := app.SetGlobalConfig(newCfg); err != nil {
+		t.Fatalf("expected SetGlobalConfig to succeed before plugins are managed: %v", err)
+	}
+
+	if got := app.GetGlobalConfig(); got != newCfg {
+		t.Fatalf("expected global config to switch to new config")
+	}
+	if got := app.GetPluginManager().GetRuntime().GetConfig(); got != newCfg {
+		t.Fatalf("expected runtime config to switch to new config")
+	}
+	if okPlugin.callCount() != 0 {
+		t.Fatalf("expected no Configure calls before plugins are managed, got %d", okPlugin.callCount())
+	}
+	if failPlugin.callCount() != 0 {
+		t.Fatalf("expected no Configure calls before plugins are managed, got %d", failPlugin.callCount())
+	}
+}
+
+func TestSetGlobalConfig_DoesNotRunPluginValidationBeforePluginsAreManaged(t *testing.T) {
+	resetGlobalState()
+	oldCfg := createTestConfig(t)
+	newCfg := config.New(
+		config.WithSource(&staticSource{kv: &config.KeyValue{
+			Key:    t.Name() + "-invalid.yaml",
+			Format: "yaml",
+			Value:  []byte("lynx:\n  application:\n    name: test-app\n    version: v0.0.3\n"),
+		}}),
+	)
+	if err := newCfg.Load(); err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	t.Cleanup(func() { _ = newCfg.Close() })
+
+	plugin := newConfigurableTestPlugin("config-validate")
+	plugin.validateOn = newCfg
+	plugin.validateErr = fmt.Errorf("invalid config")
+
+	app, err := NewStandaloneApp(oldCfg, plugin)
+	if err != nil {
+		t.Fatalf("failed to initialize app: %v", err)
+	}
+	defer app.Close()
+
+	if err := app.SetGlobalConfig(newCfg); err != nil {
+		t.Fatalf("expected SetGlobalConfig to succeed before plugins are managed: %v", err)
+	}
+	if got := app.GetGlobalConfig(); got != newCfg {
+		t.Fatalf("expected global config to switch before plugins are managed")
+	}
+	if plugin.callCount() != 0 {
+		t.Fatalf("expected no Configure calls before plugins are managed, got %d", plugin.callCount())
+	}
+}
+
+func TestSetGlobalConfig_ConfigPlanIsEmptyBeforePluginsAreManaged(t *testing.T) {
+	resetGlobalState()
+	oldCfg := createTestConfig(t)
+	newCfg := createTestConfig(t)
+
+	plugin := newConfigurableTestPlugin("config-restart")
+
+	app, err := NewStandaloneApp(oldCfg, plugin)
+	if err != nil {
+		t.Fatalf("failed to initialize app: %v", err)
+	}
+	defer app.Close()
+
+	if err := app.SetGlobalConfig(newCfg); err != nil {
+		t.Fatalf("expected SetGlobalConfig to succeed before plugins are managed: %v", err)
+	}
+	if plugin.callCount() != 0 {
+		t.Fatalf("expected no Configure calls before plugins are managed, got %d", plugin.callCount())
+	}
+	plan := app.ConfigReloadPlan()
+	if len(plan.RestartRequired) != 0 || len(plan.Invalid) != 0 || len(plan.Unsupported) != 0 || len(plan.HotReloadable) != 0 {
+		t.Fatalf("expected empty config reload plan before plugins are managed: %#v", plan)
+	}
+	restartReport := app.RestartRequirementReport()
+	if len(restartReport.RestartRequired) != 0 || len(restartReport.Invalid) != 0 {
+		t.Fatalf("expected empty restart requirement report before plugins are managed: %#v", restartReport)
+	}
+}
+
+func TestRuntimeReport_OnlyShowsManagedPlugins(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	hot := newConfigurableTestPlugin("report-hot")
+	restart := newConfigurableTestPlugin("report-restart")
+
+	app, err := NewStandaloneApp(cfg, hot, restart)
+	if err != nil {
+		t.Fatalf("failed to initialize app: %v", err)
+	}
+	defer app.Close()
+
+	report := app.RuntimeReport()
+	if report.AppName != "test-app" {
+		t.Fatalf("unexpected app name: %q", report.AppName)
+	}
+	if len(report.ConfigReloadPlan.RestartRequired) != 0 {
+		t.Fatalf("expected no config reload entries before plugins are managed, got %#v", report.ConfigReloadPlan)
+	}
+	if len(report.RestartRequirementReport.RestartRequired) != 0 {
+		t.Fatalf("expected no restart requirement entries before plugins are managed, got %#v", report.RestartRequirementReport)
+	}
+	if len(report.ConfigReloadPlan.RestartRequired) != len(report.RestartRequirementReport.RestartRequired) {
+		t.Fatalf("expected compatibility config reload plan to mirror restart report: %#v vs %#v", report.ConfigReloadPlan, report.RestartRequirementReport)
+	}
+	if len(report.Plugins) != 0 {
+		t.Fatalf("expected no managed plugins in runtime report before load, got %d", len(report.Plugins))
+	}
+}
+
+func TestRuntimeReport_CompatibilityConfigReloadPlanMirrorsRestartReport(t *testing.T) {
+	resetGlobalState()
+	cfg := createTestConfig(t)
+
+	plugin := newConfigurableTestPlugin("report-configurable")
+	app, err := NewStandaloneApp(cfg, plugin)
+	if err != nil {
+		t.Fatalf("failed to initialize app: %v", err)
+	}
+	defer app.Close()
+
+	manager, ok := app.GetPluginManager().(*DefaultPluginManager[plugins.Plugin])
+	if !ok {
+		t.Fatal("expected default plugin manager implementation")
+	}
+	if err := manager.registerManagedPlugin(plugin); err != nil {
+		t.Fatalf("failed to register managed plugin: %v", err)
+	}
+
+	report := app.RuntimeReport()
+	if len(report.RestartRequirementReport.RestartRequired) != 1 {
+		t.Fatalf("expected one restart-required entry, got %#v", report.RestartRequirementReport)
+	}
+	if len(report.ConfigReloadPlan.RestartRequired) != 1 {
+		t.Fatalf("expected compatibility reload plan to report one restart-required entry, got %#v", report.ConfigReloadPlan)
+	}
+	if len(report.ConfigReloadPlan.Invalid) != len(report.RestartRequirementReport.Invalid) {
+		t.Fatalf("expected invalid entries to stay mirrored: %#v vs %#v", report.ConfigReloadPlan, report.RestartRequirementReport)
+	}
+	if report.ConfigReloadPlan.RestartRequired[0] != report.RestartRequirementReport.RestartRequired[0] {
+		t.Fatalf("expected compatibility and restart reports to point at the same plugin: %#v vs %#v", report.ConfigReloadPlan, report.RestartRequirementReport)
+	}
+}
