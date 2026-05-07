@@ -68,7 +68,7 @@ type UnifiedRuntime struct {
 
 	// Resource info tracking
 	resourceInfo *sync.Map // map[string]*ResourceInfo
-	resourceOpMu *sync.Mutex
+	resourceOpMu *sync.RWMutex
 
 	// Configuration and logging
 	config config.Config
@@ -103,7 +103,7 @@ func NewUnifiedRuntime() *UnifiedRuntime {
 	return &UnifiedRuntime{
 		resources:    &sync.Map{},
 		resourceInfo: &sync.Map{},
-		resourceOpMu: &sync.Mutex{},
+		resourceOpMu: &sync.RWMutex{},
 		logger:       log.DefaultLogger,
 		shared: &runtimeSharedState{
 			logger: log.DefaultLogger,
