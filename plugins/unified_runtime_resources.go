@@ -92,7 +92,6 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 		caller = "system-shutdown"
 	}
 
-	r.resourceOpMu.Lock()
 	type resItem struct {
 		key         string
 		displayName string
@@ -100,6 +99,7 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 	}
 	var toDelete []resItem
 
+	r.resourceOpMu.RLock()
 	r.resourceInfo.Range(func(key, value any) bool {
 		if info, ok := value.(*ResourceInfo); ok && info.PluginID == pluginID {
 			storageKey := key.(string)
@@ -109,7 +109,9 @@ func (r *UnifiedRuntime) CleanupResources(pluginID string) error {
 		}
 		return true
 	})
+	r.resourceOpMu.RUnlock()
 
+	r.resourceOpMu.Lock()
 	for _, item := range toDelete {
 		r.resources.Delete(item.key)
 		r.resourceInfo.Delete(item.key)

@@ -102,14 +102,18 @@ type DependencyGraph struct {
 	plugins map[string]Plugin
 	// Mutex
 	mu sync.RWMutex
+	// Reverse index: pluginID -> set of dep IDs that pluginID depends on.
+	// Used to O(1)-locate which dependents slices to update during RemovePlugin.
+	dependentsIndex map[string]map[string]struct{}
 }
 
 // NewDependencyGraph creates a new dependency graph
 func NewDependencyGraph() *DependencyGraph {
 	return &DependencyGraph{
-		dependencies: make(map[string][]*Dependency),
-		dependents:   make(map[string][]string),
-		plugins:      make(map[string]Plugin),
+		dependencies:    make(map[string][]*Dependency),
+		dependents:      make(map[string][]string),
+		plugins:         make(map[string]Plugin),
+		dependentsIndex: make(map[string]map[string]struct{}),
 	}
 }
 
@@ -130,16 +134,28 @@ func (dg *DependencyGraph) RemovePlugin(pluginID string) {
 	delete(dg.plugins, pluginID)
 	delete(dg.dependencies, pluginID)
 
-	// Remove from all dependent lists
-	delete(dg.dependents, pluginID)
-	for id, deps := range dg.dependents {
-		for i, dep := range deps {
-			if dep == pluginID {
-				dg.dependents[id] = append(deps[:i], deps[i+1:]...)
-				break
+	// Use the reverse index to find only the dependents slices that contain
+	// pluginID, avoiding a full O(n) scan over all entries.
+	if depIDs, ok := dg.dependentsIndex[pluginID]; ok {
+		for depID := range depIDs {
+			if deps, exists := dg.dependents[depID]; exists {
+				filtered := deps[:0]
+				for _, d := range deps {
+					if d != pluginID {
+						filtered = append(filtered, d)
+					}
+				}
+				if len(filtered) == 0 {
+					delete(dg.dependents, depID)
+				} else {
+					dg.dependents[depID] = filtered
+				}
 			}
 		}
+		delete(dg.dependentsIndex, pluginID)
 	}
+
+	delete(dg.dependents, pluginID)
 }
 
 // AddDependency adds a dependency relationship
@@ -162,6 +178,12 @@ func (dg *DependencyGraph) AddDependency(pluginID string, dependency *Dependency
 
 	// Update dependent relationship
 	dg.dependents[dependency.ID] = append(dg.dependents[dependency.ID], pluginID)
+
+	// Update reverse index so RemovePlugin can skip a full scan
+	if dg.dependentsIndex[pluginID] == nil {
+		dg.dependentsIndex[pluginID] = make(map[string]struct{})
+	}
+	dg.dependentsIndex[pluginID][dependency.ID] = struct{}{}
 
 	return nil
 }
@@ -211,6 +233,15 @@ func (dg *DependencyGraph) RemoveDependency(pluginID string, dependencyID string
 			dg.dependents[dependencyID] = newDeps
 		}
 	}
+
+	// Keep the reverse index consistent
+	if idx, ok := dg.dependentsIndex[pluginID]; ok {
+		delete(idx, dependencyID)
+		if len(idx) == 0 {
+			delete(dg.dependentsIndex, pluginID)
+		}
+	}
+
 	return nil
 }
 
