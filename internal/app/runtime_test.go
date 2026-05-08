@@ -1,8 +1,9 @@
-package app
+package app_test
 
 import (
 	"testing"
 
+	iapp "github.com/go-lynx/lynx/internal/app"
 	icompat "github.com/go-lynx/lynx/internal/app/compat"
 )
 
@@ -24,19 +25,19 @@ func TestTypedRuntimePluginUnderlyingRuntimeNilReceiver(t *testing.T) {
 }
 
 func TestNewDefaultRuntime(t *testing.T) {
-	rt := NewDefaultRuntime()
+	rt := iapp.NewDefaultRuntime()
 	if rt == nil {
 		t.Fatal("expected explicit runtime to be created")
 	}
 }
 
 func TestTypedResourceHelpersWithExplicitRuntime(t *testing.T) {
-	rt := NewDefaultRuntime()
-	if err := RegisterTypedResourceOnRuntime[string](rt, "greeting", "hello"); err != nil {
+	rt := iapp.NewDefaultRuntime()
+	if err := iapp.RegisterTypedResourceOnRuntime[string](rt, "greeting", "hello"); err != nil {
 		t.Fatalf("failed to register typed resource on explicit runtime: %v", err)
 	}
 
-	got, err := GetTypedResourceFromRuntime[string](rt, "greeting")
+	got, err := iapp.GetTypedResourceFromRuntime[string](rt, "greeting")
 	if err != nil {
 		t.Fatalf("failed to get typed resource from explicit runtime: %v", err)
 	}
@@ -46,10 +47,10 @@ func TestTypedResourceHelpersWithExplicitRuntime(t *testing.T) {
 }
 
 func TestTypedResourceHelpersRejectNilRuntime(t *testing.T) {
-	if err := RegisterTypedResourceOnRuntime[string](nil, "greeting", "hello"); err == nil {
+	if err := iapp.RegisterTypedResourceOnRuntime[string](nil, "greeting", "hello"); err == nil {
 		t.Fatal("expected explicit runtime registration to reject nil runtime")
 	}
-	if _, err := GetTypedResourceFromRuntime[string](nil, "greeting"); err == nil {
+	if _, err := iapp.GetTypedResourceFromRuntime[string](nil, "greeting"); err == nil {
 		t.Fatal("expected explicit runtime lookup to reject nil runtime")
 	}
 }
