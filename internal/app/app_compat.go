@@ -13,10 +13,6 @@
 //     *LynxApp reference passed through your dependency graph.
 //   - Replace GetTypedPlugin[T](...) with GetTypedPluginFromApp[T](app, ...).
 //
-// v1.7 goal: move this file to internal/app/compat.go and gate with
-//
-//	//go:build !v2
-//
 // v2.0: delete entirely.
 package app
 
@@ -27,17 +23,11 @@ import (
 
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/registry"
-	"github.com/go-lynx/lynx/events"
 	"github.com/go-lynx/lynx/log"
 	"github.com/go-lynx/lynx/plugins"
 )
 
 var (
-	// lynxApp is the singleton instance of the Lynx application.
-	lynxApp *LynxApp
-	// lynxMu protects process-wide singleton compatibility access.
-	lynxMu sync.RWMutex
-
 	// initMu protects default-app initialization state.
 	initMu sync.Mutex
 	// initErr stores the last initialization error.
@@ -50,56 +40,15 @@ var (
 	initDone chan struct{}
 )
 
-// SetDefaultApp publishes app as the process-wide default Lynx application instance.
-func SetDefaultApp(app *LynxApp) {
-	lynxMu.Lock()
-	defer lynxMu.Unlock()
-	lynxApp = app
-	if app == nil {
-		events.ClearDefaultEventBusProvider()
-		events.ClearDefaultListenerManagerProvider()
-		return
-	}
-	published := app
-	events.SetDefaultEventBusProvider(func() *events.EventBusManager {
-		if published == nil {
-			return nil
-		}
-		return published.eventManager
-	})
-	events.SetDefaultListenerManagerProvider(func() *events.EventListenerManager {
-		if published == nil {
-			return nil
-		}
-		return published.eventListenerManager
-	})
-}
-
-// ClearDefaultApp clears the process-wide default Lynx application instance.
-func ClearDefaultApp() {
-	SetDefaultApp(nil)
-}
-
-// clearDefaultAppIf clears the global default only when it still points to app.
-func clearDefaultAppIf(app *LynxApp) bool {
-	lynxMu.Lock()
-	defer lynxMu.Unlock()
-	if lynxApp != app {
-		return false
-	}
-	lynxApp = nil
-	events.ClearDefaultEventBusProvider()
-	events.ClearDefaultListenerManagerProvider()
-	return true
+func init() {
+	SetAppShutdownHook(resetInitState)
 }
 
 // Lynx returns the process-wide default LynxApp instance.
 //
 // Deprecated: prefer passing an explicit *LynxApp and using instance helpers.
 func Lynx() *LynxApp {
-	lynxMu.RLock()
-	defer lynxMu.RUnlock()
-	return lynxApp
+	return GetDefaultApp()
 }
 
 // resetInitState resets compatibility initialization state (for testing/restart scenarios).
@@ -274,9 +223,4 @@ func GetServiceDiscovery() (registry.Discovery, error) {
 		return app.GetServiceDiscovery()
 	}
 	return nil, nil
-}
-
-// Shutdown is an alias for Close for backward compatibility.
-func (a *LynxApp) Shutdown() error {
-	return a.Close()
 }

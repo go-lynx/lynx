@@ -61,7 +61,7 @@ func (a *LynxApp) close() error {
 
 	clearDefaultAppIf(a)
 	cleanupMemoryStatsCache()
-	resetInitState()
+	appShutdownHook()
 
 	return nil
 }

@@ -190,14 +190,7 @@ func TestNewApp_InitFailureAfterSuccess(t *testing.T) {
 	app1.Close()
 
 	// Reset state (simulating app being closed)
-	lynxMu.Lock()
-	lynxApp = nil
-	lynxMu.Unlock()
-	initMu.Lock()
-	initCompleted = false
-	initErr = nil
-	initDone = nil
-	initMu.Unlock()
+	resetGlobalState()
 
 	// Reinitialize
 	app2, err2 := NewApp(cfg)

@@ -25,31 +25,31 @@ func RegisterTypedResource[T any](r *TypedRuntimePlugin, name string, resource T
 	return icompat.RegisterTypedResource[T](r, name, resource)
 }
 
-// Re-export compat app functions (defined in internal/app/app_compat.go)
+// Re-export compat app functions
 var SetDefaultApp = iapp.SetDefaultApp
 var ClearDefaultApp = iapp.ClearDefaultApp
-var Lynx = iapp.Lynx
-var NewApp = iapp.NewApp
-var GetName = iapp.GetName
-var GetHost = iapp.GetHost
-var GetVersion = iapp.GetVersion
-var GetServiceRegistry = iapp.GetServiceRegistry
-var GetServiceDiscovery = iapp.GetServiceDiscovery
+var Lynx = icompat.Lynx
+var NewApp = icompat.NewApp
+var GetName = icompat.GetName
+var GetHost = icompat.GetHost
+var GetVersion = icompat.GetVersion
+var GetServiceRegistry = icompat.GetServiceRegistry
+var GetServiceDiscovery = icompat.GetServiceDiscovery
 
 func GetTypedPlugin[T plugins.Plugin](name string) (T, error) {
-	return iapp.GetTypedPlugin[T](name)
+	return icompat.GetTypedPlugin[T](name)
 }
 
 func GetTypedPluginFromApp[T plugins.Plugin](app *LynxApp, name string) (T, error) {
-	return iapp.GetTypedPluginFromApp[T](app, name)
+	return icompat.GetTypedPluginFromApp[T](app, name)
 }
 
 func MustGetTypedPluginFromApp[T plugins.Plugin](app *LynxApp, name string) T {
-	return iapp.MustGetTypedPluginFromApp[T](app, name)
+	return icompat.MustGetTypedPluginFromApp[T](app, name)
 }
 
 // TypedPluginManager is a deprecated alias for PluginManager.
-type TypedPluginManager = iapp.TypedPluginManager
+type TypedPluginManager = icompat.TypedPluginManager
 
 // ConfigReloadPlan is retained only as a compatibility report for older callers.
 type ConfigReloadPlan = iapp.ConfigReloadPlan
