@@ -18,8 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 EXPECTED_TOOLCHAIN = "go1.26.2"
 EXPECTED_GO_VERSION = "1.26"
-EXPECTED_LYNX_VERSION = "v1.6.0-beta"
+EXPECTED_LYNX_VERSION = os.environ.get("LYNX_EXPECTED_VERSION", "v1.6.1")
 STALE_LYNX_MODULE_RE = re.compile(r"github\.com/go-lynx/(lynx-[\w-]+)\s+v1\.5\.")
+LYNX_SDK_MODULE = "github.com/go-lynx/lynx"
 
 SECRET_PATTERNS = [
     re.compile(r"changeme", re.IGNORECASE),
@@ -69,6 +70,27 @@ def parse_go_work_modules() -> set[str]:
     return modules
 
 
+def has_module_replace(go_mod_text: str, module_path: str) -> bool:
+    in_replace_block = False
+    for line in go_mod_text.splitlines():
+        stripped = line.split("//", 1)[0].strip()
+        if not stripped:
+            continue
+        if in_replace_block:
+            if stripped == ")":
+                in_replace_block = False
+                continue
+            if stripped == module_path or stripped.startswith(f"{module_path} "):
+                return True
+            continue
+        if stripped == "replace (":
+            in_replace_block = True
+            continue
+        if stripped.startswith(f"replace {module_path} ") or stripped == f"replace {module_path}":
+            return True
+    return False
+
+
 def check_modules(modules: list[str]) -> list[str]:
     errors: list[str] = []
     go_work_modules = parse_go_work_modules()
@@ -79,8 +101,10 @@ def check_modules(modules: list[str]) -> list[str]:
             errors.append(f"{module}: missing from go.work")
         if f"toolchain {EXPECTED_TOOLCHAIN}" not in text and f"go {EXPECTED_GO_VERSION}" not in text:
             errors.append(f"{module}: must use go {EXPECTED_GO_VERSION} or toolchain {EXPECTED_TOOLCHAIN}")
-        if module != "lynx" and "github.com/go-lynx/lynx " in text and f"github.com/go-lynx/lynx {EXPECTED_LYNX_VERSION}" not in text:
-            errors.append(f"{module}: github.com/go-lynx/lynx must be {EXPECTED_LYNX_VERSION}")
+        if module != "lynx" and has_module_replace(text, LYNX_SDK_MODULE):
+            errors.append(f"{module}: must not commit replace {LYNX_SDK_MODULE}; use go.work for local development")
+        if module != "lynx" and f"{LYNX_SDK_MODULE} " in text and f"{LYNX_SDK_MODULE} {EXPECTED_LYNX_VERSION}" not in text:
+            errors.append(f"{module}: {LYNX_SDK_MODULE} must be {EXPECTED_LYNX_VERSION}")
         for match in STALE_LYNX_MODULE_RE.finditer(text):
             errors.append(f"{module}: {match.group(1)} must not depend on stale v1.5.x internal module versions")
     return errors
