@@ -299,6 +299,50 @@ def ensure_clean_worktree(plugin_dir: Path, dry_run: bool = False) -> bool:
     return False
 
 
+def ensure_upstream_synced(plugin_dir: Path, dry_run: bool = False) -> bool:
+    """Require release tags to be created from a branch synchronized with its upstream."""
+    code, upstream, _ = run_cmd(
+        ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        check=False,
+        capture_output=True,
+        cwd=str(plugin_dir),
+    )
+    if code != 0 or not upstream:
+        message = "No upstream branch configured; cannot verify release commit is pushed."
+        if dry_run:
+            print_warning(message)
+            return True
+        print_error(f"{plugin_dir.name}: {message}")
+        return False
+
+    code, counts, stderr = run_cmd(
+        ["git", "rev-list", "--left-right", "--count", f"HEAD...{upstream}"],
+        check=False,
+        capture_output=True,
+        cwd=str(plugin_dir),
+    )
+    if code != 0:
+        message = stderr or counts or "failed to compare with upstream"
+        if dry_run:
+            print_warning(message)
+            return True
+        print_error(f"{plugin_dir.name}: {message}")
+        return False
+
+    ahead, behind = (int(part) for part in counts.split())
+    if ahead == 0 and behind == 0:
+        return True
+
+    message = f"branch differs from {upstream}: ahead {ahead}, behind {behind}"
+    if dry_run:
+        print_warning(f"{message}; real release would stop here.")
+        return True
+
+    print_error(f"{plugin_dir.name}: {message}")
+    print_info("Push or pull the branch before creating a release tag.")
+    return False
+
+
 def check_tag_exists(tag: str) -> bool:
     """Check if tag exists locally"""
     code, _, _ = run_cmd(["git", "tag", "-l", tag], check=False, capture_output=True)
@@ -510,6 +554,8 @@ def process_plugin(plugin_name: str, plugin_repo: str, version: str,
         print_warning("   (Only tag operations will be performed)")
 
     if not ensure_clean_worktree(plugin_dir, dry_run=dry_run):
+        return False
+    if not ensure_upstream_synced(plugin_dir, dry_run=dry_run):
         return False
 
     if skip_lynx_check:
