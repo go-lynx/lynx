@@ -64,16 +64,38 @@ python3 release_plugins.py v1.0.0
 python3 release_plugins.py v1.0.0 --token ghp_xxxxx
 ```
 
-### Specify GitHub Repository
-
-```bash
-python3 release_plugins.py v1.0.0 --repo owner/repo --token ghp_xxxx
-```
-
 ### Dry-Run Mode (Preview)
 
 ```bash
 python3 release_plugins.py v1.0.0 --dry-run
+```
+
+### Lynx SDK Dependency
+
+By default, plugin releases must require the same Lynx SDK version as the plugin release version:
+
+```bash
+python3 release_plugins.py v1.6.1 --dry-run
+```
+
+If a plugin release intentionally targets a different SDK version, pass it explicitly:
+
+```bash
+python3 release_plugins.py v1.0.0 --lynx-version v1.6.1 --dry-run
+```
+
+The script fails if a plugin `go.mod` commits `replace github.com/go-lynx/lynx ...`. Use a `go.work` workspace for local development instead:
+
+```bash
+cd /path/to/go-lynx
+go work init ./lynx ./lynx-redis ./lynx-mysql
+go work use ./lynx ./lynx-redis ./lynx-mysql
+```
+
+Plugin repositories should keep a normal published dependency:
+
+```go
+require github.com/go-lynx/lynx v1.6.1
 ```
 
 ## Workflow
@@ -83,6 +105,8 @@ The script performs the following operations for **each plugin** in the configur
 1. **Load configuration**: Read plugin list from `plugins.json`
 2. **For each enabled plugin**:
    - **Navigate to plugin directory**: Each plugin must be in its own git repository
+   - **Check clean working tree**: Real releases stop if the plugin repository has uncommitted changes
+   - **Check Lynx SDK dependency**: `go.mod` must require the expected SDK version and must not contain a committed `replace`
    - **Check for existing GitHub release**: If exists, delete it first (in the plugin's repository)
    - **Delete remote tag**: If exists, delete it first (from plugin's repository)
    - **Delete local tag**: If exists, delete it first (in plugin's directory)

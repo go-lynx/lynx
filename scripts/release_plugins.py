@@ -8,12 +8,12 @@ Before creating tags and releases, this script will:
 3. Create tag, push tag, and create GitHub release
 
 Usage:
-    python3 release_plugins.py <version> [--token <github_token>] [--repo <repo>] [--dry-run]
+    python3 release_plugins.py <version> [--token <github_token>] [--dry-run]
 
 Examples:
     python3 release_plugins.py v1.0.0
     python3 release_plugins.py v1.0.0 --token ghp_xxxxx
-    python3 release_plugins.py v1.0.0 --repo go-lynx/lynx --dry-run
+    python3 release_plugins.py v1.0.0 --lynx-version v1.6.1 --dry-run
 """
 
 import os
@@ -21,8 +21,10 @@ import sys
 import subprocess
 import argparse
 import re
+import urllib.error
+import urllib.request
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 import json
 
 
@@ -54,23 +56,25 @@ def print_error(msg: str):
     print(f"{Colors.FAIL}❌ {msg}{Colors.ENDC}")
 
 
-# Try to import requests after defining print functions
 try:
     import requests
 except ImportError:
-    print_error("requests library is required")
-    print_info("Installation options:")
-    print_info("1. Using virtual environment (recommended):")
-    print_info("   python3 -m venv venv")
-    print_info("   source venv/bin/activate  # On Windows: venv\\Scripts\\activate")
-    print_info("   pip3 install -r requirements.txt")
-    print_info("")
-    print_info("2. Using --user flag:")
-    print_info("   pip3 install --user requests")
-    print_info("")
-    print_info("3. Using --break-system-packages (not recommended):")
-    print_info("   pip3 install --break-system-packages requests")
-    sys.exit(1)
+    requests = None
+
+
+class HttpResponse:
+    """Minimal response wrapper used by the urllib fallback."""
+
+    def __init__(self, status_code: int, text: str):
+        self.status_code = status_code
+        self.text = text
+
+    def json(self) -> Any:
+        return json.loads(self.text or "{}")
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}: {self.text}")
 
 
 def run_cmd(cmd: List[str], check: bool = True, capture_output: bool = False, cwd: Optional[str] = None) -> Tuple[int, str, str]:
@@ -156,7 +160,7 @@ def sync_plugin_version(plugin_dir: Path, version: str, dry_run: bool = False) -
       2. PluginVersion = "1.0.0" (exported const, e.g. lynx-eon-id)
       3. assert.Equal(t, "v1.0.0", pluginVersion) (test assertions)
       4. assert.Equal(t, "v1.0.0", PluginVersion) (test assertions, e.g. lynx-sentinel)
-    Note: \s* matches any amount of whitespace, so alignment like
+    Note: \\s* matches any amount of whitespace, so alignment like
       pluginVersion         =   "v1.0.0"  (spaces for const block alignment) is supported.
     Returns (updated: bool, updated_files: List[Path]).
     """
@@ -201,6 +205,98 @@ def sync_plugin_version(plugin_dir: Path, version: str, dry_run: bool = False) -
     for f in updated_files:
         print_success(f"Updated pluginVersion to {version} in {f.relative_to(plugin_dir)}")
     return True, updated_files
+
+
+def normalize_version(version: str) -> str:
+    """Normalize release versions to the tag format used by Go modules."""
+    if version.startswith("v"):
+        return version
+    return f"v{version}"
+
+
+def parse_required_module_version(go_mod_text: str, module_path: str) -> Optional[str]:
+    """Return the required version for a module in go.mod, if present."""
+    pattern = re.compile(rf"^\s*{re.escape(module_path)}\s+([^\s]+)", re.MULTILINE)
+    match = pattern.search(go_mod_text)
+    if match:
+        return match.group(1)
+    return None
+
+
+def has_module_replace(go_mod_text: str, module_path: str) -> bool:
+    """Detect committed replace directives for the provided module path."""
+    in_replace_block = False
+    for line in go_mod_text.splitlines():
+        stripped = line.split("//", 1)[0].strip()
+        if not stripped:
+            continue
+        if in_replace_block:
+            if stripped == ")":
+                in_replace_block = False
+                continue
+            if stripped == module_path or stripped.startswith(f"{module_path} "):
+                return True
+            continue
+        if stripped == "replace (":
+            in_replace_block = True
+            continue
+        if stripped.startswith(f"replace {module_path} ") or stripped == f"replace {module_path}":
+            return True
+    return False
+
+
+def check_lynx_dependency(plugin_dir: Path, expected_version: str) -> bool:
+    """Ensure plugin releases depend on the published Lynx SDK, not local replace directives."""
+    go_mod = plugin_dir / "go.mod"
+    module_path = "github.com/go-lynx/lynx"
+    if not go_mod.exists():
+        print_error(f"go.mod not found: {go_mod}")
+        return False
+
+    text = go_mod.read_text(encoding="utf-8")
+    if has_module_replace(text, module_path):
+        print_error(f"{plugin_dir.name}: go.mod must not commit replace {module_path}")
+        print_info("Use go.work for local development instead of committing replace directives.")
+        return False
+
+    actual_version = parse_required_module_version(text, module_path)
+    if not actual_version:
+        print_error(f"{plugin_dir.name}: go.mod must require {module_path} {expected_version}")
+        return False
+
+    if actual_version != expected_version:
+        print_error(f"{plugin_dir.name}: {module_path} must be {expected_version}, found {actual_version}")
+        print_info("Use --lynx-version if the plugin release version intentionally differs from the SDK version.")
+        return False
+
+    print_success(f"Verified Lynx SDK dependency: {module_path} {expected_version}")
+    return True
+
+
+def get_worktree_status(plugin_dir: Path) -> str:
+    """Return porcelain status for a plugin repository."""
+    code, output, stderr = run_cmd(["git", "status", "--short"], check=False, capture_output=True, cwd=str(plugin_dir))
+    if code != 0:
+        return stderr or output or "git status failed"
+    return output
+
+
+def ensure_clean_worktree(plugin_dir: Path, dry_run: bool = False) -> bool:
+    """Prevent releases from tagging a commit that differs from local files."""
+    status = get_worktree_status(plugin_dir)
+    if not status:
+        return True
+    if dry_run:
+        print_warning("Plugin working tree has uncommitted changes; real release would stop here.")
+        for line in status.splitlines():
+            print(f"  {line}")
+        return True
+
+    print_error(f"{plugin_dir.name}: working tree has uncommitted changes")
+    for line in status.splitlines():
+        print(f"  {line}")
+    print_info("Commit or discard these changes before creating a release tag.")
+    return False
 
 
 def check_tag_exists(tag: str) -> bool:
@@ -304,10 +400,26 @@ class GitHubAPI:
             "Accept": "application/vnd.github.v3+json",
         }
     
-    def _request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
+    def _request(self, method: str, endpoint: str, **kwargs):
         """Send HTTP request"""
         url = f"{self.base_url}/repos/{self.owner}/{self.repo}/{endpoint}"
-        return requests.request(method, url, headers=self.headers, **kwargs)
+        if requests is not None:
+            return requests.request(method, url, headers=self.headers, **kwargs)
+
+        data = None
+        headers = dict(self.headers)
+        if "json" in kwargs:
+            data = json.dumps(kwargs["json"]).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+
+        request = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(request, timeout=kwargs.get("timeout", 30)) as response:
+                body = response.read().decode("utf-8")
+                return HttpResponse(response.status, body)
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            return HttpResponse(e.code, body)
     
     def get_release_by_tag(self, tag: str) -> Optional[dict]:
         """Get release by tag"""
@@ -371,9 +483,10 @@ class GitHubAPI:
             return False
 
 
-def process_plugin(plugin_name: str, plugin_repo: str, version: str, 
+def process_plugin(plugin_name: str, plugin_repo: str, version: str,
                    plugin_dir: Path, github_api: Optional[GitHubAPI], dry_run: bool = False,
-                   confirm_all: Optional[List[bool]] = None) -> bool:
+                   confirm_all: Optional[List[bool]] = None, lynx_version: Optional[str] = None,
+                   skip_lynx_check: bool = False) -> bool:
     """Process a single plugin: tag and create release in its own repository"""
     # Tag is just the version (e.g., v1.5.0), not plugin-name/version
     tag = version
@@ -393,11 +506,22 @@ def process_plugin(plugin_name: str, plugin_repo: str, version: str,
         return False
     
     if not github_api:
-        print_warning("⚠️  GitHub API not available - will skip release operations")
+        print_warning("GitHub API not available - will skip release operations")
         print_warning("   (Only tag operations will be performed)")
+
+    if not ensure_clean_worktree(plugin_dir, dry_run=dry_run):
+        return False
+
+    if skip_lynx_check:
+        print_warning("Skipping Lynx SDK dependency check")
+    else:
+        expected_lynx_version = lynx_version or version
+        print_info(f"Step 0: Checking Lynx SDK dependency ({expected_lynx_version})...")
+        if not check_lynx_dependency(plugin_dir, expected_lynx_version):
+            return False
     
-    # 0. Sync pluginVersion in Go files (like release_main syncs banner version)
-    print_info("Step 0: Syncing pluginVersion in Go files...")
+    # Sync pluginVersion in Go files (like release_main syncs banner version)
+    print_info("Step 1: Syncing pluginVersion in Go files...")
     version_updated, updated_files = sync_plugin_version(plugin_dir, version, dry_run=dry_run)
     if version_updated and updated_files and not dry_run:
         # Show changed files and diff, then ask for confirmation before commit/push
@@ -452,9 +576,9 @@ def process_plugin(plugin_name: str, plugin_repo: str, version: str,
         if not push_commit(plugin_dir, dry_run=dry_run):
             return False
     
-    # 1. Check and delete existing release
+    # Check and delete existing release
     if github_api:
-        print_info("Step 1: Checking for existing GitHub release...")
+        print_info("Step 2: Checking for existing GitHub release...")
         release = github_api.get_release_by_tag(tag)
         if release:
             print_warning(f"Found existing GitHub release: {tag}")
@@ -463,37 +587,37 @@ def process_plugin(plugin_name: str, plugin_repo: str, version: str,
         else:
             print_info("No existing release found")
     else:
-        print_info("Step 1: Skipped (no GitHub API)")
+        print_info("Step 2: Skipped (no GitHub API)")
     
-    # 2. Delete remote tag (if exists)
-    print_info("Step 2: Deleting remote tag (if exists)...")
+    # Delete remote tag (if exists)
+    print_info("Step 3: Deleting remote tag (if exists)...")
     delete_remote_tag(tag, plugin_dir, dry_run=dry_run)
     
-    # 3. Delete local tag (if exists)
-    print_info("Step 3: Deleting local tag (if exists)...")
+    # Delete local tag (if exists)
+    print_info("Step 4: Deleting local tag (if exists)...")
     delete_local_tag(tag, plugin_dir, dry_run=dry_run)
     
-    # 4. Create local tag
-    print_info("Step 4: Creating local tag...")
+    # Create local tag
+    print_info("Step 5: Creating local tag...")
     if not create_local_tag(tag, plugin_dir, dry_run=dry_run):
         return False
     
-    # 5. Push tag to remote
-    print_info("Step 5: Pushing tag to remote...")
+    # Push tag to remote
+    print_info("Step 6: Pushing tag to remote...")
     if not push_tag(tag, plugin_dir, dry_run=dry_run):
         return False
     
-    # 6. Create GitHub release
+    # Create GitHub release
     if github_api:
-        print_info("Step 6: Creating GitHub release...")
+        print_info("Step 7: Creating GitHub release...")
         release_name = version  # Only version number, no plugin name prefix
         release_body = f"Release {version} for {plugin_name}"
         if not github_api.create_release(tag, release_name, release_body, dry_run=dry_run):
             return False
     else:
-        print_warning("Step 6: Skipped (no GitHub API - provide token to create releases)")
+        print_warning("Step 7: Skipped (no GitHub API - provide token to create releases)")
     
-    print_success(f"✅ Plugin {plugin_name} processed successfully")
+    print_success(f"Plugin {plugin_name} processed successfully")
     return True
 
 
@@ -515,6 +639,9 @@ Examples:
   # Use custom configuration file
   python3 release_plugins.py v1.0.0 --config my-plugins.json
   
+  # Release plugins against a specific Lynx SDK version
+  python3 release_plugins.py v1.0.0 --lynx-version v1.6.1
+
   # Dry-run mode (preview only)
   python3 release_plugins.py v1.0.0 --dry-run
         """
@@ -524,15 +651,18 @@ Examples:
     parser.add_argument("--token", help="GitHub token (or set GITHUB_TOKEN environment variable)")
     parser.add_argument("--config", default="plugins.json", help="Path to plugins configuration file (default: plugins.json)")
     parser.add_argument("--plugin", help="Process only a specific plugin by name (e.g., lynx-redis)")
+    parser.add_argument("--lynx-version", help="Expected github.com/go-lynx/lynx SDK version in each plugin go.mod (default: release version)")
+    parser.add_argument("--skip-lynx-check", action="store_true", help="Skip Lynx SDK dependency validation")
     parser.add_argument("--dry-run", action="store_true", help="Dry-run mode, do not execute actual operations")
     
     args = parser.parse_args()
     
     # Validate version format
-    version = args.version
-    if not version.startswith("v"):
-        print_warning(f"Version should start with 'v', e.g.: v{version}")
-        version = f"v{version}"
+    version = normalize_version(args.version)
+    if args.version != version:
+        print_warning(f"Version should start with 'v', using: {version}")
+
+    lynx_version = normalize_version(args.lynx_version) if args.lynx_version else version
     
     # Get GitHub token
     token = args.token or os.getenv("GITHUB_TOKEN")
@@ -541,7 +671,9 @@ Examples:
         print_info("You can provide it via --token argument or GITHUB_TOKEN environment variable")
     
     if args.dry_run:
-        print_warning("⚠️  DRY-RUN mode: No actual operations will be performed")
+        print_warning("DRY-RUN mode: No actual operations will be performed")
+    if not args.skip_lynx_check:
+        print_info(f"Expected Lynx SDK dependency: github.com/go-lynx/lynx {lynx_version}")
     
     # 脚本在 lynx/script/ 下，plugins.json 在 lynx/ 下
     lynx_root = Path(__file__).resolve().parent.parent
@@ -606,7 +738,17 @@ Examples:
                 continue
         
         try:
-            if process_plugin(plugin_name, plugin_repo, version, plugin_dir, github_api, args.dry_run, confirm_all):
+            if process_plugin(
+                plugin_name,
+                plugin_repo,
+                version,
+                plugin_dir,
+                github_api,
+                args.dry_run,
+                confirm_all,
+                lynx_version,
+                args.skip_lynx_check,
+            ):
                 success_count += 1
             else:
                 failed_plugins.append(plugin_name)

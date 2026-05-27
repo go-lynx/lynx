@@ -8,7 +8,7 @@ require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/fatih/color v1.16.0
-	github.com/go-lynx/lynx v1.6.0-beta
+	github.com/go-lynx/lynx v1.6.1
 	github.com/spf13/cobra v1.8.1
 	golang.org/x/mod v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
