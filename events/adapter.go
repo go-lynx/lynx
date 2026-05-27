@@ -29,6 +29,9 @@ func NewPluginEventBusAdapterWithListenerManager(eventManager *EventBusManager, 
 
 // PublishEvent publishes a plugin event to the unified event bus
 func (a *PluginEventBusAdapter) PublishEvent(event plugins.PluginEvent) error {
+	if a == nil || a.eventManager == nil {
+		return fmt.Errorf("event manager not initialized")
+	}
 	// Convert PluginEvent to LynxEvent
 	lynxEvent := ConvertPluginEvent(event)
 	return a.eventManager.PublishEvent(lynxEvent)
@@ -36,6 +39,12 @@ func (a *PluginEventBusAdapter) PublishEvent(event plugins.PluginEvent) error {
 
 // Subscribe subscribes to events on the unified event bus
 func (a *PluginEventBusAdapter) Subscribe(eventType plugins.EventType, handler func(plugins.PluginEvent)) error {
+	if a == nil || a.eventManager == nil {
+		return fmt.Errorf("event manager not initialized")
+	}
+	if handler == nil {
+		return fmt.Errorf("event handler cannot be nil")
+	}
 	// Convert event type and create wrapper handler
 	lynxEventType := ConvertEventType(eventType)
 
@@ -50,6 +59,12 @@ func (a *PluginEventBusAdapter) Subscribe(eventType plugins.EventType, handler f
 
 // SubscribeTo subscribes to a specific event type on the unified event bus
 func (a *PluginEventBusAdapter) SubscribeTo(eventType plugins.EventType, handler func(plugins.PluginEvent)) error {
+	if a == nil || a.eventManager == nil {
+		return fmt.Errorf("event manager not initialized")
+	}
+	if handler == nil {
+		return fmt.Errorf("event handler cannot be nil")
+	}
 	// Convert event type and create wrapper handler
 	lynxEventType := ConvertEventType(eventType)
 

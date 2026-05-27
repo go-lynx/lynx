@@ -73,6 +73,40 @@ func GetGlobalEventBus() *EventBusManager {
 	return manager
 }
 
+// GetGlobalEventBusStrict returns an explicitly configured global/default event bus.
+// It never auto-creates the process-wide compatibility bus and never returns the
+// shared fallback manager. Production startup checks should use this helper to
+// detect accidental dependency on deprecated global event APIs.
+func GetGlobalEventBusStrict() (*EventBusManager, error) {
+	globalMu.RLock()
+	provider := defaultEventBusProvider
+	manager := globalManager
+	initErr := globalInitErr
+	globalMu.RUnlock()
+
+	if provider != nil {
+		if provided := provider(); provided != nil {
+			return provided, nil
+		}
+		return nil, fmt.Errorf("default event bus provider returned nil")
+	}
+	if manager != nil {
+		return manager, nil
+	}
+	if initErr != nil {
+		return nil, fmt.Errorf("global event bus is not available: %w", initErr)
+	}
+	return nil, fmt.Errorf("global event bus is not explicitly initialized")
+}
+
+// IsGlobalEventBusFallbackActive reports whether deprecated global lookup has
+// created the shared fallback manager after initialization failure.
+func IsGlobalEventBusFallbackActive() bool {
+	globalMu.RLock()
+	defer globalMu.RUnlock()
+	return globalFallbackManager != nil
+}
+
 // SetGlobalEventBus sets the global event bus manager
 func SetGlobalEventBus(manager *EventBusManager) {
 	globalMu.Lock()
@@ -248,7 +282,11 @@ func getOrCreateFallbackEventBusManager() *EventBusManager {
 			logger:     log.DefaultLogger,
 		}
 		manager.initBuses()
+		globalMu.Lock()
+		defer globalMu.Unlock()
 		globalFallbackManager = manager
 	})
+	globalMu.RLock()
+	defer globalMu.RUnlock()
 	return globalFallbackManager
 }
