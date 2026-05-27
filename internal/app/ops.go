@@ -263,6 +263,9 @@ func (m *DefaultPluginManager[T]) LoadPlugins(conf config.Config) error {
 		log.Infof("no unmanaged plugins prepared; skipping load")
 		return nil
 	}
+	if err := m.enforceLifecyclePolicy(preparedPlugins); err != nil {
+		return err
+	}
 
 	sortedPlugins, err := m.TopologicalSort(preparedPlugins)
 	if err != nil {
@@ -388,25 +391,33 @@ func (m *DefaultPluginManager[T]) stopPluginForUnload(pluginCtx context.Context,
 	if !shouldStopPlugin(plugin) {
 		return nil
 	}
-
-	stopDone := make(chan error, 1)
-	go func() {
-		stopDone <- m.safeStopPlugin(plugin, perPluginTimeout)
-	}()
-
-	select {
-	case err := <-stopDone:
-		if err != nil {
-			log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
-			m.emitPluginErrorEvent(plugin.ID(), plugin.Name(), opts.operation, err)
-		}
-		return err
-	case <-pluginCtx.Done():
-		err := fmt.Errorf("plugin stop timeout after %v", perPluginTimeout)
-		log.Errorf("Plugin %s stop timed out, forcing cleanup", plugin.Name())
-		m.emitPluginErrorEvent(plugin.ID(), plugin.Name(), opts.operation, err)
-		return err
+	if err := pluginCtx.Err(); err != nil {
+		stopErr := fmt.Errorf("plugin stop cancelled before execution: %w", err)
+		log.Errorf("Plugin %s stop cancelled before execution: %v", plugin.Name(), err)
+		m.emitPluginErrorEvent(plugin.ID(), plugin.Name(), opts.operation, stopErr)
+		return stopErr
 	}
+
+	effectiveTimeout := perPluginTimeout
+	if deadline, ok := pluginCtx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			stopErr := fmt.Errorf("plugin stop timeout after %v", perPluginTimeout)
+			log.Errorf("Plugin %s stop timed out before execution", plugin.Name())
+			m.emitPluginErrorEvent(plugin.ID(), plugin.Name(), opts.operation, stopErr)
+			return stopErr
+		}
+		if effectiveTimeout <= 0 || remaining < effectiveTimeout {
+			effectiveTimeout = remaining
+		}
+	}
+
+	err := m.safeStopPlugin(plugin, effectiveTimeout)
+	if err != nil {
+		log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
+		m.emitPluginErrorEvent(plugin.ID(), plugin.Name(), opts.operation, err)
+	}
+	return err
 }
 
 func (m *DefaultPluginManager[T]) cleanupPluginForUnload(pluginCtx context.Context, plugin plugins.Plugin, pluginID string, perPluginTimeout time.Duration) error {
@@ -503,6 +514,9 @@ func (m *DefaultPluginManager[T]) LoadPluginsByName(conf config.Config, pluginNa
 	if len(targetPlugins) == 0 {
 		log.Infof("no unmanaged target plugins selected; skipping subset load")
 		return nil
+	}
+	if err := m.enforceLifecyclePolicy(targetPlugins); err != nil {
+		return err
 	}
 
 	sortedPlugins, err := m.TopologicalSort(targetPlugins)

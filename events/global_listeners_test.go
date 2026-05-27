@@ -86,6 +86,39 @@ func TestClearDefaultEventBusProvider_FallsBackToGlobal(t *testing.T) {
 	}
 }
 
+func TestGetGlobalEventBusStrict_DoesNotAutoCreate(t *testing.T) {
+	resetGlobalEventBusStateForTest(t)
+	defer resetGlobalEventBusStateForTest(t)
+
+	manager, err := GetGlobalEventBusStrict()
+	if err == nil {
+		t.Fatalf("expected strict lookup to fail without explicit manager, got manager=%p", manager)
+	}
+	if globalManager != nil {
+		t.Fatal("strict lookup must not auto-create global manager")
+	}
+}
+
+func TestGetGlobalEventBusStrict_UsesProvider(t *testing.T) {
+	resetGlobalEventBusStateForTest(t)
+	defer resetGlobalEventBusStateForTest(t)
+
+	custom, err := NewEventBusManager(DefaultBusConfigs())
+	if err != nil {
+		t.Fatalf("NewEventBusManager: %v", err)
+	}
+	defer custom.Close()
+
+	SetDefaultEventBusProvider(func() *EventBusManager { return custom })
+	got, err := GetGlobalEventBusStrict()
+	if err != nil {
+		t.Fatalf("GetGlobalEventBusStrict: %v", err)
+	}
+	if got != custom {
+		t.Fatal("expected strict lookup to return provider manager")
+	}
+}
+
 func TestPublishEventWithManager_NilManagerReturnsError(t *testing.T) {
 	event := NewLynxEvent(EventPluginStarted, "test", "test")
 	if err := PublishEventWithManager(nil, event); err == nil {
