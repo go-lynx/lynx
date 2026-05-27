@@ -106,6 +106,7 @@ The script performs the following operations for **each plugin** in the configur
 2. **For each enabled plugin**:
    - **Navigate to plugin directory**: Each plugin must be in its own git repository
    - **Check clean working tree**: Real releases stop if the plugin repository has uncommitted changes
+   - **Check upstream sync**: Real releases stop if the plugin branch is ahead of or behind its upstream
    - **Check Lynx SDK dependency**: `go.mod` must require the expected SDK version and must not contain a committed `replace`
    - **Check for existing GitHub release**: If exists, delete it first (in the plugin's repository)
    - **Delete remote tag**: If exists, delete it first (from plugin's repository)
