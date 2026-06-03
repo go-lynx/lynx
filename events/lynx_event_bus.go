@@ -186,18 +186,3 @@ func NewLynxEventBus(config BusConfig, busType BusType, manager *EventBusManager
 	return bus
 }
 
-// min returns the minimum of two ints
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// max returns the maximum of two ints
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
