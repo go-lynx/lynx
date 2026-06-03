@@ -20,10 +20,32 @@ import (
 
 // CmdNew represents the `new` command for creating a Lynx service template project.
 var CmdNew = &cobra.Command{
-	Use:   "new",
+	Use:   "new [name...]",
 	Short: "Create a lynx service template",
-	Long:  "Create a lynx service project using the repository template.",
-	RunE:  run, // function called when executing the command
+	Long: `Create one or more Lynx service projects from the layout template.
+
+Pass one or more project names as arguments, or run without arguments to be
+prompted interactively. Names may be plain (myservice) or path-like (apps/api).
+The template is cloned from the layout repo (override with --repo-url / LYNX_LAYOUT_REPO).`,
+	Example: `  # Interactive: prompts for name(s) and plugins
+  lynx new
+
+  # Create a single service
+  lynx new myservice
+
+  # Set the Go module path and run 'go mod tidy' afterwards
+  lynx new myservice --module github.com/acme/myservice --post-tidy
+
+  # Preselect plugins (skips the interactive picker)
+  lynx new myservice --plugins http,grpc,redis
+
+  # Create several services at once, no plugins
+  lynx new svc-a svc-b svc-c --skip-plugins
+
+  # Pin the template to a tag/commit and overwrite an existing dir
+  lynx new myservice --ref v1.6.1 --force`,
+	Args: cobra.ArbitraryArgs,
+	RunE: run, // function called when executing the command
 }
 
 var (
@@ -116,8 +138,9 @@ func run(_ *cobra.Command, args []string) error {
 			base.Errorf("%s", base.T("no_project_names"))
 			return fmt.Errorf("no project names provided")
 		}
-		// Split the input project names by spaces.
-		names = strings.Split(input, " ")
+		// Split the input project names on any run of whitespace (handles tabs
+		// and multiple spaces; avoids empty entries from strings.Split).
+		names = strings.Fields(input)
 	} else {
 		names = args
 	}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/fatih/color"
 )
 
 // log levels: error < warn < info < debug
@@ -62,24 +64,28 @@ func Infof(format string, a ...any) {
 	}
 }
 
-// Warnf prints a warning level formatted message to stderr if warn level or higher is enabled.
-// Takes a format string and variadic arguments similar to fmt.Printf.
+// Warnf prints a warning level formatted message to stderr (in yellow) if warn
+// level or higher is enabled. Color is applied centrally here, so callers pass
+// plain text; color.YellowString respects NO_COLOR and non-TTY output.
 func Warnf(format string, a ...any) {
 	if allow(levelWarn) {
-		_, err := fmt.Fprintf(os.Stderr, format, a...)
-		if err != nil {
-			return
-		}
+		_, _ = fmt.Fprint(os.Stderr, color.YellowString(format, a...))
 	}
 }
 
-// Errorf prints an error level formatted message to stderr if error level or higher is enabled.
-// Takes a format string and variadic arguments similar to fmt.Printf.
+// Errorf prints an error level formatted message to stderr (in red) if error
+// level or higher is enabled. Color is applied centrally here, so callers pass
+// plain text; color.RedString respects NO_COLOR and non-TTY output.
 func Errorf(format string, a ...any) {
 	if allow(levelError) {
-		_, err := fmt.Fprintf(os.Stderr, format, a...)
-		if err != nil {
-			return
-		}
+		_, _ = fmt.Fprint(os.Stderr, color.RedString(format, a...))
+	}
+}
+
+// Successf prints an info-level success message to stdout in green. Use for
+// positive confirmations to keep success styling consistent across commands.
+func Successf(format string, a ...any) {
+	if allow(levelInfo) {
+		_, _ = fmt.Fprint(os.Stdout, color.GreenString(format, a...))
 	}
 }

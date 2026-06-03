@@ -6,17 +6,18 @@ import (
 	"strings"
 )
 
-// Lang returns the current language code, default is zh.
+// Lang returns the current language code. Default is English to match the
+// (English) command help; set LYNX_LANG=zh (or --lang zh) for Chinese.
 func Lang() string {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("LYNX_LANG")))
-	if v == "en" {
-		return "en"
+	if v == "zh" {
+		return "zh"
 	}
-	return "zh"
+	return "en"
 }
 
 // IsZH indicates whether the current environment is Chinese.
-func IsZH() bool { return Lang() != "en" }
+func IsZH() bool { return Lang() == "zh" }
 
 // Choose returns the corresponding text based on the current language.
 func Choose(zhMsg, enMsg string) string {
@@ -43,8 +44,8 @@ var messages = map[string]map[string]string{
 		"thanks":             "🤝 感谢使用 Lynx\n",
 		"tutorial":           "📚 教程: https://go-lynx.cn/docs/start\n",
 		"no_project_names":   "\n❌ 未找到项目名，请提供正确的项目名称\n",
-		"failed_create":      "\x1b[31mERROR: 创建项目失败(%s)\x1b[m\n",
-		"timeout":            "\x1b[31mERROR: 项目创建超时\x1b[m\n",
+		"failed_create":      "创建项目失败(%s)\n",
+		"timeout":            "项目创建超时\n",
 		// suggestions
 		"suggestion_dns":      "   👉 建议：检查 DNS/网络，或配置代理（HTTP(S)_PROXY）；必要时更换镜像源",
 		"suggestion_timeout":  "   👉 建议：检查网络波动与代理；可提高重试次数 LYNX_RETRIES、增大 LYNX_MAX_BACKOFF_MS",
@@ -73,9 +74,9 @@ var messages = map[string]map[string]string{
 		"start_cmds_header":  "💻 Use the following command to start the project 👇:\n\n",
 		"thanks":             "🤝 Thanks for using Lynx\n",
 		"tutorial":           "📚 Tutorial: https://go-lynx.cn/docs/start\n",
-		"no_project_names":   "\n❌ No project names found,Please provide the correct project name\n",
-		"failed_create":      "\x1b[31mERROR: Failed to create project(%s)\x1b[m\n",
-		"timeout":            "\x1b[31mERROR: project creation timed out\x1b[m\n",
+		"no_project_names":   "\n❌ No project names found, please provide a valid project name\n",
+		"failed_create":      "Failed to create project (%s)\n",
+		"timeout":            "project creation timed out\n",
 		// suggestions
 		"suggestion_dns":      "   👉 Suggestion: Check DNS/network, or set HTTP(S)_PROXY; switch to a mirror if needed",
 		"suggestion_timeout":  "   👉 Suggestion: Check network/Proxy; increase LYNX_RETRIES and LYNX_MAX_BACKOFF_MS",

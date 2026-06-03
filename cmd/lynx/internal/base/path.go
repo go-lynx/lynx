@@ -3,7 +3,6 @@ package base
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,15 +10,13 @@ import (
 	"github.com/fatih/color"
 )
 
-// lynxHome gets the home directory of Lynx tool.
-// If the home directory doesn't exist, create it.
-// Returns the path to Lynx tool home directory.
-func lynxHome() string {
+// lynxHome gets the home directory of Lynx tool, creating it if missing.
+// Returns the path, or an error if the home dir cannot be resolved/created.
+func lynxHome() (string, error) {
 	// Get current user's home directory
 	dir, err := os.UserHomeDir()
 	if err != nil {
-		// If getting fails, log error and terminate program
-		log.Fatal(err)
+		return "", fmt.Errorf("resolve user home directory: %w", err)
 	}
 	// Concatenate the path to Lynx tool home directory
 	home := filepath.Join(dir, ".lynx")
@@ -27,29 +24,29 @@ func lynxHome() string {
 	if _, err := os.Stat(home); os.IsNotExist(err) {
 		// If doesn't exist, recursively create directory
 		if err := os.MkdirAll(home, 0o700); err != nil {
-			// If creation fails, log error and terminate program
-			log.Fatal(err)
+			return "", fmt.Errorf("create lynx home %q: %w", home, err)
 		}
 	}
-	return home
+	return home, nil
 }
 
-// lynxHomeWithDir gets the path of specified subdirectory under Lynx tool home directory.
-// If the subdirectory doesn't exist, create it.
-// Parameter dir is the specified subdirectory name.
-// Returns the path of specified subdirectory under Lynx tool home directory.
-func lynxHomeWithDir(dir string) string {
+// lynxHomeWithDir gets the path of a subdirectory under the Lynx home directory,
+// creating it if missing. Returns the path, or an error on failure.
+func lynxHomeWithDir(dir string) (string, error) {
+	root, err := lynxHome()
+	if err != nil {
+		return "", err
+	}
 	// Concatenate the path of specified subdirectory under Lynx tool home directory
-	home := filepath.Join(lynxHome(), dir)
+	home := filepath.Join(root, dir)
 	// Check if subdirectory exists
 	if _, err := os.Stat(home); os.IsNotExist(err) {
 		// If doesn't exist, recursively create directory
 		if err := os.MkdirAll(home, 0o700); err != nil {
-			// If creation fails, log error and terminate program
-			log.Fatal(err)
+			return "", fmt.Errorf("create lynx dir %q: %w", home, err)
 		}
 	}
-	return home
+	return home, nil
 }
 
 // copyFile copies source file to target file and replaces file content according to replacement rules.
