@@ -11,9 +11,9 @@
 package compat
 
 import (
-	iapp "github.com/go-lynx/lynx/internal/app"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/registry"
+	iapp "github.com/go-lynx/lynx/internal/app"
 	"github.com/go-lynx/lynx/plugins"
 )
 
