@@ -38,7 +38,9 @@ You can specify a version or use the latest version by default.`,
 }
 
 func init() {
-	cmdInstall.Flags().StringVarP(&installVersion, "version", "v", "latest", "Plugin version to install")
+	// No -v shorthand: -v means --verbose elsewhere; keep --version long-form only
+	// to avoid an ambiguous shorthand across subcommands.
+	cmdInstall.Flags().StringVar(&installVersion, "version", "latest", "Plugin version to install")
 	cmdInstall.Flags().BoolVarP(&installForce, "force", "f", false, "Force reinstall even if already installed")
 }
 
@@ -54,41 +56,60 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	// Show installation progress
 	fmt.Printf("🔍 Looking for plugin: %s\n", color.CyanString(pluginName))
 
-	// Check if it's a URL or path
+	// Resolve metadata up-front (best effort) so we can print actionable steps later.
+	var meta *PluginMetadata
 	if strings.Contains(pluginName, "/") || strings.HasPrefix(pluginName, ".") {
 		fmt.Printf("📦 Installing from: %s\n", pluginName)
-	} else {
-		// Try to get plugin info first
-		if plugin, err := manager.GetPluginInfo(pluginName); err == nil {
-			fmt.Printf("📋 Found: %s (%s)\n", plugin.Name, plugin.Description)
-			if plugin.Official {
-				fmt.Printf("✓ Official plugin by %s\n", plugin.Author)
-			}
+	} else if m, infoErr := manager.GetPluginInfo(pluginName); infoErr == nil {
+		meta = m
+		fmt.Printf("📋 Found: %s (%s)\n", meta.Name, meta.Description)
+		if meta.Official {
+			fmt.Printf("✓ Official plugin by %s\n", meta.Author)
+		}
 
-			// Show dependencies if any
-			if len(plugin.Dependencies) > 0 {
-				fmt.Println("📌 Dependencies:")
-				for _, dep := range plugin.Dependencies {
-					status := "optional"
-					if dep.Required {
-						status = "required"
-					}
-					fmt.Printf("   - %s %s (%s)\n", dep.Name, dep.Version, status)
+		// Show dependencies if any
+		if len(meta.Dependencies) > 0 {
+			fmt.Println("📌 Dependencies:")
+			for _, dep := range meta.Dependencies {
+				status := "optional"
+				if dep.Required {
+					status = "required"
 				}
+				fmt.Printf("   - %s %s (%s)\n", dep.Name, dep.Version, status)
 			}
 		}
 	}
 
 	// Install the plugin
 	if err := manager.InstallPlugin(pluginName, installVersion, installForce); err != nil {
-		return fmt.Errorf("❌ Installation failed: %w", err)
+		return fmt.Errorf("installation failed: %w", err)
 	}
 
-	// Show post-installation instructions
-	fmt.Println("\n📚 Next steps:")
-	fmt.Printf("1. Configure the plugin in the generated config file\n")
-	fmt.Printf("2. Import and initialize the plugin in your code\n")
-	fmt.Printf("3. Run 'lynx doctor' to verify the installation\n")
-
+	printInstallNextSteps(pluginName, meta)
 	return nil
+}
+
+// printInstallNextSteps prints concrete, copy-pasteable next steps, using the
+// plugin's metadata (import path, config file) when available.
+func printInstallNextSteps(pluginName string, meta *PluginMetadata) {
+	fmt.Printf("\n%s plugin %s installed\n", color.GreenString("✓"), color.CyanString(pluginName))
+	fmt.Println("\n📚 Next steps:")
+
+	// 1) Blank import that registers the plugin with the framework.
+	if meta != nil && meta.ImportPath != "" {
+		fmt.Println("  1. Register it with a blank import in your service bootstrap (e.g. cmd/<svc>/main.go):")
+		fmt.Printf("       import _ %q\n", meta.ImportPath)
+	} else {
+		fmt.Println("  1. Add a blank import for the plugin package in your service bootstrap (cmd/<svc>/main.go)")
+	}
+
+	// 2) Where to configure it.
+	configFile := "configs/config.yaml"
+	if meta != nil && meta.ConfigFile != "" {
+		configFile = meta.ConfigFile
+	}
+	fmt.Printf("  2. Add the plugin's configuration section in %s\n", color.YellowString(configFile))
+
+	// 3) Verify.
+	fmt.Printf("  3. Verify the setup: %s\n", color.CyanString("lynx doctor"))
 }

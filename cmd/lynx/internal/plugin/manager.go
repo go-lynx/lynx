@@ -126,42 +126,73 @@ func (m *PluginManager) scanInstalledPlugins() {
 		_ = m.registry.UpdatePluginStatus(p.Name, StatusNotInstalled, "")
 	}
 
-	if _, err := os.Stat(m.pluginsDir); os.IsNotExist(err) {
-		return
+	// Primary source of truth: modules required by the project's go.mod. A plugin
+	// is "installed" when its module is a dependency (added by 'go get').
+	required := m.goModRequiredPaths()
+	for _, p := range m.registry.GetAllPlugins() {
+		if p.ImportPath == "" {
+			continue
+		}
+		if ver, ok := required[p.ImportPath]; ok {
+			// Prefer the version resolved in go.mod; fall back to the tracked value.
+			version := ver
+			if version == "" {
+				version = m.getInstalledVersion(p.Name)
+			}
+			_ = m.registry.UpdatePluginStatus(p.Name, StatusInstalled, version)
+		}
 	}
 
+	// Back-compat: older installs cloned plugin source into plugins/<type>/<name>.
+	if _, err := os.Stat(m.pluginsDir); err != nil {
+		return
+	}
 	entries, err := os.ReadDir(m.pluginsDir)
 	if err != nil {
 		return
 	}
-
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-
 		// Check each type directory (service, mq, sql, nosql, etc.)
 		typeDir := filepath.Join(m.pluginsDir, entry.Name())
 		pluginDirs, err := os.ReadDir(typeDir)
 		if err != nil {
 			continue
 		}
-
 		for _, pluginDir := range pluginDirs {
 			if !pluginDir.IsDir() {
 				continue
 			}
-
 			pluginName := pluginDir.Name()
-
-			// Check if plugin has go.mod
 			goModPath := filepath.Join(typeDir, pluginName, "go.mod")
 			if _, err := os.Stat(goModPath); err == nil {
-				// Update registry status
-				m.registry.UpdatePluginStatus(pluginName, StatusInstalled, m.getInstalledVersion(pluginName))
+				_ = m.registry.UpdatePluginStatus(pluginName, StatusInstalled, m.getInstalledVersion(pluginName))
 			}
 		}
 	}
+}
+
+// goModRequiredPaths returns module path -> version for every require in the
+// project's go.mod. Used to detect which plugins are wired into the project.
+func (m *PluginManager) goModRequiredPaths() map[string]string {
+	out := map[string]string{}
+	goModPath := filepath.Join(m.projectRoot, "go.mod")
+	data, err := os.ReadFile(goModPath)
+	if err != nil {
+		return out
+	}
+	file, err := modfile.Parse(goModPath, data, nil)
+	if err != nil {
+		return out
+	}
+	for _, req := range file.Require {
+		if req != nil {
+			out[req.Mod.Path] = req.Mod.Version
+		}
+	}
+	return out
 }
 
 // getInstalledVersion gets the installed version of a plugin
@@ -224,24 +255,22 @@ func (m *PluginManager) InstallPlugin(name string, version string, force bool) e
 
 	fmt.Printf("Installing plugin: %s...\n", name)
 
-	// Determine plugin directory
-	pluginDir := filepath.Join(m.pluginsDir, string(plugin.Type), plugin.Name)
-
-	// Create plugin directory
-	if err := os.MkdirAll(pluginDir, 0755); err != nil {
-		return fmt.Errorf("failed to create plugin directory: %w", err)
+	// Resolve the module import path (the unit that must go into go.mod).
+	importPath := plugin.ImportPath
+	if importPath == "" && plugin.Repository != "" {
+		importPath = importPathFromCloneURL(plugin.Repository)
+	}
+	if importPath == "" {
+		return fmt.Errorf("cannot determine module import path for plugin %s", name)
 	}
 
-	// Clone or download plugin
-	if plugin.Repository != "" {
-		if err := m.clonePlugin(plugin.Repository, pluginDir, version); err != nil {
-			return fmt.Errorf("failed to clone plugin: %w", err)
-		}
-	} else {
-		// Use go get to download
-		if err := m.downloadPlugin(plugin.ImportPath, version); err != nil {
-			return fmt.Errorf("failed to download plugin: %w", err)
-		}
+	// Add the plugin as a real module dependency via 'go get'. A Lynx plugin is a
+	// normal Go module: it must be in go.mod and blank-imported so its init()
+	// registers with the plugin factory. (Previously this cloned the source into
+	// ./plugins, which never wired the plugin into the build.)
+	fmt.Printf("Adding module %s ...\n", importPath)
+	if err := m.downloadPlugin(importPath, version); err != nil {
+		return fmt.Errorf("failed to add plugin module via 'go get': %w", err)
 	}
 
 	// Generate configuration template
@@ -295,10 +324,26 @@ func (m *PluginManager) RemovePlugin(name string, keepConfig bool) error {
 
 	fmt.Printf("Removing plugin: %s...\n", name)
 
-	// Remove plugin directory
-	pluginDir := filepath.Join(m.pluginsDir, string(plugin.Type), plugin.Name)
-	if err := os.RemoveAll(pluginDir); err != nil {
-		return fmt.Errorf("failed to remove plugin directory: %w", err)
+	// Drop the module dependency from go.mod (inverse of install's 'go get').
+	// Note: if your code still blank-imports the plugin, the 'go mod tidy' below
+	// will re-add it, so remove the import first.
+	importPath := plugin.ImportPath
+	if importPath == "" && plugin.Repository != "" {
+		importPath = importPathFromCloneURL(plugin.Repository)
+	}
+	if importPath != "" {
+		cmd := exec.Command("go", "get", importPath+"@none")
+		cmd.Dir = m.projectRoot
+		cmd.Env = os.Environ()
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("Warning: failed to drop module %s from go.mod: %v\n", importPath, err)
+		}
+	}
+
+	// Back-compat: remove legacy cloned source dir if a previous version created one.
+	legacyDir := filepath.Join(m.pluginsDir, string(plugin.Type), plugin.Name)
+	if err := os.RemoveAll(legacyDir); err != nil {
+		fmt.Printf("Warning: failed to remove legacy plugin directory %s: %v\n", legacyDir, err)
 	}
 
 	// Remove from installed list (installed list key is plugin.Name, e.g. "redis" not "lynx-redis")
@@ -332,70 +377,8 @@ func (m *PluginManager) RemovePlugin(name string, keepConfig bool) error {
 
 // Helper functions
 
-func (m *PluginManager) clonePlugin(repo, dir, version string) error {
-	// Clone to temp dir first; only replace target on success to avoid losing existing dir on clone failure
-	tmpDir, err := os.MkdirTemp("", "lynx-plugin-*")
-	if err != nil {
-		return fmt.Errorf("create temp dir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	cloneCmd := exec.Command("git", "clone", repo, tmpDir)
-	cloneCmd.Stdout = os.Stdout
-	cloneCmd.Stderr = os.Stderr
-	if err := cloneCmd.Run(); err != nil {
-		return fmt.Errorf("git clone failed: %w", err)
-	}
-
-	// Checkout tag/branch only when not "latest" (latest = use default branch)
-	if version != "" && version != "latest" {
-		checkoutCmd := exec.Command("git", "checkout", version)
-		checkoutCmd.Dir = tmpDir
-		checkoutCmd.Stdout = os.Stdout
-		checkoutCmd.Stderr = os.Stderr
-		if err := checkoutCmd.Run(); err != nil {
-			return fmt.Errorf("git checkout %s: %w", version, err)
-		}
-	}
-
-	// Success: replace target with cloned content
-	_ = os.RemoveAll(dir)
-	if err := os.Rename(tmpDir, dir); err != nil {
-		// Cross-filesystem: copy then remove temp
-		if err := copyDir(tmpDir, dir); err != nil {
-			return fmt.Errorf("move clone to target: %w", err)
-		}
-	}
-	return nil
-}
-
-func copyDir(src, dst string) error {
-	if err := os.MkdirAll(dst, 0755); err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		s, d := filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())
-		if e.IsDir() {
-			if err := copyDir(s, d); err != nil {
-				return err
-			}
-			continue
-		}
-		data, err := os.ReadFile(s)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(d, data, 0644); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
+// downloadPlugin adds (or updates) a plugin module in the project's go.mod via
+// 'go get importPath@version'. version "" or "latest" resolves to @latest.
 func (m *PluginManager) downloadPlugin(importPath, version string) error {
 	if version == "" || version == "latest" {
 		version = "@latest"
