@@ -434,13 +434,18 @@ func (m *DefaultPluginManager[T]) emitLifecycleSuccess(p plugins.Plugin, eventTy
 
 func (m *DefaultPluginManager[T]) recoverLifecyclePanic(action string, p plugins.Plugin, r any, errCh chan<- error, ctx context.Context, includeStack bool) {
 	msg := fmt.Sprintf("panic in %s of %s: %v", action, p.ID(), r)
+	// Always log the panic. When includeStack is true (Initialize path), also capture and log the stack
+	// trace for easier debugging. For Start/Stop paths, log at error level without stack to reduce noise
+	// while still ensuring the event is visible in logs.
 	if includeStack {
 		stackTrace := make([]byte, 4096)
 		stackLen := runtime.Stack(stackTrace, false)
 		log.Errorf("Panic in %s of %s: %v\nStack trace:\n%s", action, p.ID(), r, stackTrace[:stackLen])
+	} else {
+		log.Errorf("Panic in %s of %s: %v", action, p.ID(), r)
 	}
 	select {
-	case errCh <- fmt.Errorf("%s", msg):
+	case errCh <- errors.New(msg):
 	case <-ctx.Done():
 	}
 }
