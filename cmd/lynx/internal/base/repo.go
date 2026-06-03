@@ -50,14 +50,19 @@ func repoDir(url string) string {
 
 // NewRepo creates a new repository manager instance.
 // Parameter url is the remote URL of the repository, branch is the repository branch to operate on.
-// Returns a pointer to the newly created Repo instance.
-func NewRepo(url string, branch string) *Repo {
-	return &Repo{
-		url: url,
-		// Calculate local cache path of the repository
-		home:   lynxHomeWithDir("repo/" + repoDir(url)),
-		branch: branch,
+// Returns a pointer to the newly created Repo instance, or an error if the local
+// cache directory cannot be resolved/created.
+func NewRepo(url string, branch string) (*Repo, error) {
+	// Calculate local cache path of the repository
+	home, err := lynxHomeWithDir("repo/" + repoDir(url))
+	if err != nil {
+		return nil, err
 	}
+	return &Repo{
+		url:    url,
+		home:   home,
+		branch: branch,
+	}, nil
 }
 
 // Path returns the local cache path of the repository.

@@ -16,7 +16,6 @@ var (
 	watchMode bool
 	buildArgs string
 	runArgs   string
-	verbose   bool
 	env       []string
 	port      string
 	skipBuild bool
@@ -52,13 +51,17 @@ func init() {
 	CmdRun.Flags().BoolVarP(&watchMode, "watch", "w", false, "Enable hot reload (watch for file changes)")
 	CmdRun.Flags().StringVar(&buildArgs, "build-args", "", "Additional arguments for go build")
 	CmdRun.Flags().StringVar(&runArgs, "run-args", "", "Arguments to pass to the running application")
-	CmdRun.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
+	// Note: --verbose is provided by the root command as a persistent flag; do not
+	// redefine it here (a local flag would shadow the global one).
 	CmdRun.Flags().StringArrayVarP(&env, "env", "e", []string{}, "Environment variables (KEY=VALUE)")
 	CmdRun.Flags().StringVarP(&port, "port", "p", "", "Override the application port")
 	CmdRun.Flags().BoolVar(&skipBuild, "skip-build", false, "Skip build and run existing binary")
 }
 
 func runCommand(cmd *cobra.Command, args []string) error {
+	// Verbose comes from the root persistent --verbose flag (inherited here).
+	verbose, _ := cmd.Flags().GetBool("verbose")
+
 	// Determine project path
 	projectPath := "."
 	if len(args) > 0 {

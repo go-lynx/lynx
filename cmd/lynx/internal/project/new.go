@@ -74,7 +74,10 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	// Notify user to start creating project and display project name and layout repository information
 	base.Infof("%s", base.T("creating_service", p.Name, layout))
 	// Create a new repository instance
-	repo := base.NewRepo(layout, branch)
+	repo, err := base.NewRepo(layout, branch)
+	if err != nil {
+		return err
+	}
 	// Copy remote repository content to target path, excluding .git and .github directories
 	// If --module is provided, replace the module in template go.mod; otherwise don't replace template module
 	if err := repo.CopyToV2(ctx, to, module, []string{".git", ".github"}, nil); err != nil {
@@ -147,7 +150,8 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 
 func printProjectSummary(name string, result projectCreateResult) {
 	if len(result.pluginFailures) == 0 && !result.modTidyFailed {
-		base.Infof("%s", base.T("project_success", color.GreenString(name)))
+		// Successf colors the whole line green; pass the plain name.
+		base.Successf("%s", base.T("project_success", name))
 		return
 	}
 

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 
 	"github.com/go-lynx/lynx/cmd/lynx/internal/ca"
@@ -23,6 +23,10 @@ var rootCmd = &cobra.Command{
 	Long: `Lynx: The Plug-and-Play Go Microservices Framework`,
 	// Version defines the version of the CLI tool, release variable needs to be defined elsewhere
 	Version: release,
+	// On a RunE error, print only our own clean message (see main); do not let
+	// cobra dump the full usage text or print the error a second time.
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Persist log level to environment variables for internal subcommands and executors to read
 		verbose, _ := cmd.Flags().GetBool("verbose")
@@ -66,13 +70,17 @@ func init() {
 	rootCmd.PersistentFlags().Bool("verbose", false, "enable verbose logs")
 	rootCmd.PersistentFlags().Bool("quiet", false, "suppress non-error logs")
 	rootCmd.PersistentFlags().String("log-level", "info", "log level: error|warn|info|debug (overrides --quiet/--verbose)")
-	rootCmd.PersistentFlags().String("lang", "en", "language for messages: zh|en")
+	// Empty default so base.Lang() remains the single source of truth for the
+	// default language (avoids a flag-default vs i18n-default mismatch).
+	rootCmd.PersistentFlags().String("lang", "", "language for messages: zh|en (default en)")
 }
 
 // main function is the entry point of the program, responsible for executing the root command.
 func main() {
-	// Execute root command, if error occurs during execution, log error and terminate program
+	// Execute root command. On error print a single clean line to stderr (no log
+	// timestamp, no usage dump) and exit non-zero.
 	if err := rootCmd.Execute(); err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, "lynx: "+err.Error())
+		os.Exit(1)
 	}
 }
