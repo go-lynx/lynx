@@ -22,7 +22,13 @@ type ErrorCallback func(event LynxEvent, reason string, err error)
 
 // BusConfig represents configuration for a single event bus
 type BusConfig struct {
-	MaxQueue      int           `yaml:"max_queue" json:"max_queue"`
+	MaxQueue int `yaml:"max_queue" json:"max_queue"`
+	// FlushInterval sets the periodic queue-size monitoring cadence. Dispatch is
+	// event-driven (the worker wakes immediately when an event is enqueued), so
+	// this no longer gates dispatch latency. Values below busMonitorMinInterval
+	// (1s) are clamped up at runtime to keep an idle bus from spinning; the
+	// sub-millisecond defaults below are kept for backward compatibility but are
+	// effectively floored to 1s.
 	FlushInterval time.Duration `yaml:"flush_interval" json:"flush_interval"`
 	Priority      Priority      `yaml:"priority" json:"priority"`
 	EnableHistory bool          `yaml:"enable_history" json:"enable_history"`
