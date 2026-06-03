@@ -251,7 +251,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	globalMetrics = &LogPerformanceMetrics{
 		lastReset: time.Now(),
 	}
-	metricsEnabled = true
+	metricsEnabled = false
 
 	// Log the initialization of the logging component using fmt to avoid uninitialized logger discrepancies
 	fmt.Println("[lynx] initializing logging component with performance optimizations")
@@ -265,6 +265,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			ConsoleOutput: true,
 		}
 	}
+	metricsEnabled = performanceMonitorEnabled(cfg)
 
 	// Set up log output with performance optimizations
 	var writers []io.Writer
@@ -506,8 +507,11 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	monitorCh := monitorStopCh
 	watchStopCh := configWatchStopCh
 
-	// Start performance monitoring goroutine
-	go monitorLogPerformance(monitorCh)
+	// Start performance monitoring only when explicitly enabled. The monitor
+	// writes periodic fmt output and should not run by default in idle services.
+	if metricsEnabled {
+		go monitorLogPerformance(monitorCh)
+	}
 
 	// Mark logger as initialized
 	loggerInitialized.Store(true)
@@ -611,6 +615,21 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	lHelper.Info("lynx application logging component initialized successfully with performance optimizations")
 
 	return nil
+}
+
+func performanceMonitorEnabled(cfg kconf.Config) bool {
+	var raw struct {
+		Performance struct {
+			Enabled        bool `json:"enabled"`
+			MonitorEnabled bool `json:"monitor_enabled"`
+			MetricsEnabled bool `json:"metrics_enabled"`
+		} `json:"performance"`
+	}
+
+	if err := cfg.Value("lynx.log").Scan(&raw); err != nil {
+		return false
+	}
+	return raw.Performance.Enabled || raw.Performance.MonitorEnabled || raw.Performance.MetricsEnabled
 }
 
 // monitorLogPerformance monitors logging performance and reports metrics
