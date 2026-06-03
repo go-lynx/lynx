@@ -6,86 +6,113 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
-// run drains the queue and publishes to the dispatcher.
-func (b *LynxEventBus) run() {
-	cfg := b.configSnapshot()
-	flushInterval := cfg.FlushInterval
+const (
+	// busMonitorMinInterval is the floor for the periodic queue-size monitoring
+	// tick. Dispatch is event-driven (run blocks on b.queue), so the ticker only
+	// needs to fire often enough to keep monitoring/metrics fresh. Without this
+	// floor an idle bus would wake on every FlushInterval (which defaults to
+	// microseconds across 8 buses), burning a full CPU core for no work.
+	busMonitorMinInterval = 1 * time.Second
+	// busShutdownDrainTimeout bounds how long run() spends draining queued events
+	// after b.done is closed.
+	busShutdownDrainTimeout = 200 * time.Millisecond
+	// busPausePollInterval is how often a paused bus re-checks for resume. Paused
+	// is an exceptional, short-lived state, so a small poll is acceptable.
+	busPausePollInterval = 10 * time.Millisecond
+)
+
+// busMonitorInterval resolves the queue-size monitoring tick from a configured
+// FlushInterval, falling back to the default and flooring at busMonitorMinInterval.
+// The floor is what keeps an idle bus from waking thousands of times per second.
+func busMonitorInterval(flushInterval time.Duration) time.Duration {
 	if flushInterval <= 0 {
 		flushInterval = DefaultBusConfig().FlushInterval
 	}
-	ticker := time.NewTicker(flushInterval)
-	defer ticker.Stop()
+	if flushInterval < busMonitorMinInterval {
+		return busMonitorMinInterval
+	}
+	return flushInterval
+}
+
+// run drains the queue and publishes to the dispatcher.
+//
+// Dispatch is event-driven: the goroutine blocks on b.queue and wakes the moment
+// an event is enqueued, so dispatch latency does not depend on any polling
+// interval. The ticker only drives periodic queue-size monitoring, clamped to
+// busMonitorMinInterval so an idle bus stays asleep instead of spinning.
+func (b *LynxEventBus) run() {
 	defer b.wg.Done()
 
+	ticker := time.NewTicker(busMonitorInterval(b.configSnapshot().FlushInterval))
+	defer ticker.Stop()
+
 	for {
+		// While paused, do not dispatch. Wait for resume, shutdown, or a monitor
+		// tick so a paused bus does not drain events early.
+		if b.paused.Load() {
+			select {
+			case <-b.done:
+				b.drainOnShutdown()
+				return
+			case <-ticker.C:
+				b.monitor().UpdateQueueSize(b.totalQueueSize())
+			case <-time.After(busPausePollInterval):
+			}
+			continue
+		}
+
 		select {
 		case <-b.done:
-			drainDeadline := time.Now().Add(200 * time.Millisecond)
-			for time.Now().Before(drainDeadline) {
-				drained := false
-				bs := max(b.configSnapshot().BatchSize, 1)
-				buf := b.bufferPool.GetWithCapacity(bs)
-				for len(buf) < bs {
-					if ev, ok := b.tryRecvShared(); ok {
-						buf = append(buf, ev)
-					} else {
-						break
-					}
-				}
-				if len(buf) > 0 {
-					b.publishBatch(buf)
-					drained = true
-				}
-				b.bufferPool.Put(buf)
-				b.monitor().UpdateQueueSize(b.totalQueueSize())
-				if !drained {
-					return
-				}
-			}
+			b.drainOnShutdown()
 			return
 		case <-ticker.C:
 			b.monitor().UpdateQueueSize(b.totalQueueSize())
-		default:
-			if b.paused.Load() {
-				time.Sleep(10 * time.Millisecond)
-				continue
-			}
-			batchSize := max(b.configSnapshot().BatchSize, 1)
-			buf := b.bufferPool.GetWithCapacity(batchSize)
-			for len(buf) < batchSize {
-				if ev, ok := b.tryRecvShared(); ok {
-					buf = append(buf, ev)
-				} else {
-					break
-				}
-			}
-			if len(buf) > 0 {
-				ordered := orderByWeightedPriority(buf)
-				b.publishBatch(ordered)
-			}
-			b.bufferPool.Put(buf)
+		case ev := <-b.queue:
+			b.queueSize.Add(-1)
+			b.dispatchBatch(ev)
+		}
+	}
+}
 
-			select {
-			case <-b.done:
-				continue
-			case <-ticker.C:
-				b.monitor().UpdateQueueSize(b.totalQueueSize())
-			case ev := <-b.queue:
-				b.queueSize.Add(-1)
-				batchSize := max(b.configSnapshot().BatchSize, 1)
-				buf := b.bufferPool.GetWithCapacity(batchSize)
-				buf = append(buf, ev)
-				for len(buf) < batchSize {
-					if ev2, ok := b.tryRecvShared(); ok {
-						buf = append(buf, ev2)
-					} else {
-						break
-					}
-				}
-				ordered := orderByWeightedPriority(buf)
-				b.publishBatch(ordered)
-				b.bufferPool.Put(buf)
+// dispatchBatch publishes first plus up to BatchSize-1 additional queued events
+// in weighted-priority order, reusing a pooled buffer.
+func (b *LynxEventBus) dispatchBatch(first LynxEvent) {
+	batchSize := max(b.configSnapshot().BatchSize, 1)
+	buf := b.bufferPool.GetWithCapacity(batchSize)
+	buf = append(buf, first)
+	for len(buf) < batchSize {
+		ev, ok := b.tryRecvShared()
+		if !ok {
+			break
+		}
+		buf = append(buf, ev)
+	}
+	b.publishBatch(orderByWeightedPriority(buf))
+	b.bufferPool.Put(buf)
+}
+
+// drainOnShutdown publishes any events still queued when b.done is closed,
+// bounded by busShutdownDrainTimeout.
+func (b *LynxEventBus) drainOnShutdown() {
+	deadline := time.Now().Add(busShutdownDrainTimeout)
+	for time.Now().Before(deadline) {
+		batchSize := max(b.configSnapshot().BatchSize, 1)
+		buf := b.bufferPool.GetWithCapacity(batchSize)
+		for len(buf) < batchSize {
+			ev, ok := b.tryRecvShared()
+			if !ok {
+				break
 			}
+			buf = append(buf, ev)
+		}
+		drained := len(buf) > 0
+		if drained {
+			b.publishBatch(buf)
+		}
+		b.bufferPool.Put(buf)
+		b.monitor().UpdateQueueSize(b.totalQueueSize())
+		if !drained {
+			return
 		}
 	}
 }
