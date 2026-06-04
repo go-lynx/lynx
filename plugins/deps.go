@@ -650,18 +650,18 @@ func compareVersionNumeric(a, b string) (int, bool) {
 	bParts := strings.Split(b, ".")
 
 	for i := 0; i < len(aParts) || i < len(bParts); i++ {
-		aPart, aOk := aParts[i], i < len(aParts)
-		bPart, bOk := bParts[i], i < len(bParts)
-
-		if !aOk {
+		// Check bounds BEFORE indexing: a shorter version (e.g. "1.2") sorts as
+		// less than a longer one with the same prefix (e.g. "1.2.1"). Indexing
+		// first would panic with index-out-of-range.
+		if i >= len(aParts) {
 			return -1, true
 		}
-		if !bOk {
+		if i >= len(bParts) {
 			return 1, true
 		}
 
-		aNum, aErr := strconv.Atoi(aPart)
-		bNum, bErr := strconv.Atoi(bPart)
+		aNum, aErr := strconv.Atoi(aParts[i])
+		bNum, bErr := strconv.Atoi(bParts[i])
 
 		if aErr != nil || bErr != nil {
 			return 0, false

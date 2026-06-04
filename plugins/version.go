@@ -56,10 +56,14 @@ func (vm *DefaultVersionManager) ParseVersion(version string) (*Version, error) 
 		preRelease = parts[1]
 	}
 
-	// Split version and build information
+	// Split version and build information. Build metadata is optional, so only
+	// capture it when a "+" is actually present — indexing buildParts[1]
+	// unconditionally would panic for any version without build metadata.
+	build := ""
 	buildParts := strings.SplitN(preRelease, "+", 2)
 	if len(buildParts) > 1 {
 		preRelease = buildParts[0]
+		build = buildParts[1]
 	}
 
 	// Parse major version number
@@ -94,7 +98,7 @@ func (vm *DefaultVersionManager) ParseVersion(version string) (*Version, error) 
 		Minor:      minor,
 		Patch:      patch,
 		PreRelease: preRelease,
-		Build:      buildParts[1],
+		Build:      build,
 		Original:   version,
 	}, nil
 }
