@@ -1,5 +1,52 @@
 # Changelog
 
+## [v1.6.2] - 2026-06-04
+
+> Stabilization release on the `v1.6.x` beta line. Focused on making plugin
+> lifecycle cancellation real, fixing two panics in version handling, and
+> raising core test coverage. No breaking API changes.
+
+### ✨ Features
+
+- **Genuinely cancellable plugin lifecycle**: `StartContext`, `StopContext`, and
+  `InitializeContext` on the base plugin no longer wrap the synchronous lifecycle
+  in a goroutine and merely race `ctx.Done()` (which leaked the goroutine and
+  could flip the plugin back to `StatusActive` behind the manager's back). They
+  now run framework phases inline with `ctx` checks at every boundary, prefer the
+  plugin's own context-aware work, and re-check `ctx` so a late-completing legacy
+  task can never promote a cancelled plugin to `Active`.
+- **Context-aware lifecycle step hooks**: new optional interfaces
+  `ContextResourceInitializer`, `ContextStartupTasker`, and `ContextCleanupTasker`.
+  A plugin that implements any of them gets its own work cancelled for real (the
+  hook receives the lifecycle `ctx`). Plugins that only implement the legacy
+  non-context steps are abandoned **safely** on timeout: the orphaned goroutine
+  never mutates plugin status, and is counted and logged (`OrphanedStageCount`).
+- **Automatic context-aware routing**: `HasTrueContextLifecycle` now treats a
+  plugin as genuinely cancellable when it exposes the `LifecycleWithContext`
+  entrypoints and implements at least one context step hook — no explicit
+  `IsContextAware()` / `PluginProtocol().ContextLifecycle` opt-in required. The
+  manager routes such plugins through the context-aware path automatically.
+
+### 🐛 Fixes
+
+- **`compareVersionNumeric` panic**: comparing two versions with a different number
+  of components (e.g. `"1.2"` vs `"1.2.1"`) indexed a slice before the bounds
+  check, causing an index-out-of-range panic. Bounds are now checked first.
+- **`VersionManager.ParseVersion` panic**: parsing any version without `+build`
+  metadata (i.e. almost all versions, including `"1.2.3"`) read `buildParts[1]`
+  unconditionally and panicked. Build metadata is now captured only when present.
+
+### ✅ Tests
+
+- Core `plugins` package coverage raised from ~30% to ~72%, concentrated on the
+  dependency graph, version handling, lifecycle state machine, conflict resolver,
+  runtime/resource layer, and error handling.
+- Added concurrency/chaos suites (run under `-race`) for the lifecycle state
+  machine, cancellation storms, legacy orphan accounting, and the manager's
+  concurrent start/stop/init under timeouts and panics.
+
+---
+
 ## [v1.6.0] - 2026-04-02
 
 > Draft release notes for the stable `v1.6.0` cut. This section is intentionally limited to landed changes with evidence in the current workspace. It does not mark `P1-3`, `P2-2`, `P2-3`, or `P2-4` as complete.

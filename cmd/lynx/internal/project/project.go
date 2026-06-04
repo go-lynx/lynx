@@ -43,7 +43,7 @@ The template is cloned from the layout repo (override with --repo-url / LYNX_LAY
   lynx new svc-a svc-b svc-c --skip-plugins
 
   # Pin the template to a tag/commit and overwrite an existing dir
-  lynx new myservice --ref v1.6.1 --force`,
+  lynx new myservice --ref v1.6.2 --force`,
 	Args: cobra.ArbitraryArgs,
 	RunE: run, // function called when executing the command
 }
