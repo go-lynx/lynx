@@ -370,14 +370,13 @@ func (m *DefaultPluginManager[T]) getBoundedIntConfig(key string, defaultValue, 
 
 func describeLifecycleStep(p plugins.Plugin, step string) lifecycleStepInfo {
 	info := lifecycleStepInfo{
-		caps:     plugins.DescribePluginCapabilities(p),
-		ctxAware: false,
+		caps: plugins.DescribePluginCapabilities(p),
 	}
-	info.ctxAware = info.caps.IsTrulyContextAware
-	if !info.caps.Protocol.ContextLifecycle {
-		log.Debugf("plugin %s (%s) does not declare context lifecycle protocol; step=%s. PluginProtocol().ContextLifecycle must be true to enable context-aware lifecycle", p.Name(), p.ID(), step)
-	} else if !info.ctxAware {
-		log.Debugf("plugin %s (%s) declares context lifecycle protocol but is not truly context-aware; step=%s. Ensure methods observe ctx and implement ContextAwareness.IsContextAware()=true", p.Name(), p.ID(), step)
+	// ctxAware mirrors the routing decision: it is true exactly when the framework
+	// will drive this plugin through its context-aware entrypoints.
+	info.ctxAware = plugins.HasTrueContextLifecycle(p)
+	if !info.ctxAware && info.caps.HasLifecycleWithCtx {
+		log.Debugf("plugin %s (%s) exposes context lifecycle methods but is not genuinely cancellable; step=%s. Implement a context-aware step hook (e.g. StartupTasksContext), or declare PluginProtocol().ContextLifecycle=true with ContextAwareness.IsContextAware()=true", p.Name(), p.ID(), step)
 	}
 	return info
 }

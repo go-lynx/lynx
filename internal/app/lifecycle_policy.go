@@ -30,7 +30,7 @@ func (m *DefaultPluginManager[T]) enforceLifecyclePolicy(plugs []plugins.Plugin)
 		}
 		if !plugins.HasTrueContextLifecycle(p) {
 			return fmt.Errorf(
-				"plugin %s (%s) is not production-safe: %s=true requires PluginProtocol().ContextLifecycle, LifecycleWithContext, and IsContextAware()=true",
+				"plugin %s (%s) is not production-safe: %s=true requires a genuinely cancellable lifecycle — implement a context-aware step hook (e.g. StartupTasksContext), or declare PluginProtocol().ContextLifecycle with LifecycleWithContext and IsContextAware()=true",
 				p.Name(),
 				p.ID(),
 				requireContextAwareLifecycleKey,

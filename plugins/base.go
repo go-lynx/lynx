@@ -3,8 +3,10 @@ package plugins
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -40,6 +42,12 @@ type TypedBasePlugin[T any] struct {
 	dependencies []Dependency        // List of plugin dependencies
 	capabilities []UpgradeCapability // List of plugin upgrade capabilities
 
+	// orphanedStages counts legacy lifecycle tasks that were abandoned after a
+	// context cancellation but are still running in the background (they ignore
+	// ctx and cannot be force-stopped). It is maintained with atomic ops and
+	// exposed via OrphanedStageCount for observability and leak detection.
+	orphanedStages int64
+
 	// Type-safe instance
 	instance T
 }
@@ -58,95 +66,262 @@ func (p *TypedBasePlugin[T]) setStatus(s PluginStatus) {
 	p.status = s
 }
 
-// StartContext provides a context-aware Start with timeout monitoring.
-// The default implementation only wraps Start in a goroutine and returns on ctx.Done();
-// the underlying Start is not cancelled. For real cancellation, implement LifecycleWithContext
-// on your plugin and check ctx.Done() inside Start (or StartContext).
+// StartContext starts the plugin with genuine context cancellation.
+//
+// Unlike a naive wrapper that spawns Start in a goroutine and returns early on
+// ctx.Done() (leaking the goroutine and letting it flip the plugin to Active
+// behind the caller's back), this implementation:
+//
+//   - runs the framework lifecycle inline and checks ctx at every phase boundary,
+//     so a cancelled context aborts progression instead of racing it;
+//   - prefers the plugin's ContextStartupTasker hook, passing ctx straight through
+//     so the plugin's own work observes cancellation — this is real cancellation;
+//   - for a legacy StartupTasker that cannot observe ctx, honours the deadline for
+//     the caller via runLegacyStageWatched and abandons the work *safely* — the
+//     abandoned goroutine never mutates plugin status, and the orphan is counted
+//     and logged rather than silently leaked;
+//   - re-checks ctx after the startup stage so a late-completing legacy task can
+//     never promote the plugin to Active once cancellation has been observed.
 func (p *TypedBasePlugin[T]) StartContext(ctx context.Context, plugin Plugin) error {
-	// Check if context is already canceled
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context canceled before start: %w", err)
 	}
-
-	// Create a done channel to signal completion
-	done := make(chan error, 1)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				done <- fmt.Errorf("panic in Start: %v", r)
-			}
-		}()
-		done <- p.Start(plugin)
-	}()
-
-	// Wait for either completion or context cancellation
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		// Context was canceled, but we can't stop the running Start method
-		return fmt.Errorf("start canceled by context: %w", ctx.Err())
+	if p.getStatus() == StatusActive {
+		return ErrPluginAlreadyActive
 	}
+	if p.runtime == nil {
+		return ErrPluginNotInitialized
+	}
+
+	p.setStatus(StatusInitializing)
+	p.EmitEvent(PluginEvent{
+		Type:     EventPluginStarting,
+		Priority: PriorityNormal,
+		Source:   "StartContext",
+		Category: "lifecycle",
+	})
+
+	// Startup work: genuine cancellation when the plugin observes ctx; safe,
+	// deadline-honouring abandonment otherwise.
+	if err := p.runStartupStage(ctx, plugin); err != nil {
+		p.setStatus(StatusFailed)
+		if isLifecycleContextErr(err) {
+			return fmt.Errorf("plugin %s start canceled: %w", plugin.Name(), err)
+		}
+		return NewPluginError(p.id, "Start", "Failed to perform startup tasks", err)
+	}
+
+	// Guard: even if a legacy task ignored ctx and returned after the deadline,
+	// do not promote the plugin to Active once cancellation has fired.
+	if err := ctx.Err(); err != nil {
+		p.setStatus(StatusFailed)
+		return fmt.Errorf("plugin %s start canceled after startup tasks: %w", plugin.Name(), err)
+	}
+
+	if err := RunHealthCheck(plugin); err != nil {
+		p.setStatus(StatusFailed)
+		log.Errorf("Plugin %s health check failed: %v", plugin.Name(), err)
+		return fmt.Errorf("plugin %s health check failed: %w", plugin.Name(), err)
+	}
+
+	p.setStatus(StatusActive)
+	p.EmitEvent(PluginEvent{
+		Type:     EventPluginStarted,
+		Priority: PriorityNormal,
+		Source:   "StartContext",
+		Category: "lifecycle",
+	})
+	return nil
 }
 
-// StopContext provides a context-aware Stop with timeout monitoring.
-// The default implementation only wraps Stop in a goroutine and returns on ctx.Done();
-// the underlying Stop is not cancelled. Override and honor ctx in cleanup for real cancellation.
+// StopContext stops the plugin with genuine context cancellation.
+// It mirrors StartContext: framework phases run inline with ctx checks, the
+// ContextCleanupTasker hook is preferred for real cancellation, and a legacy
+// CleanupTasker is abandoned safely (counted, never corrupting status) on timeout.
 func (p *TypedBasePlugin[T]) StopContext(ctx context.Context, plugin Plugin) error {
-	// Check if context is already canceled
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context canceled before stop: %w", err)
 	}
-
-	// Create a done channel to signal completion
-	done := make(chan error, 1)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				done <- fmt.Errorf("panic in Stop: %v", r)
-			}
-		}()
-		done <- p.Stop(plugin)
-	}()
-
-	// Wait for either completion or context cancellation
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		// Context was canceled, but we can't stop the running Stop method
-		return fmt.Errorf("stop canceled by context: %w", ctx.Err())
+	if p.getStatus() != StatusActive {
+		return NewPluginError(p.id, "Stop", "Plugin must be active to stop", ErrPluginNotActive)
 	}
+
+	p.setStatus(StatusStopping)
+	p.EmitEvent(PluginEvent{
+		Type:     EventPluginStopping,
+		Priority: PriorityNormal,
+		Source:   "StopContext",
+		Category: "lifecycle",
+	})
+
+	if err := p.runCleanupStage(ctx, plugin); err != nil {
+		p.setStatus(StatusFailed)
+		if isLifecycleContextErr(err) {
+			return fmt.Errorf("plugin %s stop canceled: %w", plugin.Name(), err)
+		}
+		return NewPluginError(p.id, "Stop", "Failed to perform cleanup tasks", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		p.setStatus(StatusFailed)
+		return fmt.Errorf("plugin %s stop canceled after cleanup tasks: %w", plugin.Name(), err)
+	}
+
+	p.setStatus(StatusTerminated)
+	p.EmitEvent(PluginEvent{
+		Type:     EventPluginStopped,
+		Priority: PriorityNormal,
+		Source:   "StopContext",
+		Category: "lifecycle",
+	})
+	return nil
 }
 
-// InitializeContext provides a context-aware Initialize with timeout monitoring.
-// The default implementation only wraps Initialize in a goroutine and returns on ctx.Done();
-// the underlying Initialize is not cancelled. Override and check ctx.Err() for real cancellation.
+// InitializeContext initializes the plugin with genuine context cancellation.
+// It mirrors StartContext: the ContextResourceInitializer hook is preferred for
+// real cancellation, and a legacy ResourceInitializer is abandoned safely on timeout.
 func (p *TypedBasePlugin[T]) InitializeContext(ctx context.Context, plugin Plugin, rt Runtime) error {
-	// Check if context is already canceled
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context canceled before initialize: %w", err)
 	}
+	if rt == nil {
+		return ErrPluginNotInitialized
+	}
 
-	// Create a done channel to signal completion
-	done := make(chan error, 1)
+	p.runtime = rt
+	p.logger = rt.GetLogger()
+	p.setStatus(StatusInitializing)
+	p.EmitEvent(PluginEvent{
+		Type:     EventPluginInitializing,
+		Priority: PriorityNormal,
+		Source:   "InitializeContext",
+		Category: "lifecycle",
+	})
+
+	if err := p.runInitStage(ctx, plugin, rt); err != nil {
+		p.setStatus(StatusFailed)
+		if isLifecycleContextErr(err) {
+			return fmt.Errorf("plugin %s initialize canceled: %w", plugin.Name(), err)
+		}
+		return NewPluginError(p.id, "Initialize", "Failed to initialize resources", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		p.setStatus(StatusFailed)
+		return fmt.Errorf("plugin %s initialize canceled after resource init: %w", plugin.Name(), err)
+	}
+
+	p.setStatus(StatusInactive)
+	p.EmitEvent(PluginEvent{
+		Type:     EventPluginInitialized,
+		Priority: PriorityNormal,
+		Source:   "InitializeContext",
+		Category: "lifecycle",
+	})
+	return nil
+}
+
+// runStartupStage runs the startup work with the strongest cancellation the
+// plugin supports: the context-aware hook when present, otherwise a safely
+// abandoned legacy task.
+func (p *TypedBasePlugin[T]) runStartupStage(ctx context.Context, plugin Plugin) error {
+	if handled, err := RunStartupTasksContext(ctx, plugin); handled {
+		return err
+	}
+	return p.runLegacyStageWatched(ctx, "StartupTasks", plugin, func() error {
+		return RunStartupTasks(plugin)
+	})
+}
+
+// runCleanupStage is the cleanup counterpart of runStartupStage.
+func (p *TypedBasePlugin[T]) runCleanupStage(ctx context.Context, plugin Plugin) error {
+	if handled, err := RunCleanupTasksContext(ctx, plugin); handled {
+		return err
+	}
+	return p.runLegacyStageWatched(ctx, "CleanupTasks", plugin, func() error {
+		return RunCleanupTasks(plugin)
+	})
+}
+
+// runInitStage is the resource-init counterpart of runStartupStage.
+func (p *TypedBasePlugin[T]) runInitStage(ctx context.Context, plugin Plugin, rt Runtime) error {
+	if handled, err := RunInitializeResourcesContext(ctx, plugin, rt); handled {
+		return err
+	}
+	return p.runLegacyStageWatched(ctx, "InitializeResources", plugin, func() error {
+		return InitializePluginResources(plugin, rt)
+	})
+}
+
+// runLegacyStageWatched runs a lifecycle task that cannot observe ctx (it has no
+// context-aware hook). When ctx is not cancellable it simply runs inline. When ctx
+// can be cancelled, it runs the task in a watched goroutine so the deadline is
+// honoured for the caller; on cancellation it abandons the goroutine *safely* —
+// the leaked goroutine only runs the user task and never touches framework status,
+// and the orphan is tracked (counted + logged) instead of vanishing silently.
+// Go cannot kill a running goroutine, so this is the honest best a non-cooperating
+// task allows; implement the Context* hooks for real cancellation.
+func (p *TypedBasePlugin[T]) runLegacyStageWatched(ctx context.Context, stage string, plugin Plugin, fn func() error) error {
+	if ctx.Done() == nil {
+		// Non-cancellable context (e.g. context.Background): run inline, no goroutine.
+		return runStageGuarded(stage, fn)
+	}
+
+	done := make(chan error, 1) // buffered so a late send never blocks the leaked goroutine
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				done <- fmt.Errorf("panic in Initialize: %v", r)
-			}
-		}()
-		done <- p.Initialize(plugin, rt)
+		done <- runStageGuarded(stage, fn)
 	}()
 
-	// Wait for either completion or context cancellation
 	select {
 	case err := <-done:
 		return err
 	case <-ctx.Done():
-		// Context was canceled, but we can't stop the running Initialize method
-		return fmt.Errorf("initialize canceled by context: %w", ctx.Err())
+		p.trackOrphanedStage(stage, plugin, done)
+		return fmt.Errorf("plugin %s %s canceled by context (legacy task ignores cancellation; goroutine continues in background): %w", plugin.Name(), stage, ctx.Err())
 	}
+}
+
+// runStageGuarded runs fn, converting a panic into an error so a misbehaving task
+// cannot take down the lifecycle goroutine.
+func runStageGuarded(stage string, fn func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in %s: %v", stage, r)
+		}
+	}()
+	return fn()
+}
+
+// trackOrphanedStage records a legacy task that was abandoned after cancellation
+// and is still running. It increments the orphan counter and starts a tiny watcher
+// that decrements it (and logs) once the task finally returns.
+func (p *TypedBasePlugin[T]) trackOrphanedStage(stage string, plugin Plugin, done <-chan error) {
+	atomic.AddInt64(&p.orphanedStages, 1)
+	log.Warnf("plugin %s %s abandoned after context cancellation; goroutine leaked until the task returns. Implement the context-aware lifecycle hooks (e.g. %sContext) to make this cancellable.",
+		plugin.Name(), stage, stage)
+	go func() {
+		err := <-done // buffered channel guarantees this eventually receives
+		atomic.AddInt64(&p.orphanedStages, -1)
+		if err != nil {
+			log.Warnf("plugin %s orphaned %s finally returned (late) with error: %v", plugin.Name(), stage, err)
+		} else {
+			log.Infof("plugin %s orphaned %s finally completed (late)", plugin.Name(), stage)
+		}
+	}()
+}
+
+// OrphanedStageCount returns the number of legacy lifecycle tasks that were
+// abandoned after a context cancellation and are still running in the background.
+// A non-zero value means a plugin's task is ignoring cancellation; it should
+// drop back to zero once those tasks finish.
+func (p *TypedBasePlugin[T]) OrphanedStageCount() int64 {
+	return atomic.LoadInt64(&p.orphanedStages)
+}
+
+// isLifecycleContextErr reports whether err was caused by context cancellation or
+// a deadline, so callers can distinguish cancellation from genuine task failure.
+func isLifecycleContextErr(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // IsContextAware returns false by default for base plugin
