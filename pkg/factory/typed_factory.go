@@ -164,7 +164,7 @@ func (f *TypedFactory) UnregisterPlugin(name string) {
 	}
 }
 
-// Global typed factory instance
+// globalTypedFactory is initialized once by GlobalTypedFactory.
 var (
 	globalTypedFactory *TypedFactory
 	typedFactoryOnce   sync.Once

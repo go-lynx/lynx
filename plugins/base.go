@@ -344,8 +344,8 @@ func (p *TypedBasePlugin[T]) PluginProtocol() PluginProtocol {
 	}
 }
 
-// NewTypedBasePlugin creates a new instance of TypedBasePlugin with the provided metadata.
-// This is the recommended way to initialize a new typed plugin implementation.
+// NewTypedBasePlugin creates a new TypedBasePlugin with the provided metadata.
+// Plugins should embed this and call it from their own constructor.
 func NewTypedBasePlugin[T any](
 	id, name, description, version, confPrefix string,
 	weight int,
@@ -367,13 +367,13 @@ func NewTypedBasePlugin[T any](
 	}
 }
 
-// GetTypedInstance returns the type-safe instance
+// GetTypedInstance returns the concrete plugin instance stored in this base.
 func (p *TypedBasePlugin[T]) GetTypedInstance() T {
 	return p.instance
 }
 
-// Initialize prepares the plugin for use by setting up its runtime environment.
-// This method must be called before the plugin can be started.
+// Initialize stores the runtime, drives the InitializeResources hook, and transitions
+// the plugin from Inactive through Initializing back to Inactive on success.
 func (p *TypedBasePlugin[T]) Initialize(plugin Plugin, rt Runtime) error {
 	if rt == nil {
 		return ErrPluginNotInitialized
@@ -406,8 +406,7 @@ func (p *TypedBasePlugin[T]) Initialize(plugin Plugin, rt Runtime) error {
 	return nil
 }
 
-// Start activates the plugin and begins its main operations.
-// The plugin must be initialized before it can be started.
+// Start runs StartupTasks and CheckHealth, then transitions the plugin to Active.
 func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 	if p.getStatus() == StatusActive {
 		return ErrPluginAlreadyActive
@@ -448,8 +447,7 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 	return nil
 }
 
-// Stop gracefully terminates the plugin's operations.
-// This method should release all resources and perform cleanup.
+// Stop runs CleanupTasks and transitions the plugin to Terminated.
 func (p *TypedBasePlugin[T]) Stop(plugin Plugin) error {
 	if p.getStatus() != StatusActive {
 		return NewPluginError(p.id, "Stop", "Plugin must be active to stop", ErrPluginNotActive)
@@ -479,38 +477,32 @@ func (p *TypedBasePlugin[T]) Stop(plugin Plugin) error {
 	return nil
 }
 
-// Status returns the current operational status of the plugin.
-// This method is thread-safe and can be called at any time.
+// Status returns the plugin's current lifecycle state.
 func (p *TypedBasePlugin[T]) Status(plugin Plugin) PluginStatus {
 	return p.getStatus()
 }
 
-// InitializeResources sets up the plugin's required resources.
-// This method can be overridden by embedding structs to provide custom initialization.
+// InitializeResources is a no-op default; override in the embedding struct to set up resources.
 func (p *TypedBasePlugin[T]) InitializeResources(rt Runtime) error {
 	return nil
 }
 
-// StartupTasks performs necessary tasks during plugin startup.
-// This method can be overridden by embedding structs to provide custom startup logic.
+// StartupTasks is a no-op default; override in the embedding struct to run startup work.
 func (p *TypedBasePlugin[T]) StartupTasks() error {
 	return nil
 }
 
-// CleanupTasks performs cleanup during plugin shutdown.
-// This method can be overridden by embedding structs to provide custom cleanup logic.
+// CleanupTasks is a no-op default; override in the embedding struct to run teardown work.
 func (p *TypedBasePlugin[T]) CleanupTasks() error {
 	return nil
 }
 
 // ID returns the unique identifier of the plugin.
-// This ID must be unique across all plugins in the system.
 func (p *TypedBasePlugin[T]) ID() string {
 	return p.id
 }
 
-// Name returns the human-readable name of the plugin.
-// This name is used for display and logging purposes.
+// Name returns the human-readable plugin name used for lookup and logging.
 func (p *TypedBasePlugin[T]) Name() string {
 	return p.name
 }
@@ -533,14 +525,12 @@ func (p *TypedBasePlugin[T]) Version() string {
 	return p.version
 }
 
-// SetStatus sets the current operational status of the plugin.
-// This method is thread-safe and should be used to update plugin status.
+// SetStatus updates the plugin's lifecycle state.
 func (p *TypedBasePlugin[T]) SetStatus(status PluginStatus) {
 	p.setStatus(status)
 }
 
-// GetHealth performs a health check and returns a detailed health report.
-// This method should be called periodically to monitor plugin health.
+// GetHealth runs CheckHealth (when active) and returns a structured health report.
 func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 	report := HealthReport{
 		Status:    "unknown",
@@ -682,22 +672,19 @@ func (p *TypedBasePlugin[T]) AddDependency(dep Dependency) {
 	})
 }
 
-// AddEventFilter adds a new event filter to the plugin.
-// Events will be filtered according to the specified criteria.
+// AddEventFilter appends an event filter; events that match no filter are suppressed.
 func (p *TypedBasePlugin[T]) AddEventFilter(filter EventFilter) {
 	p.eventFilters = append(p.eventFilters, filter)
 }
 
-// RemoveEventFilter removes an event filter from the plugin.
-// This affects how future events will be processed.
+// RemoveEventFilter removes the filter at the given index.
 func (p *TypedBasePlugin[T]) RemoveEventFilter(index int) {
 	if index >= 0 && index < len(p.eventFilters) {
 		p.eventFilters = append(p.eventFilters[:index], p.eventFilters[index+1:]...)
 	}
 }
 
-// HandleEvent processes incoming plugin events.
-// Events are filtered and handled according to configured filters.
+// HandleEvent routes an event to the appropriate typed handler after filter check.
 func (p *TypedBasePlugin[T]) HandleEvent(event PluginEvent) {
 	if !p.ShouldHandleEvent(event) {
 		return
@@ -721,26 +708,23 @@ func (p *TypedBasePlugin[T]) EmitEvent(event PluginEvent) {
 	p.EmitEventInternal(event)
 }
 
-// EmitEventInternal emits an event to the unified event bus system.
-// This method adds standard fields to the event before emission.
-// Safe to call before Initialize: if runtime is nil, the event is dropped to avoid panic.
+// EmitEventInternal stamps the event with plugin ID, status, and timestamp, then forwards
+// it to the runtime bus. Dropped silently when the runtime has not been set yet.
 func (p *TypedBasePlugin[T]) EmitEventInternal(event PluginEvent) {
 	if p.runtime == nil {
 		return
 	}
-	// Add standard fields
 	event.PluginID = p.id
 	event.Status = p.getStatus()
 	event.Timestamp = time.Now().Unix()
 
-	// Apply filters
 	if p.ShouldEmitEvent(event) {
 		p.runtime.EmitEvent(event)
 	}
 }
 
-// ShouldEmitEvent checks if an event should be emitted based on filters.
-// This implements the event filtering logic.
+// ShouldEmitEvent returns true if the event passes all configured filters,
+// or when no filters are configured.
 func (p *TypedBasePlugin[T]) ShouldEmitEvent(event PluginEvent) bool {
 	if len(p.eventFilters) == 0 {
 		return true
@@ -755,14 +739,12 @@ func (p *TypedBasePlugin[T]) ShouldEmitEvent(event PluginEvent) bool {
 	return false
 }
 
-// ShouldHandleEvent checks if an event should be handled based on filters.
-// This implements the event handling filter logic.
+// ShouldHandleEvent delegates to ShouldEmitEvent; separate entry point for incoming event routing.
 func (p *TypedBasePlugin[T]) ShouldHandleEvent(event PluginEvent) bool {
 	return p.ShouldEmitEvent(event)
 }
 
-// EventMatchesFilter checks if an event matches a specific filter.
-// This implements the detailed filter matching logic.
+// EventMatchesFilter reports whether an event satisfies all non-empty criteria in filter.
 func (p *TypedBasePlugin[T]) EventMatchesFilter(event PluginEvent, filter EventFilter) bool {
 	// Check event type
 	if len(filter.Types) > 0 {
@@ -778,7 +760,6 @@ func (p *TypedBasePlugin[T]) EventMatchesFilter(event PluginEvent, filter EventF
 		}
 	}
 
-	// Check priority
 	if len(filter.Priorities) > 0 {
 		priorityMatch := false
 		for _, pri := range filter.Priorities {
@@ -792,7 +773,6 @@ func (p *TypedBasePlugin[T]) EventMatchesFilter(event PluginEvent, filter EventF
 		}
 	}
 
-	// Check plugin ID
 	if len(filter.PluginIDs) > 0 {
 		idMatch := false
 		for _, id := range filter.PluginIDs {
@@ -806,7 +786,6 @@ func (p *TypedBasePlugin[T]) EventMatchesFilter(event PluginEvent, filter EventF
 		}
 	}
 
-	// Check category
 	if len(filter.Categories) > 0 {
 		categoryMatch := false
 		for _, c := range filter.Categories {
@@ -820,7 +799,6 @@ func (p *TypedBasePlugin[T]) EventMatchesFilter(event PluginEvent, filter EventF
 		}
 	}
 
-	// Check time range
 	if filter.FromTime > 0 && event.Timestamp < filter.FromTime {
 		return false
 	}
@@ -862,8 +840,7 @@ func (p *TypedBasePlugin[T]) HandleDependencyEvent(event PluginEvent) {
 func (p *TypedBasePlugin[T]) HandleDefaultEvent(event PluginEvent) {
 }
 
-// Suspend temporarily suspends the plugin.
-// This method checks if the plugin is in the active state.
+// Suspend pauses the plugin without releasing its resources, moving it to Suspended.
 func (p *TypedBasePlugin[T]) Suspend() error {
 	if p.getStatus() != StatusActive {
 		return NewPluginError(p.id, "Suspend", "Plugin must be active to suspend", ErrPluginNotActive)
@@ -881,8 +858,7 @@ func (p *TypedBasePlugin[T]) Suspend() error {
 	return nil
 }
 
-// Resume resumes the plugin from suspended state.
-// This method checks if the plugin is in the suspended state.
+// Resume transitions the plugin from Suspended back to Active.
 func (p *TypedBasePlugin[T]) Resume() error {
 	if p.getStatus() != StatusSuspended {
 		return NewPluginError(p.id, "Resume", "Plugin must be suspended to resume", ErrPluginNotActive)

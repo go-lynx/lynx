@@ -305,7 +305,7 @@ func quickSelect(arr []int64, k int) int64 {
 	}
 }
 
-// Reset resets all metrics
+// Reset zeroes all event counters and clears per-plugin breakdowns.
 func (m *EventMonitor) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

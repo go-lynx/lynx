@@ -23,167 +23,70 @@ const (
 	PriorityCritical = 3
 )
 
-// Plugin lifecycle event types for comprehensive system monitoring
+// Plugin lifecycle event strings, used as the Type field in PluginEvent.
 const (
-	// EventPluginInitializing indicates the plugin is starting initialization.
-	// Triggered when plugin begins loading resources and establishing connections.
 	EventPluginInitializing = "plugin.initializing"
-
-	// EventPluginInitialized indicates the plugin completed initialization.
-	// Triggered when all resources are loaded and connections established.
-	EventPluginInitialized = "plugin.initialized"
-
-	// EventPluginStarting indicates the plugin is beginning its operations.
-	// Triggered when core functionality is about to begin.
-	EventPluginStarting = "plugin.starting"
-
-	// EventPluginStarted indicates the plugin is fully operational.
-	// Triggered when all systems are running and ready to handle requests.
-	EventPluginStarted = "plugin.started"
-
-	// EventPluginStopping indicates the plugin is beginning shutdown.
-	// Triggered when shutdown command is received and cleanup begins.
-	EventPluginStopping = "plugin.stopping"
-
-	// EventPluginStopped indicates the plugin completed shutdown.
-	// Triggered when all resources are released and connections closed.
-	EventPluginStopped = "plugin.stopped"
+	EventPluginInitialized  = "plugin.initialized"
+	EventPluginStarting     = "plugin.starting"
+	EventPluginStarted      = "plugin.started"
+	EventPluginStopping     = "plugin.stopping"
+	EventPluginStopped      = "plugin.stopped"
 )
 
-// Health check event types for monitoring plugin health status
+// Health check event strings.
 const (
-	// EventHealthCheckStarted indicates a health check operation has begun.
-	// Triggered when the health check routine starts executing.
-	EventHealthCheckStarted = "health.check.started"
-
-	// EventHealthCheckRunning indicates a health check is in progress.
-	// Triggered during the execution of health check procedures.
-	EventHealthCheckRunning = "health.check.running"
-
-	// EventHealthCheckDone indicates a health check has completed.
-	// Triggered when all health check procedures have finished.
-	EventHealthCheckDone = "health.check.done"
-
-	// EventHealthStatusOK indicates the plugin is healthy.
-	// Triggered when all health metrics are within normal ranges.
-	EventHealthStatusOK = "health.status.ok"
-
-	// EventHealthStatusWarning indicates potential health issues.
-	// Triggered when health metrics show concerning trends.
-	EventHealthStatusWarning = "health.status.warning"
-
-	// EventHealthStatusCritical indicates severe health issues.
-	// Triggered when health metrics exceed critical thresholds.
+	EventHealthCheckStarted   = "health.check.started"
+	EventHealthCheckRunning   = "health.check.running"
+	EventHealthCheckDone      = "health.check.done"
+	EventHealthStatusOK       = "health.status.ok"
+	EventHealthStatusWarning  = "health.status.warning"
 	EventHealthStatusCritical = "health.status.critical"
-
-	// EventHealthStatusUnknown indicates health status cannot be determined.
-	// Triggered when health check procedures fail to complete.
-	EventHealthStatusUnknown = "health.status.unknown"
-
-	// EventHealthMetricsChanged indicates a change in health metrics.
-	// Triggered when monitored metrics show significant changes.
+	EventHealthStatusUnknown  = "health.status.unknown"
 	EventHealthMetricsChanged = "health.metrics.changed"
-
-	// EventHealthThresholdHit indicates metrics exceeded defined thresholds.
-	// Triggered when health metrics cross warning or critical levels.
-	EventHealthThresholdHit = "health.metrics.threshold"
-
-	// EventHealthStatusChanged indicates overall health status change.
-	// Triggered when the aggregate health status transitions.
-	EventHealthStatusChanged = "health.status.changed"
-
-	// EventHealthCheckFailed indicates health check operation failure.
-	// Triggered when health check procedures encounter errors.
-	EventHealthCheckFailed = "health.check.failed"
+	EventHealthThresholdHit   = "health.metrics.threshold"
+	EventHealthStatusChanged  = "health.status.changed"
+	EventHealthCheckFailed    = "health.check.failed"
 )
 
-// Resource event types for monitoring system resources
+// Resource utilisation event strings.
 const (
-	// EventResourceExhausted indicates critical resource depletion.
-	// Triggered when system resources reach critical levels.
-	EventResourceExhausted = "resource.exhausted"
-
-	// EventPerformanceDegraded indicates performance deterioration.
-	// Triggered when system performance metrics decline significantly.
+	EventResourceExhausted   = "resource.exhausted"
 	EventPerformanceDegraded = "performance.degraded"
 )
 
-// Configuration event types for managing plugin configuration
+// Configuration change event strings.
 const (
-	// EventConfigurationChanged indicates configuration update initiation.
-	// Triggered when new configuration is being applied.
 	EventConfigurationChanged = "config.changed"
-
-	// EventConfigurationInvalid indicates invalid configuration.
-	// Triggered when configuration validation fails.
 	EventConfigurationInvalid = "config.invalid"
-
-	// EventConfigurationApplied indicates successful configuration update.
-	// Triggered when new configuration is active and verified.
 	EventConfigurationApplied = "config.applied"
 )
 
-// Dependency event types for managing plugin dependencies
+// Dependency state event strings.
 const (
-	// EventDependencyMissing indicates missing required dependency.
-	// Triggered when required plugin or resource is unavailable.
-	EventDependencyMissing = "dependency.missing"
-
-	// EventDependencyStatusChanged indicates dependency state change.
-	// Triggered when dependent plugin changes operational state.
+	EventDependencyMissing       = "dependency.missing"
 	EventDependencyStatusChanged = "dependency.status.changed"
-
-	// EventDependencyError indicates dependency-related error.
-	// Triggered when dependency fails or becomes unstable.
-	EventDependencyError = "dependency.error"
+	EventDependencyError         = "dependency.error"
 )
 
-// Security event types for monitoring security-related events
+// Security event strings.
 const (
-	// EventSecurityViolation indicates security policy breach.
-	// Triggered when security rules are violated.
-	EventSecurityViolation = "security.violation"
-
-	// EventAuthenticationFailed indicates failed authentication.
-	// Triggered when invalid credentials are used.
+	EventSecurityViolation    = "security.violation"
 	EventAuthenticationFailed = "auth.failed"
-
-	// EventAuthorizationDenied indicates unauthorized access.
-	// Triggered when insufficient permissions are detected.
-	EventAuthorizationDenied = "auth.denied"
+	EventAuthorizationDenied  = "auth.denied"
 )
 
-// Resource lifecycle event types
+// Resource lifecycle event strings.
 const (
-	// EventResourceCreated indicates new resource allocation.
-	// Triggered when new resource is successfully created.
-	EventResourceCreated = "resource.created"
-
-	// EventResourceModified indicates resource modification.
-	// Triggered when existing resource is updated.
-	EventResourceModified = "resource.modified"
-
-	// EventResourceDeleted indicates resource removal.
-	// Triggered when resource is successfully deleted.
-	EventResourceDeleted = "resource.deleted"
-
-	// EventResourceUnavailable indicates resource access failure.
-	// Triggered when resource becomes inaccessible.
-	EventResourceUnavailable = "resource.unavailable"
+	EventResourceCreated      = "resource.created"
+	EventResourceModified     = "resource.modified"
+	EventResourceDeleted      = "resource.deleted"
+	EventResourceUnavailable  = "resource.unavailable"
 )
 
-// Error event types for error handling and recovery
+// Error event strings.
 const (
-	// EventErrorOccurred indicates error detection.
-	// Triggered when system encounters an error condition.
-	EventErrorOccurred = "error.occurred"
-
-	// EventErrorResolved indicates error recovery.
-	// Triggered when error condition is successfully resolved.
-	EventErrorResolved = "error.resolved"
-
-	// EventPanicRecovered indicates panic recovery.
-	// Triggered when system recovers from panic condition.
+	EventErrorOccurred  = "error.occurred"
+	EventErrorResolved  = "error.resolved"
 	EventPanicRecovered = "panic.recovered"
 )
 

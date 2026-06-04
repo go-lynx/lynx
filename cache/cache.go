@@ -193,7 +193,7 @@ func (c *Cache) Has(key any) bool {
 	return found
 }
 
-// Metrics returns cache statistics
+// Metrics returns the underlying ristretto cache statistics.
 func (c *Cache) Metrics() *ristretto.Metrics {
 	return c.cache.Metrics
 }

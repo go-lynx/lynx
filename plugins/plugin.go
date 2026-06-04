@@ -13,41 +13,23 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
-// PluginStatus represents the current operational status of a plugin in the system.
-// It tracks the plugin's lifecycle state from initialization through termination.
+// PluginStatus is the lifecycle state of a plugin.
 type PluginStatus int
 
 const (
-	// StatusInactive indicates that the plugin is loaded but not yet initialized
-	// This is the initial state of a plugin when it is first loaded into the system
+	// StatusInactive — loaded but not yet initialized; the initial state.
 	StatusInactive PluginStatus = iota
-
-	// StatusInitializing indicates that the plugin is currently performing initialization
-	// During this state, the plugin is setting up resources, establishing connections,
-	// and preparing for normal operation
+	// StatusInitializing — Initialize/Start is in progress.
 	StatusInitializing
-
-	// StatusActive indicates that the plugin is fully operational and running normally
-	// In this state, the plugin is processing requests and performing its intended functions
+	// StatusActive — fully operational; processing requests.
 	StatusActive
-
-	// StatusSuspended indicates that the plugin is temporarily paused
-	// The plugin retains its resources but is not processing new requests
-	// Can be resumed to StatusActive without full reinitialization
+	// StatusSuspended — temporarily paused; resources retained, can resume without reinit.
 	StatusSuspended
-
-	// StatusStopping indicates that the plugin is in the process of shutting down
-	// During this state, the plugin is cleaning up resources and finishing pending operations
+	// StatusStopping — graceful shutdown in progress.
 	StatusStopping
-
-	// StatusTerminated indicates that the plugin has been gracefully shut down
-	// All resources have been released and connections closed
-	// Requires full reinitialization to become active again
+	// StatusTerminated — cleanly shut down; requires full reinit to restart.
 	StatusTerminated
-
-	// StatusFailed indicates that the plugin has encountered a fatal error
-	// The plugin is non-operational and may require manual intervention
-	// Should transition to StatusTerminated or attempt recovery
+	// StatusFailed — encountered a fatal error; non-operational.
 	StatusFailed
 )
 
@@ -633,117 +615,94 @@ func NewSimpleRuntime() Runtime {
 	return NewUnifiedRuntime()
 }
 
-// AddListener add event listener
 func (r *TypedRuntimeImpl) AddListener(listener EventListener, filter *EventFilter) {
 	r.runtime.AddListener(listener, filter)
 }
 
-// RemoveListener remove event listener
 func (r *TypedRuntimeImpl) RemoveListener(listener EventListener) {
 	r.runtime.RemoveListener(listener)
 }
 
-// GetEventHistory get event history
 func (r *TypedRuntimeImpl) GetEventHistory(filter EventFilter) []PluginEvent {
 	return r.runtime.GetEventHistory(filter)
 }
 
-// GetPrivateResource get private resource
 func (r *TypedRuntimeImpl) GetPrivateResource(name string) (any, error) {
 	return r.runtime.GetPrivateResource(name)
 }
 
-// RegisterPrivateResource register private resource
 func (r *TypedRuntimeImpl) RegisterPrivateResource(name string, resource any) error {
 	return r.runtime.RegisterPrivateResource(name, resource)
 }
 
-// GetSharedResource get shared resource
 func (r *TypedRuntimeImpl) GetSharedResource(name string) (any, error) {
 	return r.runtime.GetSharedResource(name)
 }
 
-// RegisterSharedResource register shared resource
 func (r *TypedRuntimeImpl) RegisterSharedResource(name string, resource any) error {
 	return r.runtime.RegisterSharedResource(name, resource)
 }
 
-// GetResource get resource (compatible with old interface)
 func (r *TypedRuntimeImpl) GetResource(name string) (any, error) {
 	return r.runtime.GetResource(name)
 }
 
-// RegisterResource register resource (compatible with old interface)
 func (r *TypedRuntimeImpl) RegisterResource(name string, resource any) error {
 	return r.runtime.RegisterResource(name, resource)
 }
 
-// EmitPluginEvent emit plugin namespace event
 func (r *TypedRuntimeImpl) EmitPluginEvent(pluginName string, eventType string, data map[string]any) {
 	r.runtime.EmitPluginEvent(pluginName, eventType, data)
 }
 
-// WithPluginContext create runtime with plugin context
 func (r *TypedRuntimeImpl) WithPluginContext(pluginName string) Runtime {
 	return r.runtime.WithPluginContext(pluginName)
 }
 
-// GetCurrentPluginContext get current plugin context
 func (r *TypedRuntimeImpl) GetCurrentPluginContext() string {
 	return r.runtime.GetCurrentPluginContext()
 }
 
-// GetResourceInfo get resource info
 func (r *TypedRuntimeImpl) GetResourceInfo(name string) (*ResourceInfo, error) {
 	return r.runtime.GetResourceInfo(name)
 }
 
-// ListResources list all resources
 func (r *TypedRuntimeImpl) ListResources() []*ResourceInfo {
 	return r.runtime.ListResources()
 }
 
-// CleanupResources clean up resources for a specific plugin
 func (r *TypedRuntimeImpl) CleanupResources(pluginID string) error {
 	return r.runtime.CleanupResources(pluginID)
 }
 
-// GetResourceStats get resource statistics
 func (r *TypedRuntimeImpl) GetResourceStats() map[string]any {
 	return r.runtime.GetResourceStats()
 }
 
-// GetConfig get configuration
 func (r *TypedRuntimeImpl) GetConfig() config.Config {
 	return r.runtime.GetConfig()
 }
 
-// SetConfig set configuration
 func (r *TypedRuntimeImpl) SetConfig(conf config.Config) {
 	r.runtime.SetConfig(conf)
 }
 
-// GetLogger get logger
 func (r *TypedRuntimeImpl) GetLogger() log.Logger {
 	return r.runtime.GetLogger()
 }
 
-// EmitEvent emit event
 func (r *TypedRuntimeImpl) EmitEvent(event PluginEvent) {
 	r.runtime.EmitEvent(event)
 }
 
-// AddPluginListener add specific plugin event listener
 func (r *TypedRuntimeImpl) AddPluginListener(pluginName string, listener EventListener, filter *EventFilter) {
 	r.runtime.AddPluginListener(pluginName, listener, filter)
 }
 
-// GetPluginEventHistory get specific plugin event history
 func (r *TypedRuntimeImpl) GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent {
 	return r.runtime.GetPluginEventHistory(pluginName, filter)
 }
 
-// Shutdown delegates to the underlying runtime.
 func (r *TypedRuntimeImpl) Shutdown() {
 	r.runtime.Shutdown()
 }

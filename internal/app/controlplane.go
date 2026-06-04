@@ -535,8 +535,8 @@ func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
 	return cfg, nil
 }
 
-// GetControlPlaneConfigSources gets all configuration sources from the control plane
-// This method supports loading multiple configuration files from remote sources
+// GetControlPlaneConfigSources returns all remote configuration sources provided by the control plane.
+// Returns an error when no control plane is registered or it does not implement MultiConfigControlPlane.
 func (a *LynxApp) GetControlPlaneConfigSources() ([]config.Source, error) {
 	if a == nil || a.GetControlPlane() == nil {
 		return nil, fmt.Errorf("control plane not available")

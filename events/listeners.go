@@ -233,7 +233,7 @@ func (m *EventListenerManager) Count() int {
 	return len(m.listeners)
 }
 
-// Clear removes all listeners
+// Clear cancels all listener contexts and removes them from the manager.
 func (m *EventListenerManager) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -247,7 +247,7 @@ func (m *EventListenerManager) Clear() {
 	m.listeners = make(map[string]*EventListener)
 }
 
-// Global listener manager instance
+// globalListenerManager is initialized once on first use via GetGlobalListenerManager.
 var (
 	globalListenerManager   *EventListenerManager
 	globalListenerOnce      sync.Once
