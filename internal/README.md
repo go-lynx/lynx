@@ -1,91 +1,32 @@
 # Internal Package
 
-The `internal` package contains private implementation details for the Lynx framework. These packages are not intended for external use and may change without notice.
-
-> **Note**: Go's `internal` directory convention prevents these packages from being imported by external code.
-
-## Package Structure
-
-```
-internal/
-├── banner/         # Startup banner display
-└── resource/       # Resource optimization utilities
-```
+Private implementation details for the Lynx framework. Go's `internal` convention
+keeps these packages from being imported by external code; treat them as unstable
+and subject to change without notice.
 
 ## Sub-packages
 
-### banner/
+### `app/`
 
-Handles the display of the Lynx startup banner.
+Application bootstrap and runtime core: the `LynxApp` instance, plugin manager,
+lifecycle (init/start/stop with timeouts, parallel-by-level startup, rollback),
+dependency topology, control-plane composition, gRPC subscriptions, and error
+recovery. A `compat/` layer and `!v2` files hold deprecated singleton helpers
+slated for removal in v2.0.
 
-| File | Description |
-|------|-------------|
-| `banner.go` | Banner display logic |
-| `banner.txt` | ASCII art banner template |
+### `banner/`
 
-**Features:**
+Displays the startup banner. Prefers a project-local `configs/banner.txt`, falls
+back to the embedded `banner.txt`, and can be disabled via configuration.
 
-- Customizable banner display
-- Version and application info
-- Can be disabled via configuration
+### `resource/`
 
-### resource/
+Lightweight cache abstraction used by the public `cache` package wrapper.
 
-Resource management and optimization utilities.
+## For External Users
 
-| File | Description |
-|------|-------------|
-| `cache_optimizer.go` | Cache optimization strategies |
-
-**Features:**
-
-- Memory optimization
-- Cache eviction strategies
-- Resource pooling
-
-## Usage Guidelines
-
-### For Framework Developers
-
-These packages can be freely used within the Lynx framework:
-
-```go
-import (
-    "github.com/go-lynx/lynx/internal/banner"
-    "github.com/go-lynx/lynx/internal/resource"
-)
-```
-
-### For External Users
-
-**Do not import these packages directly.** They are internal implementation details and may change without notice. Use the public APIs provided by the root `lynx` package and its sub-packages instead.
-
-## Why Internal?
-
-The `internal` directory is used for:
-
-1. **Implementation details** - Code that supports public APIs but shouldn't be exposed
-2. **Breaking change protection** - Allows refactoring without API compatibility concerns
-3. **Cleaner public API** - Keeps the public surface area small and focused
-4. **Dependency isolation** - External users can't depend on unstable code
-
-## Adding New Internal Packages
-
-When adding new internal packages:
-
-1. **Consider if it should be internal** - Only internalize implementation details
-2. **Document the purpose** - Add comments explaining the package's role
-3. **Keep dependencies minimal** - Avoid circular dependencies
-4. **Test thoroughly** - Internal code still needs testing
-
-## Related Public Packages
-
-| Internal Package | Related Public Package |
-|------------------|------------------------|
-| `internal/banner` | `boot/` (Application startup) |
-| `internal/resource` | `cache/` (Cache abstractions) |
-
-For configuration validation, use the public `lynx/pkg/config` package instead of internal packages.
+Do not import these packages directly. Use the public APIs of the root `lynx`
+package and its sub-packages instead.
 
 ## License
 

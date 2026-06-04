@@ -1,7 +1,6 @@
-// Package lynx provides the core application framework for building microservices.
-//
-// This file (manager.go) contains the plugin manager interfaces and implementation.
-// The plugin manager handles plugin registration, lookup, and lifecycle coordination.
+// Plugin manager: registration, name/ID lookup, and lifecycle coordination.
+// Distinguishes "prepared" (staged, not yet started) from "managed" (lifecycle-started)
+// plugins so load/unload can track each set independently.
 package app
 
 import (
@@ -144,7 +143,7 @@ func NewTypedPluginManager(pluginList ...plugins.Plugin) PluginManager {
 	return NewPluginManager[plugins.Plugin](pluginList...)
 }
 
-// SetConfig sets global config.
+// SetConfig stores the manager config and propagates it to the shared runtime.
 func (m *DefaultPluginManager[T]) SetConfig(conf config.Config) {
 	if m == nil {
 		return

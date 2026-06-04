@@ -16,17 +16,14 @@ import (
 type FileWatcher struct {
 	mu sync.RWMutex
 
-	// Files being monitored
 	files map[string]*MonitoredFile
 
-	// Change detection
 	changeDetected bool
 	changeChan     chan struct{}
 
-	// Control
 	stopChan         chan struct{}
 	running          bool
-	stopped          bool // Guard against double-close of stopChan
+	stopped          bool // guards against double-close of stopChan; once stopped the watcher cannot restart
 	changeChanClosed bool
 }
 
@@ -52,25 +49,22 @@ func (fw *FileWatcher) AddFile(filePath string) error {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
-	// Resolve absolute path
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve absolute path for %s: %w", filePath, err)
 	}
 
-	// Check if file exists
 	fileInfo, err := os.Stat(absPath)
 	if err != nil {
 		return fmt.Errorf("failed to stat file %s: %w", absPath, err)
 	}
 
-	// Calculate initial hash
+	// Snapshot the baseline hash so the first real change can be detected.
 	hash, err := fw.calculateFileHash(absPath)
 	if err != nil {
 		return fmt.Errorf("failed to calculate hash for %s: %w", absPath, err)
 	}
 
-	// Add to monitoring list
 	fw.files[absPath] = &MonitoredFile{
 		Path:         absPath,
 		LastModified: fileInfo.ModTime(),
@@ -173,7 +167,7 @@ func (fw *FileWatcher) checkForChanges() {
 	if changed {
 		fw.mu.Lock()
 		fw.changeDetected = true
-		// Update MonitoredFile state for changed files to avoid repeated reload notifications
+		// Refresh the stored fingerprint so the same change isn't reported again.
 		for _, filePath := range changedPaths {
 			if mf, exists := fw.files[filePath]; exists {
 				fileInfo, err := os.Stat(filePath)
@@ -200,24 +194,22 @@ func (fw *FileWatcher) checkForChanges() {
 
 // hasFileChanged checks if a specific file has changed
 func (fw *FileWatcher) hasFileChanged(filePath string, monitoredFile *MonitoredFile) bool {
-	// Check if file still exists
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
 		log.Warnf("Failed to stat monitored file %s: %v", filePath, err)
 		return false
 	}
 
-	// Check modification time
 	if !fileInfo.ModTime().Equal(monitoredFile.LastModified) {
 		return true
 	}
 
-	// Check file size
 	if fileInfo.Size() != monitoredFile.Size {
 		return true
 	}
 
-	// Check file hash (more expensive, but more reliable)
+	// Hashing is the most expensive but authoritative check; only reached when
+	// mtime and size are unchanged, to catch in-place edits that preserve both.
 	hash, err := fw.calculateFileHash(filePath)
 	if err != nil {
 		log.Warnf("Failed to calculate hash for %s: %v", filePath, err)

@@ -110,12 +110,12 @@ grouped := collection.GroupBy(users, func(u User) int { return u.ID })
 set := collection.NewSet[string]()
 set.Add("apple")
 set.Add("banana")
-exists := set.Contains("apple")
+exists := set.Has("apple")
 
-// Map operations
-m := collection.NewMapX[string, int]()
-m.Set("key", 100)
-val, ok := m.Get("key")
+// Map helpers
+m := map[string]int{"a": 1, "b": 2}
+keys := collection.Keys(m)
+vals := collection.Values(m)
 ```
 
 ### ctxx - Context Enhancement

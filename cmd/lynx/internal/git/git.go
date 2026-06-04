@@ -4,7 +4,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// CmdGit represents the git-related command group
+// CmdGit groups git helpers for the go-lynx organization (clone-all,
+// remote-to-ssh); invoking it without a subcommand prints help.
 var CmdGit = &cobra.Command{
 	Use:   "git",
 	Short: "Git operations for Lynx organization",

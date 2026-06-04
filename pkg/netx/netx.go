@@ -33,7 +33,6 @@ func IsTimeout(err error) bool {
 // WaitPort keeps trying to connect to addr (host:port) until success or timeout.
 func WaitPort(addr string, timeout time.Duration) error {
 	if timeout <= 0 {
-		// Try once immediately
 		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
 		if err == nil {
 			conn.Close()

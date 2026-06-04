@@ -101,52 +101,45 @@ type TypedPlugin[T any] interface {
 	GetTypedInstance() T
 }
 
-// Metadata defines methods for retrieving plugin metadata
-// This interface provides essential information about the plugin
+// Metadata exposes a plugin's identity and descriptive attributes.
 type Metadata interface {
-	// ID returns the unique identifier of the plugin
-	// This ID must be unique across all plugins in the system
+	// ID returns the plugin's unique identifier, which must be unique across all plugins.
 	ID() string
 
-	// Name returns the display name of the plugin
-	// This is a human-readable name used for display purposes
+	// Name returns the human-readable display name.
 	Name() string
 
-	// Description returns a detailed description of the plugin
-	// Should provide information about the plugin's purpose and functionality
+	// Description returns a description of the plugin's purpose and functionality.
 	Description() string
 
-	// Version returns the semantic version of the plugin
-	// Should follow semver format (MAJOR.MINOR.PATCH)
+	// Version returns the semantic version (MAJOR.MINOR.PATCH).
 	Version() string
 
-	// Weight returns the weight value
+	// Weight returns the load-ordering weight; higher values load first.
 	Weight() int
 }
 
-// Lifecycle defines the basic lifecycle methods for a plugin
-// Handles initialization, operation, and termination of the plugin
+// Lifecycle defines the core lifecycle transitions the framework drives on a plugin.
+// The framework calls these in order: Initialize, then Start; Stop on shutdown.
 type Lifecycle interface {
-	// Initialize prepares the plugin for use
-	// Sets up resources, connections, and internal state
-	// Returns error if initialization fails
+	// Initialize prepares the plugin (resources, connections, internal state).
+	// Must be called before Start.
 	Initialize(plugin Plugin, rt Runtime) error
 
-	// Start begins the plugin's main functionality
-	// Should only be called after successful initialization
-	// Returns error if startup fails
+	// Start begins the plugin's main functionality. Call only after Initialize succeeds.
 	Start(plugin Plugin) error
 
-	// Stop gracefully terminates the plugin's functionality
-	// Releases resources and closes connections
-	// Returns error if shutdown fails
+	// Stop gracefully terminates the plugin, releasing resources and connections.
 	Stop(plugin Plugin) error
 
-	// Status returns the current status of the plugin
-	// Provides real-time state information
+	// Status returns the plugin's current lifecycle state.
 	Status(plugin Plugin) PluginStatus
 }
 
+// LifecycleSteps are the plugin-supplied hooks the base lifecycle invokes at each
+// phase: InitializeResources during Initialize, StartupTasks and CheckHealth during
+// Start, CleanupTasks during Stop. Embedding TypedBasePlugin provides no-op defaults
+// to override as needed.
 type LifecycleSteps interface {
 	InitializeResources(rt Runtime) error
 	StartupTasks() error
@@ -403,17 +396,15 @@ type ResourceInfo struct {
 	Metadata      map[string]any
 }
 
-// ResourceManager resource manager interface
+// ResourceManager manages named resources shared across plugins, plus their
+// lifecycle metadata.
 type ResourceManager interface {
-	// GetResource retrieves a shared plugin resource by name
-	// Returns the resource and any error encountered
+	// GetResource retrieves a shared plugin resource by name.
 	GetResource(name string) (any, error)
 
-	// RegisterResource registers a resource to be shared with other plugins
-	// Returns error if registration fails
+	// RegisterResource registers a resource to be shared with other plugins.
 	RegisterResource(name string, resource any) error
 
-	// New: Resource lifecycle management
 	GetResourceInfo(name string) (*ResourceInfo, error)
 	ListResources() []*ResourceInfo
 	CleanupResources(pluginID string) error
@@ -477,47 +468,38 @@ func (h ResourceHandle[T]) Info() (*ResourceInfo, error) {
 	return h.manager.GetResourceInfo(h.name)
 }
 
-// ConfigProvider provides access to plugin configuration
-// Manages plugin configuration loading and access
+// ConfigProvider provides access to plugin configuration.
 type ConfigProvider interface {
-	// GetConfig returns the plugin configuration manager
-	// Provides access to configuration values and updates
+	// GetConfig returns the plugin configuration manager.
 	GetConfig() config.Config
 }
 
-// LogProvider provides access to logging functionality
-// Manages plugin logging capabilities
+// LogProvider provides access to logging functionality.
 type LogProvider interface {
-	// GetLogger returns the plugin logger instance
-	// Provides structured logging capabilities
+	// GetLogger returns the plugin logger instance.
 	GetLogger() log.Logger
 }
 
-// Suspendable defines methods for temporary plugin suspension
-// Manages temporary plugin deactivation and reactivation
+// Suspendable allows temporarily pausing and resuming a plugin without
+// reinitializing it; suspended plugins retain their state and resources.
 type Suspendable interface {
-	// Suspend temporarily suspends plugin operations
-	// Pauses plugin activity while maintaining state
+	// Suspend pauses plugin operations while preserving state.
 	Suspend() error
 
-	// Resume restores plugin operations from a suspended state
-	// Resumes normal operation without reinitialization
+	// Resume restores operation from a suspended state without reinitialization.
 	Resume() error
 }
 
-// DependencyAware defines methods for plugin dependency management
-// Manages plugin dependencies and their relationships
+// DependencyAware lets a plugin declare the dependencies that drive load order.
+// The framework calls GetDependencies before initialization to build the graph.
 type DependencyAware interface {
-	// GetDependencies returns the list of plugin dependencies
-	// Lists all required and optional dependencies
+	// GetDependencies returns the plugin's required and optional dependencies.
 	GetDependencies() []Dependency
 }
 
-// EventHandler defines methods for plugin event handling
-// Processes plugin-related events and notifications
+// EventHandler processes plugin lifecycle events delivered by the event system.
 type EventHandler interface {
-	// HandleEvent processes plugin lifecycle events
-	// Handles various plugin system events
+	// HandleEvent processes a single plugin event.
 	HandleEvent(event PluginEvent)
 }
 

@@ -16,7 +16,7 @@ import (
 	"github.com/fatih/color"
 )
 
-// RunnerConfig holds configuration for the runner
+// RunnerConfig configures a Runner.
 type RunnerConfig struct {
 	ProjectPath string
 	WatchMode   bool
@@ -28,7 +28,8 @@ type RunnerConfig struct {
 	SkipBuild   bool
 }
 
-// Runner manages the build and run process
+// Runner builds the project, runs the resulting binary, and (in watch mode)
+// rebuilds and restarts it on file changes.
 type Runner struct {
 	config      RunnerConfig
 	binaryPath  string
@@ -37,68 +38,60 @@ type Runner struct {
 	watcher     *FileWatcher
 }
 
-// NewRunner creates a new runner instance
 func NewRunner(config RunnerConfig) *Runner {
 	return &Runner{
 		config: config,
 	}
 }
 
-// Start begins the build and run process
+// Start builds (unless skipped) and runs the project, then blocks until ctx is
+// cancelled, after which it stops the process. In watch mode a file watcher runs
+// in the background and drives rebuild/restart.
 func (r *Runner) Start(ctx context.Context) error {
-	// Determine binary path
 	projectName := filepath.Base(r.config.ProjectPath)
 	r.binaryPath = filepath.Join(r.config.ProjectPath, "bin", projectName)
 
-	// Initial build and run
 	if !r.config.SkipBuild {
 		if err := r.build(ctx); err != nil {
 			return fmt.Errorf("build failed: %w", err)
 		}
 	}
 
-	// Start the application
 	if err := r.run(ctx); err != nil {
 		return fmt.Errorf("run failed: %w", err)
 	}
 
-	// If watch mode is enabled, start file watcher
 	if r.config.WatchMode {
 		r.watcher = NewFileWatcher(r.config.ProjectPath)
 		go r.watchFiles(ctx)
 	}
 
-	// Wait for context cancellation
 	<-ctx.Done()
 
-	// Stop the process
 	r.stop()
 
 	return nil
 }
 
-// build compiles the project
+// build compiles the project's main package to binaryPath.
 func (r *Runner) build(ctx context.Context) error {
 	startTime := time.Now()
 
 	fmt.Printf("🔨 %s\n", color.BlueString("Building project..."))
 
-	// Create bin directory if not exists
 	binDir := filepath.Dir(r.binaryPath)
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return fmt.Errorf("failed to create bin directory: %w", err)
 	}
 
-	// Prepare build command
 	args := []string{"build", "-o", r.binaryPath}
 
-	// Add custom build arguments (parseBuildArgs respects quoted strings, e.g. -ldflags="-s -w")
+	// parseBuildArgs keeps quoted values intact, e.g. -ldflags="-s -w".
 	if r.config.BuildArgs != "" {
 		customArgs := parseBuildArgs(r.config.BuildArgs)
 		args = append(args, customArgs...)
 	}
 
-	// Find main package
 	mainPkg := r.findMainPackage()
 	args = append(args, mainPkg)
 
@@ -106,7 +99,6 @@ func (r *Runner) build(ctx context.Context) error {
 	cmd.Dir = r.config.ProjectPath
 	cmd.Env = append(os.Environ(), r.config.Environment...)
 
-	// Capture output
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("❌ Build failed:\n%s\n", color.RedString(string(output)))
@@ -123,18 +115,16 @@ func (r *Runner) build(ctx context.Context) error {
 	return nil
 }
 
-// findMainPackage locates the main package in the project
+// findMainPackage returns the build target: root if main.go is there, else the
+// first cmd/<name> containing main.go, falling back to ".".
 func (r *Runner) findMainPackage() string {
-	// Check for main.go in root
 	mainPath := filepath.Join(r.config.ProjectPath, "main.go")
 	if _, err := os.Stat(mainPath); err == nil {
 		return "."
 	}
 
-	// Check for cmd directory
 	cmdPath := filepath.Join(r.config.ProjectPath, "cmd")
 	if info, err := os.Stat(cmdPath); err == nil && info.IsDir() {
-		// Find first directory with main.go
 		entries, _ := os.ReadDir(cmdPath)
 		for _, entry := range entries {
 			if entry.IsDir() {
@@ -146,18 +136,17 @@ func (r *Runner) findMainPackage() string {
 		}
 	}
 
-	// Default to current directory
 	return "."
 }
 
-// run starts the compiled binary
+// run launches the built binary, streaming its output, and reaps it in the
+// background. A non-zero exit is reported as a crash unless ctx was cancelled.
 func (r *Runner) run(ctx context.Context) error {
 	r.processLock.Lock()
 	defer r.processLock.Unlock()
 
 	fmt.Printf("▶️  %s\n", color.GreenString("Starting application..."))
 
-	// Prepare run command
 	args := []string{}
 	if r.config.RunArgs != "" {
 		args = strings.Fields(r.config.RunArgs)
@@ -166,14 +155,12 @@ func (r *Runner) run(ctx context.Context) error {
 	r.process = exec.CommandContext(ctx, r.binaryPath, args...)
 	r.process.Dir = r.config.ProjectPath
 
-	// Setup environment
 	env := append(os.Environ(), r.config.Environment...)
 	if r.config.Port != "" {
 		env = append(env, fmt.Sprintf("PORT=%s", r.config.Port))
 	}
 	r.process.Env = env
 
-	// Setup output pipes
 	stdout, err := r.process.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdout pipe: %w", err)
@@ -184,12 +171,10 @@ func (r *Runner) run(ctx context.Context) error {
 		return fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
 
-	// Start the process
 	if err := r.process.Start(); err != nil {
 		return fmt.Errorf("failed to start process: %w", err)
 	}
 
-	// Stream output
 	go r.streamOutput(stdout, false)
 	go r.streamOutput(stderr, true)
 
@@ -199,12 +184,9 @@ func (r *Runner) run(ctx context.Context) error {
 	}
 	fmt.Println(strings.Repeat("-", 60))
 
-	// Wait for process in background
 	go func() {
 		if err := r.process.Wait(); err != nil {
-			// Process exited with error
 			if ctx.Err() == nil {
-				// Not a context cancellation
 				fmt.Printf("\n❌ %s: %v\n", color.RedString("Application crashed"), err)
 			}
 		}
@@ -213,7 +195,7 @@ func (r *Runner) run(ctx context.Context) error {
 	return nil
 }
 
-// streamOutput streams process output to console
+// streamOutput copies a process pipe line by line to stdout or stderr.
 func (r *Runner) streamOutput(reader io.Reader, isError bool) {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
@@ -226,16 +208,14 @@ func (r *Runner) streamOutput(reader io.Reader, isError bool) {
 	}
 }
 
-// stop terminates the running process
+// stop sends SIGTERM and waits up to 5s for the process to exit, then SIGKILLs.
 func (r *Runner) stop() {
 	r.processLock.Lock()
 	defer r.processLock.Unlock()
 
 	if r.process != nil && r.process.Process != nil {
-		// Try graceful shutdown first
 		r.process.Process.Signal(syscall.SIGTERM)
 
-		// Wait a bit for graceful shutdown
 		done := make(chan bool, 1)
 		go func() {
 			r.process.Wait()
@@ -246,27 +226,23 @@ func (r *Runner) stop() {
 		case <-done:
 			fmt.Printf("✅ %s\n", color.GreenString("Application stopped gracefully"))
 		case <-time.After(5 * time.Second):
-			// Force kill if not stopped
 			r.process.Process.Kill()
 			fmt.Printf("⚠️  %s\n", color.YellowString("Application force killed"))
 		}
 	}
 }
 
-// restart rebuilds and restarts the application
+// restart stops the process, rebuilds, and runs again.
 func (r *Runner) restart(ctx context.Context) {
 	fmt.Printf("\n🔄 %s\n", color.CyanString("Restarting application..."))
 
-	// Stop current process
 	r.stop()
 
-	// Rebuild
 	if err := r.build(ctx); err != nil {
 		fmt.Printf("❌ Rebuild failed: %v\n", err)
 		return
 	}
 
-	// Run again
 	if err := r.run(ctx); err != nil {
 		fmt.Printf("❌ Restart failed: %v\n", err)
 		return
@@ -306,7 +282,8 @@ func parseBuildArgs(s string) []string {
 	return args
 }
 
-// watchFiles monitors file changes and triggers restart
+// watchFiles restarts the app on relevant file changes, debounced to coalesce
+// bursts of edits into a single rebuild.
 func (r *Runner) watchFiles(ctx context.Context) {
 	debouncer := NewDebouncer(1 * time.Second)
 

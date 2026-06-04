@@ -7,8 +7,9 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// PluginEventBusAdapter implements plugins.EventBusAdapter interface
-// This bridges the unified event bus with the plugin system
+// PluginEventBusAdapter implements plugins.EventBusAdapter, bridging the plugin
+// system's PluginEvent API to the unified LynxEvent bus by converting events in
+// both directions.
 type PluginEventBusAdapter struct {
 	eventManager    *EventBusManager
 	listenerManager *EventListenerManager
@@ -27,17 +28,19 @@ func NewPluginEventBusAdapterWithListenerManager(eventManager *EventBusManager, 
 	}
 }
 
-// PublishEvent publishes a plugin event to the unified event bus
+// PublishEvent publishes a plugin event to the unified event bus.
 func (a *PluginEventBusAdapter) PublishEvent(event plugins.PluginEvent) error {
 	if a == nil || a.eventManager == nil {
 		return fmt.Errorf("event manager not initialized")
 	}
-	// Convert PluginEvent to LynxEvent
 	lynxEvent := ConvertPluginEvent(event)
 	return a.eventManager.PublishEvent(lynxEvent)
 }
 
-// Subscribe subscribes to events on the unified event bus
+// Subscribe registers a handler for the given plugin event type, converting each
+// delivered LynxEvent back to a PluginEvent.
+//
+// Note: Subscribe and SubscribeTo behave identically; both route by event type.
 func (a *PluginEventBusAdapter) Subscribe(eventType plugins.EventType, handler func(plugins.PluginEvent)) error {
 	if a == nil || a.eventManager == nil {
 		return fmt.Errorf("event manager not initialized")
@@ -45,19 +48,16 @@ func (a *PluginEventBusAdapter) Subscribe(eventType plugins.EventType, handler f
 	if handler == nil {
 		return fmt.Errorf("event handler cannot be nil")
 	}
-	// Convert event type and create wrapper handler
 	lynxEventType := ConvertEventType(eventType)
 
 	wrapperHandler := func(lynxEvent LynxEvent) {
-		// Convert LynxEvent back to PluginEvent
-		pluginEvent := ConvertLynxEvent(lynxEvent)
-		handler(pluginEvent)
+		handler(ConvertLynxEvent(lynxEvent))
 	}
 
 	return a.eventManager.SubscribeTo(lynxEventType, wrapperHandler)
 }
 
-// SubscribeTo subscribes to a specific event type on the unified event bus
+// SubscribeTo registers a handler for one plugin event type. See Subscribe.
 func (a *PluginEventBusAdapter) SubscribeTo(eventType plugins.EventType, handler func(plugins.PluginEvent)) error {
 	if a == nil || a.eventManager == nil {
 		return fmt.Errorf("event manager not initialized")
@@ -65,13 +65,10 @@ func (a *PluginEventBusAdapter) SubscribeTo(eventType plugins.EventType, handler
 	if handler == nil {
 		return fmt.Errorf("event handler cannot be nil")
 	}
-	// Convert event type and create wrapper handler
 	lynxEventType := ConvertEventType(eventType)
 
 	wrapperHandler := func(lynxEvent LynxEvent) {
-		// Convert LynxEvent back to PluginEvent
-		pluginEvent := ConvertLynxEvent(lynxEvent)
-		handler(pluginEvent)
+		handler(ConvertLynxEvent(lynxEvent))
 	}
 
 	return a.eventManager.SubscribeTo(lynxEventType, wrapperHandler)

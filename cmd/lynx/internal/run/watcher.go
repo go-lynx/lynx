@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// EventType represents the type of file system event
+// EventType is the kind of change reported for a file.
 type EventType int
 
 const (
@@ -18,14 +18,15 @@ const (
 	FileDeleted
 )
 
-// FileEvent represents a file system event
+// FileEvent is a single observed file change.
 type FileEvent struct {
 	Path string
 	Type EventType
 	Time time.Time
 }
 
-// FileWatcher watches for file changes in a directory
+// FileWatcher polls a directory tree and emits FileEvents on change. It is a
+// portable mtime-based poller rather than an OS notification API.
 type FileWatcher struct {
 	root       string
 	events     chan FileEvent
@@ -35,7 +36,7 @@ type FileWatcher struct {
 	wg         sync.WaitGroup
 }
 
-// NewFileWatcher creates a new file watcher
+// NewFileWatcher starts watching root and returns the watcher; call Stop to end.
 func NewFileWatcher(root string) *FileWatcher {
 	fw := &FileWatcher{
 		root:       root,
@@ -44,30 +45,28 @@ func NewFileWatcher(root string) *FileWatcher {
 		stopChan:   make(chan struct{}),
 	}
 
-	// Start watching
 	fw.wg.Add(1)
 	go fw.watch()
 
 	return fw
 }
 
-// Events returns the events channel
+// Events returns the channel on which file changes are delivered.
 func (fw *FileWatcher) Events() <-chan FileEvent {
 	return fw.events
 }
 
-// Stop stops the file watcher
+// Stop ends watching and closes the Events channel.
 func (fw *FileWatcher) Stop() {
 	close(fw.stopChan)
 	fw.wg.Wait()
 	close(fw.events)
 }
 
-// watch monitors file changes
+// watch seeds the baseline then rescans on a fixed interval until stopped.
 func (fw *FileWatcher) watch() {
 	defer fw.wg.Done()
 
-	// Initial scan
 	fw.scan()
 
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -83,26 +82,25 @@ func (fw *FileWatcher) watch() {
 	}
 }
 
-// scan scans the directory for changes
+// scan walks the tree once, comparing mtimes against the previous snapshot to
+// emit created/modified events, then emits deleted events for vanished files and
+// replaces the snapshot.
 func (fw *FileWatcher) scan() {
 	currentStates := make(map[string]time.Time)
 
 	err := filepath.WalkDir(fw.root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil // Skip errors
+			return nil
 		}
 
-		// Skip directories and ignored paths
 		if d.IsDir() || fw.shouldIgnore(path) {
 			return nil
 		}
 
-		// Check if it's a Go source file or configuration file
 		if !fw.shouldWatch(path) {
 			return nil
 		}
 
-		// Get file info
 		info, err := d.Info()
 		if err != nil {
 			return nil
@@ -111,20 +109,17 @@ func (fw *FileWatcher) scan() {
 		modTime := info.ModTime()
 		currentStates[path] = modTime
 
-		// Check for changes
 		fw.mu.RLock()
 		oldTime, exists := fw.fileStates[path]
 		fw.mu.RUnlock()
 
 		if !exists {
-			// New file
 			fw.sendEvent(FileEvent{
 				Path: path,
 				Type: FileCreated,
 				Time: time.Now(),
 			})
 		} else if !oldTime.Equal(modTime) {
-			// Modified file
 			fw.sendEvent(FileEvent{
 				Path: path,
 				Type: FileModified,
@@ -139,7 +134,6 @@ func (fw *FileWatcher) scan() {
 		fmt.Printf("Error scanning directory: %v\n", err)
 	}
 
-	// Check for deleted files
 	fw.mu.RLock()
 	for path := range fw.fileStates {
 		if _, exists := currentStates[path]; !exists {
@@ -152,21 +146,19 @@ func (fw *FileWatcher) scan() {
 	}
 	fw.mu.RUnlock()
 
-	// Update state
 	fw.mu.Lock()
 	fw.fileStates = currentStates
 	fw.mu.Unlock()
 }
 
-// shouldIgnore checks if a path should be ignored
+// shouldIgnore reports whether path falls under a build/VCS/editor directory or
+// matches an ignored pattern (including test files).
 func (fw *FileWatcher) shouldIgnore(path string) bool {
-	// Get relative path
 	relPath, err := filepath.Rel(fw.root, path)
 	if err != nil {
 		return true
 	}
 
-	// Ignore patterns
 	ignorePatterns := []string{
 		".git",
 		".idea",
@@ -189,11 +181,10 @@ func (fw *FileWatcher) shouldIgnore(path string) bool {
 	return false
 }
 
-// shouldWatch checks if a file should be watched
+// shouldWatch reports whether path has a source/config extension worth a rebuild.
 func (fw *FileWatcher) shouldWatch(path string) bool {
 	ext := filepath.Ext(path)
 
-	// Watch these file types
 	watchExts := []string{
 		".go",
 		".mod",
@@ -215,23 +206,23 @@ func (fw *FileWatcher) shouldWatch(path string) bool {
 	return false
 }
 
-// sendEvent sends an event to the channel
+// sendEvent delivers an event, dropping it if the buffer is full to keep the
+// scanner non-blocking.
 func (fw *FileWatcher) sendEvent(event FileEvent) {
 	select {
 	case fw.events <- event:
 	default:
-		// Channel full, drop event
 	}
 }
 
-// Debouncer helps prevent rapid successive triggers
+// Debouncer coalesces rapid triggers into a single delayed call.
 type Debouncer struct {
 	duration time.Duration
 	timer    *time.Timer
 	mu       sync.Mutex
 }
 
-// NewDebouncer creates a new debouncer
+// NewDebouncer returns a Debouncer that fires duration after the last Trigger.
 func NewDebouncer(duration time.Duration) *Debouncer {
 	return &Debouncer{
 		duration: duration,

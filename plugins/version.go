@@ -45,10 +45,8 @@ func (vm *DefaultVersionManager) ParseVersion(version string) (*Version, error) 
 		return nil, fmt.Errorf("version string cannot be empty")
 	}
 
-	// Remove prefix v (if exists)
 	version = strings.TrimPrefix(version, "v")
 
-	// Split version and pre-release information
 	parts := strings.SplitN(version, "-", 2)
 	versionPart := parts[0]
 	var preRelease string
@@ -66,7 +64,6 @@ func (vm *DefaultVersionManager) ParseVersion(version string) (*Version, error) 
 		build = buildParts[1]
 	}
 
-	// Parse major version number
 	versionNumbers := strings.Split(versionPart, ".")
 	if len(versionNumbers) < 1 {
 		return nil, fmt.Errorf("invalid version format: %s", version)
@@ -110,7 +107,6 @@ func (vm *DefaultVersionManager) CompareVersions(v1, v2 *Version) int {
 		return 0
 	}
 
-	// Compare major version numbers
 	if v1.Major != v2.Major {
 		if v1.Major < v2.Major {
 			return -1
@@ -118,7 +114,6 @@ func (vm *DefaultVersionManager) CompareVersions(v1, v2 *Version) int {
 		return 1
 	}
 
-	// Compare minor version numbers
 	if v1.Minor != v2.Minor {
 		if v1.Minor < v2.Minor {
 			return -1
@@ -126,7 +121,6 @@ func (vm *DefaultVersionManager) CompareVersions(v1, v2 *Version) int {
 		return 1
 	}
 
-	// Compare patch version numbers
 	if v1.Patch != v2.Patch {
 		if v1.Patch < v2.Patch {
 			return -1
@@ -134,18 +128,17 @@ func (vm *DefaultVersionManager) CompareVersions(v1, v2 *Version) int {
 		return 1
 	}
 
-	// Compare pre-release versions
+	// Per semver, a release ranks above an otherwise-equal pre-release.
 	if v1.PreRelease == "" && v2.PreRelease == "" {
 		return 0
 	}
 	if v1.PreRelease == "" {
-		return 1 // Release version > pre-release version
+		return 1
 	}
 	if v2.PreRelease == "" {
-		return -1 // Pre-release version < release version
+		return -1
 	}
 
-	// Pre-release version comparison
 	return vm.comparePreRelease(v1.PreRelease, v2.PreRelease)
 }
 
@@ -168,7 +161,6 @@ func (vm *DefaultVersionManager) comparePreRelease(pr1, pr2 string) int {
 			part2 = parts2[i]
 		}
 
-		// Numeric part comparison
 		if vm.isNumeric(part1) && vm.isNumeric(part2) {
 			num1, _ := strconv.Atoi(part1)
 			num2, _ := strconv.Atoi(part2)
@@ -179,7 +171,6 @@ func (vm *DefaultVersionManager) comparePreRelease(pr1, pr2 string) int {
 				return 1
 			}
 		} else {
-			// String part comparison
 			if part1 < part2 {
 				return -1
 			}
@@ -204,7 +195,6 @@ func (vm *DefaultVersionManager) SatisfiesConstraint(version *Version, constrain
 		return true
 	}
 
-	// Check exact version
 	if constraint.ExactVersion != "" {
 		exactVersion, err := vm.ParseVersion(constraint.ExactVersion)
 		if err != nil {
@@ -213,7 +203,6 @@ func (vm *DefaultVersionManager) SatisfiesConstraint(version *Version, constrain
 		return vm.CompareVersions(version, exactVersion) == 0
 	}
 
-	// Check excluded versions
 	for _, excludedVersion := range constraint.ExcludeVersions {
 		excluded, err := vm.ParseVersion(excludedVersion)
 		if err != nil {
@@ -224,7 +213,6 @@ func (vm *DefaultVersionManager) SatisfiesConstraint(version *Version, constrain
 		}
 	}
 
-	// Check minimum version
 	if constraint.MinVersion != "" {
 		minVersion, err := vm.ParseVersion(constraint.MinVersion)
 		if err != nil {
@@ -235,7 +223,6 @@ func (vm *DefaultVersionManager) SatisfiesConstraint(version *Version, constrain
 		}
 	}
 
-	// Check maximum version
 	if constraint.MaxVersion != "" {
 		maxVersion, err := vm.ParseVersion(constraint.MaxVersion)
 		if err != nil {

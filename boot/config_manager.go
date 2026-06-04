@@ -38,13 +38,11 @@ func (cm *ConfigManager) GetConfigPath() string {
 	return cm.configPath
 }
 
-// GetDefaultConfigPath gets default configuration path
+// GetDefaultConfigPath returns LYNX_CONFIG_PATH if set, otherwise "./configs".
 func (cm *ConfigManager) GetDefaultConfigPath() string {
-	// Prioritize environment variable
 	if envPath := os.Getenv("LYNX_CONFIG_PATH"); envPath != "" {
 		return envPath
 	}
-	// Default to configs directory under current directory
 	return "./configs"
 }
 

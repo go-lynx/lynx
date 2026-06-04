@@ -1,12 +1,6 @@
-// Package lynx provides the core application framework for building microservices.
-//
-// This file (ops.go) contains plugin manager operations including:
-//   - LoadPlugins: Load and start all configured plugins
-//   - UnloadPlugins: Gracefully stop and unload all plugins
-//   - LoadPluginsByName: Load specific plugins by name
-//   - UnloadPluginsByName: Unload specific plugins by name
-//   - StopPlugin: Stop a single plugin
-//   - Resource management and monitoring utilities
+// Plugin manager load/unload operations and their event/observability plumbing.
+// Unload runs in reverse dependency order with an overall timeout so shutdown
+// cannot hang indefinitely.
 package app
 
 import (
@@ -295,34 +289,29 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 		return
 	}
 
-	// Emit plugin manager shutdown event
 	m.emitPluginManagerShutdownEvent()
 
-	// Get timeouts and parallelism settings
 	perPluginTimeout := m.getStopTimeout()
 	totalTimeout := m.getUnloadTotalTimeout()
 	parallelism := m.getUnloadParallelism()
 
-	// Create overall context with total timeout to prevent indefinite blocking
+	// Overall timeout bounds the whole unload so a stuck plugin cannot block shutdown.
 	ctx, cancel := context.WithTimeout(context.Background(), totalTimeout)
 	defer cancel()
 
-	// Track unload start time for monitoring
 	unloadStart := time.Now()
 
 	batches, ordered := m.buildUnloadBatches(m.managedPluginList)
 
 	var mu sync.Mutex
-	// Optimized: Pre-allocate slice capacity to avoid frequent reallocations
 	unloadErrors := make([]string, 0, len(ordered))
 	timeoutReached := false
 
-	// Fix Bug 1: Track which plugins are being cleaned up to avoid race conditions
-	// Use sync.Map to safely track plugins that have started cleanup
+	// Tracks plugins whose cleanup has begun so normal and forced cleanup paths
+	// never double-clean the same plugin.
 	cleaningUp := sync.Map{} // map[pluginID]bool
 
 	for _, batch := range batches {
-		// Check if overall timeout has been reached
 		select {
 		case <-ctx.Done():
 			log.Errorf("UnloadPlugins: overall timeout (%v) reached, forcing shutdown of remaining %d plugins",
@@ -367,7 +356,7 @@ func (m *DefaultPluginManager[T]) unloadManagedPlugin(ctx context.Context, plugi
 	pluginID := plugin.ID()
 	result.pluginName = plugin.Name()
 
-	// Fix Bug 1: Mark this plugin as being cleaned up to prevent double cleanup.
+	// Claim cleanup ownership; bail if forced cleanup already took this plugin.
 	if _, alreadyCleaning := cleaningUp.LoadOrStore(pluginID, true); alreadyCleaning {
 		log.Debugf("Skipping cleanup for plugin %s: already being cleaned up by forced cleanup", plugin.Name())
 		return result, false
@@ -755,9 +744,8 @@ func (m *DefaultPluginManager[T]) recordUnloadFailure(p plugins.Plugin, stopErr,
 	m.unloadFailuresMu.Lock()
 	defer m.unloadFailuresMu.Unlock()
 
-	// Limit the number of stored failures to prevent unbounded growth.
-	// Use copy-based rotation instead of re-slicing to avoid retaining the
-	// original backing array and causing a memory leak.
+	// Cap stored failures. Rotate via copy rather than re-slice so the old
+	// backing array is not retained (a re-slice [1:] would leak it).
 	const maxFailures = 100
 	if len(m.unloadFailures) >= maxFailures {
 		copy(m.unloadFailures, m.unloadFailures[1:])

@@ -193,7 +193,10 @@ func generateEventID(pluginID string, eventType EventType, t time.Time) string {
 	return fmt.Sprintf("%s-%d-%d-%d-%s-%d", pluginID, eventType, t.Unix(), t.Nanosecond(), initSalt, counter)
 }
 
-// WithPriority sets the event priority
+// The With* methods take a value receiver and return a modified copy, so they
+// can be chained without mutating the original event.
+
+// WithPriority returns a copy of the event with the given priority.
 func (e LynxEvent) WithPriority(priority Priority) LynxEvent {
 	e.Priority = priority
 	return e

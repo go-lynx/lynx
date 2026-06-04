@@ -1,3 +1,14 @@
+// Package events is the Lynx unified event bus, built on kelindar/event.
+//
+// Events are classified by type and routed to one of eight isolated buses
+// (plugin, system, business, health, config, resource, security, metrics), each
+// with its own bounded queue, worker pool, history, and metrics.
+//
+// Delivery is asynchronous and offers no global ordering guarantee: Publish
+// enqueues, a per-bus worker drains the queue in weighted-priority batches, and
+// handlers run on a worker pool. Handlers may be retried after a panic, so they
+// should be idempotent. Under load a bus can throttle, degrade, or drop events
+// per its DropPolicy. See README.md for usage and ordering/idempotency guidance.
 package events
 
 import (
@@ -185,4 +196,3 @@ func NewLynxEventBus(config BusConfig, busType BusType, manager *EventBusManager
 
 	return bus
 }
-

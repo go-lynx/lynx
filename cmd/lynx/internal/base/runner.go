@@ -10,8 +10,9 @@ import (
 	"time"
 )
 
-// RunCMD executes external commands in a unified way, returns stdout+stderr text, and supports simple retries.
-// dir: Process working directory; retries: Additional retry count (total attempts = 1 + retries).
+// RunCMD runs an external command in dir, returning combined stdout+stderr.
+// retries is the number of additional attempts (total = 1 + retries) made for
+// transient failures, with exponential backoff. See shouldRetry.
 func RunCMD(ctx context.Context, dir, name string, args []string, retries int) (string, error) {
 	attempts := 1 + retries
 	var out []byte
@@ -25,20 +26,17 @@ func RunCMD(ctx context.Context, dir, name string, args []string, retries int) (
 		err = cmd.Run()
 		out = buf.Bytes()
 
-		// Return on success or when retry is not needed
 		if err == nil || !shouldRetry(buf.String(), attempt, attempts) || ctx.Err() != nil {
 			break
 		}
 
-		// Read configurable parameters
 		maxRetries, maxBackoff := getRetryConfigs(retries)
 		attempts = 1 + maxRetries
-		// Exponential backoff (based on 200ms) and limit maximum backoff
+		// Exponential backoff starting at 200ms, capped at maxBackoff.
 		delay := time.Duration(1<<uint(attempt-1)) * 200 * time.Millisecond
 		if delay > maxBackoff {
 			delay = maxBackoff
 		}
-		// Debug level retry log
 		Debugf("retrying command (attempt %d/%d) in %s: %s %s\n", attempt+1, attempts, delay, name, strings.Join(args, " "))
 		select {
 		case <-ctx.Done():

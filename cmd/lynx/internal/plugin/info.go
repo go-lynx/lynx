@@ -10,7 +10,6 @@ import (
 
 var infoFormat string
 
-// cmdInfo represents the info command
 var cmdInfo = &cobra.Command{
 	Use:   "info [plugin-name]",
 	Short: "Show detailed information about a plugin",
@@ -35,19 +34,16 @@ func init() {
 func runInfo(cmd *cobra.Command, args []string) error {
 	pluginName := args[0]
 
-	// Create plugin manager
 	manager, err := NewPluginManager()
 	if err != nil {
 		return fmt.Errorf("failed to initialize plugin manager: %w", err)
 	}
 
-	// Get plugin info
 	plugin, err := manager.GetPluginInfo(pluginName)
 	if err != nil {
 		return fmt.Errorf("plugin not found: %s", pluginName)
 	}
 
-	// Output based on format
 	switch infoFormat {
 	case "json":
 		return exportJSON(cmd.OutOrStdout(), plugin)
@@ -59,11 +55,9 @@ func runInfo(cmd *cobra.Command, args []string) error {
 }
 
 func displayPluginInfo(plugin *PluginMetadata) error {
-	// Header
 	fmt.Printf("\n%s Plugin Information\n", color.CyanString("📦"))
 	fmt.Println(strings.Repeat("=", 50))
 
-	// Basic Information
 	fmt.Printf("\n%s\n", color.YellowString("Basic Information:"))
 	fmt.Printf("  Name:        %s", color.CyanString(plugin.Name))
 	if plugin.Official {
@@ -76,7 +70,6 @@ func displayPluginInfo(plugin *PluginMetadata) error {
 	fmt.Printf("  Author:      %s\n", plugin.Author)
 	fmt.Printf("  License:     %s\n", plugin.License)
 
-	// Status
 	fmt.Printf("\n%s\n", color.YellowString("Status:"))
 	switch plugin.Status {
 	case StatusInstalled:
@@ -102,23 +95,19 @@ func displayPluginInfo(plugin *PluginMetadata) error {
 		fmt.Printf("  Installation: %s\n", plugin.Status)
 	}
 
-	// Description
 	fmt.Printf("\n%s\n", color.YellowString("Description:"))
 	fmt.Printf("  %s\n", plugin.Description)
 
-	// Repository
 	if plugin.Repository != "" {
 		fmt.Printf("\n%s\n", color.YellowString("Repository:"))
 		fmt.Printf("  %s\n", plugin.Repository)
 	}
 
-	// Import Path
 	if plugin.ImportPath != "" && plugin.ImportPath != plugin.Repository {
 		fmt.Printf("\n%s\n", color.YellowString("Import Path:"))
 		fmt.Printf("  %s\n", plugin.ImportPath)
 	}
 
-	// Dependencies
 	if len(plugin.Dependencies) > 0 {
 		fmt.Printf("\n%s\n", color.YellowString("Dependencies:"))
 		for _, dep := range plugin.Dependencies {
@@ -130,19 +119,16 @@ func displayPluginInfo(plugin *PluginMetadata) error {
 		}
 	}
 
-	// Tags
 	if len(plugin.Tags) > 0 {
 		fmt.Printf("\n%s\n", color.YellowString("Tags:"))
 		fmt.Printf("  %s\n", strings.Join(plugin.Tags, ", "))
 	}
 
-	// Compatibility
 	if plugin.Compatible != "" {
 		fmt.Printf("\n%s\n", color.YellowString("Compatibility:"))
 		fmt.Printf("  Lynx Version: %s\n", plugin.Compatible)
 	}
 
-	// Extra Info
 	if len(plugin.ExtraInfo) > 0 {
 		fmt.Printf("\n%s\n", color.YellowString("Additional Information:"))
 		for key, value := range plugin.ExtraInfo {
@@ -150,7 +136,6 @@ func displayPluginInfo(plugin *PluginMetadata) error {
 		}
 	}
 
-	// Commands hint
 	fmt.Printf("\n%s\n", color.YellowString("Available Commands:"))
 	if plugin.Status == StatusInstalled {
 		fmt.Printf("  • Update:  lynx plugin install %s --force\n", plugin.Name)

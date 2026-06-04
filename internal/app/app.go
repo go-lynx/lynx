@@ -21,47 +21,32 @@ import (
 // It serves as the central coordinator for all application components,
 // managing configuration, logging, plugins, and the control plane.
 type LynxApp struct {
-	// host represents the application's host address.
-	// Used for network communication and service registration.
-	host string
-
-	// name is the unique identifier of the application.
-	// Used for service discovery and logging.
-	name string
-
-	// version represents the application's version number.
-	// Used for compatibility checks and deployment management.
+	host    string
+	name    string // unique application identifier, used for discovery and logging
 	version string
 
-	// certificateProvider manages the application's TLS/SSL certificates.
-	// Used for secure communication and TLS configuration.
+	// cert supplies TLS material for secure communication; nil when unset.
 	cert CertificateProvider
 
-	// Bootstrap configuration
 	bootConfig *conf.Bootstrap
-
-	// globalConf holds the application's global configuration.
-	// Contains settings that apply across all components.
 	globalConf config.Config
 
-	// controlPlane manages the application's external control-plane integration.
-	// This is shell-facing composition, not the heart of plugin orchestration.
+	// controlPlane is the external control-plane integration (shell-facing
+	// composition), not the heart of plugin orchestration.
 	controlPlane ControlPlane
 
-	// Optional capability overrides for partial control plane implementations.
-	// When set, these take precedence over controlPlane for the respective capability.
-	// Plugins can register only the capabilities they implement via SetRateLimiter, etc.
+	// Per-capability overrides for partial control plane implementations. When
+	// set, each takes precedence over controlPlane for that capability, letting a
+	// plugin register only what it implements (see SetRateLimiter, etc.).
 	rateLimiter     RateLimiter
 	serviceRegistry ServiceRegistry
 	routeManager    RouteManager
 	configManager   ConfigManager
 	systemCore      SystemCore
 
-	// controlPlaneMu protects control plane and capability fields
+	// controlPlaneMu guards controlPlane and all capability override fields.
 	controlPlaneMu sync.RWMutex
 
-	// pluginManager handles plugin lifecycle and dependencies.
-	// Provides type-safe plugin management with generic support.
 	pluginManager PluginManager
 
 	// grpcSubs stores upstream gRPC connections subscribed via configuration; key is the service name
@@ -230,7 +215,6 @@ func (a *LynxApp) emitSystemEvent(eventType events.EventType, metadata map[strin
 		return
 	}
 
-	// Create system event
 	pluginEvent := plugins.PluginEvent{
 		Type:      events.ConvertEventTypeBack(eventType),
 		Priority:  plugins.PriorityHigh,
@@ -242,7 +226,6 @@ func (a *LynxApp) emitSystemEvent(eventType events.EventType, metadata map[strin
 		Metadata:  metadata,
 	}
 
-	// Emit through runtime
 	rt.EmitEvent(pluginEvent)
 }
 

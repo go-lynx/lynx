@@ -36,13 +36,11 @@ func currentBootstrapFlagValue() string {
 	return flagConf
 }
 
-// LoadBootstrapConfig loads bootstrap configuration from local files or directories.
-// It reads configuration from the path specified by the configuration manager and initializes the application's configuration state.
-//
-// Returns:
-//   - error: Any error that occurs during configuration loading
+// LoadBootstrapConfig loads, validates, and stores the local bootstrap config.
+// The path is resolved (in order) from the instance path, the config manager,
+// the -conf flag, then the manager's default. It also registers the cleanup
+// that closes the config on shutdown.
 func (app *Application) LoadBootstrapConfig() error {
-	// Check if Application instance is nil
 	if app == nil {
 		return fmt.Errorf("application instance is nil: cannot load bootstrap configuration")
 	}
@@ -54,46 +52,36 @@ func (app *Application) LoadBootstrapConfig() error {
 		GetConfigManager().SetConfigPath(configPath)
 	}
 
-	// Check if configuration path is empty
 	if configPath == "" {
 		return fmt.Errorf("configuration path is empty: please specify config path via -conf flag or LYNX_CONFIG_PATH environment variable")
 	}
 
-	// Log attempt to load configuration
 	log.Infof("loading local bootstrap configuration from: %s", configPath)
 
-	// Create configuration source from local file
 	source := file.NewSource(configPath)
-	// Check if configuration source was created successfully
 	if source == nil {
 		return fmt.Errorf("failed to create configuration source from: %s", configPath)
 	}
 
-	// Create new configuration instance
 	cfg := config.New(
-		// Specify configuration source
 		config.WithSource(source),
 	)
-	// Check if configuration instance was created successfully
 	if cfg == nil {
 		return fmt.Errorf("failed to create configuration instance")
 	}
 
-	// Load configuration
 	if err := cfg.Load(); err != nil {
 		return fmt.Errorf("failed to load configuration from %s: %w", configPath, err)
 	}
 
-	// Validate configuration
 	if err := app.validateConfig(cfg); err != nil {
 		return fmt.Errorf("configuration validation failed: %w", err)
 	}
 
-	// Store configuration before setting up cleanup operations
-	// This ensures we don't lose the configuration reference if cleanup setup fails
+	// Store the config before wiring cleanup so the reference isn't lost if
+	// cleanup setup fails.
 	app.conf = cfg
 
-	// Set up configuration cleanup operations - return error if failed
 	if err := app.setupConfigCleanup(cfg); err != nil {
 		return fmt.Errorf("failed to setup configuration cleanup: %w", err)
 	}
@@ -101,15 +89,13 @@ func (app *Application) LoadBootstrapConfig() error {
 	return nil
 }
 
-// validateConfig validates the integrity and correctness of configuration
+// validateConfig fails fast if the config is nil or missing keys the framework
+// requires to identify the application.
 func (app *Application) validateConfig(cfg config.Config) error {
-	// Check if configuration instance is nil
 	if cfg == nil {
 		return fmt.Errorf("configuration instance is nil")
 	}
 
-	// Check if required configuration items exist
-	// Additional validation logic can be added here based on actual requirements
 	requiredKeys := []string{
 		"lynx.application.name",
 		"lynx.application.version",
@@ -126,16 +112,12 @@ func (app *Application) validateConfig(cfg config.Config) error {
 
 // setupConfigCleanup ensures proper cleanup when configuration resources are no longer needed.
 func (app *Application) setupConfigCleanup(cfg config.Config) error {
-	// Check if configuration instance is nil
 	if cfg == nil {
 		return fmt.Errorf("configuration instance is nil: cannot setup cleanup for nil config")
 	}
 
-	// Set up deferred cleanup function
 	app.cleanup = func() {
-		// Close configuration resources
 		if err := cfg.Close(); err != nil {
-			// Log configuration close failure
 			log.Errorf("failed to close configuration: %v", err)
 		}
 	}
@@ -143,7 +125,7 @@ func (app *Application) setupConfigCleanup(cfg config.Config) error {
 	return nil
 }
 
-// GetName gets application name
+// GetName returns lynx.application.name, or "lynx" if unset.
 func (app *Application) GetName() string {
 	if app.conf != nil {
 		if name, err := app.conf.Value("lynx.application.name").String(); err == nil {
@@ -153,7 +135,7 @@ func (app *Application) GetName() string {
 	return "lynx"
 }
 
-// GetHost gets application host
+// GetHost returns lynx.application.host, or "localhost" if unset.
 func (app *Application) GetHost() string {
 	if app.conf != nil {
 		if host, err := app.conf.Value("lynx.application.host").String(); err == nil {
@@ -163,7 +145,7 @@ func (app *Application) GetHost() string {
 	return "localhost"
 }
 
-// GetVersion gets application version
+// GetVersion returns lynx.application.version, or "unknown" if unset.
 func (app *Application) GetVersion() string {
 	if app.conf != nil {
 		if version, err := app.conf.Value("lynx.application.version").String(); err == nil {

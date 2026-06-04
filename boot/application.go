@@ -33,20 +33,19 @@ var (
 // and Kratos integration. It should not be treated as part of the plugin
 // orchestration core itself.
 type Application struct {
-	wire              wireApp          // Function used to initialize Kratos application
-	plugins           []plugins.Plugin // List of plugins to initialize
-	conf              config.Config    // Application configuration instance
-	cleanup           func()           // Cleanup function for resource cleanup when application shuts down
-	lynxApp           *lynxapp.LynxApp // Lynx application instance
-	configPath        string           // Optional instance-scoped bootstrap config path
-	publishDefaultApp bool             // Whether boot publishes the created app as process-wide default
+	wire              wireApp
+	plugins           []plugins.Plugin
+	conf              config.Config
+	cleanup           func() // user-supplied teardown, run last during shutdown
+	lynxApp           *lynxapp.LynxApp
+	configPath        string // instance-scoped bootstrap config path; overrides process-wide config manager
+	publishDefaultApp bool   // whether Run publishes the created app as the process-wide default
 
-	// Enhanced fields for production readiness
-	shutdownTimeout time.Duration           // Graceful shutdown timeout
-	shutdownChan    chan struct{}           // Channel to signal shutdown
-	shutdownOnce    sync.Once               // Ensure shutdown is called only once
-	healthChecker   *HealthChecker          // Health checker for monitoring
-	circuitBreaker  *lynxapp.CircuitBreaker // Circuit breaker for error handling
+	shutdownTimeout time.Duration
+	shutdownChan    chan struct{} // closed once to broadcast shutdown to all waiters
+	shutdownOnce    sync.Once
+	healthChecker   *HealthChecker
+	circuitBreaker  *lynxapp.CircuitBreaker // guards plugin loading against repeated failures
 }
 
 // HealthChecker provides application health monitoring
@@ -56,8 +55,8 @@ type HealthChecker struct {
 	lastCheck     time.Time
 	checkInterval time.Duration
 	stopChan      chan struct{}
-	stopOnce      sync.Once    // Protect against multiple Stop() calls
-	app           *Application // Reference to application for health checks
+	stopOnce      sync.Once
+	app           *Application
 }
 
 // Default configuration constants
@@ -105,17 +104,17 @@ func isTestEnvironment() bool {
 // wireApp is a function type used to initialize and return a Kratos application instance
 type wireApp func() (*kratos.App, error)
 
-// Run starts the Lynx application and manages its lifecycle with enhanced production features
+// Run loads configuration, starts the Lynx core and all plugins, runs the Kratos
+// app, and blocks until shutdown. It installs signal handling and always performs
+// graceful shutdown (and panic recovery) before returning.
 func (app *Application) Run() error {
-	// Check if Application instance is nil
 	if app == nil {
 		return fmt.Errorf("application instance is nil: cannot start Lynx application")
 	}
 
-	// Initialize enhanced features
 	app.initializeEnhancedFeatures()
 
-	// Improved resource cleanup order: handle panic first, then execute cleanup
+	// Recover from any panic before shutting down, so cleanup always runs.
 	defer func() {
 		if r := recover(); r != nil {
 			app.handlePanic(r)
@@ -123,15 +122,12 @@ func (app *Application) Run() error {
 		app.gracefulShutdown()
 	}()
 
-	// Record application startup time for calculating startup duration
 	startTime := time.Now()
 
-	// Load bootstrap configuration
 	if err := app.LoadBootstrapConfig(); err != nil {
 		return fmt.Errorf("failed to load bootstrap configuration: %w", err)
 	}
 
-	// Initialize Lynx application
 	lynxApp, err := lynxapp.NewStandaloneApp(app.conf, app.plugins...)
 	if err != nil {
 		return fmt.Errorf("failed to create Lynx application: %w", err)
@@ -150,27 +146,25 @@ func (app *Application) Run() error {
 		return err
 	}
 
-	// Initialize Kratos application with proxy logger (hot-swappable inner)
 	kratosApp, err := app.wire()
 	if err != nil {
 		log.Error(err)
 		return fmt.Errorf("failed to initialize Kratos application: %w", err)
 	}
 
-	// Configure protocol buffers JSON serialization options
+	// Global protojson options for all HTTP responses. emitUnpopulated is
+	// configurable; a missing key defaults to false. UseProtoNames keeps the
+	// proto field names rather than camelCasing them.
 	jsonEmit, jsonConfErr := lynxApp.GetGlobalConfig().Value("lynx.http.response.json.emitUnpopulated").Bool()
 	if jsonConfErr != nil && errors.Is(jsonConfErr, config.ErrNotFound) {
 		jsonEmit = false
 	}
-	// EmitUnpopulated: include unset fields during serialization
-	// UseProtoNames: use field names defined in proto files
 	json.MarshalOptions = protojson.MarshalOptions{
 		EmitUnpopulated: jsonEmit,
 		UseProtoNames:   true,
 	}
 
-	// Start health checker after plugins are loaded
-	// This ensures health checks can properly verify plugin states
+	// Start health checks only after plugins are up, so they reflect real plugin state.
 	app.startHealthChecker()
 
 	log.Infof("lynx application started successfully, elapsed time: %s, port listening initiated", formatStartupElapsed(time.Since(startTime)))
@@ -231,21 +225,18 @@ func formatStartupElapsed(elapsed time.Duration) string {
 	}
 }
 
-// initializeEnhancedFeatures initializes enhanced production features
 func (app *Application) initializeEnhancedFeatures() {
 	app.shutdownTimeout = DefaultShutdownTimeout
 	app.shutdownChan = make(chan struct{})
 
-	// Initialize health checker
 	app.healthChecker = &HealthChecker{
 		isHealthy:     true,
 		lastCheck:     time.Now(),
 		checkInterval: DefaultHealthCheckInterval,
 		stopChan:      make(chan struct{}),
-		app:           app, // Store reference for health checks
+		app:           app,
 	}
 
-	// Initialize circuit breaker
 	app.circuitBreaker = lynxapp.NewCircuitBreaker(DefaultCircuitBreakerThreshold, DefaultCircuitBreakerTimeout)
 }
 
@@ -257,7 +248,6 @@ func (app *Application) setupSignalHandling() {
 
 	go func() {
 		sig := <-sigChan
-		// Logger should be initialized by now
 		log.Infof("Received signal %v, initiating graceful shutdown", sig)
 		app.initiateShutdown()
 	}()
@@ -367,7 +357,6 @@ func (app *Application) gracefulShutdown() {
 
 // loadPluginsWithProtection loads plugins with circuit breaker protection
 func (app *Application) loadPluginsWithProtection() error {
-	// Check circuit breaker state before loading plugins
 	if !app.circuitBreaker.CanExecute() {
 		return fmt.Errorf("circuit breaker is open, skipping plugin loading")
 	}
@@ -383,11 +372,9 @@ func (app *Application) loadPluginsWithProtection() error {
 
 // runWithGracefulShutdown runs the Kratos application with graceful shutdown support
 func (app *Application) runWithGracefulShutdown(kratosApp *kratos.App) error {
-	// Run Kratos application in a goroutine
 	errChan := make(chan error, 1)
 	go func() {
 		defer func() {
-			// Recover from panic in Kratos application
 			if r := recover(); r != nil {
 				errChan <- fmt.Errorf("panic in Kratos application: %v", r)
 			}
@@ -397,16 +384,14 @@ func (app *Application) runWithGracefulShutdown(kratosApp *kratos.App) error {
 		}
 	}()
 
-	// Wait for either shutdown signal or error
 	select {
 	case <-app.shutdownChan:
 		log.Info("Shutdown signal received, stopping Kratos application...")
-
 		return app.stopKratosAppWithTimeout(kratosApp)
 
 	case err := <-errChan:
 		log.Error(err)
-		// Initiate shutdown on error to ensure cleanup
+		// A run error also triggers shutdown so the deferred cleanup still runs.
 		app.initiateShutdown()
 		return fmt.Errorf("failed to run Kratos application: %w", err)
 	}
@@ -450,7 +435,6 @@ func (app *Application) startHealthChecker() {
 // handlePanic recovers from panic and ensures proper resource cleanup
 func (app *Application) handlePanic(r any) {
 	var err error
-	// Convert panic to error based on its type
 	switch v := r.(type) {
 	case error:
 		err = v
@@ -461,32 +445,24 @@ func (app *Application) handlePanic(r any) {
 	}
 	log.Error(err)
 
-	// Record failure in circuit breaker
 	if app.circuitBreaker != nil {
 		app.circuitBreaker.RecordResult(err)
 	}
 
-	// Ensure plugins are unloaded
 	if app.lynxApp != nil && app.lynxApp.GetPluginManager() != nil {
 		app.lynxApp.GetPluginManager().UnloadPlugins()
 	}
 }
 
-// NewApplication creates a new Lynx microservice bootstrap instance
-// Parameters:
-//   - wire: Function used to initialize Kratos application
-//   - plugins: Optional plugin list to initialize with the application
-//
-// Returns:
-//   - *Application: Initialized Application instance
+// NewApplication creates a bootstrap shell around the given wire function and
+// optional plugins. It returns nil if wire is nil. By default the created app is
+// published as the process-wide default; see SetPublishDefaultApp to opt out.
 func NewApplication(wire wireApp, plugins ...plugins.Plugin) *Application {
-	// Check if wire function is nil
 	if wire == nil {
 		log.Error("wire function cannot be nil: required for Kratos application initialization")
 		return nil
 	}
 
-	// Return initialized Application instance
 	return &Application{
 		wire:              wire,
 		plugins:           plugins,
@@ -540,11 +516,10 @@ func (hc *HealthChecker) Stop() {
 
 // performHealthCheck performs a health check
 func (hc *HealthChecker) performHealthCheck() {
-	// Protect against panic in health check
 	defer func() {
 		if r := recover(); r != nil {
 			log.Errorf("Panic in health check: %v", r)
-			// Mark as unhealthy on panic
+			// A panicking health check is itself a sign of an unhealthy app.
 			hc.mu.Lock()
 			hc.isHealthy = false
 			hc.mu.Unlock()
@@ -556,18 +531,14 @@ func (hc *HealthChecker) performHealthCheck() {
 
 	hc.lastCheck = time.Now()
 
-	// Enhanced health check: check application and plugin states
 	healthy := true
 
-	// Check if application is initialized
 	if hc.app != nil && hc.app.lynxApp != nil {
-		// Check plugin manager
 		pluginManager := hc.app.lynxApp.GetPluginManager()
 		if pluginManager != nil {
-			// Check for unload failures
 			failures := pluginManager.GetUnloadFailures()
 			if len(failures) > 0 {
-				// Recent failures (within last 5 minutes) indicate unhealthy state
+				// Only failures in the last 5 minutes count; older ones are stale.
 				recentFailures := 0
 				fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
 				for _, failure := range failures {
@@ -581,11 +552,10 @@ func (hc *HealthChecker) performHealthCheck() {
 				}
 			}
 
-			// Check resource stats for potential leaks
+			// High resource counts/sizes are warned about but never flip the
+			// status to unhealthy, since legitimate workloads can be large.
 			resourceStats := pluginManager.GetResourceStats()
 			if resourceStats != nil {
-				// Check if resource count is reasonable (threshold: 1000 resources)
-				// Use type assertion with error handling for robustness
 				if totalResourcesVal, exists := resourceStats["total_resources"]; exists {
 					var totalResources int
 					switch v := totalResourcesVal.(type) {
@@ -596,7 +566,6 @@ func (hc *HealthChecker) performHealthCheck() {
 					case int64:
 						totalResources = int(v)
 					default:
-						// Try to convert if possible
 						if intVal, ok := totalResourcesVal.(int); ok {
 							totalResources = intVal
 						} else {
@@ -606,11 +575,9 @@ func (hc *HealthChecker) performHealthCheck() {
 					}
 					if totalResources > 1000 {
 						log.Warnf("Health check: high resource count detected: %d (potential leak)", totalResources)
-						// Don't mark as unhealthy, just warn - could be legitimate high usage
 					}
 				}
 
-				// Check resource size for potential memory leaks
 				if totalSizeVal, exists := resourceStats["total_size_bytes"]; exists {
 					var totalSize int64
 					switch v := totalSizeVal.(type) {
@@ -621,7 +588,6 @@ func (hc *HealthChecker) performHealthCheck() {
 					case int32:
 						totalSize = int64(v)
 					default:
-						// Try to convert if possible
 						if int64Val, ok := totalSizeVal.(int64); ok {
 							totalSize = int64Val
 						} else {
@@ -630,12 +596,10 @@ func (hc *HealthChecker) performHealthCheck() {
 						}
 					}
 					if totalSize > 0 {
-						// Threshold: 100MB
-						const maxSizeBytes = 100 * 1024 * 1024
+						const maxSizeBytes = 100 * 1024 * 1024 // 100MB
 						if totalSize > maxSizeBytes {
 							log.Warnf("Health check: large resource size detected: %d bytes (%.2f MB) - potential memory leak",
 								totalSize, float64(totalSize)/(1024*1024))
-							// Don't mark as unhealthy, just warn
 						}
 					}
 				}

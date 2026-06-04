@@ -21,7 +21,8 @@ var (
 	skipBuild bool
 )
 
-// CmdRun represents the run command
+// CmdRun builds and runs a Lynx project, optionally with hot reload (--watch).
+// It auto-detects the main package (root main.go or cmd/<name>/main.go).
 var CmdRun = &cobra.Command{
 	Use:   "run [path]",
 	Short: "Build and run the Lynx project",
@@ -62,32 +63,27 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	// Verbose comes from the root persistent --verbose flag (inherited here).
 	verbose, _ := cmd.Flags().GetBool("verbose")
 
-	// Determine project path
 	projectPath := "."
 	if len(args) > 0 {
 		projectPath = args[0]
 	}
 
-	// Convert to absolute path
 	absPath, err := filepath.Abs(projectPath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve project path: %w", err)
 	}
 
-	// Check if it's a valid Go project
 	if err := validateProject(absPath); err != nil {
 		return err
 	}
 
-	// Print startup message
 	fmt.Printf("\n🚀 %s\n", color.CyanString("Starting Lynx project..."))
 	fmt.Printf("📁 Project: %s\n", color.YellowString(absPath))
 
-	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Setup signal handling
+	// Cancel the context on SIGINT/SIGTERM for graceful shutdown.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -97,7 +93,6 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	// Create runner
 	runner := NewRunner(RunnerConfig{
 		ProjectPath: absPath,
 		WatchMode:   watchMode,
@@ -109,7 +104,6 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		SkipBuild:   skipBuild,
 	})
 
-	// Start the runner
 	if err := runner.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start application: %w", err)
 	}
@@ -117,20 +111,19 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// validateProject ensures path is a Go module with a runnable main package,
+// either at the root or under cmd/<name> (the Lynx layout).
 func validateProject(path string) error {
-	// Check for go.mod
 	goModPath := filepath.Join(path, "go.mod")
 	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
 		return fmt.Errorf("no go.mod found in %s - not a Go project", path)
 	}
 
-	// Check for root main.go
 	mainPath := filepath.Join(path, "main.go")
 	if _, err := os.Stat(mainPath); err == nil {
 		return nil
 	}
 
-	// Check for cmd/<subdir>/main.go (Lynx layout)
 	cmdPath := filepath.Join(path, "cmd")
 	cmdInfo, err := os.Stat(cmdPath)
 	if err != nil || !cmdInfo.IsDir() {

@@ -1,7 +1,6 @@
 package plugins
 
-// HealthReport represents the detailed health status of a plugin
-// Provides comprehensive health information for monitoring
+// HealthReport represents the detailed health status of a plugin.
 type HealthReport struct {
 	Status    string         // Current health status (healthy, degraded, unhealthy)
 	Details   map[string]any // Detailed health metrics and information
@@ -9,10 +8,8 @@ type HealthReport struct {
 	Message   string         // Optional descriptive message
 }
 
-// HealthCheck defines methods for plugin health monitoring
-// Provides health status and monitoring capabilities
+// HealthCheck defines methods for plugin health monitoring.
 type HealthCheck interface {
-	// GetHealth returns the current health status of the plugin
-	// Provides detailed health information
+	// GetHealth returns the current health status of the plugin.
 	GetHealth() HealthReport
 }

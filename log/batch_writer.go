@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// BatchWriter wraps an io.Writer with batch writing optimization
-// It collects multiple writes and flushes them together to reduce system calls
+// BatchWriter buffers writes and flushes them together to reduce syscalls.
+// It runs a background flush loop and is safe for concurrent use.
 type BatchWriter struct {
 	underlying    io.Writer
 	batch         []byte
@@ -26,11 +26,12 @@ type BatchWriter struct {
 	errorCount   atomic.Int64
 }
 
-// NewBatchWriter creates a new batch writer
+// NewBatchWriter starts a BatchWriter that flushes when the buffer reaches
+// batchSize bytes or every flushInterval (<=0 disables periodic flushing).
 func NewBatchWriter(w io.Writer, batchSize int, flushInterval time.Duration) *BatchWriter {
 	bw := &BatchWriter{
 		underlying:    w,
-		batch:         make([]byte, 0, batchSize*2), // Pre-allocate with some headroom
+		batch:         make([]byte, 0, batchSize*2), // headroom to absorb a full batch plus one write
 		batchSize:     batchSize,
 		flushInterval: flushInterval,
 		stopCh:        make(chan struct{}),
@@ -48,9 +49,8 @@ func (bw *BatchWriter) Write(p []byte) (int, error) {
 		return 0, io.ErrClosedPipe
 	}
 
-	// If single write is larger than batch size, write directly without locking
+	// Oversized writes bypass the buffer: flush pending data, then write directly.
 	if len(p) > bw.batchSize {
-		// Flush any pending data first (with lock)
 		bw.batchMu.Lock()
 		var flushErr error
 		if len(bw.batch) > 0 {
@@ -62,7 +62,6 @@ func (bw *BatchWriter) Write(p []byte) (int, error) {
 			return 0, flushErr
 		}
 
-		// Write large data directly (no lock needed)
 		n, err := bw.underlying.Write(p)
 		bw.totalWrites.Add(1)
 		if err != nil {
@@ -71,44 +70,38 @@ func (bw *BatchWriter) Write(p []byte) (int, error) {
 		return n, err
 	}
 
-	// For normal writes, minimize lock holding time
+	// Normal path: copy any batch that needs flushing under the lock, then
+	// perform the actual write outside it to minimize contention.
 	var toFlush []byte
 	var needsFlush bool
 
 	bw.batchMu.Lock()
-	// Check if we need to flush before adding
 	if len(bw.batch) > 0 && len(bw.batch)+len(p) > bw.batchSize {
-		// Copy batch for flushing outside lock
 		toFlush = make([]byte, len(bw.batch))
 		copy(toFlush, bw.batch)
-		bw.batch = bw.batch[:0] // Reset batch
+		bw.batch = bw.batch[:0]
 		needsFlush = true
 	}
 
-	// Add to batch
 	bw.batch = append(bw.batch, p...)
 	batchFull := len(bw.batch) >= bw.batchSize
 	if batchFull {
-		// Copy batch for flushing outside lock
 		toFlush = make([]byte, len(bw.batch))
 		copy(toFlush, bw.batch)
-		bw.batch = bw.batch[:0] // Reset batch
+		bw.batch = bw.batch[:0]
 		needsFlush = true
 	}
 	bw.batchMu.Unlock()
 
 	bw.totalWrites.Add(1)
 
-	// Flush outside lock to reduce contention
 	if needsFlush && len(toFlush) > 0 {
 		_, err := bw.underlying.Write(toFlush)
 		if err != nil {
-			// Write failed: need to restore data to batch to prevent data loss
-			// This is a best-effort recovery - if batch is full, data may still be lost
+			// Best-effort recovery: prepend the unflushed bytes back onto the
+			// batch when there is room, otherwise the data is lost.
 			bw.batchMu.Lock()
-			// Try to restore if there's space (unlikely but possible if batch was reset)
 			if len(bw.batch)+len(toFlush) <= bw.batchSize*2 {
-				// Prepend toFlush to batch to maintain order
 				restored := make([]byte, len(toFlush), len(toFlush)+len(bw.batch))
 				copy(restored, toFlush)
 				bw.batch = append(restored, bw.batch...)
@@ -124,8 +117,8 @@ func (bw *BatchWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// flushLocked flushes the batch (must be called with batchMu locked)
-// Note: This method is kept for backward compatibility but Write() now handles flushing outside lock
+// flushLocked writes out the buffered batch. It must be called with batchMu held
+// and temporarily releases the lock during the underlying write.
 func (bw *BatchWriter) flushLocked() error {
 	if len(bw.batch) == 0 {
 		return nil
@@ -133,9 +126,8 @@ func (bw *BatchWriter) flushLocked() error {
 
 	data := make([]byte, len(bw.batch))
 	copy(data, bw.batch)
-	bw.batch = bw.batch[:0] // Reset batch
+	bw.batch = bw.batch[:0]
 
-	// Unlock before writing to avoid blocking other writes
 	bw.batchMu.Unlock()
 	_, err := bw.underlying.Write(data)
 	bw.batchMu.Lock()
@@ -150,19 +142,19 @@ func (bw *BatchWriter) flushLocked() error {
 	return err
 }
 
-// Flush forces a flush of the current batch
+// Flush writes out any buffered data immediately.
 func (bw *BatchWriter) Flush() error {
 	bw.batchMu.Lock()
 	defer bw.batchMu.Unlock()
 	return bw.flushLocked()
 }
 
-// flushLoop periodically flushes the batch
+// flushLoop flushes the batch on each tick until stopped, with a final flush on shutdown.
 func (bw *BatchWriter) flushLoop() {
 	defer bw.wg.Done()
 
 	if bw.flushInterval <= 0 {
-		return // No periodic flushing
+		return
 	}
 
 	ticker := time.NewTicker(bw.flushInterval)
@@ -171,7 +163,6 @@ func (bw *BatchWriter) flushLoop() {
 	for {
 		select {
 		case <-bw.stopCh:
-			// Final flush on shutdown
 			err := bw.Flush()
 			if err != nil {
 				return
@@ -186,7 +177,7 @@ func (bw *BatchWriter) flushLoop() {
 	}
 }
 
-// Close implements io.Closer
+// Close stops the flush loop and flushes any remaining data. It is idempotent.
 func (bw *BatchWriter) Close() error {
 	if bw.closed.Swap(true) {
 		return nil
@@ -195,11 +186,10 @@ func (bw *BatchWriter) Close() error {
 	close(bw.stopCh)
 	bw.wg.Wait()
 
-	// Final flush
 	return bw.Flush()
 }
 
-// GetMetrics returns batch writer metrics
+// GetMetrics returns cumulative counts of writes, batches, flushes, and errors.
 func (bw *BatchWriter) GetMetrics() (writes, batches, flushes, errors int64) {
 	return bw.totalWrites.Load(),
 		bw.totalBatches.Load(),

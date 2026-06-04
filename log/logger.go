@@ -1,4 +1,3 @@
-// Package log provides core application functionality for the Lynx framework
 package log
 
 import (
@@ -147,7 +146,6 @@ func applyStackFromConfig(c *lconf.Log) {
 	if s == nil {
 		return
 	}
-	// map level string to log.Level
 	var minLvl log.Level
 	switch strings.ToLower(s.GetLevel()) {
 	case "debug":
@@ -179,7 +177,6 @@ func applySamplingFromConfig(c *lconf.Log) {
 	}
 	sm := c.GetSampling()
 	if sm == nil {
-		// leave defaults
 		return
 	}
 	setSamplingConfig(
@@ -189,7 +186,6 @@ func applySamplingFromConfig(c *lconf.Log) {
 		int(sm.GetMaxInfoPerSec()),
 		int(sm.GetMaxDebugPerSec()),
 	)
-	// Note: setSamplingConfig already updates samplingEnabled flag
 }
 
 // rebuildLogger rebuilds Logger and Helper and stores helper atomically.
@@ -214,18 +210,11 @@ func rebuildLogger() {
 	}
 }
 
-// InitLogger initializes the application's logging system.
-// InitLogger initializes the application's logging system with the provided configuration.
-// It returns an error if initialization fails.
-//
-// Parameters:
-//   - name: The name of the service
-//   - host: The host identifier
-//   - version: The service version
-//   - cfg: The configuration instance
-//
-// Returns:
-//   - error: An error if initialization fails, nil otherwise
+// InitLogger builds the logging system from the "lynx.log" section of cfg using
+// the given service name, host, and version as default fields. It is safe to
+// call again to reinitialize; a prior logger is cleaned up first. name, host,
+// and cfg must be non-empty/non-nil. Configuration changes are applied at
+// runtime via Watch, falling back to 2s polling when the source lacks Watch.
 func InitLogger(name string, host string, version string, cfg kconf.Config) error {
 	loggerLifecycleMu.Lock()
 	defer loggerLifecycleMu.Unlock()
@@ -234,7 +223,6 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		cleanupLoggersLocked()
 	}
 
-	// Validate input parameters
 	if name == "" {
 		return fmt.Errorf("service name cannot be empty")
 	}
@@ -245,7 +233,6 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		return fmt.Errorf("configuration instance cannot be nil")
 	}
 
-	// Initialize performance components
 	bufferedWriters = make(map[string]*BufferedWriter)
 	asyncWriters = make(map[string]*AsyncLogWriter)
 	globalMetrics = &LogPerformanceMetrics{
@@ -253,13 +240,11 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	}
 	metricsEnabled = false
 
-	// Log the initialization of the logging component using fmt to avoid uninitialized logger discrepancies
+	// Use fmt here: the logger isn't initialized yet.
 	fmt.Println("[lynx] initializing logging component with performance optimizations")
 
-	// Parse log configuration
 	var logConfig lconf.Log
 	if err := cfg.Value("lynx.log").Scan(&logConfig); err != nil {
-		// If no configuration, use default configuration
 		logConfig = lconf.Log{
 			Level:         "info",
 			ConsoleOutput: true,
@@ -267,13 +252,10 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	}
 	metricsEnabled = performanceMonitorEnabled(cfg)
 
-	// Set up log output with performance optimizations
 	var writers []io.Writer
 
-	// Configure console output with optimizations
 	if logConfig.GetConsoleOutput() {
-		// Read format configuration directly from the proto-generated accessors.
-		formatType := "json" // default
+		formatType := "json"
 		consoleColor := true
 		if f := logConfig.GetFormat(); f != nil {
 			if t := f.GetType(); t != "" {
@@ -281,7 +263,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			}
 			consoleColor = f.GetConsoleColor()
 		}
-		// Use a separate console format if specified; fall back to the file format type.
+		// Console may use a distinct format; otherwise it shares the file format.
 		consoleFormat := formatType
 		if f := logConfig.GetFormat(); f != nil {
 			if cf := f.GetConsoleFormat(); cf != "" {
@@ -289,7 +271,6 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			}
 		}
 
-		// Create console writer based on format
 		consoleWriter := NewConsoleWriter(ConsoleWriterConfig{
 			Format:      consoleFormat,
 			ColorOutput: consoleColor,
@@ -297,34 +278,29 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			TimeFormat:  "15:04:05.000",
 		})
 
-		// Wrap with buffered writer for better performance
-		bufferedConsole := NewBufferedWriter(consoleWriter, 32*1024) // 32KB buffer for console
+		bufferedConsole := NewBufferedWriter(consoleWriter, 32*1024) // 32KB console buffer
 		bufferedWriters["console"] = bufferedConsole
 		writers = append(writers, bufferedConsole)
 	}
 
-	// Configure file output with optimizations
 	if logConfig.GetFilePath() != "" {
-		// Ensure log directory exists
 		logDir := filepath.Dir(logConfig.GetFilePath())
 		if err := os.MkdirAll(logDir, 0755); err != nil {
 			return fmt.Errorf("failed to create log directory: %v", err)
 		}
 
-		// Configure log rotation
 		ms := int(logConfig.GetMaxSizeMb())
 		if ms <= 0 {
 			ms = 100 // default MB
 		}
 		mb := int(logConfig.GetMaxBackups())
 		if mb < 0 {
-			mb = 0 // clamp to non-negative
+			mb = 0
 		}
 		ma := int(logConfig.GetMaxAgeDays())
 		if ma < 0 {
 			ma = 0 // 0 means no age-based removal
 		}
-		// Read rotation configuration directly from the proto-generated accessors.
 		maxTotalSizeMB := int(logConfig.GetMaxTotalSizeMb())
 		if maxTotalSizeMB < 0 {
 			maxTotalSizeMB = 0 // 0 means unlimited
@@ -332,7 +308,6 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		rotationStrategyStr := logConfig.GetRotationStrategy()
 		rotationIntervalStr := logConfig.GetRotationInterval()
 
-		// Determine rotation strategy
 		rotationStrategy := RotationStrategy(strings.ToLower(rotationStrategyStr))
 		if rotationStrategy == "" {
 			rotationStrategy = RotationStrategySize // default
@@ -355,7 +330,6 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 
 		var fileWriter io.Writer
 
-		// Use TimeRotationWriter if time-based rotation is needed
 		if rotationStrategy == RotationStrategyTime || rotationStrategy == RotationStrategyBoth {
 			fileWriter = NewTimeRotationWriter(
 				logConfig.GetFilePath(),
@@ -365,7 +339,7 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 				maxTotalSizeMB,
 			)
 		} else {
-			// Use standard lumberjack for size-only rotation
+			// Size-only rotation uses lumberjack directly.
 			fileWriter = &lumberjack.Logger{
 				Filename:   logConfig.GetFilePath(),
 				MaxSize:    ms, // MB
@@ -375,15 +349,13 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			}
 		}
 
-		// For file output, always use JSON format (structured logging)
-		// Format configuration mainly affects console output
-		// This ensures log files remain parseable and searchable
+		// Files are always JSON regardless of format config, so they stay
+		// machine-parseable; format settings affect console output only.
 
-		// Read performance configuration directly from the proto-generated accessors.
-		batchSize := 64 * 1024 // 64KB default
+		batchSize := 64 * 1024 // 64KB
 		batchFlushInterval := 100 * time.Millisecond
-		asyncQueueSize := 2000       // default queue size
-		enableDynamicAdjust := false // default: disabled for stability
+		asyncQueueSize := 2000
+		enableDynamicAdjust := false // off by default for stability
 		if perf := logConfig.GetPerformance(); perf != nil {
 			if bs := perf.GetBatchSizeBytes(); bs > 0 {
 				batchSize = int(bs)
@@ -397,17 +369,14 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			enableDynamicAdjust = perf.GetEnableDynamicAdjust()
 		}
 
-		// Apply batch writing optimization
+		// File output is batched then made async so logging never blocks callers.
 		batchWriter := NewBatchWriter(fileWriter, batchSize, batchFlushInterval)
-
-		// Use async writer for file output to improve performance
-		// Enable dynamic adjustment for production environments (can be configured)
 		asyncFile := NewAsyncLogWriter(batchWriter, asyncQueueSize, enableDynamicAdjust)
 		asyncWriters["file"] = asyncFile
 		writers = append(writers, asyncFile)
 	}
 
-	// If no output is configured, default to optimized console output
+	// Fall back to console output when nothing else is configured.
 	if len(writers) == 0 {
 		consoleWriter := NewOptimizedConsoleWriter(os.Stdout)
 		bufferedConsole := NewBufferedWriter(consoleWriter, 32*1024)
@@ -415,21 +384,17 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		writers = append(writers, bufferedConsole)
 	}
 
-	// Create multi-output writer
 	output := zerolog.MultiLevelWriter(writers...)
 
-	// Set global time format and timezone with optimizations
-	zerolog.TimeFieldFormat = "15:04:05.000" // Shorter format for better performance
-	// timezone from log config (prefer scanned field)
+	zerolog.TimeFieldFormat = "15:04:05.000"
 	if tz := strings.TrimSpace(logConfig.GetTimezone()); tz != "" {
 		setTimezoneByName(tz)
 	} else {
 		setTimezoneByName("Local")
 	}
-	// Timestamp function reads current timezone atomically
+	// Resolve the timezone per call so hot-reload changes take effect.
 	zerolog.TimestampFunc = func() time.Time { return time.Now().In(getTZLoc()) }
 
-	// Set global log level (unified via applyLevel)
 	logLevel := strings.ToLower(logConfig.GetLevel())
 	var initLvl log.Level
 	switch logLevel {
@@ -446,25 +411,21 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 	}
 	applyLevel(initLvl)
 
-	// callerSkip is configurable
 	callerSkipCurrent = callerSkipDefault
 	if v := logConfig.GetCallerSkip(); v > 0 {
 		callerSkipCurrent = int(v)
 	}
 
-	// apply stack & sampling initial config
 	applyStackFromConfig(&logConfig)
 	applySamplingFromConfig(&logConfig)
 
-	// Initialize underlying logger with zeroLogger and performance optimizations
 	z := zerolog.New(output).With().Timestamp().Logger()
 
-	// Store service metadata for rebuilds
+	// Retained for rebuildLogger on hot reload.
 	serviceName = name
 	serviceHost = host
 	serviceVersion = version
 
-	// Initialize the main logger with level filter and default fields
 	baseAdapter = zeroLogLogger{z}
 	filtered := log.NewFilter(baseAdapter, log.FilterLevel(kratosMinLevel))
 	logger := log.With(
@@ -477,31 +438,25 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		"span.id", tracing.SpanID(),
 	)
 
-	// Check if logger creation failed, return error if nil
 	if logger == nil {
 		return fmt.Errorf("failed to create logger")
 	}
 
-	// Create a lHelper for more convenient logging
 	lHelper := log.NewHelper(logger)
-	// Check if logger helper creation failed, return error if nil
 	if lHelper == nil {
 		return fmt.Errorf("failed to create logger lHelper")
 	}
 
-	// Store logger instances
 	Logger = logger
 	LHelper = *lHelper
-	// Update atomic helper to avoid data race during hot updates
+	// Stored atomically so hot reloads can swap the helper without a data race.
 	helperStore.Store(lHelper)
 
-	// Initialize proxy logger inner for Kratos app consumption
-	GetProxyLogger() // ensure pLogger initialized
+	GetProxyLogger() // ensure pLogger is initialized for the Kratos app
 	if pLogger != nil {
 		pLogger.inner.Store(logger)
 	}
 
-	// Initialize stop channels for background goroutines
 	monitorStopCh = make(chan struct{})
 	configWatchStopCh = make(chan struct{})
 	monitorCh := monitorStopCh
@@ -513,21 +468,17 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		go monitorLogPerformance(monitorCh)
 	}
 
-	// Mark logger as initialized
 	loggerInitialized.Store(true)
 
-	// Banner display has been decoupled from logger initialization (see app/banner)
-
-	// First try Watch mechanism based on configuration source (e.g., local files, Polaris, etc. may support)
+	// apply reloads timezone, level, caller skip, stack, and sampling from a new
+	// config and rebuilds the logger. Shared by the Watch and polling paths.
 	apply := func(nc *lconf.Log) {
-		// timezone update (use nc field)
 		if tz := strings.TrimSpace(nc.GetTimezone()); tz != "" {
 			setTimezoneByName(tz)
 		} else {
 			setTimezoneByName("Local")
 		}
 
-		// level update
 		switch strings.ToLower(nc.GetLevel()) {
 		case "debug":
 			applyLevel(log.LevelDebug)
@@ -539,21 +490,18 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 			applyLevel(log.LevelError)
 		}
 
-		// caller skip update
 		callerSkipCurrent = callerSkipDefault
 		if v := nc.GetCallerSkip(); v > 0 {
 			callerSkipCurrent = int(v)
 		}
 
-		// stack & sampling update
 		applyStackFromConfig(nc)
 		applySamplingFromConfig(nc)
 
-		// Rebuild logger to reflect caller skip and any changes
 		rebuildLogger()
 	}
 
-	// Use Watch, fallback to polling if not supported
+	// Prefer the config source's Watch; fall back to polling if unsupported.
 	if err := cfg.Watch("lynx.log", func(key string, v kconf.Value) {
 		var nc lconf.Log
 		if err := v.Scan(&nc); err != nil {
@@ -561,18 +509,16 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 		}
 		apply(&nc)
 	}); err != nil {
-		// Lightweight polling hot update (fallback when backend doesn't support Watch)
-		// Read lynx.log every 2s, apply if configuration changes
+		// Watch unsupported: poll lynx.log every 2s and apply on change.
 		go func() {
-			// Generate signature
+			// signature condenses the watched fields into a string so changes
+			// can be detected with a cheap comparison.
 			signature := func(c *lconf.Log) string {
 				if c == nil {
 					return ""
 				}
 				var sb strings.Builder
-				// base fields
 				fmt.Fprintf(&sb, "lvl=%s;tz=%s;caller=%d;", strings.ToLower(c.GetLevel()), getTZName(), c.GetCallerSkip())
-				// stack fields
 				if s := c.GetStack(); s != nil {
 					fmt.Fprintf(&sb, "stack_en=%t;stack_lvl=%s;stack_skip=%d;stack_max=%d;", s.GetEnable(), strings.ToLower(s.GetLevel()), s.GetSkip(), s.GetMaxFrames())
 					if fps := s.GetFilterPrefixes(); len(fps) > 0 {
@@ -581,7 +527,6 @@ func InitLogger(name string, host string, version string, cfg kconf.Config) erro
 						sb.WriteString(";")
 					}
 				}
-				// sampling fields
 				if sm := c.GetSampling(); sm != nil {
 					fmt.Fprintf(&sb, "smp_en=%t;smp_ir=%.3f;smp_dr=%.3f;smp_i_max=%d;smp_d_max=%d;", sm.GetEnable(), sm.GetInfoRatio(), sm.GetDebugRatio(), sm.GetMaxInfoPerSec(), sm.GetMaxDebugPerSec())
 				}
@@ -648,7 +593,6 @@ func monitorLogPerformance(stopCh <-chan struct{}) {
 
 			writersMu.RLock()
 
-			// Collect metrics from buffered writers
 			for name, bw := range bufferedWriters {
 				metrics := bw.GetMetrics()
 				if metrics.TotalLogs > 0 {
@@ -657,7 +601,6 @@ func monitorLogPerformance(stopCh <-chan struct{}) {
 				}
 			}
 
-			// Collect metrics from async writers
 			for name, aw := range asyncWriters {
 				metrics := aw.GetMetrics()
 				if metrics.TotalLogs > 0 {
@@ -717,14 +660,12 @@ func CleanupLoggers() {
 }
 
 func cleanupLoggersLocked() {
-	// Mark logger as not initialized
 	loggerInitialized.Store(false)
 
-	// Stop background goroutines safely
+	// Signal background goroutines to stop, tolerating already-closed channels.
 	if monitorStopCh != nil {
 		select {
 		case <-monitorStopCh:
-			// already closed
 		default:
 			close(monitorStopCh)
 		}
@@ -733,15 +674,14 @@ func cleanupLoggersLocked() {
 	if configWatchStopCh != nil {
 		select {
 		case <-configWatchStopCh:
-			// already closed
 		default:
 			close(configWatchStopCh)
 		}
 		configWatchStopCh = nil
 	}
 
-	// Wait for goroutines to stop with configurable timeout
-	// Optimized: Make timeout configurable via environment variable or default
+	// Give goroutines time to observe the stop signal, then proceed regardless
+	// to avoid deadlock. Both durations are env-overridable.
 	goroutineWaitTime := 50 * time.Millisecond
 	if envWait := os.Getenv("LYNX_LOG_GOROUTINE_WAIT_TIME"); envWait != "" {
 		if parsed, err := time.ParseDuration(envWait); err == nil {
@@ -757,24 +697,21 @@ func cleanupLoggersLocked() {
 
 	done := make(chan struct{})
 	go func() {
-		// Give goroutines time to see stop signals
 		time.Sleep(goroutineWaitTime)
 		close(done)
 	}()
 
 	select {
 	case <-done:
-		// Goroutines should have stopped
 	case <-time.After(goroutineTimeout):
-		// Timeout: continue anyway to prevent deadlock
 		fmt.Fprintf(os.Stderr, "[lynx-log-warn] CleanupLoggers timeout waiting for goroutines after %v\n", goroutineTimeout)
 	}
 
 	writersMu.Lock()
 	defer writersMu.Unlock()
 
-	// Close all writers with configurable timeout protection
-	// Optimized: Make timeout configurable via environment variable or default
+	// Close writers under a timeout (env-overridable) so a stuck writer can't
+	// hang shutdown.
 	writerCloseTimeout := 5 * time.Second
 	if envTimeout := os.Getenv("LYNX_LOG_WRITER_CLOSE_TIMEOUT"); envTimeout != "" {
 		if parsed, err := time.ParseDuration(envTimeout); err == nil {
@@ -800,9 +737,7 @@ func cleanupLoggersLocked() {
 
 	select {
 	case <-closeDone:
-		// All writers closed successfully
 	case <-time.After(writerCloseTimeout):
-		// Timeout: continue anyway
 		fmt.Fprintf(os.Stderr, "[lynx-log-warn] CleanupLoggers timeout closing writers after %v\n", writerCloseTimeout)
 	}
 
@@ -827,24 +762,17 @@ func Caller(depth int) log.Valuer {
 	}
 }
 
-// trimFilePath reduces a file path to its last 'depth' components.
-// For example, with depth=2: "/a/b/c/d.go" becomes "c/d.go".
-//
-// Parameters:
-//   - file: The full file path
-//   - depth: Number of path components to keep
-//
-// Returns:
-//   - The trimmed file path
+// trimFilePath keeps the last depth path components of file (e.g. depth=2 turns
+// "/a/b/c/d.go" into "c/d.go"). Returns "unknown" for an empty path or depth<=0,
+// and the whole path when it has fewer components than depth.
 func trimFilePath(file string, depth int) string {
 	if file == "" || depth <= 0 {
 		return "unknown"
 	}
 
-	// Find the last 'depth' number of slashes
 	var slashPos []int
 	for i := len(file) - 1; i >= 0; i-- {
-		if file[i] == '/' || file[i] == '\\' { // Handle both Unix and Windows paths
+		if file[i] == '/' || file[i] == '\\' { // handle Unix and Windows separators
 			slashPos = append(slashPos, i)
 			if len(slashPos) == depth {
 				break
@@ -852,12 +780,10 @@ func trimFilePath(file string, depth int) string {
 		}
 	}
 
-	// If we found fewer slashes than requested depth
 	if len(slashPos) == 0 {
 		return file
 	}
 
-	// Return the path from the last found slash
 	start := slashPos[len(slashPos)-1] + 1
 	return file[start:]
 }

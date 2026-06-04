@@ -11,7 +11,7 @@ Compatibility note:
 ## Features
 
 - **Multi-bus architecture**: 8 built-in buses for isolation and performance
-- **High performance**: Built on `kelindar/event`, 4 E0x faster than traditional channels
+- **High performance**: Built on `kelindar/event`, substantially faster than plain channel fan-out
 - **Type safety**: Go generics and compile-time checks
 - **Event filtering**: Complex filtering and routing
 - **Event history**: Optional in-memory history
@@ -141,7 +141,7 @@ Optimized defaults are provided per bus type:
 ### System Health Status
 
 ```go
-health := events.GetEventSystemHealth()
+health := events.GetGlobalEventBus().GetEventSystemHealth()
 fmt.Printf("System healthy: %v\n", health.OverallHealthy)
 for _, issue := range health.Issues {
     fmt.Printf("Issue: %s\n", issue)
@@ -151,7 +151,7 @@ for _, issue := range health.Issues {
 ### Global Performance Metrics
 
 ```go
-metrics := events.GetGlobalMetrics()
+metrics := events.GetGlobalEventBus().GetMonitor().GetMetrics()
 fmt.Printf("Events published: %v\n", metrics["total_events_published"])
 fmt.Printf("Events processed: %v\n", metrics["total_events_processed"])
 fmt.Printf("Average latency: %v ms\n", metrics["avg_latency_ms"])
@@ -333,15 +333,6 @@ DegradationMode:      events.DegradationModeDrop,
 
 ---
 
-## Changelog
-
-- Added: `PauseAll()/ResumeAll()` batch ops capability
-- Added: `PauseCount/IsDegraded/DegradationDuration/Worker*` status metrics
-- Enhanced: `GetAllBusesMetrics()` with more observability fields
-- Added: throttling config `EnableThrottling/ThrottleRate/ThrottleBurst`
-
----
-
 ## Prometheus Export (Example)
 
 Below is a minimal example to export key metrics via Prometheus. It periodically scrapes event metrics and exposes them.
@@ -387,7 +378,7 @@ func main() {
         ticker := time.NewTicker(2 * time.Second)
         defer ticker.Stop()
         for range ticker.C {
-            gm := events.GetGlobalMetrics()
+            gm := events.GetGlobalEventBus().GetMonitor().GetMetrics()
             // NOTE: keys are subject to your monitor implementation
             if v, ok := gm["total_events_published"].(int64); ok { evPublished.Add(float64(v)) }
             if v, ok := gm["total_events_processed"].(int64); ok { evProcessed.Add(float64(v)) }

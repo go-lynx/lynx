@@ -47,7 +47,6 @@ func SetLevel(level Level) {
 	loggerLifecycleMu.Lock()
 	defer loggerLifecycleMu.Unlock()
 
-	// map public Level to Kratos level, apply, and rebuild logger
 	var lvl log.Level
 	switch level {
 	case DebugLevel:
@@ -67,7 +66,6 @@ func SetLevel(level Level) {
 
 // GetLevel returns the current global logging level.
 func GetLevel() Level {
-	// reflect current Kratos filter minimal level
 	switch kratosMinLevel {
 	case log.LevelDebug:
 		return DebugLevel
@@ -84,7 +82,7 @@ func GetLevel() Level {
 	}
 }
 
-// fallbackLogger provides a simple fallback logger when main logger is not initialized
+// fallbackLogger writes plain lines to stderr before the main logger exists.
 type fallbackLogger struct{}
 
 func (f *fallbackLogger) logPlain(level, msg string) {
@@ -106,27 +104,23 @@ func (f *fallbackLogger) logFormat(level, format string, args ...any) {
 	}
 }
 
-// helper returns the application's log helper instance.
-// The helper provides simplified logging methods.
-// If logger is not initialized, returns nil and logs will use fallback.
+// helper returns the active log.Helper, or nil if the logger isn't initialized
+// yet (callers then route through the stderr fallback).
 func helper() *log.Helper {
 	if v := helperStore.Load(); v != nil {
 		if h, ok := v.(*log.Helper); ok && h != nil {
 			return h
 		}
 	}
-	// Check if LHelper is properly initialized before returning
 	if Logger != nil && loggerInitialized.Load() {
 		return &LHelper
 	}
-	// Return nil if logger is not initialized - will use fallback in logging functions
 	return nil
 }
 
-// fallbackLog provides fallback logging when logger is not initialized
 var fallback = &fallbackLogger{}
 
-// Debug uses the log helper to record debug-level log information.
+// Debug logs at debug level, falling back to stderr if the logger is uninitialized.
 func Debug(a ...any) {
 	if h := helper(); h != nil {
 		h.Debug(a...)
@@ -135,7 +129,8 @@ func Debug(a ...any) {
 	}
 }
 
-// DebugCtx uses the log helper to record debug-level log information with context.
+// DebugCtx logs at debug level with context. Unlike Debug it has no stderr
+// fallback: the message is dropped when the logger is uninitialized.
 func DebugCtx(ctx context.Context, a ...any) {
 	if h := helper(); h != nil {
 		h.WithContext(ctx).Debug(a...)

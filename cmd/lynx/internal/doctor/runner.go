@@ -90,10 +90,8 @@ func (r *DiagnosticRunner) RunChecks(checks []HealthCheck) []CheckResult {
 			fmt.Printf("Running check: %s...\n", check.Name())
 		}
 
-		// Run the check
 		result := check.Check()
 
-		// Attempt auto-fix if enabled and available
 		if r.autoFix && result.Status != StatusOK && result.FixAvailable && check.CanAutoFix() {
 			if r.verbose {
 				fmt.Printf("  Attempting to fix %s...\n", check.Name())
@@ -105,7 +103,7 @@ func (r *DiagnosticRunner) RunChecks(checks []HealthCheck) []CheckResult {
 				}
 				result.Details["fix_error"] = err.Error()
 			} else {
-				// Re-run the check after fix
+				// Re-run to confirm the fix actually resolved the issue.
 				newResult := check.Check()
 				if newResult.Status == StatusOK {
 					result = newResult
@@ -141,13 +139,9 @@ func (r *DiagnosticRunner) RunChecksParallel(checks []HealthCheck) []CheckResult
 				fmt.Printf("Running check: %s...\n", hc.Name())
 			}
 
-			// Run the check
-			result := hc.Check()
-
-			// Auto-fix is not safe in parallel mode for now
-			// Could be improved with proper locking per resource
-
-			results[index] = result
+			// Auto-fix is intentionally skipped here: concurrent fixes touching
+			// shared resources (go.mod, env) aren't safe without per-resource locks.
+			results[index] = hc.Check()
 		}(i, check)
 	}
 

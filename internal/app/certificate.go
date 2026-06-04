@@ -1,9 +1,3 @@
-// Package app provides the core application framework for building microservices.
-//
-// This file (certificate.go) contains TLS certificate management:
-//   - CertificateProvider: Interface for accessing TLS certificates
-//   - Certificate and private key retrieval
-//   - Root CA certificate for trust chain verification
 package app
 
 // CertificateProvider defines an interface for managing TLS/SSL certificates.

@@ -383,7 +383,6 @@ func (p *TypedBasePlugin[T]) Initialize(plugin Plugin, rt Runtime) error {
 	p.logger = rt.GetLogger()
 	p.setStatus(StatusInitializing)
 
-	// Emit event indicating plugin is initializing
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginInitializing,
 		Priority: PriorityNormal,
@@ -391,14 +390,12 @@ func (p *TypedBasePlugin[T]) Initialize(plugin Plugin, rt Runtime) error {
 		Category: "lifecycle",
 	})
 
-	// Call InitializeResources for custom initialization when the plugin exposes it.
 	if err := InitializePluginResources(plugin, rt); err != nil {
 		p.setStatus(StatusFailed)
 		return NewPluginError(p.id, "Initialize", "Failed to initialize resources", err)
 	}
 
 	p.setStatus(StatusInactive)
-	// Emit event indicating plugin has been initialized
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginInitialized,
 		Priority: PriorityNormal,
@@ -421,7 +418,6 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 	}
 
 	p.setStatus(StatusInitializing)
-	// Emit event indicating plugin is starting
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStarting,
 		Priority: PriorityNormal,
@@ -429,13 +425,11 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 		Category: "lifecycle",
 	})
 
-	// Call StartupTasks for custom startup logic when the plugin exposes it.
 	if err := RunStartupTasks(plugin); err != nil {
 		p.setStatus(StatusFailed)
 		return NewPluginError(p.id, "Start", "Failed to perform startup tasks", err)
 	}
 
-	// Check health status after ready
 	err := RunHealthCheck(plugin)
 	if err != nil {
 		p.setStatus(StatusFailed)
@@ -444,7 +438,6 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 	}
 
 	p.setStatus(StatusActive)
-	// Emit event indicating plugin has started
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStarted,
 		Priority: PriorityNormal,
@@ -463,7 +456,6 @@ func (p *TypedBasePlugin[T]) Stop(plugin Plugin) error {
 	}
 
 	p.setStatus(StatusStopping)
-	// Emit event indicating plugin is stopping
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStopping,
 		Priority: PriorityNormal,
@@ -471,14 +463,12 @@ func (p *TypedBasePlugin[T]) Stop(plugin Plugin) error {
 		Category: "lifecycle",
 	})
 
-	// Call CleanupTasks for custom cleanup logic when the plugin exposes it.
 	if err := RunCleanupTasks(plugin); err != nil {
 		p.setStatus(StatusFailed)
 		return NewPluginError(p.id, "Stop", "Failed to perform cleanup tasks", err)
 	}
 
 	p.setStatus(StatusTerminated)
-	// Emit event indicating plugin has stopped
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStopped,
 		Priority: PriorityNormal,
@@ -531,7 +521,6 @@ func (p *TypedBasePlugin[T]) Weight() int {
 }
 
 // Description returns a detailed description of the plugin's functionality.
-// This helps users understand the plugin's purpose and capabilities.
 func (p *TypedBasePlugin[T]) Description() string {
 	return p.description
 }
@@ -559,7 +548,6 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 		Timestamp: time.Now().Unix(),
 	}
 
-	// Emit event indicating health check has started
 	p.EmitEvent(PluginEvent{
 		Type:     EventHealthCheckStarted,
 		Priority: PriorityNormal,
@@ -567,12 +555,11 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 		Category: "health",
 	})
 
-	// Check if plugin is in a valid state for health check
+	// Non-active states report directly without running the health check.
 	switch p.getStatus() {
 	case StatusTerminated, StatusFailed:
 		report.Status = "unhealthy"
 		report.Message = "Plugin is not operational"
-		// Emit event indicating critical health status
 		p.EmitEvent(PluginEvent{
 			Type:     EventHealthStatusCritical,
 			Priority: PriorityHigh,
@@ -583,7 +570,6 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 	case StatusSuspended:
 		report.Status = "suspended"
 		report.Message = "Plugin is temporarily suspended"
-		// Emit event indicating warning health status
 		p.EmitEvent(PluginEvent{
 			Type:     EventHealthStatusWarning,
 			Priority: PriorityNormal,
@@ -594,7 +580,6 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 	case StatusInitializing:
 		report.Status = "initializing"
 		report.Message = "Plugin is being initialized"
-		// Emit event indicating unknown health status
 		p.EmitEvent(PluginEvent{
 			Type:     EventHealthStatusUnknown,
 			Priority: PriorityNormal,
@@ -605,7 +590,6 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 	case StatusInactive:
 		report.Status = "inactive"
 		report.Message = "Plugin is not yet started"
-		// Emit event indicating warning health status
 		p.EmitEvent(PluginEvent{
 			Type:     EventHealthStatusWarning,
 			Priority: PriorityNormal,
@@ -616,7 +600,6 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 	case StatusStopping:
 		report.Status = "stopping"
 		report.Message = "Plugin is shutting down"
-		// Emit event indicating warning health status
 		p.EmitEvent(PluginEvent{
 			Type:     EventHealthStatusWarning,
 			Priority: PriorityNormal,
@@ -629,7 +612,6 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 		report.Message = "Plugin status is unknown"
 	}
 
-	// Emit event indicating health check is running
 	p.EmitEvent(PluginEvent{
 		Type:     EventHealthCheckRunning,
 		Priority: PriorityNormal,
@@ -637,11 +619,9 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 		Category: "health",
 	})
 
-	// Perform health check for active plugin
 	if err := p.CheckHealth(); err != nil {
 		report.Status = "unhealthy"
 		report.Message = err.Error()
-		// Emit event indicating health check failed
 		p.EmitEvent(PluginEvent{
 			Type:     EventHealthCheckFailed,
 			Priority: PriorityHigh,
@@ -652,7 +632,6 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 		return report
 	}
 
-	// Emit event indicating health check is done
 	p.EmitEvent(PluginEvent{
 		Type:     EventHealthCheckDone,
 		Priority: PriorityNormal,
@@ -660,9 +639,7 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 		Category: "health",
 	})
 
-	// Emit appropriate health status event
 	if report.Status == "healthy" {
-		// Emit event indicating OK health status
 		p.EmitEvent(PluginEvent{
 			Type:     EventHealthStatusOK,
 			Priority: PriorityNormal,
@@ -694,7 +671,6 @@ func (p *TypedBasePlugin[T]) GetDependencies() []Dependency {
 // so GetDependencies() is complete before the manager runs topological sort.
 func (p *TypedBasePlugin[T]) AddDependency(dep Dependency) {
 	p.dependencies = append(p.dependencies, dep)
-	// Emit event indicating dependency status has changed
 	p.EmitEvent(PluginEvent{
 		Type:     EventDependencyStatusChanged,
 		Priority: PriorityNormal,
@@ -741,7 +717,6 @@ func (p *TypedBasePlugin[T]) HandleEvent(event PluginEvent) {
 }
 
 // EmitEvent emits an event to the runtime event system.
-// This method adds standard fields to the event before emission.
 func (p *TypedBasePlugin[T]) EmitEvent(event PluginEvent) {
 	p.EmitEventInternal(event)
 }
@@ -856,49 +831,35 @@ func (p *TypedBasePlugin[T]) EventMatchesFilter(event PluginEvent, filter EventF
 	return true
 }
 
-// CheckHealth performs the actual health check operations.
-// This is called during health status reporting.
+// CheckHealth is the no-op default; override to report plugin-specific health.
 func (p *TypedBasePlugin[T]) CheckHealth() error {
-	// Implementation-specific health checks
 	return nil
 }
 
-// ValidateConfig validates the provided configuration.
-// This is called before applying new configuration.
+// ValidateConfig is the no-op default; override to validate config before applying it.
 func (p *TypedBasePlugin[T]) ValidateConfig(conf any) error {
-	// Implementation-specific configuration validation
 	return nil
 }
 
-// ApplyConfig applies the validated configuration.
-// This is called after configuration validation succeeds.
+// ApplyConfig is the no-op default; override to apply validated config.
 func (p *TypedBasePlugin[T]) ApplyConfig(conf any) error {
-	// Implementation-specific configuration application
 	return nil
 }
 
-// HandleHealthEvent processes health-related events.
-// This implements specific handling for health events.
+// HandleHealthEvent processes health-related events. Override to add behavior.
 func (p *TypedBasePlugin[T]) HandleHealthEvent(event PluginEvent) {
-	// Implementation-specific health event handling
 }
 
-// HandleConfigEvent processes configuration-related events.
-// This implements specific handling for configuration events.
+// HandleConfigEvent processes configuration-related events. Override to add behavior.
 func (p *TypedBasePlugin[T]) HandleConfigEvent(event PluginEvent) {
-	// Implementation-specific configuration event handling
 }
 
-// HandleDependencyEvent processes dependency-related events.
-// This implements specific handling for dependency events.
+// HandleDependencyEvent processes dependency-related events. Override to add behavior.
 func (p *TypedBasePlugin[T]) HandleDependencyEvent(event PluginEvent) {
-	// Implementation-specific dependency event handling
 }
 
-// HandleDefaultEvent processes events that don't have specific handlers.
-// This implements default event handling behavior.
+// HandleDefaultEvent processes events without a specific handler. Override to add behavior.
 func (p *TypedBasePlugin[T]) HandleDefaultEvent(event PluginEvent) {
-	// Implementation-specific default event handling
 }
 
 // Suspend temporarily suspends the plugin.
@@ -909,7 +870,6 @@ func (p *TypedBasePlugin[T]) Suspend() error {
 	}
 
 	p.setStatus(StatusStopping)
-	// Emit event indicating plugin is stopping
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStopping,
 		Priority: PriorityNormal,
@@ -917,7 +877,6 @@ func (p *TypedBasePlugin[T]) Suspend() error {
 		Category: "lifecycle",
 	})
 
-	// Perform any suspension tasks here if needed
 	p.setStatus(StatusSuspended)
 	return nil
 }
@@ -929,7 +888,6 @@ func (p *TypedBasePlugin[T]) Resume() error {
 		return NewPluginError(p.id, "Resume", "Plugin must be suspended to resume", ErrPluginNotActive)
 	}
 
-	// Emit event indicating plugin is starting
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStarting,
 		Priority: PriorityNormal,
@@ -939,7 +897,6 @@ func (p *TypedBasePlugin[T]) Resume() error {
 
 	p.setStatus(StatusActive)
 
-	// Emit event indicating plugin has started
 	p.EmitEvent(PluginEvent{
 		Type:     EventPluginStarted,
 		Priority: PriorityNormal,

@@ -254,20 +254,17 @@ func (c *Cache) DeleteMulti(keys []any) {
 // The write is synchronised (Wait is called) so that a subsequent Get
 // in the same goroutine will always observe the newly-stored value.
 func (c *Cache) GetOrSet(key any, fn func() (any, error), ttl time.Duration) (any, error) {
-	// Try to get from cache first
 	if value, found := c.cache.Get(key); found {
 		return value, nil
 	}
 
-	// Generate value if not found
 	value, err := fn()
 	if err != nil {
 		return nil, err
 	}
 
-	// Store in cache with read-your-writes guarantee.
 	if err := c.SetSync(key, value, ttl); err != nil {
-		// Even if cache set fails, return the computed value.
+		// A failed store still returns the computed value; the cache is best-effort.
 		return value, nil
 	}
 
@@ -278,27 +275,24 @@ func (c *Cache) GetOrSet(key any, fn func() (any, error), ttl time.Duration) (an
 // The write is synchronised so that a subsequent Get in the same goroutine
 // will always observe the newly-stored value.
 func (c *Cache) GetOrSetContext(ctx context.Context, key any, fn func(context.Context) (any, error), ttl time.Duration) (any, error) {
-	// Try to get from cache first
 	if value, found := c.cache.Get(key); found {
 		return value, nil
 	}
 
-	// Check context before generating value
+	// Bail out before doing potentially expensive work in fn if already cancelled.
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
 	}
 
-	// Generate value if not found
 	value, err := fn(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Store in cache with read-your-writes guarantee.
 	if err := c.SetSync(key, value, ttl); err != nil {
-		// Even if cache set fails, return the computed value.
+		// A failed store still returns the computed value; the cache is best-effort.
 		return value, nil
 	}
 

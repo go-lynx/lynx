@@ -204,7 +204,7 @@ func (p *MyTypedPlugin) GetConfig() *MyConfig {
 
 ### Context-Aware Plugin
 
-The default `TypedBasePlugin` implementations of `StartContext`, `StopContext`, and `InitializeContext` only run the non-context method in a goroutine and return when the context is done; they do **not** cancel the running Initialize/Start/Stop. For real cancellation, implement `LifecycleWithContext` on your plugin and check `ctx.Done()` inside your logic.
+The default `TypedBasePlugin` implementations of `StartContext`, `StopContext`, and `InitializeContext` run the framework phases inline and check `ctx` at every phase boundary. For genuine cancellation of the *plugin's own work*, implement the context-aware step hooks (`ContextResourceInitializer`, `ContextStartupTasker`, `ContextCleanupTasker`); the framework passes `ctx` straight through so your code can observe `ctx.Done()`. A plugin that implements only the non-context steps (`InitializeResources`/`StartupTasks`/`CleanupTasks`) cannot be force-stopped — Go cannot kill a running goroutine — so on timeout the work is abandoned safely (counted via `OrphanedStageCount`), never truly cancelled.
 
 For plugins that need to respect context cancellation and timeouts:
 

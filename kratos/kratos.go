@@ -14,27 +14,23 @@ import (
 	lynxapp "github.com/go-lynx/lynx"
 )
 
-// Options holds the configuration for creating a Kratos application
+// Options holds the configuration for creating a Kratos application.
+// At least one of GRPCServer or HTTPServer should be set; otherwise the
+// resulting app exposes no transports.
 type Options struct {
-	// App is the Lynx application instance that owns app metadata and capabilities.
+	// App supplies app metadata (ID, name, version) and must be non-nil.
 	App *lynxapp.LynxApp
-	// GRPCServer instance
+	// GRPCServer is registered as a transport when non-nil.
 	GRPCServer *grpc.Server
-	// HTTPServer instance
+	// HTTPServer is registered as a transport when non-nil.
 	HTTPServer *http.Server
-	// Registrar for service registration
+	// Registrar handles service registration with the discovery backend.
 	Registrar registry.Registrar
 }
 
-// NewKratos creates a new Kratos application with the specified options.
-// It supports creating applications with HTTP server, gRPC server, or both.
-//
-// Parameters:
-//   - opts: Options struct containing all necessary configuration
-//
-// Returns:
-//   - *kratos.App: The created Kratos application
-//   - error: Any error that occurred during creation
+// NewKratos builds a Kratos application from opts, wiring in whichever of the
+// gRPC and HTTP servers are provided. It returns an error if opts.App, its
+// host/name, or the global logger are missing.
 func NewKratos(opts Options) (*kratos.App, error) {
 	if opts.App == nil {
 		return nil, fmt.Errorf("lynx app cannot be nil")
@@ -50,76 +46,41 @@ func NewKratos(opts Options) (*kratos.App, error) {
 		return nil, fmt.Errorf("logger cannot be nil")
 	}
 
-	// Prepare base options for Kratos application
+	// The host doubles as the Kratos application ID.
 	kratosOpts := []kratos.Option{
-		// Set the application ID to the host name
 		kratos.ID(opts.App.Host()),
-		// Set the application name
 		kratos.Name(opts.App.Name()),
-		// Set the application version
 		kratos.Version(opts.App.Version()),
-		// Set the application metadata with basic info
 		kratos.Metadata(map[string]string{
 			"host":    opts.App.Host(),
 			"version": opts.App.Version(),
 		}),
-		// Set the application logger
 		kratos.Logger(log.Logger),
-		// Set the application registrar
 		kratos.Registrar(opts.Registrar),
 	}
 
-	// Collect all available transport servers based on the provided options.
-	// This function checks for the presence of both gRPC and HTTP servers
-	// in the options and adds them to a list of transport servers.
-	// If any servers are available, it appends them to the Kratos application options.
-	//
-	// Variables:
-	//   - serverList: A slice to hold all available transport servers.
 	var serverList []transport.Server
-
-	// Check if a gRPC server instance is provided in the options.
-	// If available, add it to the list of transport servers.
 	if opts.GRPCServer != nil {
-		// Add the gRPC server to the list of transport servers
 		serverList = append(serverList, opts.GRPCServer)
 	}
-
-	// Check if an HTTP server instance is provided in the options.
-	// If available, add it to the list of transport servers.
 	if opts.HTTPServer != nil {
-		// Add the HTTP server to the list of transport servers
 		serverList = append(serverList, opts.HTTPServer)
 	}
-
-	// Check if there are any servers in the list.
-	// If so, append them to the Kratos application options.
 	if len(serverList) > 0 {
-		// Add all collected servers to the Kratos application options
 		kratosOpts = append(kratosOpts, kratos.Server(serverList...))
 	}
 
-	// Create and return the Kratos application
 	return kratos.New(kratosOpts...), nil
 }
 
-// ProvideKratosOptions creates and returns an Options struct instance based on the provided parameters.
-// This struct is used to store configuration information required for creating a Kratos application.
-//
-// Parameters:
-//   - grpcServer: gRPC server instance.
-//   - httpServer: HTTP server instance.
-//   - registrar: Registrar for service registration.
-//
-// Returns:
-//   - Options: Options struct instance containing all provided configuration information.
+// ProvideKratosOptions assembles an Options value from its components, intended
+// as a Wire provider.
 func ProvideKratosOptions(
 	app *lynxapp.LynxApp,
 	grpcServer *grpc.Server,
 	httpServer *http.Server,
 	registrar registry.Registrar,
 ) Options {
-	// Return an initialized Options struct instance, assigning the provided parameters to corresponding fields
 	return Options{
 		App:        app,
 		GRPCServer: grpcServer,

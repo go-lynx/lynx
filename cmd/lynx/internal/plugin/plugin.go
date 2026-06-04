@@ -4,7 +4,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// CmdPlugin represents the plugin management command
+// CmdPlugin is the plugin management command group (list/search/install/remove/
+// info). The catalog is fetched from the go-lynx org on GitHub, and most
+// subcommands expect to run at a project root (a directory with go.mod).
 var CmdPlugin = &cobra.Command{
 	Use:   "plugin",
 	Short: "Manage Lynx plugins",
@@ -26,13 +28,11 @@ Commands: list, search, install, remove, info.`,
   # Get plugin information
   lynx plugin info redis`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// If no subcommand is provided, show help
 		return cmd.Help()
 	},
 }
 
 func init() {
-	// Add subcommands
 	CmdPlugin.AddCommand(cmdList)
 	CmdPlugin.AddCommand(cmdInstall)
 	CmdPlugin.AddCommand(cmdRemove)

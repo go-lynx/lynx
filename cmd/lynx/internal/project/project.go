@@ -45,54 +45,37 @@ The template is cloned from the layout repo (override with --repo-url / LYNX_LAY
   # Pin the template to a tag/commit and overwrite an existing dir
   lynx new myservice --ref v1.6.2 --force`,
 	Args: cobra.ArbitraryArgs,
-	RunE: run, // function called when executing the command
+	RunE: run,
 }
 
 var (
-	// repoURL stores the layout repository URL.
 	repoURL string
-	// branch stores the repository's branch name.
-	branch string
-	// ref stores the repository reference (takes precedence over branch).
-	ref string
-	// timeout stores the timeout for project creation.
-	timeout string
-	// module stores the Go module path for the generated project.
-	module string
-	// force indicates whether to overwrite an existing directory without prompt.
-	force bool
-	// postTidy indicates whether to run 'go mod tidy' after creation.
-	postTidy bool
-	// concurrency stores the concurrency limit.
-	concurrency int
-	// pluginsComma is comma-separated plugin names (e.g. "http,grpc,redis"); when set, skip interactive selection.
+	branch  string
+	// ref takes precedence over branch when both are set.
+	ref          string
+	timeout      string
+	module       string
+	force        bool
+	postTidy     bool
+	concurrency  int
 	pluginsComma string
-	// skipPlugins when true, skip plugin selection and do not add any plugins.
-	skipPlugins bool
+	skipPlugins  bool
 )
 
-// init initializes defaults and command-line flags.
 func init() {
-	// Get the repository URL from the LYNX_LAYOUT_REPO environment variable; use the default if empty.
+	// Default layout repo, overridable via env or the --repo-url flag.
 	if repoURL = os.Getenv("LYNX_LAYOUT_REPO"); repoURL == "" {
 		repoURL = "https://github.com/go-lynx/lynx-layout.git"
 	}
-	timeout = "60s" // default timeout is 60 seconds
-	// Add the --repo-url flag to specify the layout repository URL.
+	timeout = "60s"
 	CmdNew.Flags().StringVarP(&repoURL, "repo-url", "r", repoURL, "layout repo")
-	// Add the --branch flag to specify the repository branch.
 	CmdNew.Flags().StringVarP(&branch, "branch", "b", branch, "repo branch")
-	// Add the --ref flag to specify commit/tag/branch (takes precedence over --branch).
 	CmdNew.Flags().StringVar(&ref, "ref", ref, "repo ref (commit/tag/branch), takes precedence over --branch")
-	// Add the --timeout flag to specify the timeout.
 	CmdNew.Flags().StringVarP(&timeout, "timeout", "t", timeout, "time out")
-	// Add the --module flag to specify the Go module path for the new project (e.g., github.com/acme/foo).
 	CmdNew.Flags().StringVarP(&module, "module", "m", module, "go module path for the new project")
-	// Add the --force flag to overwrite an existing directory without prompt.
 	CmdNew.Flags().BoolVarP(&force, "force", "f", false, "overwrite existing directory without prompt")
-	// Add the --post-tidy flag to automatically run 'go mod tidy' after creation (disabled by default).
 	CmdNew.Flags().BoolVar(&postTidy, "post-tidy", false, "run 'go mod tidy' in the new project after creation")
-	// Compute the default concurrency limit (min(4, NumCPU*2)).
+	// Default concurrency: min(4, NumCPU*2), clamped to at least 1.
 	defaultConc := runtime.NumCPU() * 2
 	if defaultConc > 4 {
 		defaultConc = 4
@@ -102,32 +85,27 @@ func init() {
 	}
 	concurrency = defaultConc
 	CmdNew.Flags().IntVarP(&concurrency, "concurrency", "c", concurrency, "max concurrent project creations")
-	// Plugin selection: --plugins for comma-separated names (no interactive), --skip-plugins to skip entirely
 	CmdNew.Flags().StringVarP(&pluginsComma, "plugins", "p", "", "comma-separated plugin names to add (e.g. http,grpc,redis); skips interactive selection")
 	CmdNew.Flags().BoolVar(&skipPlugins, "skip-plugins", false, "skip plugin selection and do not add any plugins")
 }
 
-// run executes the `new` command and creates Lynx service projects.
+// run creates one or more service projects, optionally in parallel.
 func run(_ *cobra.Command, args []string) error {
-	// Get the current working directory.
 	wd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
 
-	// Parse the timeout string into a time.Duration.
 	t, err := time.ParseDuration(timeout)
 	if err != nil {
 		return err
 	}
 
-	// Create a context with the specified timeout.
 	ctx, cancel := context.WithTimeout(context.Background(), t)
-	defer cancel() // ensure the context is canceled when the function returns
+	defer cancel()
 
 	var names []string
 	if len(args) == 0 {
-		// Prompt for project names if not provided via command-line arguments.
 		prompt := &survey.Input{
 			Message: base.T("project_names"),
 			Help:    base.T("project_names_help"),
@@ -145,7 +123,6 @@ func run(_ *cobra.Command, args []string) error {
 		names = args
 	}
 
-	// Check and remove duplicate project names.
 	names = checkDuplicates(names)
 	if len(names) < 1 {
 		base.Errorf("%s", base.T("no_project_names"))
@@ -177,10 +154,9 @@ func run(_ *cobra.Command, args []string) error {
 	}
 	// When len(names)==1 and no --plugins/--skip-plugins: preSelectedPlugins stays nil → interactive inside New()
 
-	// Create multiple projects concurrently.
 	done := make(chan error, len(names))
 	var wg sync.WaitGroup
-	// Use the runtime concurrency limit from --concurrency, or fallback to CPU*2.
+	// Bound parallelism by --concurrency (fallback CPU*2), never above len(names).
 	maxConc := concurrency
 	if maxConc <= 0 {
 		maxConc = runtime.NumCPU() * 2
@@ -192,38 +168,33 @@ func run(_ *cobra.Command, args []string) error {
 		maxConc = len(names)
 	}
 	sem := make(chan struct{}, maxConc)
-	// Determine the effective reference: --ref first, then --branch.
+	// --ref wins over --branch.
 	effectiveRef := ref
 	if strings.TrimSpace(effectiveRef) == "" {
 		effectiveRef = branch
 	}
 	for _, name := range names {
-		// Process the project name and working directory parameters.
 		projectName, workingDir := processProjectParams(name, wd)
 		p := &Project{Name: projectName}
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(p *Project, workingDir string, plugins *[]*plugin.PluginMetadata) {
-			// Call Project.New to create the project and send the result to the 'done' channel.
 			defer func() { <-sem; wg.Done() }()
 			done <- p.New(ctx, workingDir, repoURL, effectiveRef, force, module, postTidy, plugins)
 		}(p, workingDir, preSelectedPlugins)
 	}
 
-	wg.Wait()   // Wait for all goroutines to complete
-	close(done) // Close the 'done' channel
+	wg.Wait()
+	close(done)
 
-	// Read errors from the 'done' channel and print them
 	fail := 0
 	for err := range done {
 		if err != nil {
 			fail++
 			base.Errorf("%s", fmt.Sprintf(base.T("failed_create"), err.Error()))
-			// Print actionable suggestions.
 			printSuggestions(err.Error())
 		}
 	}
-	// Check whether the context was canceled due to timeout.
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		base.Errorf("%s", base.T("timeout"))
 		return context.DeadlineExceeded
@@ -252,10 +223,11 @@ func printSuggestions(msg string) {
 	}
 }
 
-// processProjectParams handles the project name parameter and returns the processed project name and working directory.
+// processProjectParams resolves a name (plain, path-like, or "~/"-prefixed) into
+// an absolute target, returning its final segment as the project name and its
+// parent as the working directory.
 func processProjectParams(projectName string, workingDir string) (projectNameResult, workingDirResult string) {
 	_projectDir := projectName
-	// Expand the home directory only when the project name starts with "~/".
 	if strings.HasPrefix(projectName, "~/") {
 		homeDir, err := os.UserHomeDir()
 		if err == nil {
@@ -263,18 +235,15 @@ func processProjectParams(projectName string, workingDir string) (projectNameRes
 		}
 	}
 
-	// If the project name is a relative path, convert it to an absolute path.
 	if !filepath.IsAbs(_projectDir) {
 		joined := filepath.Join(workingDir, _projectDir)
 		if absPath, err := filepath.Abs(joined); err == nil {
 			_projectDir = absPath
 		} else {
-			// Fallback: use the joined path.
 			_projectDir = joined
 		}
 	}
 
-	// Return the processed project name (last path segment) and working directory (directory part).
 	return filepath.Base(_projectDir), filepath.Dir(_projectDir)
 }
 

@@ -15,7 +15,6 @@ var (
 	removeForce      bool
 )
 
-// cmdRemove represents the remove command
 var cmdRemove = &cobra.Command{
 	Use:   "remove [plugin-name]",
 	Short: "Remove an installed plugin",
@@ -42,13 +41,11 @@ func init() {
 func runRemove(cmd *cobra.Command, args []string) error {
 	pluginName := args[0]
 
-	// Create plugin manager
 	manager, err := NewPluginManager()
 	if err != nil {
 		return fmt.Errorf("failed to initialize plugin manager: %w", err)
 	}
 
-	// Get plugin info
 	plugin, err := manager.GetPluginInfo(pluginName)
 	if err != nil {
 		return fmt.Errorf("plugin not found: %s", pluginName)
@@ -58,12 +55,10 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("plugin %s is not installed", pluginName)
 	}
 
-	// Show plugin info
 	fmt.Printf("📦 Plugin: %s\n", color.CyanString(plugin.Name))
 	fmt.Printf("   Type: %s\n", plugin.Type)
 	fmt.Printf("   Version: %s\n", plugin.InstalledVer)
 
-	// Confirmation
 	if !removeForce {
 		fmt.Printf("\n⚠️  %s\n", color.YellowString("This will remove the plugin and its files."))
 		if !removeKeepConfig {
@@ -87,13 +82,11 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Remove the plugin
 	fmt.Printf("\n🗑️  Removing plugin: %s\n", pluginName)
 	if err := manager.RemovePlugin(pluginName, removeKeepConfig); err != nil {
 		return fmt.Errorf("❌ Removal failed: %w", err)
 	}
 
-	// Show success message
 	if removeKeepConfig {
 		fmt.Printf("\n✅ Plugin %s removed successfully (configuration kept)\n", color.GreenString(pluginName))
 		fmt.Printf("   Configuration file can be manually removed from conf/%s.yaml\n", pluginName)

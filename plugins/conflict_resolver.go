@@ -181,7 +181,6 @@ func NewConflictResolver(versionManager VersionManager) ConflictResolver {
 func (cr *DefaultConflictResolver) DetectConflicts(graph *DependencyGraph) ([]DependencyConflict, error) {
 	var conflicts []DependencyConflict
 
-	// Detect circular dependencies
 	if cycle, err := graph.CheckCircularDependencies(); err != nil {
 		conflicts = append(conflicts, DependencyConflict{
 			ID:          "circular_dependency",
@@ -198,7 +197,6 @@ func (cr *DefaultConflictResolver) DetectConflicts(graph *DependencyGraph) ([]De
 		})
 	}
 
-	// Detect version conflicts
 	versionConflicts, err := graph.CheckVersionConflicts()
 	if err != nil {
 		return nil, fmt.Errorf("failed to check version conflicts: %w", err)
@@ -208,11 +206,9 @@ func (cr *DefaultConflictResolver) DetectConflicts(graph *DependencyGraph) ([]De
 		conflicts = append(conflicts, cr.convertVersionConflicts(versionConflicts)...)
 	}
 
-	// Detect missing dependencies
 	missingConflicts := cr.detectMissingDependencies(graph)
 	conflicts = append(conflicts, missingConflicts...)
 
-	// Detect resource conflicts
 	resourceConflicts := cr.detectResourceConflicts(graph)
 	conflicts = append(conflicts, resourceConflicts...)
 

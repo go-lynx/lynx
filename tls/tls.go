@@ -29,43 +29,37 @@ type LoaderTls struct {
 	weight int
 	app    *lynxapp.LynxApp
 
-	// autoConfig is used when source_type is "auto" for rotation and SANs
+	// autoConfig is used when source_type is "auto" for rotation and SANs.
 	autoConfig *conf.AutoConfig
 
-	// New certificate manager
 	certManager *CertificateManager
 }
 
-// GetCertificate returns the TLS/SSL certificate in PEM format
+// GetCertificate returns the TLS certificate in PEM format. It prefers the
+// certificate manager (which reflects rotations) and falls back to the legacy
+// statically-scanned cert for backward compatibility.
 func (t *LoaderTls) GetCertificate() []byte {
-	// Use new certificate manager if available
 	if t.certManager != nil && t.certManager.IsInitialized() {
 		return t.certManager.GetCertificate()
 	}
-
-	// Fallback to old implementation for backward compatibility
 	return []byte(t.cert.GetCrt())
 }
 
-// GetPrivateKey returns the private key in PEM format
+// GetPrivateKey returns the private key in PEM format. See GetCertificate for the
+// manager-vs-legacy fallback behaviour.
 func (t *LoaderTls) GetPrivateKey() []byte {
-	// Use new certificate manager if available
 	if t.certManager != nil && t.certManager.IsInitialized() {
 		return t.certManager.GetPrivateKey()
 	}
-
-	// Fallback to old implementation for backward compatibility
 	return []byte(t.cert.GetKey())
 }
 
-// GetRootCACertificate returns the root CA certificate in PEM format
+// GetRootCACertificate returns the root CA certificate in PEM format. See
+// GetCertificate for the manager-vs-legacy fallback behaviour.
 func (t *LoaderTls) GetRootCACertificate() []byte {
-	// Use new certificate manager if available
 	if t.certManager != nil && t.certManager.IsInitialized() {
 		return t.certManager.GetRootCACertificate()
 	}
-
-	// Fallback to old implementation for backward compatibility
 	return []byte(t.cert.GetRootCA())
 }
 
@@ -103,7 +97,6 @@ func (t *LoaderTls) InitializeResources(rt plugins.Runtime) error {
 		}
 	}
 
-	// Set default source type if not specified
 	if t.tls.SourceType == "" {
 		t.tls.SourceType = conf.DefaultSourceType
 	}
@@ -112,7 +105,7 @@ func (t *LoaderTls) InitializeResources(rt plugins.Runtime) error {
 	if err != nil {
 		return err
 	}
-	// When source type is auto, optionally load auto config from TLSConfKeyAuto
+	// Auto mode optionally reads rotation/SAN settings from TLSConfKeyAuto.
 	if t.tls.SourceType == conf.SourceTypeAuto {
 		var auto conf.AutoConfig
 		if scanErr := rt.GetConfig().Value(TLSConfKeyAuto).Scan(&auto); scanErr == nil {
@@ -122,9 +115,10 @@ func (t *LoaderTls) InitializeResources(rt plugins.Runtime) error {
 	return nil
 }
 
-// StartupTasks performs necessary tasks during plugin startup
+// StartupTasks builds and initializes the certificate manager, then registers
+// this loader as the app's certificate provider. If the manager fails for a
+// control-plane source it falls back to the legacy loading path.
 func (t *LoaderTls) StartupTasks() error {
-	// Initialize certificate manager (with auto config when source_type is auto)
 	if t.tls.SourceType == conf.SourceTypeAuto {
 		t.certManager = NewCertificateManagerWithAuto(t.tls, t.autoConfig)
 	} else {
@@ -133,9 +127,7 @@ func (t *LoaderTls) StartupTasks() error {
 	t.certManager.SetControlPlaneConfigLoader(t.controlPlaneConfigLoader())
 	t.certManager.SetIdentity(t.currentIdentity())
 
-	// Initialize certificate manager
 	if err := t.certManager.Initialize(); err != nil {
-		// For backward compatibility, try old method if new method fails
 		if t.tls.SourceType == conf.SourceTypeControlPlane {
 			log.Warnf("New certificate manager failed, falling back to old control plane method: %v", err)
 			return t.startupOldMethod()
@@ -143,7 +135,6 @@ func (t *LoaderTls) StartupTasks() error {
 		return fmt.Errorf("failed to initialize certificate manager: %w", err)
 	}
 
-	// Set certificate provider
 	app := t.resolveApp()
 	if app == nil {
 		return fmt.Errorf("lynx application not initialized")
@@ -193,9 +184,8 @@ func (t *LoaderTls) startupOldMethod() error {
 	return nil
 }
 
-// CleanupTasks implements custom cleanup logic for TLS loader plugin
+// CleanupTasks stops certificate rotation/watching and unregisters the provider.
 func (t *LoaderTls) CleanupTasks() error {
-	// Stop certificate manager if available
 	if t.certManager != nil {
 		t.certManager.Stop()
 	}

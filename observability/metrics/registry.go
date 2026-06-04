@@ -58,7 +58,6 @@ type healthCollector struct {
 
 // NewHealthCollector creates a health metrics collector
 func NewHealthCollector(plugin, instance, version string, hp HealthProvider) prometheus.Collector {
-	// Unified standard labels
 	constLabels := prometheus.Labels{
 		"plugin":   plugin,
 		"instance": instance,

@@ -7,20 +7,20 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// ConvertPluginEvent converts a PluginEvent to LynxEvent
+// ConvertPluginEvent converts a PluginEvent into a LynxEvent. It reuses an
+// existing "event_id" from metadata for cross-boundary deduplication, deriving a
+// fresh one only when absent.
 func ConvertPluginEvent(pluginEvent plugins.PluginEvent) LynxEvent {
-	// Generate EventID if not present in metadata
 	eventID := ""
 	if pluginEvent.Metadata != nil {
 		if id, ok := pluginEvent.Metadata["event_id"].(string); ok && id != "" {
 			eventID = id
 		}
 	}
-	// If no EventID in metadata, generate one
 	if eventID == "" {
 		var t time.Time
-		// Check if timestamp is unset (0 or negative) before calling time.Unix
-		// time.Unix(0, 0) returns epoch time, not zero time, so IsZero() won't work
+		// time.Unix(0, 0) is epoch, not the zero Time, so guard on the raw value
+		// rather than relying on IsZero() after conversion.
 		if pluginEvent.Timestamp <= 0 {
 			t = time.Now()
 		} else {
@@ -43,7 +43,9 @@ func ConvertPluginEvent(pluginEvent plugins.PluginEvent) LynxEvent {
 	}
 }
 
-// ConvertEventType converts plugins.EventType to events.EventType
+// ConvertEventType maps a plugins.EventType to its events.EventType. Unknown
+// types fall back to EventSystemError and emit a warning so missing mappings are
+// not silently swallowed; keep this in sync with ConvertEventTypeBack.
 func ConvertEventType(eventType plugins.EventType) EventType {
 	switch eventType {
 	case plugins.EventPluginInitializing:
@@ -166,7 +168,8 @@ func ConvertPriority(priority int) Priority {
 	}
 }
 
-// ConvertLynxEvent converts a LynxEvent back to PluginEvent (for backward compatibility)
+// ConvertLynxEvent converts a LynxEvent back into a PluginEvent for code that
+// still consumes the legacy plugin event shape.
 func ConvertLynxEvent(lynxEvent LynxEvent) plugins.PluginEvent {
 	return plugins.PluginEvent{
 		Type:      ConvertEventTypeBack(lynxEvent.EventType),
@@ -181,7 +184,8 @@ func ConvertLynxEvent(lynxEvent LynxEvent) plugins.PluginEvent {
 	}
 }
 
-// ConvertEventTypeBack converts events.EventType back to plugins.EventType
+// ConvertEventTypeBack is the inverse of ConvertEventType. Unknown types fall
+// back to EventErrorOccurred with a warning; keep it in sync with ConvertEventType.
 func ConvertEventTypeBack(eventType EventType) plugins.EventType {
 	switch eventType {
 	case EventPluginInitializing:

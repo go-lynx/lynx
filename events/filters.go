@@ -5,38 +5,27 @@ import (
 	"time"
 )
 
-// EventFilter represents a filter for events
+// EventFilter selects events by any combination of criteria. An empty filter
+// (see IsEmpty) matches everything. See Matches for the AND/OR semantics across
+// and within fields.
 type EventFilter struct {
-	// Event type filters
 	EventTypes []EventType `yaml:"event_types" json:"event_types"`
+	Priorities []Priority  `yaml:"priorities" json:"priorities"`
+	Sources    []string    `yaml:"sources" json:"sources"`
+	Categories []string    `yaml:"categories" json:"categories"`
+	PluginIDs  []string    `yaml:"plugin_ids" json:"plugin_ids"`
 
-	// Priority filters
-	Priorities []Priority `yaml:"priorities" json:"priorities"`
-
-	// Source filters
-	Sources []string `yaml:"sources" json:"sources"`
-
-	// Category filters
-	Categories []string `yaml:"categories" json:"categories"`
-
-	// Plugin ID filters
-	PluginIDs []string `yaml:"plugin_ids" json:"plugin_ids"`
-
-	// Time range filters
+	// FromTime/ToTime bound event Timestamp (Unix seconds); 0 means unbounded.
 	FromTime int64 `yaml:"from_time" json:"from_time"`
 	ToTime   int64 `yaml:"to_time" json:"to_time"`
 
-	// Metadata filters
 	Metadata map[string]any `yaml:"metadata" json:"metadata"`
 
-	// Error filters
-	HasError bool `yaml:"has_error" json:"has_error"`
-
-	// Status filters
+	// HasError, when true, keeps only events that carry a non-nil Error.
+	HasError bool     `yaml:"has_error" json:"has_error"`
 	Statuses []string `yaml:"statuses" json:"statuses"`
 }
 
-// deepEqual performs safe deep-equality on interface values
 func deepEqual(a, b any) bool { return reflect.DeepEqual(a, b) }
 
 // NewEventFilter creates a new event filter
@@ -110,9 +99,10 @@ func (f *EventFilter) WithStatus(status string) *EventFilter {
 	return f
 }
 
-// Matches checks if an event matches the filter
+// Matches reports whether an event satisfies every set criterion. Each field
+// group is ANDed together; values within a group (e.g. EventTypes) are ORed.
+// Metadata is compared by deep equality so map/slice values are safe.
 func (f *EventFilter) Matches(event LynxEvent) bool {
-	// Check event type
 	if len(f.EventTypes) > 0 {
 		found := false
 		for _, eventType := range f.EventTypes {
@@ -126,7 +116,6 @@ func (f *EventFilter) Matches(event LynxEvent) bool {
 		}
 	}
 
-	// Check priority
 	if len(f.Priorities) > 0 {
 		found := false
 		for _, priority := range f.Priorities {
@@ -140,7 +129,6 @@ func (f *EventFilter) Matches(event LynxEvent) bool {
 		}
 	}
 
-	// Check source
 	if len(f.Sources) > 0 {
 		found := false
 		for _, source := range f.Sources {
@@ -154,7 +142,6 @@ func (f *EventFilter) Matches(event LynxEvent) bool {
 		}
 	}
 
-	// Check category
 	if len(f.Categories) > 0 {
 		found := false
 		for _, category := range f.Categories {
@@ -168,7 +155,6 @@ func (f *EventFilter) Matches(event LynxEvent) bool {
 		}
 	}
 
-	// Check plugin ID
 	if len(f.PluginIDs) > 0 {
 		found := false
 		for _, pluginID := range f.PluginIDs {
@@ -182,7 +168,6 @@ func (f *EventFilter) Matches(event LynxEvent) bool {
 		}
 	}
 
-	// Check time range
 	if f.FromTime > 0 && event.Timestamp < f.FromTime {
 		return false
 	}
@@ -190,7 +175,6 @@ func (f *EventFilter) Matches(event LynxEvent) bool {
 		return false
 	}
 
-	// Check metadata (use deep equality, safe for maps/slices)
 	if len(f.Metadata) > 0 {
 		for key, expectedValue := range f.Metadata {
 			actualValue, exists := event.Metadata[key]
@@ -203,12 +187,10 @@ func (f *EventFilter) Matches(event LynxEvent) bool {
 		}
 	}
 
-	// Check error
 	if f.HasError && event.Error == nil {
 		return false
 	}
 
-	// Check status
 	if len(f.Statuses) > 0 {
 		found := false
 		for _, status := range f.Statuses {

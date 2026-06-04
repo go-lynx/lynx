@@ -1,10 +1,6 @@
-// Package lynx provides the core application framework for building microservices.
-//
-// This file (recovery.go) contains error recovery and resilience mechanisms:
-//   - CircuitBreaker: Prevents cascading failures
-//   - ErrorRecoveryManager: Manages error detection and recovery
-//   - Health monitoring and automatic recovery strategies
-//   - Panic recovery with detailed diagnostics
+// Error recovery: ErrorRecoveryManager records classified errors and, when
+// severity allows, runs per-error-type recovery strategies guarded by circuit
+// breakers and a concurrency semaphore.
 package app
 
 import (
@@ -54,8 +50,7 @@ type ErrorRecoveryManager struct {
 	activeRecoveries        sync.Map // map[string]*recoveryState or context.CancelFunc - track active recoveries
 }
 
-// recoveryState tracks the state of an active recovery operation
-// Fixed: Moved to package level to support proper type checking in Stop() method
+// recoveryState tracks an active recovery so Stop() can cancel it.
 type recoveryState struct {
 	cancel  context.CancelFunc
 	started bool
@@ -93,17 +88,9 @@ func NewErrorRecoveryManager(metrics *metrics.ProductionMetrics) *ErrorRecoveryM
 
 // registerDefaultStrategies registers default recovery strategies
 func (erm *ErrorRecoveryManager) registerDefaultStrategies() {
-	// Retry strategy for transient errors
-	retryStrategy := NewDefaultRecoveryStrategy("retry", 5*time.Second)
-	erm.RegisterRecoveryStrategy("transient", retryStrategy)
-
-	// Restart strategy for component errors
-	restartStrategy := NewDefaultRecoveryStrategy("restart", 10*time.Second)
-	erm.RegisterRecoveryStrategy("component", restartStrategy)
-
-	// Fallback strategy for critical errors
-	fallbackStrategy := NewDefaultRecoveryStrategy("fallback", 15*time.Second)
-	erm.RegisterRecoveryStrategy("critical", fallbackStrategy)
+	erm.RegisterRecoveryStrategy("transient", NewDefaultRecoveryStrategy("retry", 5*time.Second))
+	erm.RegisterRecoveryStrategy("component", NewDefaultRecoveryStrategy("restart", 10*time.Second))
+	erm.RegisterRecoveryStrategy("critical", NewDefaultRecoveryStrategy("fallback", 15*time.Second))
 }
 
 // RegisterRecoveryStrategy registers a recovery strategy
@@ -113,7 +100,7 @@ func (erm *ErrorRecoveryManager) RegisterRecoveryStrategy(errorType string, stra
 
 	erm.recoveryStrategies[errorType] = strategy
 
-	// Create circuit breaker for this error type
+	// Each error type gets its own breaker so one failing type cannot trip others.
 	erm.circuitBreakers[errorType] = NewCircuitBreaker(5, 60*time.Second)
 }
 
@@ -122,18 +109,15 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 	erm.mu.Lock()
 	defer erm.mu.Unlock()
 
-	// Enrich context information
 	if context == nil {
 		context = make(map[string]any)
 	}
 
-	// Add system information
 	context["timestamp"] = time.Now().Unix()
 	context["goroutines"] = runtime.NumGoroutine()
 	context["memory_alloc"] = getMemoryStats()
 
-	// Add environment information
-	// Optimized: Cache environment variables to avoid repeated os.Getenv calls
+	// ENV/APP_VERSION are read once and cached; this runs on every error.
 	envOnce.Do(func() {
 		cachedEnv = os.Getenv("ENV")
 		cachedVersion = os.Getenv("APP_VERSION")
@@ -145,7 +129,6 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 		context["version"] = cachedVersion
 	}
 
-	// Safely extract environment and version with existence checks
 	var environment, version string
 	if envVal, ok := context["environment"]; ok {
 		if envStr, ok := envVal.(string); ok {
@@ -158,7 +141,6 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 		}
 	}
 
-	// Create error record with enhanced information
 	record := ErrorRecord{
 		Timestamp:   time.Now(),
 		ErrorType:   errorType,
@@ -173,57 +155,46 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 		Version:     version,
 	}
 
-	// Add to history
-	// Optimized: Use copy instead of slice operation to prevent memory leak
-	// Slice operation [1:] keeps the underlying array, causing memory leak
+	// Ring-buffer eviction via copy (not [1:]) so the old backing array is not retained.
 	if len(erm.errorHistory) >= erm.maxErrorHistory {
-		// Use copy to move elements left, then overwrite last element
-		// This prevents keeping reference to old underlying array
 		copy(erm.errorHistory, erm.errorHistory[1:])
 		erm.errorHistory[len(erm.errorHistory)-1] = record
 	} else {
 		erm.errorHistory = append(erm.errorHistory, record)
 	}
 
-	// Update error count
 	erm.errorCounts[errorType]++
 
-	// Record metrics with category
 	if erm.metrics != nil {
 		erm.metrics.RecordPluginError(component, errorType, message)
 	}
 
-	// Log error with enhanced context
 	log.Errorf("Error recorded: type=%s, category=%s, component=%s, severity=%d, message=%s, context=%+v",
 		errorType, category, component, severity, message, context)
 
-	// Check if circuit breaker is open
+	// Skip recovery while the breaker is open to avoid hammering a failing component.
 	circuitBreaker := erm.circuitBreakers[errorType]
 	if circuitBreaker != nil && !circuitBreaker.CanExecute() {
 		log.Warnf("Circuit breaker is open for error type: %s", errorType)
 		return
 	}
 
-	// Attempt recovery if severity allows
 	if severity <= ErrorSeverityHigh {
 		go erm.attemptRecovery(record)
 	}
 }
 
-// attemptRecovery attempts to recover from an error
-// Fixed: Simplified concurrent logic using context for goroutine lifecycle management
+// attemptRecovery runs the recovery strategy for a recorded error in a bounded,
+// cancellable goroutine. It de-duplicates concurrent attempts for the same error
+// and respects the manager's stopChan so it cannot outlive Stop().
 func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
-	// Generate recovery key first
 	recoveryKey := fmt.Sprintf("%s:%s:%d", record.ErrorType, record.Component, record.Timestamp.Unix())
 
-	// Fixed: sync.Map is thread-safe, no need for mutex protection
-	// Check if recovery is already in progress (sync.Map is thread-safe)
 	if _, exists := erm.activeRecoveries.Load(recoveryKey); exists {
 		log.Debugf("Recovery already in progress for %s:%s, skipping duplicate attempt", record.ErrorType, record.Component)
 		return
 	}
 
-	// Get strategy (use RLock for map access, not for sync.Map)
 	erm.mu.RLock()
 	strategy, exists := erm.recoveryStrategies[record.ErrorType]
 	if !exists {
@@ -236,35 +207,27 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		return
 	}
 
-	// Check if strategy can recover
 	if !strategy.CanRecover(record.ErrorType, record.Severity) {
 		log.Warnf("Recovery strategy %s cannot recover from error type: %s", strategy.Name(), record.ErrorType)
 		return
 	}
 
-	// Create recovery context with timeout and cancellation
-	// Fixed: Use parent context that respects stopChan to prevent goroutine leaks
 	recoveryTimeout := strategy.GetTimeout()
 	if recoveryTimeout <= 0 {
 		recoveryTimeout = erm.recoveryTimeout
 	}
 	if recoveryTimeout > 60*time.Second {
-		recoveryTimeout = 60 * time.Second // Cap at 60 seconds
+		recoveryTimeout = 60 * time.Second
 	}
 
-	// Create parent context that monitors stopChan with proper cleanup
-	// Use context.WithCancel with a timeout to ensure goroutines don't leak
+	// Parent context is cancelled either by timeout or by stopChan, so the
+	// recovery goroutine and its stop monitor can never outlive the manager.
 	parentCtx, parentCancel := context.WithCancel(context.Background())
-
-	// Create timeout context from parent
 	ctx, timeoutCancel := context.WithTimeout(parentCtx, recoveryTimeout)
 
-	// Monitor stopChan in background with proper context cancellation
-	// Use a single goroutine that monitors both stopChan and context cancellation
 	stopMonitorDone := make(chan struct{}, 1)
 	go func() {
 		defer func() {
-			// Always signal completion to prevent goroutine leak
 			select {
 			case stopMonitorDone <- struct{}{}:
 			default:
@@ -272,26 +235,19 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		}()
 		select {
 		case <-erm.stopChan:
-			// Recovery manager is stopping, cancel context
 			parentCancel()
 		case <-ctx.Done():
-			// Context cancelled (timeout or parent cancelled), exit cleanly
 		}
 	}()
 
-	// Ensure cleanup happens
 	defer func() {
-		// Cancel parent context first to signal stop monitor
 		parentCancel()
 		timeoutCancel()
-		// Wait for stop monitor goroutine to exit (with timeout)
 		stopWaitTimer := time.NewTimer(50 * time.Millisecond)
 		defer stopWaitTimer.Stop()
 		select {
 		case <-stopMonitorDone:
-			// Goroutine exited cleanly
 		case <-stopWaitTimer.C:
-			// Timeout - goroutine should exit on its own when context is cancelled
 		}
 	}()
 
@@ -312,39 +268,30 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	defer semaphoreTimer.Stop()
 	select {
 	case erm.recoverySemaphore <- struct{}{}:
-		// Acquired semaphore, proceed with recovery
 		semaphoreHeld = true
 	case <-semaphoreTimer.C:
-		// Semaphore acquisition timeout - too many concurrent recoveries
 		log.Warnf("Recovery semaphore timeout for %s:%s after %v, skipping recovery (too many concurrent recoveries)",
 			record.ErrorType, record.Component, semaphoreTimeout)
 		return
 	case <-ctx.Done():
-		// Context cancelled before semaphore acquisition
 		return
 	}
 
-	// Store recovery state atomically (simplified - no complex CAS loop)
-	// Fixed: Use parentCancel instead of timeoutCancel to ensure proper cleanup
+	// cancel is parentCancel (not timeoutCancel) so Stop() also tears down the monitor goroutine.
 	state := &recoveryState{
-		cancel:  parentCancel, // Use parent cancel to ensure stop monitor goroutine exits
+		cancel:  parentCancel,
 		started: true,
 	}
 	if _, loaded := erm.activeRecoveries.LoadOrStore(recoveryKey, state); loaded {
-		// Another goroutine started recovery between our Load check and here;
-		// release the semaphore slot we just claimed and bail out.
-		// semaphoreHeld=true so the deferred release above will handle it.
+		// Lost the race to another attempt for this key; the deferred semaphore
+		// release (semaphoreHeld=true) frees the slot we just claimed.
 		return
 	}
 
-	// Set up proper cleanup at the end of recovery
 	defer func() {
 		erm.activeRecoveries.Delete(recoveryKey)
-		// Context cleanup is handled by outer defer
 	}()
 
-	// Attempt recovery with timeout protection
-	// Simplified: Single goroutine with proper context management
 	startTime := time.Now()
 	recoveryDone := make(chan struct {
 		success bool
@@ -361,7 +308,6 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 					err     error
 				}{false, fmt.Errorf("panic during recovery: %w", panicErr)}:
 				case <-ctx.Done():
-					// Context cancelled, ignore result
 				}
 			}
 		}()
@@ -372,7 +318,6 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 			err     error
 		}{success, err}:
 		case <-ctx.Done():
-			// Context cancelled, ignore result
 		}
 	}()
 
@@ -383,7 +328,6 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 		success = result.success
 		err = result.err
 	case <-ctx.Done():
-		// Timeout or cancellation reached
 		success = false
 		err = fmt.Errorf("recovery cancelled or timeout after %v: %w", recoveryTimeout, ctx.Err())
 		log.Warnf("Recovery cancelled or timeout for %s:%s after %v", record.ErrorType, record.Component, recoveryTimeout)
@@ -407,11 +351,8 @@ func (erm *ErrorRecoveryManager) attemptRecovery(record ErrorRecord) {
 	}
 
 	erm.mu.Lock()
-	// Optimized: Use copy instead of slice operation to prevent memory leak
-	// Slice operation [1:] keeps the underlying array, causing memory leak
+	// Ring-buffer eviction via copy (not [1:]) so the old backing array is not retained.
 	if len(erm.recoveryHistory) >= erm.maxRecoveryHistory {
-		// Use copy to move elements left, then overwrite last element
-		// This prevents keeping reference to old underlying array
 		copy(erm.recoveryHistory, erm.recoveryHistory[1:])
 		erm.recoveryHistory[len(erm.recoveryHistory)-1] = recoveryRecord
 	} else {
@@ -489,7 +430,8 @@ func normalizeRecoveredPanic(value any) error {
 	}
 }
 
-// Optimized: Cache memory stats to avoid stop-the-world pauses during error recording
+// Memory stats are sampled by a background goroutine and cached so that error
+// recording never triggers a stop-the-world ReadMemStats on the hot path.
 var (
 	cachedMemoryAlloc atomic.Uint64
 	memStatsOnce      sync.Once
@@ -497,7 +439,6 @@ var (
 	memStatsStop      chan struct{}
 )
 
-// Optimized: Cache environment variables to avoid repeated os.Getenv calls
 var (
 	cachedEnv     string
 	cachedVersion string
@@ -512,10 +453,8 @@ func initMemoryStatsCache() {
 	memStatsOnce.Do(func() {
 		stop := make(chan struct{})
 		memStatsStop = stop
-		// Initial update
 		updateMemoryStats()
-		// Start background goroutine to update memory stats periodically
-		// Update every 1 second to balance accuracy and performance
+		// Resample every second: fresh enough for diagnostics, cheap enough to ignore.
 		go func() {
 			ticker := time.NewTicker(1 * time.Second)
 			defer ticker.Stop()
@@ -524,16 +463,16 @@ func initMemoryStatsCache() {
 				case <-ticker.C:
 					updateMemoryStats()
 				case <-stop:
-					return
+					return // released by cleanupMemoryStatsCache during shutdown
 				}
 			}
 		}()
 	})
 }
 
-// cleanupMemoryStatsCache stops the background goroutine for memory stats updates
-// Fix Bug 2: Provides a way to gracefully shut down the memory stats goroutine
-// This should be called during application shutdown to prevent goroutine leaks
+// cleanupMemoryStatsCache stops the background sampling goroutine. Called during
+// application shutdown so the goroutine does not leak. Resets the sync.Once so a
+// later getMemoryStats can restart sampling.
 func cleanupMemoryStatsCache() {
 	memStatsMu.Lock()
 	defer memStatsMu.Unlock()
@@ -541,7 +480,6 @@ func cleanupMemoryStatsCache() {
 	if memStatsStop != nil {
 		select {
 		case <-memStatsStop:
-			// Already closed
 		default:
 			close(memStatsStop)
 		}
@@ -550,18 +488,16 @@ func cleanupMemoryStatsCache() {
 	memStatsOnce = sync.Once{}
 }
 
-// updateMemoryStats updates the cached memory statistics
-// This function performs the expensive ReadMemStats operation
+// updateMemoryStats performs the expensive ReadMemStats and caches the result.
 func updateMemoryStats() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	cachedMemoryAlloc.Store(m.Alloc)
 }
 
-// getMemoryStats gets current memory statistics from cache
-// Optimized: Returns cached value to avoid stop-the-world pauses
+// getMemoryStats returns the most recently sampled Alloc value, starting the
+// background sampler on first use.
 func getMemoryStats() uint64 {
-	// Initialize cache if not already done
 	initMemoryStatsCache()
 	return cachedMemoryAlloc.Load()
 }

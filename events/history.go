@@ -6,16 +6,19 @@ import (
 	"time"
 )
 
-// EventHistory manages event history for a bus
+// EventHistory is a bounded, in-memory ring of recent events for one bus,
+// trimmed by both maxSize and maxAge. byPluginID/byEventType are secondary
+// indexes (into events) that accelerate filtered queries; they are kept
+// consistent with events under indexMu, which nests inside mu.
 type EventHistory struct {
 	events      []LynxEvent
 	maxSize     int
-	maxAge      time.Duration // Maximum age of events to keep
-	lastCleanup time.Time     // Last cleanup time
+	maxAge      time.Duration
+	lastCleanup time.Time
 	mu          sync.RWMutex
-	// Index for faster queries
-	byPluginID  map[string][]int    // pluginID -> indices in events slice
-	byEventType map[EventType][]int // eventType -> indices in events slice
+
+	byPluginID  map[string][]int    // pluginID -> indices into events
+	byEventType map[EventType][]int // eventType -> indices into events
 	indexMu     sync.RWMutex
 }
 
@@ -56,51 +59,41 @@ func (h *EventHistory) Add(event LynxEvent) {
 	eventIndex := len(h.events)
 	h.events = append(h.events, event)
 
-	// Update indexes for faster queries
-	// Limit index size to prevent unbounded growth
+	// Each per-key index is capped at maxSize. When full, shift left with copy
+	// rather than reslicing [1:]: reslicing retains the original backing array
+	// and leaks the head element.
 	h.indexMu.Lock()
 	if event.PluginID != "" {
 		indices := h.byPluginID[event.PluginID]
-		// Limit per-plugin index size to maxSize to prevent memory growth
 		if len(indices) < h.maxSize {
 			h.byPluginID[event.PluginID] = append(indices, eventIndex)
 		} else {
-			// Optimized: Use copy instead of slice operation to prevent memory leak
-			// Slice operation [1:] keeps the underlying array, causing memory leak
 			copy(indices, indices[1:])
 			h.byPluginID[event.PluginID] = append(indices[:len(indices)-1], eventIndex)
 		}
 	}
 	indices := h.byEventType[event.EventType]
-	// Limit per-event-type index size to maxSize
 	if len(indices) < h.maxSize {
 		h.byEventType[event.EventType] = append(indices, eventIndex)
 	} else {
-		// Optimized: Use copy instead of slice operation to prevent memory leak
-		// Slice operation [1:] keeps the underlying array, causing memory leak
 		copy(indices, indices[1:])
 		h.byEventType[event.EventType] = append(indices[:len(indices)-1], eventIndex)
 	}
 	h.indexMu.Unlock()
 
-	// Trim if exceeds max size
-	// Use more aggressive trimming to prevent memory growth
+	// Over-trim by 25% so we don't re-trim on every subsequent Add. Indexes are
+	// adjusted in place (subtract trimCount) instead of rebuilt.
 	if len(h.events) > h.maxSize {
 		trimCount := len(h.events) - h.maxSize
-		// Trim slightly more to reduce frequent trimming
 		if trimCount < h.maxSize/4 {
-			trimCount = h.maxSize / 4 // Trim 25% when close to limit
+			trimCount = h.maxSize / 4
 		}
 
-		// Optimized: Update indexes incrementally instead of full rebuild
-		// Remove indices for trimmed events and adjust remaining indices
 		h.indexMu.Lock()
-		// Remove indices for events that will be trimmed (indices 0 to trimCount-1)
 		for pluginID, indices := range h.byPluginID {
 			newIndices := make([]int, 0, len(indices))
 			for _, idx := range indices {
 				if idx >= trimCount {
-					// Adjust index by subtracting trimCount
 					newIndices = append(newIndices, idx-trimCount)
 				}
 			}
@@ -114,7 +107,6 @@ func (h *EventHistory) Add(event LynxEvent) {
 			newIndices := make([]int, 0, len(indices))
 			for _, idx := range indices {
 				if idx >= trimCount {
-					// Adjust index by subtracting trimCount
 					newIndices = append(newIndices, idx-trimCount)
 				}
 			}
@@ -126,13 +118,11 @@ func (h *EventHistory) Add(event LynxEvent) {
 		}
 		h.indexMu.Unlock()
 
-		// Trim from the beginning
 		h.events = h.events[trimCount:]
 	}
 }
 
-// cleanupExpiredEvents removes events older than maxAge
-// Optimized to reduce memory allocations
+// cleanupExpiredEvents drops events older than maxAge. Caller must hold h.mu.
 func (h *EventHistory) cleanupExpiredEvents() {
 	if h.maxAge <= 0 {
 		return
@@ -140,7 +130,6 @@ func (h *EventHistory) cleanupExpiredEvents() {
 
 	cutoffTime := time.Now().Add(-h.maxAge).Unix()
 
-	// Count valid events first to pre-allocate slice
 	validCount := 0
 	for _, event := range h.events {
 		if event.Timestamp >= cutoffTime {
@@ -148,13 +137,11 @@ func (h *EventHistory) cleanupExpiredEvents() {
 		}
 	}
 
-	// If all events are valid, no cleanup needed
 	if validCount == len(h.events) {
 		h.lastCleanup = time.Now()
 		return
 	}
 
-	// Pre-allocate slice with known capacity
 	validEvents := make([]LynxEvent, 0, validCount)
 	for _, event := range h.events {
 		if event.Timestamp >= cutoffTime {
@@ -162,8 +149,7 @@ func (h *EventHistory) cleanupExpiredEvents() {
 		}
 	}
 
-	// Optimized: Update indexes incrementally instead of full rebuild
-	// Build a mapping from old index to new index
+	// Remap surviving indexes through old->new rather than rebuilding.
 	oldToNewIndex := make(map[int]int, validCount)
 	newIdx := 0
 	for oldIdx, event := range h.events {
@@ -173,9 +159,7 @@ func (h *EventHistory) cleanupExpiredEvents() {
 		}
 	}
 
-	// Update indexes using the mapping
 	h.indexMu.Lock()
-	// Update byPluginID index
 	for pluginID, indices := range h.byPluginID {
 		newIndices := make([]int, 0, len(indices))
 		for _, oldIdx := range indices {
@@ -189,7 +173,6 @@ func (h *EventHistory) cleanupExpiredEvents() {
 			h.byPluginID[pluginID] = newIndices
 		}
 	}
-	// Update byEventType index
 	for eventType, indices := range h.byEventType {
 		newIndices := make([]int, 0, len(indices))
 		for _, oldIdx := range indices {
@@ -209,40 +192,36 @@ func (h *EventHistory) cleanupExpiredEvents() {
 	h.lastCleanup = time.Now()
 }
 
-// rebuildIndexes rebuilds all indexes from scratch
+// rebuildIndexes discards and recomputes both indexes from events. Caller must
+// hold h.mu; used after trims that invalidate stored indices.
 func (h *EventHistory) rebuildIndexes() {
 	h.indexMu.Lock()
 	defer h.indexMu.Unlock()
 
-	// Clear existing indexes
 	h.byPluginID = make(map[string][]int)
 	h.byEventType = make(map[EventType][]int)
 
-	// Rebuild indexes with capacity hints
-	// Pre-allocate maps with estimated size to reduce allocations
 	if len(h.events) > 0 {
-		estimatedPluginCount := min(len(h.events)/10, 100) // Estimate 10 events per plugin, max 100 plugins
+		estimatedPluginCount := min(len(h.events)/10, 100)
 		if estimatedPluginCount > 0 {
 			for k := range h.byPluginID {
-				delete(h.byPluginID, k) // Clear old entries
+				delete(h.byPluginID, k)
 			}
 		}
 		for k := range h.byEventType {
-			delete(h.byEventType, k) // Clear old entries
+			delete(h.byEventType, k)
 		}
 	}
 
-	// Rebuild indexes
+	// Per-key slices capped at maxSize/10 (max 100) as a starting capacity hint.
 	for i, event := range h.events {
 		if event.PluginID != "" {
 			if h.byPluginID[event.PluginID] == nil {
-				// Pre-allocate with reasonable capacity
 				h.byPluginID[event.PluginID] = make([]int, 0, min(h.maxSize/10, 100))
 			}
 			h.byPluginID[event.PluginID] = append(h.byPluginID[event.PluginID], i)
 		}
 		if h.byEventType[event.EventType] == nil {
-			// Pre-allocate with reasonable capacity
 			h.byEventType[event.EventType] = make([]int, 0, min(h.maxSize/10, 100))
 		}
 		h.byEventType[event.EventType] = append(h.byEventType[event.EventType], i)
@@ -263,23 +242,22 @@ func (h *EventHistory) GetMaxAge() time.Duration {
 	return h.maxAge
 }
 
-// GetEvents returns all events in history
+// GetEvents returns a copy of all events currently in history.
 func (h *EventHistory) GetEvents() []LynxEvent {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	// Directly create result slice to avoid unnecessary intermediate allocation
 	result := make([]LynxEvent, len(h.events))
 	copy(result, h.events)
 	return result
 }
 
-// GetEventsByType returns events filtered by type (optimized with index)
+// GetEventsByType returns events of the given type, using the byEventType index
+// when present and falling back to a linear scan otherwise.
 func (h *EventHistory) GetEventsByType(eventType EventType) []LynxEvent {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	// Use index for faster lookup
 	h.indexMu.RLock()
 	indices, hasIndex := h.byEventType[eventType]
 	h.indexMu.RUnlock()
@@ -294,7 +272,6 @@ func (h *EventHistory) GetEventsByType(eventType EventType) []LynxEvent {
 		return result
 	}
 
-	// Fallback to linear search if index not available
 	var result []LynxEvent
 	for _, event := range h.events {
 		if event.EventType == eventType {
@@ -304,12 +281,12 @@ func (h *EventHistory) GetEventsByType(eventType EventType) []LynxEvent {
 	return result
 }
 
-// GetEventsByPlugin returns events filtered by plugin ID (optimized with index)
+// GetEventsByPlugin returns events for the given plugin, using the byPluginID
+// index when present and falling back to a linear scan otherwise.
 func (h *EventHistory) GetEventsByPlugin(pluginID string) []LynxEvent {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	// Use index for faster lookup
 	h.indexMu.RLock()
 	indices, hasIndex := h.byPluginID[pluginID]
 	h.indexMu.RUnlock()
@@ -324,7 +301,6 @@ func (h *EventHistory) GetEventsByPlugin(pluginID string) []LynxEvent {
 		return result
 	}
 
-	// Fallback to linear search if index not available
 	var result []LynxEvent
 	for _, event := range h.events {
 		if event.PluginID == pluginID {
@@ -362,13 +338,13 @@ func (h *EventHistory) GetEventsByFilter(filter *EventFilter) []LynxEvent {
 	return result
 }
 
-// eventMatchesFilter checks if an event matches the given filter
+// eventMatchesFilter mirrors EventFilter.Matches but treats a nil filter as
+// matching everything (used by history queries).
 func (h *EventHistory) eventMatchesFilter(event LynxEvent, filter *EventFilter) bool {
 	if filter == nil {
 		return true
 	}
 
-	// Check event types
 	if len(filter.EventTypes) > 0 {
 		typeMatch := false
 		for _, filterType := range filter.EventTypes {
@@ -382,7 +358,6 @@ func (h *EventHistory) eventMatchesFilter(event LynxEvent, filter *EventFilter) 
 		}
 	}
 
-	// Check priorities
 	if len(filter.Priorities) > 0 {
 		priorityMatch := false
 		for _, filterPriority := range filter.Priorities {
@@ -396,7 +371,6 @@ func (h *EventHistory) eventMatchesFilter(event LynxEvent, filter *EventFilter) 
 		}
 	}
 
-	// Check sources
 	if len(filter.Sources) > 0 {
 		sourceMatch := false
 		for _, filterSource := range filter.Sources {
@@ -410,7 +384,6 @@ func (h *EventHistory) eventMatchesFilter(event LynxEvent, filter *EventFilter) 
 		}
 	}
 
-	// Check categories
 	if len(filter.Categories) > 0 {
 		categoryMatch := false
 		for _, filterCategory := range filter.Categories {
@@ -424,7 +397,6 @@ func (h *EventHistory) eventMatchesFilter(event LynxEvent, filter *EventFilter) 
 		}
 	}
 
-	// Check plugin IDs
 	if len(filter.PluginIDs) > 0 {
 		pluginMatch := false
 		for _, filterPluginID := range filter.PluginIDs {
@@ -438,7 +410,6 @@ func (h *EventHistory) eventMatchesFilter(event LynxEvent, filter *EventFilter) 
 		}
 	}
 
-	// Check time range
 	if filter.FromTime > 0 && event.Timestamp < filter.FromTime {
 		return false
 	}
@@ -446,7 +417,7 @@ func (h *EventHistory) eventMatchesFilter(event LynxEvent, filter *EventFilter) 
 		return false
 	}
 
-	// Check metadata (deep equality to support maps/slices without panic)
+	// Deep equality so map/slice metadata values compare without panicking.
 	if len(filter.Metadata) > 0 {
 		if event.Metadata == nil {
 			return false
@@ -458,12 +429,10 @@ func (h *EventHistory) eventMatchesFilter(event LynxEvent, filter *EventFilter) 
 		}
 	}
 
-	// Check error condition
 	if filter.HasError && event.Error == nil {
 		return false
 	}
 
-	// Check statuses
 	if len(filter.Statuses) > 0 {
 		statusMatch := false
 		for _, filterStatus := range filter.Statuses {

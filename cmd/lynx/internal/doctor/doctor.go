@@ -14,7 +14,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// CmdDoctor represents the doctor command
+// CmdDoctor diagnoses the dev environment and Lynx project, optionally applying
+// fixes (--fix) and grouping checks by category (env/tools/project/config).
 var CmdDoctor = &cobra.Command{
 	Use:   "doctor",
 	Short: "Diagnose the development environment and project health",
@@ -102,18 +103,13 @@ type Summary struct {
 	Health      string        `json:"health"` // Healthy, Degraded, Critical
 }
 
-// runDoctor executes the diagnostic checks
 func runDoctor(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
 
-	// Initialize diagnostic runner
 	runner := NewDiagnosticRunner()
-
-	// Configure runner based on flags
 	runner.SetVerbose(verbose)
 	runner.SetAutoFix(fixIssues)
 
-	// Select checks based on category
 	var checks []HealthCheck
 	switch category {
 	case "all":
@@ -130,10 +126,8 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid category: %s", category)
 	}
 
-	// Run diagnostics
 	results := runner.RunChecks(checks)
 
-	// Generate report
 	report := DiagnosticReport{
 		Timestamp: startTime,
 		System:    getSystemInfo(),
@@ -145,7 +139,6 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		report.FixesApplied = runner.GetAppliedFixes()
 	}
 
-	// Output report
 	return outputReport(report, outputFormat)
 }
 
@@ -160,47 +153,41 @@ func getSystemInfo() SystemInfo {
 	}
 }
 
-// getLynxVersion gets the Lynx CLI version dynamically
+// getLynxVersion resolves the CLI version, preferring (in order) embedded build
+// info, the VCS revision, git tags/HEAD, and a VERSION file, before falling back
+// to a placeholder.
 func getLynxVersion() string {
-	// Try to get version from build info first
 	if info, ok := debug.ReadBuildInfo(); ok {
-		// Check if this is the main module
 		if info.Main.Version != "" && info.Main.Version != "(devel)" {
 			return info.Main.Version
 		}
-
-		// Look for version in build settings
 		for _, setting := range info.Settings {
 			if setting.Key == "vcs.revision" && len(setting.Value) >= 7 {
-				return "dev-" + setting.Value[:7] // Short commit hash
+				return "dev-" + setting.Value[:7]
 			}
 		}
 	}
 
-	// Try to get version from git if available
 	if version := getVersionFromGit(); version != "" {
 		return version
 	}
 
-	// Try to read version from version file
 	if version := getVersionFromFile(); version != "" {
 		return version
 	}
 
-	// Fallback to default version
 	return "v2.0.0-unknown"
 }
 
-// getVersionFromGit attempts to get version from git
+// getVersionFromGit returns the latest tag, or a "dev-<hash>" form derived from
+// the current commit, or "" if git is unavailable.
 func getVersionFromGit() string {
-	// Try to get the latest git tag
 	if cmd := exec.Command("git", "describe", "--tags", "--abbrev=0"); cmd != nil {
 		if output, err := cmd.Output(); err == nil {
 			return strings.TrimSpace(string(output))
 		}
 	}
 
-	// Try to get current commit hash
 	if cmd := exec.Command("git", "rev-parse", "--short", "HEAD"); cmd != nil {
 		if output, err := cmd.Output(); err == nil {
 			return "dev-" + strings.TrimSpace(string(output))
@@ -210,9 +197,9 @@ func getVersionFromGit() string {
 	return ""
 }
 
-// getVersionFromFile attempts to read version from a version file
+// getVersionFromFile reads a version from common VERSION files, checked both in
+// the working directory and next to the executable.
 func getVersionFromFile() string {
-	// Look for version files in common locations
 	versionFiles := []string{
 		"VERSION",
 		"version.txt",
@@ -228,7 +215,6 @@ func getVersionFromFile() string {
 			}
 		}
 
-		// Try relative to executable path
 		if execPath, err := os.Executable(); err == nil {
 			execDir := filepath.Dir(execPath)
 			fullPath := filepath.Join(execDir, versionFile)
@@ -308,11 +294,9 @@ func outputText(report DiagnosticReport) error {
 	fmt.Printf("  • Lynx Version: %s\n", report.System.LynxVersion)
 	fmt.Printf("  • CPUs: %d\n", report.System.NumCPU)
 
-	// Checks Results
 	fmt.Printf("\n🔎 Diagnostic Checks:\n")
 	fmt.Println(strings.Repeat("-", 50))
 
-	// Group checks by category
 	checksByCategory := groupChecksByCategory(report.Checks)
 
 	for category, checks := range checksByCategory {
@@ -481,9 +465,9 @@ func printRecommendations(report DiagnosticReport) {
 	}
 }
 
+// getRecommendation returns advice for a failing check. It is currently generic;
+// per-check guidance can be added here.
 func getRecommendation(check CheckResult) string {
-	// This would provide specific recommendations based on the check
-	// For now, return a generic message
 	if check.FixAvailable {
 		return "Run 'lynx doctor --fix' to automatically resolve"
 	}

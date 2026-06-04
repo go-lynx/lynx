@@ -1,10 +1,5 @@
-// Package lynx provides the core application framework for building microservices.
-//
-// This file (lifecycle.go) contains plugin lifecycle operations including:
-//   - Plugin initialization with timeout and error recovery
-//   - Plugin startup with parallel execution and rollback
-//   - Plugin shutdown with graceful termination
-//   - Context-aware lifecycle support for cancellation
+// Plugin lifecycle execution: init/start/stop with per-step timeouts, panic
+// protection, parallel-by-level startup, and rollback on failure.
 package app
 
 import (
@@ -551,8 +546,7 @@ func (m *DefaultPluginManager[T]) runLifecycleStep(ctx context.Context, opts lif
 	}
 }
 
-// safeInitPlugin safely calls Initialize with timeout and panic protection.
-// Fixed: Simplified goroutine nesting, using context for unified lifecycle management
+// safeInitPlugin calls Initialize under a timeout context with panic protection.
 func (m *DefaultPluginManager[T]) safeInitPlugin(p plugins.Plugin, rt plugins.Runtime, timeout time.Duration) error {
 	if p == nil {
 		return nil
@@ -669,8 +663,7 @@ func setPluginStatusIfSupported(p plugins.Plugin, status plugins.PluginStatus) {
 	}
 }
 
-// safeStartPlugin safely calls Start with timeout and panic protection.
-// Fixed: Simplified goroutine nesting, using context for unified lifecycle management
+// safeStartPlugin calls Start under a timeout context with panic protection.
 func (m *DefaultPluginManager[T]) safeStartPlugin(p plugins.Plugin, timeout time.Duration) error {
 	if p == nil {
 		return nil
@@ -730,7 +723,6 @@ func (m *DefaultPluginManager[T]) safeStopPlugin(p plugins.Plugin, timeout time.
 
 	stopInfo := describeLifecycleStep(p, "stop")
 
-	// Emit plugin stopping event
 	m.emitPluginEvent(p.ID(), events.EventPluginStopping, lifecycleStepMetadata(p, "stop", timeout, stopInfo.ctxAware))
 
 	if timeout <= 0 {

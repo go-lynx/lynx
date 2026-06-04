@@ -163,20 +163,15 @@ func (dg *DependencyGraph) AddDependency(pluginID string, dependency *Dependency
 	dg.mu.Lock()
 	defer dg.mu.Unlock()
 
-	// Check if plugin exists
 	if _, exists := dg.plugins[pluginID]; !exists {
 		return fmt.Errorf("plugin %s not found", pluginID)
 	}
 
-	// Check if dependent plugin exists
 	if _, exists := dg.plugins[dependency.ID]; !exists {
 		return fmt.Errorf("dependency plugin %s not found", dependency.ID)
 	}
 
-	// Add dependency relationship
 	dg.dependencies[pluginID] = append(dg.dependencies[pluginID], dependency)
-
-	// Update dependent relationship
 	dg.dependents[dependency.ID] = append(dg.dependents[dependency.ID], pluginID)
 
 	// Update reverse index so RemovePlugin can skip a full scan
@@ -281,11 +276,9 @@ func (dg *DependencyGraph) CheckCircularDependencies() ([]string, error) {
 	recStack := make(map[string]bool)
 	cycle := make([]string, 0)
 
-	// Depth-first search to detect cycles
 	var dfs func(pluginID string) bool
 	dfs = func(pluginID string) bool {
 		if recStack[pluginID] {
-			// Found circular dependency
 			cycle = append(cycle, pluginID)
 			return true
 		}
@@ -313,11 +306,10 @@ func (dg *DependencyGraph) CheckCircularDependencies() ([]string, error) {
 		return false
 	}
 
-	// Check all plugins
 	for id := range dg.plugins {
 		if !visited[id] {
 			if dfs(id) {
-				// Reverse cycle path
+				// dfs builds the cycle in reverse; flip it for readable output.
 				for i, j := 0, len(cycle)-1; i < j; i, j = i+1, j-1 {
 					cycle[i], cycle[j] = cycle[j], cycle[i]
 				}
@@ -334,22 +326,18 @@ func (dg *DependencyGraph) ResolveDependencies() ([]string, error) {
 	dg.mu.RLock()
 	defer dg.mu.RUnlock()
 
-	// First check for circular dependencies
 	if _, err := dg.CheckCircularDependencies(); err != nil {
 		return nil, err
 	}
 
-	// Topological sort
 	inDegree := make(map[string]int)
 	graph := make(map[string][]string)
 
-	// Initialize in-degrees
 	for pluginID := range dg.plugins {
 		inDegree[pluginID] = 0
 	}
 
-	// Build graph and calculate in-degrees
-	// Use edges: dependency -> plugin (so that dependencies are before dependents)
+	// Edges point dependency -> plugin so dependencies are ordered before dependents.
 	for pluginID, deps := range dg.dependencies {
 		for _, dep := range deps {
 			if dep.Type == DependencyTypeRequired {
@@ -359,24 +347,21 @@ func (dg *DependencyGraph) ResolveDependencies() ([]string, error) {
 		}
 	}
 
-	// Topological sort
 	var result []string
 	queue := make([]string, 0)
 
-	// Find all nodes with in-degree 0 (no required dependencies)
+	// Seed the queue with nodes that have no required dependencies.
 	for pluginID, degree := range inDegree {
 		if degree == 0 {
 			queue = append(queue, pluginID)
 		}
 	}
 
-	// Process queue
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
 		result = append(result, current)
 
-		// Update in-degrees of nodes that depend on current
 		for _, next := range graph[current] {
 			inDegree[next]--
 			if inDegree[next] == 0 {
@@ -385,7 +370,7 @@ func (dg *DependencyGraph) ResolveDependencies() ([]string, error) {
 		}
 	}
 
-	// Check if all nodes were processed
+	// A short result means a cycle left some nodes with non-zero in-degree.
 	if len(result) != len(dg.plugins) {
 		return nil, fmt.Errorf("dependency resolution failed: some plugins have unresolved dependencies")
 	}

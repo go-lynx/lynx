@@ -107,7 +107,7 @@ fmt.Println("Active caches:", cacheNames)
 stats := cache.Stats()
 for name, metrics := range stats {
     fmt.Printf("Cache %s - Hits: %d, Misses: %d\n", 
-        name, metrics.Hits, metrics.Misses)
+        name, metrics.Hits(), metrics.Misses())
 }
 ```
 
@@ -231,7 +231,7 @@ if err == cache.ErrCacheMiss {
 ### 4. Monitor Metrics
 ```go
 metrics := cache.Metrics()
-hitRatio := float64(metrics.Hits) / float64(metrics.Hits + metrics.Misses)
+hitRatio := float64(metrics.Hits()) / float64(metrics.Hits() + metrics.Misses())
 fmt.Printf("Hit ratio: %.2f%%\n", hitRatio*100)
 ```
 

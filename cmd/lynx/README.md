@@ -17,12 +17,12 @@ The **Lynx CLI Tool** is a powerful command-line interface that simplifies the c
 
 ## ✨ Features
 
-- **🚀 Quick Project Creation**: Generate new Lynx service projects in seconds
-- **📁 Template-Based**: Uses proven project templates for consistent structure
-- **🌍 Multi-Language Support**: Built-in internationalization (Chinese/English)
-- **🔧 Configurable**: Customizable project generation with various flags
-- **⚡ Fast & Efficient**: Optimized for quick project setup
-- **🔄 Concurrent Processing**: Support for multiple project creation
+- **🚀 Quick Project Creation**: Scaffold new Lynx services from templates
+- **📁 Template-Based**: Consistent structure from the layout repo
+- **🌍 Multi-Language Support**: Built-in internationalization (English/Chinese)
+- **🔄 Concurrent Processing**: Create multiple projects at once
+- **🔌 Plugin Management**: Discover, install, and remove plugins
+- **🩺 Diagnostics**: `lynx doctor` checks your environment and project
 
 ## 🛠️ Installation
 
@@ -66,6 +66,17 @@ lynx --version
 lynx new my-service
 ```
 
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `new` | Scaffold one or more service projects from the layout template |
+| `run` | Build and run a project, with optional hot reload (`--watch`) |
+| `plugin` | Manage plugins: `list`, `search`, `install`, `remove`, `info` |
+| `doctor` | Diagnose the environment and project (`--fix` to auto-fix) |
+| `git` | Org helpers: `clone-all`, `remote-to-ssh` |
+| `gen-ca` | Generate a shared root CA for mesh TLS |
+
 ### Global Flags
 
 | Flag | Short | Description | Default |
@@ -73,7 +84,7 @@ lynx new my-service
 | `--verbose` | `-v` | Enable verbose logs | `false` |
 | `--quiet` | `-q` | Suppress non-error logs | `false` |
 | `--log-level` | | Log level: error\|warn\|info\|debug | `info` |
-| `--lang` | | Language for messages: zh\|en | `zh` |
+| `--lang` | | Language for messages: zh\|en | `en` |
 
 ### Project Creation
 
@@ -157,10 +168,10 @@ my-service/
 
 ## 🌍 Internationalization
 
-The CLI supports multiple languages:
+The CLI supports two languages, defaulting to English:
 
-- **Chinese (zh)**: Default language with localized messages
-- **English (en)**: International language support
+- **English (en)**: default
+- **Chinese (zh)**: localized messages
 
 Set language via:
 ```bash

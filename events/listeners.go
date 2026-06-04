@@ -85,14 +85,16 @@ func (m *EventListenerManager) AddListener(id string, filter *EventFilter, handl
 
 	m.listeners[id] = listener
 
-	// Subscribe to the event bus
 	eventManager := m.eventManager
 	if eventManager == nil {
 		delete(m.listeners, id)
 		return fmt.Errorf("event bus not initialized")
 	}
 
-	// If filter is empty, subscribe to all events on the bus
+	// Empty filter -> catch-all subscription on the bus. Otherwise pick the
+	// narrowest subscription: per-type when EventTypes are set, else a bus-level
+	// predicate. Active gates delivery so RemoveListener short-circuits in-flight
+	// callbacks before Cancel runs.
 	if filter == nil || filter.IsEmpty() {
 		cancel, err := eventManager.SubscribeWithCancel(busType, func(event LynxEvent) {
 			if listener.Active.Load() {
@@ -105,9 +107,7 @@ func (m *EventListenerManager) AddListener(id string, filter *EventFilter, handl
 		}
 		listener.Cancel = cancel
 	} else {
-		// Use cloned filter for thread safety
-		lf := listener.Filter
-		// If filter has no EventTypes specified, subscribe at bus-level with predicate
+		lf := listener.Filter // cloned copy; safe to capture in closures
 		if len(lf.EventTypes) == 0 {
 			cancel, err := eventManager.SubscribeWithCancel(busType, func(event LynxEvent) {
 				if listener.Active.Load() && lf.Matches(event) {
@@ -120,7 +120,6 @@ func (m *EventListenerManager) AddListener(id string, filter *EventFilter, handl
 			}
 			listener.Cancel = cancel
 		} else {
-			// Subscribe to specific event types
 			var cancels []context.CancelFunc
 			for _, eventType := range lf.EventTypes {
 				cancel, err := eventManager.SubscribeToWithCancel(eventType, func(event LynxEvent) {
@@ -129,7 +128,7 @@ func (m *EventListenerManager) AddListener(id string, filter *EventFilter, handl
 					}
 				})
 				if err != nil {
-					// cancel already registered ones
+					// Roll back the subscriptions already registered for this listener.
 					for _, c := range cancels {
 						c()
 					}
@@ -138,7 +137,6 @@ func (m *EventListenerManager) AddListener(id string, filter *EventFilter, handl
 				}
 				cancels = append(cancels, cancel)
 			}
-			// compose cancel
 			listener.Cancel = func() {
 				for _, c := range cancels {
 					if c != nil {
@@ -162,7 +160,6 @@ func (m *EventListenerManager) RemoveListener(id string) error {
 		return fmt.Errorf("listener with ID %s not found", id)
 	}
 
-	// Cancel the listener
 	listener.Active.Store(false)
 	if listener.Cancel != nil {
 		listener.Cancel()

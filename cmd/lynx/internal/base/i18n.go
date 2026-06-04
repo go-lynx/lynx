@@ -16,10 +16,10 @@ func Lang() string {
 	return "en"
 }
 
-// IsZH indicates whether the current environment is Chinese.
+// IsZH reports whether the active language is Chinese.
 func IsZH() bool { return Lang() == "zh" }
 
-// Choose returns the corresponding text based on the current language.
+// Choose picks zhMsg or enMsg according to the active language.
 func Choose(zhMsg, enMsg string) string {
 	if IsZH() {
 		return zhMsg

@@ -104,67 +104,61 @@ func WithDefaultRootCA(f func() []byte) Option {
 // If no options are provided, default configuration will be used.
 func NewGrpcSubscribe(opts ...Option) *GrpcSubscribe {
 	gs := &GrpcSubscribe{
-		tls: false, // Default to not enabling TLS encryption
+		tls: false,
 	}
-	// Apply provided option configurations
 	for _, o := range opts {
 		o(gs)
 	}
 	return gs
 }
 
-// Subscribe subscribes to the specified GRPC service and returns a gGrpc.ClientConn connection instance.
-// Returns nil if service name is empty.
+// Subscribe dials the configured gRPC service via discovery and returns the
+// client connection, or nil on failure (the error is logged). When the service
+// is marked Required, it blocks until the connection reaches Ready or a 10s
+// timeout elapses, closing and returning nil on timeout.
 func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 	if g.svcName == "" {
 		return nil
 	}
-	// Prepare TLS config if needed
 	var tlsConf *tls.Config
 	if g.tls {
 		conf, err := g.buildClientTLSConfig()
 		if err != nil {
-			// Log error and return nil (handled by caller for required case)
 			log.Error(err)
 			return nil
 		}
 		tlsConf = conf
 	}
-	// Configure gRPC client options
 	opts := []grpc.ClientOption{
-		grpc.WithEndpoint("discovery:///" + g.svcName), // Set service discovery endpoint
-		grpc.WithDiscovery(g.discovery),                // Set service discovery instance
+		grpc.WithEndpoint("discovery:///" + g.svcName),
+		grpc.WithDiscovery(g.discovery),
 		grpc.WithMiddleware(
-			logging.Client(log.Logger), // Add logging middleware
-			tracing.Client(),           // Add tracing middleware
+			logging.Client(log.Logger),
+			tracing.Client(),
 		),
-		// Set TLS configuration only when enabled
-		// Note: nil TLS config should not be passed
 	}
+	// Only pass a TLS config when one was built; a nil config must not be passed.
 	if tlsConf != nil {
 		opts = append(opts, grpc.WithTLSConfig(tlsConf))
 	}
-	opts = append(opts, grpc.WithNodeFilter(g.nodeFilter())) // Set node filter
+	opts = append(opts, grpc.WithNodeFilter(g.nodeFilter()))
 
 	var conn *gGrpc.ClientConn
 	var err error
-	// Use a dial timeout context to avoid hanging
+	// Bound the dial so a missing/unreachable service cannot hang startup.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if g.tls {
-		// When TLS is enabled, use secure connection
 		conn, err = grpc.Dial(ctx, opts...)
 	} else {
-		// When TLS is not enabled, use insecure connection
 		conn, err = grpc.DialInsecure(ctx, opts...)
 	}
 	if err != nil {
-		// Log error and throw exception
 		log.Error(err)
 		return nil
 	}
 
-	// If marked as required, block until connection is Ready or timeout
+	// A required dependency must be reachable before we proceed, so wait for Ready.
 	if g.required && conn != nil {
 		waitTimeout := 10 * time.Second
 		waitCtx, cancel := context.WithTimeout(context.Background(), waitTimeout)
@@ -176,7 +170,6 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 				break
 			}
 			if !conn.WaitForStateChange(waitCtx, state) {
-				// timeout or context done
 				log.Error(fmt.Errorf("grpc subscribe connection to %s not ready within %v (last_state=%s)", g.svcName, waitTimeout, state.String()))
 				_ = conn.Close()
 				return nil
@@ -186,7 +179,6 @@ func (g *GrpcSubscribe) Subscribe() *gGrpc.ClientConn {
 	return conn
 }
 
-// Internal: Create node filter based on injected factory
 func (g *GrpcSubscribe) nodeFilter() selector.NodeFilter {
 	if g.routerFactory == nil {
 		return nil

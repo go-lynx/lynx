@@ -8,14 +8,12 @@ import (
 	"github.com/go-lynx/lynx/plugins"
 )
 
-// TypedFactory type-safe plugin factory
+// TypedFactory is a concurrency-safe registry of plugin creators keyed by name,
+// with a secondary index from config prefix to the names registered under it.
 type TypedFactory struct {
-	// creators stores plugin creation functions
-	creators map[string]func() plugins.Plugin
-	// configMapping configuration prefix mapping
+	creators      map[string]func() plugins.Plugin
 	configMapping map[string][]string
-	// mu read-write lock for concurrent access protection
-	mu sync.RWMutex
+	mu            sync.RWMutex
 }
 
 // RegisterPlugin registers a plugin (backward-compatible signature for TypedFactory).
@@ -24,14 +22,14 @@ func (f *TypedFactory) RegisterPlugin(name string, configPrefix string, creator 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// Check if already registered
+	// First registration wins; later duplicates are ignored so init-order races
+	// between plugins don't clobber an existing creator.
 	if _, exists := f.creators[name]; exists {
-		// Plugin already registered, skip silently to avoid duplicate registration
 		log.Debugf("plugin %s already registered, skipping", name)
 		return
 	}
 
-	// Cross-prefix duplicate name detection (defensive)
+	// Warn if the same name is registered under a different config prefix.
 	for prefix, names := range f.configMapping {
 		if prefix == configPrefix {
 			continue
@@ -43,10 +41,8 @@ func (f *TypedFactory) RegisterPlugin(name string, configPrefix string, creator 
 		}
 	}
 
-	// Store creation function
 	f.creators[name] = creator
 
-	// Configuration mapping
 	if f.configMapping[configPrefix] == nil {
 		f.configMapping[configPrefix] = make([]string, 0)
 	}
@@ -78,7 +74,6 @@ func RegisterTypedPlugin[T plugins.Plugin](
 	configPrefix string,
 	creator func() T,
 ) {
-	// Delegate to non-generic RegisterPlugin for centralized logic
 	factory.RegisterPlugin(name, configPrefix, func() plugins.Plugin { return creator() })
 }
 
@@ -153,17 +148,13 @@ func (f *TypedFactory) UnregisterPlugin(name string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// Remove from creator mapping
 	delete(f.creators, name)
 
-	// Remove from configuration mapping
 	for prefix, pluginList := range f.configMapping {
 		for i, plugin := range pluginList {
 			if plugin == name {
-				// Remove the plugin
 				f.configMapping[prefix] = append(pluginList[:i], pluginList[i+1:]...)
 
-				// If no plugins remain under this prefix, delete the prefix entry
 				if len(f.configMapping[prefix]) == 0 {
 					delete(f.configMapping, prefix)
 				}

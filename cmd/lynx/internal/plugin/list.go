@@ -18,7 +18,6 @@ var (
 	listNoCache bool
 )
 
-// cmdList represents the list command
 var cmdList = &cobra.Command{
 	Use:   "list",
 	Short: "List available or installed plugins",
@@ -57,13 +56,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize plugin manager: %w", err)
 	}
 
-	// Get plugins
 	plugins, err := manager.ListPlugins(listAll, listType)
 	if err != nil {
 		return fmt.Errorf("failed to list plugins: %w", err)
 	}
 
-	// Sort plugins by type and name
 	sort.Slice(plugins, func(i, j int) bool {
 		if plugins[i].Type != plugins[j].Type {
 			return plugins[i].Type < plugins[j].Type
@@ -71,12 +68,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		return plugins[i].Name < plugins[j].Name
 	})
 
-	// When listing all available plugins, fetch latest version from Go proxy for each
+	// Latest versions are only resolved (via the Go proxy) for the full catalog.
 	if listAll && len(plugins) > 0 {
 		EnrichPluginsLatestVersion(plugins)
 	}
 
-	// Output based on format
 	switch listFormat {
 	case "json":
 		return outputJSON(plugins)
@@ -97,10 +93,8 @@ func outputTable(plugins []*PluginMetadata, showAll bool) error {
 		return nil
 	}
 
-	// Create table writer
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 
-	// Print header
 	if showAll {
 		fmt.Fprintf(w, "NAME\tTYPE\tVERSION\tSTATUS\tDESCRIPTION\n")
 		fmt.Fprintf(w, "----\t----\t-------\t------\t-----------\n")
@@ -109,7 +103,6 @@ func outputTable(plugins []*PluginMetadata, showAll bool) error {
 		fmt.Fprintf(w, "----\t----\t-------\t-------\t-----------\n")
 	}
 
-	// Print plugins
 	for _, plugin := range plugins {
 		name := plugin.Name
 		if plugin.Official {
@@ -118,7 +111,6 @@ func outputTable(plugins []*PluginMetadata, showAll bool) error {
 
 		typeStr := colorizeType(plugin.Type)
 
-		// Truncate description if too long
 		desc := plugin.Description
 		if len(desc) > 50 {
 			desc = desc[:47] + "..."
@@ -140,7 +132,6 @@ func outputTable(plugins []*PluginMetadata, showAll bool) error {
 
 	w.Flush()
 
-	// Print summary
 	fmt.Println()
 	if showAll {
 		installedCount := 0
@@ -198,7 +189,7 @@ func colorizeStatus(s PluginStatus) string {
 	}
 }
 
-// Helper function to format plugin type display
+// formatPluginType returns a human-readable label for a plugin type.
 func formatPluginType(pluginType PluginType) string {
 	switch pluginType {
 	case TypeService:

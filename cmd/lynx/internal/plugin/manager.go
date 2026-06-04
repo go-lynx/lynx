@@ -210,13 +210,11 @@ func (m *PluginManager) ListPlugins(showAll bool, pluginType string) ([]*PluginM
 	var plugins []*PluginMetadata
 
 	if pluginType != "" {
-		// Filter by type (normalize to lowercase to match TypeService etc.)
+		// Lowercase to match the PluginType constants (TypeService etc.).
 		plugins = m.registry.GetPluginsByType(PluginType(strings.ToLower(pluginType)))
 	} else if showAll {
-		// Show all plugins
 		plugins = m.registry.GetAllPlugins()
 	} else {
-		// Show only installed plugins
 		for _, plugin := range m.registry.GetAllPlugins() {
 			if plugin.Status == StatusInstalled {
 				plugins = append(plugins, plugin)
@@ -234,17 +232,15 @@ func (m *PluginManager) GetPluginInfo(name string) (*PluginMetadata, error) {
 
 // InstallPlugin installs a plugin
 func (m *PluginManager) InstallPlugin(name string, version string, force bool) error {
-	// Get plugin metadata
 	plugin, err := m.registry.GetPlugin(name)
 	if err != nil {
-		// Try to install from URL if not in registry
+		// A path-like name (contains "/" or ".") is treated as a direct repo URL.
 		if strings.Contains(name, "/") || strings.Contains(name, ".") {
 			return m.installFromURL(name, version, force)
 		}
 		return fmt.Errorf("plugin not found: %s", name)
 	}
 
-	// Check if already installed
 	if plugin.Status == StatusInstalled && !force {
 		return fmt.Errorf("plugin %s is already installed, use --force to reinstall", name)
 	}
@@ -273,24 +269,19 @@ func (m *PluginManager) InstallPlugin(name string, version string, force bool) e
 		return fmt.Errorf("failed to add plugin module via 'go get': %w", err)
 	}
 
-	// Generate configuration template
 	configFile := filepath.Join("conf", fmt.Sprintf("%s.yaml", plugin.Name))
 	if err := m.generateConfigTemplate(plugin, configFile); err != nil {
 		fmt.Printf("Warning: failed to generate config template: %v\n", err)
 	}
 
-	// Update installed plugins list
 	m.addInstalledPlugin(plugin.Name, version, configFile)
 
-	// Save configuration
 	if err := m.saveInstalledPlugins(); err != nil {
 		return fmt.Errorf("failed to save plugin configuration: %w", err)
 	}
 
-	// Update registry status
 	m.registry.UpdatePluginStatus(name, StatusInstalled, version)
 
-	// Run go mod tidy
 	fmt.Println("Running go mod tidy...")
 	if err := m.runGoModTidy(); err != nil {
 		fmt.Printf("Warning: go mod tidy failed: %v\n", err)
@@ -306,18 +297,16 @@ func (m *PluginManager) InstallPlugin(name string, version string, force bool) e
 
 // RemovePlugin removes a plugin
 func (m *PluginManager) RemovePlugin(name string, keepConfig bool) error {
-	// Get plugin metadata
 	plugin, err := m.registry.GetPlugin(name)
 	if err != nil {
 		return fmt.Errorf("plugin not found: %s", name)
 	}
 
-	// Check if installed
 	if plugin.Status != StatusInstalled {
 		return fmt.Errorf("plugin %s is not installed", name)
 	}
 
-	// Check dependencies (use normalized plugin name; installed list stores by plugin.Name)
+	// Refuse removal while another installed plugin requires this one.
 	if err := m.checkDependencies(plugin.Name); err != nil {
 		return fmt.Errorf("cannot remove plugin: %w", err)
 	}
@@ -346,18 +335,15 @@ func (m *PluginManager) RemovePlugin(name string, keepConfig bool) error {
 		fmt.Printf("Warning: failed to remove legacy plugin directory %s: %v\n", legacyDir, err)
 	}
 
-	// Remove from installed list (installed list key is plugin.Name, e.g. "redis" not "lynx-redis")
+	// Installed list is keyed by plugin.Name (e.g. "redis", not "lynx-redis").
 	m.removeInstalledPlugin(plugin.Name)
 
-	// Save configuration
 	if err := m.saveInstalledPlugins(); err != nil {
 		return fmt.Errorf("failed to save plugin configuration: %w", err)
 	}
 
-	// Update registry status
 	m.registry.UpdatePluginStatus(name, StatusNotInstalled, "")
 
-	// Optionally remove config
 	if !keepConfig {
 		configFile := filepath.Join("conf", fmt.Sprintf("%s.yaml", plugin.Name))
 		if err := os.Remove(configFile); err != nil && !os.IsNotExist(err) {
@@ -501,20 +487,19 @@ func importPathFromCloneURL(cloneURL string) string {
 	return s
 }
 
+// generateConfigTemplate writes a starter config for the plugin under conf/,
+// leaving any existing file untouched.
 func (m *PluginManager) generateConfigTemplate(plugin *PluginMetadata, configFile string) error {
-	// Create conf directory if it doesn't exist
 	confDir := filepath.Join(m.projectRoot, "conf")
 	if err := os.MkdirAll(confDir, 0755); err != nil {
 		return err
 	}
 
-	// Check if config already exists
 	configPath := filepath.Join(m.projectRoot, configFile)
 	if _, err := os.Stat(configPath); err == nil {
-		return nil // Config already exists
+		return nil
 	}
 
-	// Generate plugin-specific config template
 	config := m.generatePluginConfig(plugin)
 
 	data, err := yaml.Marshal(config)
@@ -795,8 +780,8 @@ func (m *PluginManager) getGenericPluginConfig(name string) map[string]any {
 	}
 }
 
+// addInstalledPlugin records the plugin, updating an existing entry in place.
 func (m *PluginManager) addInstalledPlugin(name, version, configPath string) {
-	// Check if already in list
 	for i, plugin := range m.installedList {
 		if plugin.Name == name {
 			m.installedList[i].Version = version
@@ -805,7 +790,6 @@ func (m *PluginManager) addInstalledPlugin(name, version, configPath string) {
 		}
 	}
 
-	// Add new plugin
 	m.installedList = append(m.installedList, InstalledPlugin{
 		Name:       name,
 		Version:    version,
@@ -824,8 +808,8 @@ func (m *PluginManager) removeInstalledPlugin(name string) {
 	m.installedList = newList
 }
 
+// checkDependencies fails if any other installed plugin requires name.
 func (m *PluginManager) checkDependencies(name string) error {
-	// Check if other plugins depend on this one
 	for _, plugin := range m.registry.GetAllPlugins() {
 		if plugin.Status != StatusInstalled || plugin.Name == name {
 			continue

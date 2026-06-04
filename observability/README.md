@@ -150,8 +150,8 @@ pm.RecordDBQuery("mysql", "read", "get_user", 10*time.Millisecond)
 
 ```go
 snapshot := pm.GetMetrics()
-fmt.Printf("Uptime: %v\n", snapshot["uptime"])
-fmt.Printf("Goroutines: %v\n", snapshot["goroutines"])
+fmt.Printf("Uptime: %v\n", snapshot["app_uptime_seconds"])
+fmt.Printf("Goroutines: %v\n", snapshot["system_goroutines"])
 ```
 
 ### Exposing Metrics Endpoint

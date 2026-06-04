@@ -18,10 +18,9 @@ import (
 type CertificateManager struct {
 	mu sync.RWMutex
 
-	// Configuration
 	config *conf.Tls
 
-	// AutoConfig is used when source_type is "auto" for generating and rotating certificates
+	// autoConfig drives generation and rotation when source_type is "auto".
 	autoConfig *conf.AutoConfig
 
 	// Explicit runtime dependencies injected by the owning TLS plugin/app.
@@ -94,12 +93,10 @@ func (cm *CertificateManager) Initialize() error {
 		cm.stopChan = make(chan struct{})
 	}
 
-	// Set default source type if not specified
 	if cm.config.SourceType == "" {
 		cm.config.SourceType = conf.DefaultSourceType
 	}
 
-	// Validate configuration
 	validator := NewConfigValidator()
 	if err := validator.ValidateCompleteConfig(cm.config); err != nil {
 		cm.lastError = err
@@ -112,7 +109,6 @@ func (cm *CertificateManager) Initialize() error {
 		}
 	}
 
-	// Load certificates based on source type
 	var err error
 	switch cm.config.SourceType {
 	case conf.SourceTypeLocalFile:
@@ -132,20 +128,17 @@ func (cm *CertificateManager) Initialize() error {
 		return fmt.Errorf("failed to load certificates: %w", err)
 	}
 
-	// Build TLS configuration
 	if err := cm.buildTLSConfig(); err != nil {
 		cm.lastError = err
 		return fmt.Errorf("failed to build TLS config: %w", err)
 	}
 
-	// Start file monitoring if enabled
 	if cm.config.SourceType == conf.SourceTypeLocalFile &&
 		cm.config.LocalFile != nil &&
 		cm.config.LocalFile.WatchFiles {
 		cm.startFileMonitoring()
 	}
 
-	// Start auto certificate rotation if source is auto
 	if cm.config.SourceType == conf.SourceTypeAuto {
 		cm.startAutoRotation()
 	}
@@ -161,7 +154,6 @@ func (cm *CertificateManager) loadFromLocalFiles() error {
 		return fmt.Errorf("local file configuration is nil")
 	}
 
-	// Load certificate file
 	if cm.config.LocalFile.CertFile == "" {
 		return fmt.Errorf("certificate file path is required")
 	}
@@ -171,7 +163,6 @@ func (cm *CertificateManager) loadFromLocalFiles() error {
 	}
 	cm.certificate = certData
 
-	// Load private key file
 	if cm.config.LocalFile.KeyFile == "" {
 		return fmt.Errorf("private key file path is required")
 	}
@@ -181,7 +172,7 @@ func (cm *CertificateManager) loadFromLocalFiles() error {
 	}
 	cm.privateKey = keyData
 
-	// Load root CA file (optional)
+	// Root CA is optional; a read failure is logged but not fatal.
 	if cm.config.LocalFile.RootCaFile != "" {
 		rootCAData, err := cm.readFile(cm.config.LocalFile.RootCaFile)
 		if err != nil {
@@ -407,7 +398,6 @@ func (cm *CertificateManager) startAutoRotation() {
 
 // readFile reads a file and returns its content
 func (cm *CertificateManager) readFile(filePath string) ([]byte, error) {
-	// Resolve relative paths
 	if !filepath.IsAbs(filePath) {
 		absPath, err := filepath.Abs(filePath)
 		if err != nil {
@@ -416,12 +406,10 @@ func (cm *CertificateManager) readFile(filePath string) ([]byte, error) {
 		filePath = absPath
 	}
 
-	// Check if file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("file does not exist: %s", filePath)
 	}
 
-	// Read file content
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
@@ -434,7 +422,6 @@ func (cm *CertificateManager) readFile(filePath string) ([]byte, error) {
 // Uses GetCertificate callback so that after rotation (e.g. every 24h), new TLS handshakes
 // get the current certificate without restart; gRPC/HTTP servers using this config pick up new certs automatically.
 func (cm *CertificateManager) buildTLSConfig() error {
-	// Validate certificate and private key
 	if len(cm.certificate) == 0 {
 		return fmt.Errorf("certificate data is empty")
 	}
@@ -514,17 +501,14 @@ func cloneTLSCertificate(cert tls.Certificate) tls.Certificate {
 func (cm *CertificateManager) applyCommonConfig() {
 	common := cm.config.Common
 
-	// Set client authentication type
 	if common.AuthType != 0 {
 		cm.tlsConfig.ClientAuth = tls.ClientAuthType(common.AuthType)
 	}
 
-	// Set minimum TLS version
 	if common.MinTlsVersion != "" {
 		cm.tlsConfig.MinVersion = cm.parseTLSVersion(common.MinTlsVersion)
 	}
 
-	// Set session cache size
 	if common.SessionCacheSize > 0 {
 		cm.tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(int(common.SessionCacheSize))
 	}
@@ -553,16 +537,13 @@ func (cm *CertificateManager) startFileMonitoring() {
 		return
 	}
 
-	// Set default reload interval if not specified
 	reloadInterval := conf.DefaultReloadInterval
 	if cm.config.LocalFile.ReloadInterval != nil {
 		reloadInterval = cm.config.LocalFile.ReloadInterval.AsDuration()
 	}
 
-	// Create and configure file watcher
 	cm.watcher = NewFileWatcher()
 
-	// Add files to watch
 	filesToWatch := []string{cm.config.LocalFile.CertFile, cm.config.LocalFile.KeyFile}
 	if cm.config.LocalFile.RootCaFile != "" {
 		filesToWatch = append(filesToWatch, cm.config.LocalFile.RootCaFile)
@@ -574,17 +555,13 @@ func (cm *CertificateManager) startFileMonitoring() {
 		}
 	}
 
-	// Start file monitoring
 	cm.watcher.Start(reloadInterval)
-
-	// Start monitoring goroutine
 	go cm.monitorFiles(cm.stopChan, reloadInterval)
 	log.Infof("File monitoring started with reload interval: %v", reloadInterval)
 }
 
 // monitorFiles monitors certificate files for changes
 func (cm *CertificateManager) monitorFiles(stopChan <-chan struct{}, reloadInterval time.Duration) {
-	// Use file watcher for change detection
 	for {
 		select {
 		case _, ok := <-cm.watcher.changeChan:

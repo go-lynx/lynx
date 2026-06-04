@@ -16,10 +16,8 @@ const (
 	levelDebug = 4
 )
 
-// currentLevel returns the current logging level based on environment variables.
-// It checks LYNX_QUIET first (if set to "1", only errors are logged),
-// then LYNX_LOG_LEVEL for specific level (error, warn, info, debug).
-// Defaults to info level if neither is set.
+// currentLevel resolves the active log level from the environment. LYNX_QUIET=1
+// forces error-only; otherwise LYNX_LOG_LEVEL selects the level, defaulting to info.
 func currentLevel() int {
 	if os.Getenv("LYNX_QUIET") == "1" {
 		return levelError
@@ -36,14 +34,12 @@ func currentLevel() int {
 	}
 }
 
-// allow checks if the given log level should be output based on the current level.
-// Returns true if the provided level is less than or equal to the current level.
+// allow reports whether a message at level should be emitted.
 func allow(level int) bool {
 	return level <= currentLevel()
 }
 
-// Debugf prints a debug level formatted message to stdout if debug level is enabled.
-// Takes a format string and variadic arguments similar to fmt.Printf.
+// Debugf prints a debug-level message to stdout when debug logging is enabled.
 func Debugf(format string, a ...any) {
 	if allow(levelDebug) {
 		_, err := fmt.Fprintf(os.Stdout, format, a...)
@@ -53,8 +49,7 @@ func Debugf(format string, a ...any) {
 	}
 }
 
-// Infof prints an info level formatted message to stdout if info level or higher is enabled.
-// Takes a format string and variadic arguments similar to fmt.Printf.
+// Infof prints an info-level message to stdout when info logging is enabled.
 func Infof(format string, a ...any) {
 	if allow(levelInfo) {
 		_, err := fmt.Fprintf(os.Stdout, format, a...)

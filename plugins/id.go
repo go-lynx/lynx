@@ -28,14 +28,11 @@ type IDFormat struct {
 
 // ParsePluginID parses a plugin ID string into its components
 func ParsePluginID(id string) (*IDFormat, error) {
-	// Split the plugin ID string using dots
 	parts := strings.Split(id, ".")
-	// Check if the number of parts after splitting is 4, if not return invalid plugin ID error
 	if len(parts) != 4 {
 		return nil, ErrInvalidPluginID
 	}
 
-	// Initialize the IDFormat struct
 	format := &IDFormat{
 		Organization: parts[0],
 		Type:         parts[1],
@@ -43,7 +40,6 @@ func ParsePluginID(id string) (*IDFormat, error) {
 		Version:      parts[3],
 	}
 
-	// Validate the plugin ID format
 	if err := ValidatePluginID(id); err != nil {
 		return nil, err
 	}
@@ -53,17 +49,14 @@ func ParsePluginID(id string) (*IDFormat, error) {
 
 // GeneratePluginID generates a standard format plugin ID
 func GeneratePluginID(org, name, version string) string {
-	// If organization name is empty, use default organization name
 	if org == "" {
 		org = DefaultOrg
 	}
 
-	// Ensure version starts with 'v', if not add 'v'
 	if !strings.HasPrefix(version, "v") {
 		version = "v" + version
 	}
 
-	// Concatenate plugin ID according to standard format
 	return fmt.Sprintf("%s.%s.%s.%s", org, ComponentType, name, version)
 }
 
@@ -80,7 +73,6 @@ func ValidatePluginID(id string) error {
 	// $                     String end
 	pattern := `^[\w-]+\.plugin\.[a-z0-9-]+\.v\d+(?:\.\d+\.\d+)?$`
 
-	// Use regular expression to match plugin ID
 	match, _ := regexp.MatchString(pattern, id)
 	if !match {
 		return ErrInvalidPluginID
@@ -90,28 +82,22 @@ func ValidatePluginID(id string) error {
 
 // GetPluginMainVersion extracts the main version number from a plugin ID
 func GetPluginMainVersion(id string) (string, error) {
-	// Parse plugin ID
 	format, err := ParsePluginID(id)
 	if err != nil {
 		return "", err
 	}
 
-	// Split version by dots and extract main version (e.g., extract v1 from v1.0.0)
+	// Main version is the leading component, e.g. v1 from v1.0.0.
 	parts := strings.Split(format.Version, ".")
 	return parts[0], nil
 }
 
-// IsPluginVersionCompatible checks if two plugin versions are compatible
+// IsPluginVersionCompatible reports whether two plugin versions share a major version.
 func IsPluginVersionCompatible(v1, v2 string) bool {
-	// Get main version numbers of two plugin versions
 	v1Main, err1 := GetPluginMainVersion(v1)
 	v2Main, err2 := GetPluginMainVersion(v2)
-
-	// If errors occur during getting main version numbers, consider versions incompatible
 	if err1 != nil || err2 != nil {
 		return false
 	}
-
-	// Compare if two main version numbers are the same
 	return v1Main == v2Main
 }

@@ -1,16 +1,7 @@
-// Package lynx provides the core application framework for building microservices.
-//
-// This file (controlplane.go) contains the control plane interfaces and implementation:
-//   - ControlPlane: Main interface for service management (composed of smaller interfaces)
-//   - RateLimiter: HTTP and gRPC rate limiting
-//   - ServiceRegistry: Service registration and discovery
-//   - RouteManager: Service routing and node filtering
-//   - ConfigManager: Configuration source management
-//   - SystemCore: Basic application information
-//   - DefaultControlPlane: Basic implementation for local development
-//
-// Plugins may implement the full ControlPlane interface (e.g. Polaris, Nacos) or
-// register individual capabilities via SetRateLimiter, SetServiceRegistry, etc.
+// Control plane interfaces and composition. A plugin may implement the full
+// ControlPlane (e.g. Polaris, Nacos) or register individual capabilities via
+// SetRateLimiter / SetServiceRegistry / etc.; the two are merged per request by
+// compositeControlPlane, with individual capabilities taking precedence.
 package app
 
 import (
@@ -249,42 +240,36 @@ func RegisterControlPlaneCapabilityResources(rt plugins.Runtime, provider string
 	return nil
 }
 
-// DefaultControlPlane provides a basic implementation of the ControlPlane interface
-// for local development and testing purposes
+// DefaultControlPlane is the fallback control plane used when no provider plugin
+// is installed. Every capability is a no-op (nil / empty), so the application runs
+// standalone without service discovery, rate limiting, or remote config.
 type DefaultControlPlane struct {
 }
 
-// HTTPRateLimit implements the RateLimiter interface for HTTP rate limiting
 func (c *DefaultControlPlane) HTTPRateLimit() middleware.Middleware {
 	return nil
 }
 
-// GRPCRateLimit implements the RateLimiter interface for gRPC rate limiting
 func (c *DefaultControlPlane) GRPCRateLimit() middleware.Middleware {
 	return nil
 }
 
-// NewServiceRegistry implements the ServiceRegistry interface for service registration
 func (c *DefaultControlPlane) NewServiceRegistry() registry.Registrar {
 	return nil
 }
 
-// NewServiceDiscovery implements the ServiceRegistry interface for service discovery
 func (c *DefaultControlPlane) NewServiceDiscovery() registry.Discovery {
 	return nil
 }
 
-// NewNodeRouter implements the RouteManager interface for service routing
 func (c *DefaultControlPlane) NewNodeRouter(serviceName string) selector.NodeFilter {
 	return nil
 }
 
-// GetConfig implements the ConfigManager interface for configuration management
 func (c *DefaultControlPlane) GetConfig(fileName string, group string) (config.Source, error) {
 	return nil, nil
 }
 
-// GetNamespace implements the SystemCore interface for namespace management
 func (c *DefaultControlPlane) GetNamespace() string {
 	return ""
 }
@@ -434,7 +419,8 @@ func (a *LynxApp) SetControlPlane(plane ControlPlane) error {
 	a.controlPlaneMu.Lock()
 	defer a.controlPlaneMu.Unlock()
 	a.controlPlane = plane
-	// Extract capabilities from full ControlPlane for composite delegation
+	// Promote each capability the full plane implements so the composite can
+	// delegate to it directly even if it is later overridden individually.
 	if rl, ok := plane.(RateLimiter); ok {
 		a.rateLimiter = rl
 	}
@@ -516,7 +502,7 @@ func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
 		return nil, fmt.Errorf("lynx app instance is nil")
 	}
 
-	// Create new configuration if control plane is not initialized
+	// Without a control plane there are no remote sources; return an empty config.
 	if a.GetControlPlane() == nil {
 		cfg := config.New()
 		if cfg == nil {
@@ -525,24 +511,20 @@ func (a *LynxApp) InitControlPlaneConfig() (config.Config, error) {
 		return cfg, nil
 	}
 
-	// Get configuration sources from control plane
 	configSources, err := a.GetControlPlaneConfigSources()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get configuration sources: %w", err)
 	}
 
-	// Create and load configuration with multiple sources
 	cfg := config.New(config.WithSource(configSources...))
 	if cfg == nil {
 		return nil, fmt.Errorf("failed to create configuration with sources")
 	}
 
-	// Load configuration
 	if err := cfg.Load(); err != nil {
 		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Set global configuration
 	if err := a.SetGlobalConfig(cfg); err != nil {
 		return nil, fmt.Errorf("failed to set global configuration: %w", err)
 	}
@@ -560,20 +542,17 @@ func (a *LynxApp) GetControlPlaneConfigSources() ([]config.Source, error) {
 		return nil, fmt.Errorf("control plane not available")
 	}
 
-	// Check if control plane supports multi-config loading
 	if multiConfigPlane, ok := a.GetControlPlane().(MultiConfigControlPlane); ok {
 		return multiConfigPlane.GetConfigSources()
 	}
 
-	// Fallback to single config loading for backward compatibility
+	// Single-source fallback for control planes that predate multi-config support.
 	configFileName := fmt.Sprintf("%s.yaml", a.name)
 	namespace := a.GetControlPlane().GetNamespace()
 
-	// Log configuration loading attempt
 	log.Infof("Loading configuration - File: [%s] Group: [%s] Namespace: [%s]",
 		configFileName, a.name, namespace)
 
-	// Get configuration source from control plane
 	configSource, err := a.GetControlPlane().GetConfig(configFileName, a.name)
 	if err != nil {
 		log.Errorf("Failed to load configuration - File: [%s] Group: [%s] Namespace: [%s] Error: %v",
@@ -587,12 +566,10 @@ func (a *LynxApp) GetControlPlaneConfigSources() ([]config.Source, error) {
 // GetServiceRegistry returns a new service registry instance for this app.
 func (a *LynxApp) GetServiceRegistry() (registry.Registrar, error) {
 	if a == nil || a.GetControlPlane() == nil {
-		// No control plane available, return nil registrar (no service registration)
 		return nil, nil
 	}
-	reg := a.GetControlPlane().NewServiceRegistry()
-	// Return the registrar even if it's nil (no service registration)
-	return reg, nil
+	// A nil registrar is valid: it means this control plane does no registration.
+	return a.GetControlPlane().NewServiceRegistry(), nil
 }
 
 // GetServiceDiscovery returns a new service discovery instance for this app.
@@ -603,12 +580,10 @@ func (a *LynxApp) GetServiceRegistry() (registry.Registrar, error) {
 // converged.
 func (a *LynxApp) GetServiceDiscovery() (registry.Discovery, error) {
 	if a == nil || a.GetControlPlane() == nil {
-		// No control plane available, return nil discovery (no service discovery)
 		return nil, nil
 	}
-	disc := a.GetControlPlane().NewServiceDiscovery()
-	// Return the discovery even if it's nil (no service discovery)
-	return disc, nil
+	// A nil discovery is valid: it means this control plane does no discovery.
+	return a.GetControlPlane().NewServiceDiscovery(), nil
 }
 
 // GetControlPlaneCapabilities returns the merged capability set currently exposed by the app.

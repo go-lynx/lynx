@@ -21,12 +21,12 @@ type stackCfg struct {
 
 var (
 	stconf atomic.Value // *stackCfg
-	// Stack capture cache to avoid repeated collection for same error
-	stackCache sync.Map // map[string]string - key: caller location, value: stack trace
+	// stackCache memoizes traces by caller location so repeated errors at the
+	// same site avoid re-walking the stack. Keyed by "file:line:pc".
+	stackCache sync.Map
 )
 
 func init() {
-	// defaults equivalent to previous constants
 	stconf.Store(&stackCfg{
 		enabled:   true,
 		skip:      6,
@@ -56,7 +56,7 @@ func setStackConfig(enabled bool, minLevel log.Level, skip, maxFrames int, filte
 	if maxFrames <= 0 {
 		maxFrames = 16
 	}
-	// shallow copy of prefixes slice to avoid external mutation
+	// Copy the prefixes so later caller mutations can't affect stored config.
 	var fp []string
 	if len(filterPrefixes) > 0 {
 		fp = append(fp, filterPrefixes...)
@@ -70,21 +70,20 @@ func setStackConfig(enabled bool, minLevel log.Level, skip, maxFrames int, filte
 	})
 }
 
-// captureStack collects a simple stack trace string with up to maxFrames frames, skipping 'skip' frames.
-// Frames with Function or File starting with any of 'filterPrefixes' will be skipped.
-// Format: FuncName file:line per line, joined by '\n'.
-// Optimized: uses cache to avoid repeated collection for same caller location.
+// captureStack returns a stack trace of up to maxFrames frames, skipping the
+// first 'skip' frames and any frame whose Function or File matches a configured
+// filter prefix. Each line is "FuncName file:line". Returns "" when stack
+// capture is disabled or no frames remain. Results are cached per caller site.
 func captureStack() string {
 	cfg := getStackConfig()
 	if !cfg.enabled {
 		return ""
 	}
 
-	// Get caller location for cache key (skip 2 frames: this function and zerolog_adapter)
+	// Skip 2 frames (this function + the adapter) to key the cache on the real caller.
 	var callerKey string
 	if pc, file, line, ok := runtime.Caller(2); ok {
 		callerKey = fmt.Sprintf("%s:%d:%d", file, line, pc)
-		// Check cache first
 		if cached, ok := stackCache.Load(callerKey); ok {
 			if stack, ok := cached.(string); ok && stack != "" {
 				return stack
@@ -92,7 +91,6 @@ func captureStack() string {
 		}
 	}
 
-	// Collect stack trace
 	pcs := make([]uintptr, cfg.maxFrames)
 	n := runtime.Callers(cfg.skip, pcs)
 	if n == 0 {
@@ -102,9 +100,7 @@ func captureStack() string {
 	var b strings.Builder
 	for {
 		fr, more := frames.Next()
-		// Avoid empty frames
 		if fr.Function != "" || fr.File != "" {
-			// filter internal prefixes
 			if !hasAnyPrefix(fr.Function, cfg.filterPrefixes) && !hasAnyPrefix(fr.File, cfg.filterPrefixes) {
 				fmt.Fprintf(&b, "%s %s:%d\n", fr.Function, fr.File, fr.Line)
 			}
@@ -115,13 +111,10 @@ func captureStack() string {
 	}
 	stack := b.String()
 
-	// Cache the result (limit cache size to avoid memory leak)
-	// Use approximate size check - sync.Map doesn't support len()
+	// Cache is unbounded; acceptable because keys are limited to distinct caller
+	// sites. Consider LRU eviction if call sites become unbounded.
 	if callerKey != "" {
-		// Simple size limit: check if we should cache
-		// In production, you might want a more sophisticated cache with LRU
 		stackCache.Store(callerKey, stack)
-		// Note: For production, consider using a bounded cache with LRU eviction
 	}
 
 	return stack

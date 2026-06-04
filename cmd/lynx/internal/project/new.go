@@ -17,10 +17,10 @@ import (
 	"github.com/go-lynx/lynx/cmd/lynx/internal/plugin"
 )
 
-// Project represents a project template, containing project name and path information.
+// Project is a single service to be generated from the layout template.
 type Project struct {
-	Name string // Project name
-	Path string // Project path
+	Name string
+	Path string
 }
 
 type projectCreateResult struct {
@@ -42,14 +42,11 @@ var builtInLayoutPlugins = map[string]struct{}{
 // New creates a new project from a remote repository.
 // preSelectedPlugins: when nil, run interactive plugin selection; when non-nil, use the slice (may be empty) and skip prompt.
 func (p *Project) New(ctx context.Context, dir string, layout string, branch string, force bool, module string, postTidy bool, preSelectedPlugins *[]*plugin.PluginMetadata) error {
-	// Calculate the complete path where the project will be created
 	to := filepath.Join(dir, p.Name)
 
-	// Check if target path already exists
 	if _, err := os.Stat(to); !os.IsNotExist(err) {
-		// If exists, notify user that path already exists
 		base.Warnf("%s", base.T("already_exists", p.Name))
-		// --force will silently overwrite, otherwise interactive confirmation
+		// --force overwrites silently; otherwise confirm interactively.
 		if !force {
 			prompt := &survey.Confirm{
 				Message: base.T("override_confirm"),
@@ -71,22 +68,20 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 		}
 	}
 
-	// Notify user to start creating project and display project name and layout repository information
 	base.Infof("%s", base.T("creating_service", p.Name, layout))
-	// Create a new repository instance
 	repo, err := base.NewRepo(layout, branch)
 	if err != nil {
 		return err
 	}
-	// Copy remote repository content to target path, excluding .git and .github directories
-	// If --module is provided, replace the module in template go.mod; otherwise don't replace template module
+	// Copy the template, dropping .git/.github. A non-empty module rewrites the
+	// template's module path; empty leaves it untouched.
 	if err := repo.CopyToV2(ctx, to, module, []string{".git", ".github"}, nil); err != nil {
 		return err
 	}
 	if err := sanitizeProjectModules(to); err != nil {
 		return err
 	}
-	// Rename the user directory under cmd directory to project name (layout must provide cmd/user)
+	// The layout ships a generic cmd/user; rename it to the project name.
 	cmdUser := filepath.Join(to, "cmd", "user")
 	if _, err := os.Stat(cmdUser); os.IsNotExist(err) {
 		return fmt.Errorf("template layout must contain cmd/user directory (not found in %s); check repo branch or layout structure", to)
@@ -95,10 +90,9 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	if e != nil {
 		return e
 	}
-	// Print project directory structure
 	base.Tree(to, dir)
 
-	// Resolve plugin list: interactive when preSelectedPlugins==nil, otherwise use pre-selected (or empty)
+	// preSelectedPlugins==nil means prompt interactively; non-nil (even empty) uses it as-is.
 	result := projectCreateResult{}
 	var selectedPlugins []*plugin.PluginMetadata
 	if preSelectedPlugins != nil {
@@ -111,7 +105,6 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 		}
 	}
 	if len(selectedPlugins) > 0 {
-		// Add selected plugins to go.mod
 		pluginResult, err := addPluginsToProject(ctx, to, selectedPlugins)
 		result.pluginFailures = append(result.pluginFailures, pluginResult.pluginFailures...)
 		if err != nil {
@@ -119,7 +112,6 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 		}
 	}
 
-	// Optional: Execute go mod tidy
 	if postTidy {
 		cmd := exec.CommandContext(ctx, "go", "mod", "tidy")
 		cmd.Dir = to
@@ -131,9 +123,7 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 		}
 	}
 
-	// Notify user that project creation was successful
 	printProjectSummary(p.Name, result)
-	// Prompt user to use the following commands to start the project
 	base.Infof("%s", base.T("start_cmds_header"))
 	base.Infof("%s\n", color.WhiteString("$ cd %s", p.Name))
 	if !postTidy {
@@ -142,7 +132,6 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	base.Infof("%s\n", color.WhiteString("$ go generate ./..."))
 	base.Infof("%s\n", color.WhiteString("$ go build -o ./bin/ ./... "))
 	base.Infof("%s\n", color.WhiteString("$ ./bin/%s -conf ./configs", p.Name))
-	// Thank user for using Lynx and provide tutorial link
 	base.Infof("%s", base.T("thanks"))
 	base.Infof("%s", base.T("tutorial"))
 	return nil
@@ -178,7 +167,6 @@ func selectPlugins() ([]*plugin.PluginMetadata, error) {
 		return nil, nil
 	}
 
-	// Sort plugins by type and name for better display
 	sort.Slice(allPlugins, func(i, j int) bool {
 		if allPlugins[i].Type != allPlugins[j].Type {
 			return allPlugins[i].Type < allPlugins[j].Type
@@ -186,18 +174,16 @@ func selectPlugins() ([]*plugin.PluginMetadata, error) {
 		return allPlugins[i].Name < allPlugins[j].Name
 	})
 
-	// Create options for multi-select
+	// Build display labels keyed back to their metadata for lookup after selection.
 	options := make([]string, 0, len(allPlugins))
 	pluginMap := make(map[string]*plugin.PluginMetadata)
 
 	for _, p := range allPlugins {
-		// Format: "Type: Name - Description"
 		displayName := fmt.Sprintf("%s: %s - %s", formatPluginType(p.Type), p.Name, p.Description)
 		options = append(options, displayName)
 		pluginMap[displayName] = p
 	}
 
-	// Multi-select prompt
 	prompt := &survey.MultiSelect{
 		Message: base.T("select_plugins"),
 		Help:    base.T("select_plugins_help"),
@@ -206,12 +192,11 @@ func selectPlugins() ([]*plugin.PluginMetadata, error) {
 
 	var selectedOptions []string
 	if err := survey.AskOne(prompt, &selectedOptions); err != nil {
-		// User cancelled or interrupted - treat as no selection
+		// Cancel/interrupt is treated as selecting nothing, not an error.
 		base.Infof("%s\n", base.T("no_plugins_selected"))
 		return nil, nil
 	}
 
-	// Convert selected options to plugin metadata
 	selectedPlugins := make([]*plugin.PluginMetadata, 0, len(selectedOptions))
 	for _, opt := range selectedOptions {
 		if p, ok := pluginMap[opt]; ok {
@@ -341,10 +326,10 @@ func filterSelectablePlugins(all []*plugin.PluginMetadata) []*plugin.PluginMetad
 	return filtered
 }
 
-// getPluginModulePath returns the correct Go module path for a plugin
+// getPluginModulePath returns the published Go module path to `go get` for a
+// plugin. The registry tracks plugins by short name, which doesn't always match
+// the published module, so known names are mapped explicitly here first.
 func getPluginModulePath(p *plugin.PluginMetadata) string {
-	// Map plugin names to their actual module paths
-	// The registry uses internal paths, but we need the actual published module paths
 	modulePathMap := map[string]string{
 		"http":          "github.com/go-lynx/lynx-http",
 		"grpc":          "github.com/go-lynx/lynx-grpc",
@@ -371,12 +356,11 @@ func getPluginModulePath(p *plugin.PluginMetadata) string {
 		"etcd":          "github.com/go-lynx/lynx-etcd",
 	}
 
-	// Check if we have a mapped path
 	if mappedPath, ok := modulePathMap[p.Name]; ok {
 		return mappedPath
 	}
 
-	// Fallback to ImportPath or Repository
+	// Fall back to registry metadata, then a conventional name-based path.
 	if p.ImportPath != "" {
 		return p.ImportPath
 	}
@@ -384,7 +368,6 @@ func getPluginModulePath(p *plugin.PluginMetadata) string {
 		return p.Repository
 	}
 
-	// Last resort: construct from name
 	return fmt.Sprintf("github.com/go-lynx/lynx-%s", p.Name)
 }
 
@@ -403,7 +386,6 @@ func addPluginsToProject(ctx context.Context, projectDir string, plugins []*plug
 			continue
 		}
 
-		// Get the correct module path for the plugin
 		importPath := getPluginModulePath(p)
 
 		if importPath == "" {
@@ -413,16 +395,13 @@ func addPluginsToProject(ctx context.Context, projectDir string, plugins []*plug
 		}
 		selected = append(selected, p)
 
-		// Add version if specified
 		packagePath := importPath
 		if p.Version != "" && p.Version != "latest" {
-			// Use the version as-is (go get handles v prefix)
 			packagePath = fmt.Sprintf("%s@%s", importPath, p.Version)
 		} else {
 			packagePath = fmt.Sprintf("%s@latest", importPath)
 		}
 
-		// Use go get to add the dependency
 		cmd := exec.CommandContext(ctx, "go", "get", packagePath)
 		cmd.Dir = projectDir
 		if out, err := cmd.CombinedOutput(); err != nil {

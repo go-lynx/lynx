@@ -33,7 +33,6 @@ func Align(t time.Time, d time.Duration) time.Time {
 	if d <= 0 {
 		return t
 	}
-	// Align using nanoseconds since Unix epoch
 	unixNano := t.UnixNano()
 	aligned := unixNano - (unixNano % int64(d))
 	return time.Unix(0, aligned).In(t.Location())

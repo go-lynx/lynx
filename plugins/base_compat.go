@@ -14,48 +14,52 @@ func (p *TypedBasePlugin[T]) applyLegacyTransitionalHealth(report *HealthReport,
 	})
 }
 
-// Deprecated: retained only for legacy compatibility; Lynx core does not
-// treat live upgrade as a standard lifecycle path.
-// PrepareUpgrade is intentionally unsupported by the base plugin.
-// Live upgrade should be owned by external rollout tooling, not Lynx core.
+// PrepareUpgrade is intentionally unsupported by the base plugin; live upgrade
+// belongs to external rollout tooling, not Lynx core.
+//
+// Deprecated: retained only for legacy compatibility.
 func (p *TypedBasePlugin[T]) PrepareUpgrade(targetVersion string) error {
 	return NewPluginError(p.id, "PrepareUpgrade", "Live plugin upgrade is not supported by lynx core", ErrPluginUpgradeNotSupported)
 }
 
-// Deprecated: retained only for legacy compatibility; Lynx core does not
-// treat live upgrade as a standard lifecycle path.
 // ExecuteUpgrade is intentionally unsupported by the base plugin.
+//
+// Deprecated: retained only for legacy compatibility.
 func (p *TypedBasePlugin[T]) ExecuteUpgrade(targetVersion string) error {
 	return NewPluginError(p.id, "ExecuteUpgrade", "Live plugin upgrade is not supported by lynx core", ErrPluginUpgradeNotSupported)
 }
 
-// Deprecated: retained only for legacy compatibility; Lynx core does not
-// orchestrate in-process rollback as a standard lifecycle path.
 // RollbackUpgrade is intentionally unsupported by the base plugin.
+//
+// Deprecated: retained only for legacy compatibility.
 func (p *TypedBasePlugin[T]) RollbackUpgrade(previousVersion string) error {
 	return NewPluginError(p.id, "RollbackUpgrade", "Live plugin rollback is not supported by lynx core", ErrPluginUpgradeNotSupported)
 }
 
-// Deprecated: retained only for legacy compatibility.
 // PerformUpgrade is intentionally unsupported by the base plugin.
+//
+// Deprecated: retained only for legacy compatibility.
 func (p *TypedBasePlugin[T]) PerformUpgrade(targetVersion string) error {
 	return ErrPluginUpgradeNotSupported
 }
 
-// Deprecated: retained only for legacy compatibility.
 // PerformRollback is intentionally unsupported by the base plugin.
+//
+// Deprecated: retained only for legacy compatibility.
 func (p *TypedBasePlugin[T]) PerformRollback(previousVersion string) error {
 	return ErrPluginUpgradeNotSupported
 }
 
-// Deprecated: retained only for legacy compatibility metadata.
 // GetCapabilities returns the plugin's upgrade capabilities.
+//
+// Deprecated: retained only for legacy compatibility metadata.
 func (p *TypedBasePlugin[T]) GetCapabilities() []UpgradeCapability {
 	return p.capabilities
 }
 
-// Deprecated: retained only for legacy compatibility metadata.
 // SetCapabilities replaces the plugin's declared upgrade capabilities.
+//
+// Deprecated: retained only for legacy compatibility metadata.
 func (p *TypedBasePlugin[T]) SetCapabilities(caps ...UpgradeCapability) {
 	if len(caps) == 0 {
 		p.capabilities = []UpgradeCapability{UpgradeNone}
@@ -64,8 +68,9 @@ func (p *TypedBasePlugin[T]) SetCapabilities(caps ...UpgradeCapability) {
 	p.capabilities = append([]UpgradeCapability(nil), caps...)
 }
 
-// Deprecated: retained only for legacy compatibility metadata.
 // AddCapability appends an upgrade capability when it is not already declared.
+//
+// Deprecated: retained only for legacy compatibility metadata.
 func (p *TypedBasePlugin[T]) AddCapability(cap UpgradeCapability) {
 	for _, existing := range p.capabilities {
 		if existing == cap {
@@ -79,8 +84,9 @@ func (p *TypedBasePlugin[T]) AddCapability(cap UpgradeCapability) {
 	p.capabilities = append(p.capabilities, cap)
 }
 
+// SupportsCapability reports whether the plugin declares the given upgrade capability.
+//
 // Deprecated: retained only for legacy compatibility metadata.
-// SupportsCapability checks if the plugin supports the specified upgrade capability.
 func (p *TypedBasePlugin[T]) SupportsCapability(cap UpgradeCapability) bool {
 	for _, c := range p.capabilities {
 		if c == cap {

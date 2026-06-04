@@ -50,7 +50,6 @@ func NewUserService() (*UserService, error) {
 func (s *UserService) GetUser(ctx context.Context, userID string) (*User, error) {
 	cacheKey := fmt.Sprintf("user:%s", userID)
 
-	// Try to get from cache first
 	value, err := s.cache.GetOrSetContext(ctx, cacheKey,
 		func(ctx context.Context) (any, error) {
 			// Simulate database fetch
@@ -117,12 +116,10 @@ func (s *UserService) GetMultipleUsers(ctx context.Context, userIDs []string) (m
 		keyMap[key] = id
 	}
 
-	// Batch get from cache
 	cached := s.cache.GetMulti(keys)
 	result := make(map[string]*User)
 	missingIDs := []string{}
 
-	// Process cached results
 	for key, userID := range keyMap {
 		if value, ok := cached[key]; ok {
 			if user, ok := value.(*User); ok {
@@ -133,14 +130,12 @@ func (s *UserService) GetMultipleUsers(ctx context.Context, userIDs []string) (m
 		}
 	}
 
-	// Fetch missing users from DB
 	if len(missingIDs) > 0 {
 		missing, err := s.fetchMultipleUsersFromDB(ctx, missingIDs)
 		if err != nil {
 			return nil, err
 		}
 
-		// Cache the fetched users
 		toCache := make(map[any]any)
 		for id, user := range missing {
 			key := fmt.Sprintf("user:%s", id)

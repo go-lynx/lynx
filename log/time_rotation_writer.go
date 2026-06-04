@@ -29,7 +29,9 @@ const (
 	RotationIntervalWeekly RotationInterval = "weekly"
 )
 
-// TimeRotationWriter wraps lumberjack with time-based rotation support
+// TimeRotationWriter wraps lumberjack to add time-based rotation (hourly/daily/
+// weekly) and an optional total-size cap across all log files. It is safe for
+// concurrent use.
 type TimeRotationWriter struct {
 	baseWriter   *lumberjack.Logger
 	filename     string
@@ -75,14 +77,12 @@ func NewTimeRotationWriter(filename string, maxSizeMB, maxBackups, maxAgeDays in
 		cacheTTL:     5 * time.Second,                     // Cache for 5 seconds
 	}
 
-	// Calculate initial total size (synchronously for accuracy)
+	// Compute the initial total size synchronously so the cache starts accurate.
 	trw.updateTotalSize()
-	// Initialize cache
 	trw.sizeCache.Store(trw.totalSize)
 	trw.sizeCacheTime.Store(time.Now().UnixNano())
 	trw.sizeCacheValid.Store(true)
 
-	// Start time-based rotation goroutine if needed
 	if strategy == RotationStrategyTime || strategy == RotationStrategyBoth {
 		trw.wg.Add(1)
 		go trw.timeRotationLoop()
@@ -91,16 +91,15 @@ func NewTimeRotationWriter(filename string, maxSizeMB, maxBackups, maxAgeDays in
 	return trw
 }
 
-// Write implements io.Writer
+// Write implements io.Writer, rotating first if a time-based rotation is due.
 func (trw *TimeRotationWriter) Write(p []byte) (int, error) {
 	trw.mu.Lock()
 	defer trw.mu.Unlock()
 
-	// Check if time-based rotation is needed
 	if trw.strategy == RotationStrategyTime || trw.strategy == RotationStrategyBoth {
 		if trw.shouldRotateByTime() {
 			if err := trw.rotate(); err != nil {
-				// Log error but continue writing
+				// A rotation failure must not lose the write; log and continue.
 				fmt.Fprintf(os.Stderr, "[lynx-log-error] Failed to rotate log file: %v\n", err)
 			}
 		}
@@ -108,7 +107,6 @@ func (trw *TimeRotationWriter) Write(p []byte) (int, error) {
 
 	n, err := trw.baseWriter.Write(p)
 	if err == nil {
-		// Update total size (use atomic for better performance)
 		trw.sizeMu.Lock()
 		trw.totalSize += int64(n)
 		totalSize := trw.totalSize
@@ -125,11 +123,11 @@ func (trw *TimeRotationWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// Close implements io.Closer
+// Close stops the rotation loop. It is idempotent and returns nil even if the
+// background goroutine doesn't stop within the shutdown timeout.
 func (trw *TimeRotationWriter) Close() error {
 	trw.mu.Lock()
 
-	// Check if already closed
 	select {
 	case <-trw.stopCh:
 		trw.mu.Unlock()
@@ -139,7 +137,6 @@ func (trw *TimeRotationWriter) Close() error {
 	}
 	trw.mu.Unlock()
 
-	// Wait for goroutines with timeout
 	done := make(chan struct{})
 	go func() {
 		trw.wg.Wait()
@@ -199,27 +196,22 @@ func (trw *TimeRotationWriter) shouldRotateByTime() bool {
 	return now.After(nextRotate) || now.Equal(nextRotate)
 }
 
-// rotate performs the rotation
+// rotate renames the current file with a timestamp suffix and reopens a fresh
+// one. lumberjack only rotates on size, so time-based rotation is done manually.
 func (trw *TimeRotationWriter) rotate() error {
-	// For time-based rotation, we need to manually rename the file
-	// since lumberjack only rotates on size
-
-	// Generate new filename with timestamp
 	timestamp := trw.lastRotate.Format(trw.getTimestampFormat())
 	ext := filepath.Ext(trw.filename)
 	base := trw.filename[:len(trw.filename)-len(ext)]
 	newFilename := fmt.Sprintf("%s.%s%s", base, timestamp, ext)
 
-	// Check if current file exists and has content
+	// Only rename when the current file has content worth preserving.
 	info, err := os.Stat(trw.filename)
 	if err == nil && info.Size() > 0 {
-		// Rename current file
 		if err := os.Rename(trw.filename, newFilename); err != nil {
 			return fmt.Errorf("failed to rename log file: %w", err)
 		}
 	}
 
-	// Recreate lumberjack writer to start writing to new file
 	trw.baseWriter = &lumberjack.Logger{
 		Filename:   trw.filename,
 		MaxSize:    trw.baseWriter.MaxSize,
@@ -228,17 +220,15 @@ func (trw *TimeRotationWriter) rotate() error {
 		Compress:   trw.baseWriter.Compress,
 	}
 
-	// Update last rotate time
 	trw.lastRotate = trw.now()
 
-	// Invalidate cache and update total size
 	trw.invalidateSizeCache()
 	trw.updateTotalSize()
 
 	return nil
 }
 
-// getTimestampFormat returns the timestamp format based on interval
+// getTimestampFormat returns the rotated-file timestamp layout for the interval.
 func (trw *TimeRotationWriter) getTimestampFormat() string {
 	switch trw.interval {
 	case RotationIntervalHourly:
@@ -252,11 +242,11 @@ func (trw *TimeRotationWriter) getTimestampFormat() string {
 	}
 }
 
-// timeRotationLoop runs in background to check for time-based rotation
+// timeRotationLoop checks for due rotations in the background, polling more
+// frequently as the next rotation boundary approaches for timing precision.
 func (trw *TimeRotationWriter) timeRotationLoop() {
 	defer trw.wg.Done()
 
-	// Calculate base check interval based on rotation interval
 	var baseCheckInterval time.Duration
 	switch trw.interval {
 	case RotationIntervalHourly:

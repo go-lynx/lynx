@@ -8,12 +8,13 @@ This module provides enhanced TLS certificate management for the Lynx framework,
 - **Local File Source**: Load certificates from local files (recommended for production)
 - **Memory Source**: Load certificates from memory content (useful for testing)
 - **Control Plane Source**: Load certificates from control plane (legacy support)
+- **Auto Source**: Generate an in-process CA and server certificate, with periodic leaf rotation; optionally sign from a shared mesh CA
 
 ### 🔄 **File Monitoring & Hot Reload**
 - Real-time monitoring of certificate file changes
 - Automatic certificate reloading without service restart
 - Configurable monitoring intervals
-- MD5 hash-based change detection for reliability
+- SHA-256 hash-based change detection for reliability
 
 ### ⚙️ **Advanced Configuration**
 - Flexible TLS configuration options
@@ -90,6 +91,7 @@ lynx:
 | `local_file` | Load from local files | Production, development |
 | `memory` | Load from memory content | Testing, embedded |
 | `control_plane` | Load from control plane | Legacy systems |
+| `auto` | Generate certs in-process with rotation | Mesh/dev without a PKI; tune via `lynx.tls.auto` |
 
 ### Authentication Types
 
@@ -118,7 +120,7 @@ lynx:
 
 The file monitoring system provides real-time certificate updates:
 
-- **Change Detection**: Monitors file modification time, size, and MD5 hash
+- **Change Detection**: Monitors file modification time, size, and SHA-256 hash
 - **Hot Reload**: Automatically reloads certificates when changes are detected
 - **Configurable Intervals**: Set monitoring frequency (1s to 5 minutes)
 - **Non-blocking**: Change notifications don't block the main application
@@ -144,7 +146,7 @@ The module provides comprehensive error handling:
 
 - **Lazy Loading**: Certificates are loaded only when needed
 - **Efficient Monitoring**: Uses lightweight file stat operations
-- **Hash-based Detection**: MD5 hashing for reliable change detection
+- **Hash-based Detection**: SHA-256 hashing for reliable change detection
 - **Configurable Caching**: Session cache size can be tuned
 
 ## Security Best Practices

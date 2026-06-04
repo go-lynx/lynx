@@ -23,12 +23,10 @@ func (v *ConfigValidator) Validate(config *conf.Tls) error {
 		return fmt.Errorf("TLS configuration is nil")
 	}
 
-	// Validate source type
 	if !conf.IsValidSourceType(config.SourceType) {
 		return fmt.Errorf("invalid source type: %s", config.SourceType)
 	}
 
-	// Validate based on source type
 	switch config.SourceType {
 	case conf.SourceTypeLocalFile:
 		return v.validateLocalFileConfig(config)
@@ -49,7 +47,6 @@ func (v *ConfigValidator) validateLocalFileConfig(config *conf.Tls) error {
 		return fmt.Errorf("local file configuration is nil")
 	}
 
-	// Validate required fields
 	if config.LocalFile.CertFile == "" {
 		return fmt.Errorf("certificate file path is required")
 	}
@@ -57,7 +54,6 @@ func (v *ConfigValidator) validateLocalFileConfig(config *conf.Tls) error {
 		return fmt.Errorf("private key file path is required")
 	}
 
-	// Validate file paths
 	if err := v.validateFilePath(config.LocalFile.CertFile, "certificate"); err != nil {
 		return err
 	}
@@ -70,12 +66,11 @@ func (v *ConfigValidator) validateLocalFileConfig(config *conf.Tls) error {
 		}
 	}
 
-	// Validate certificate format
 	if config.LocalFile.CertFormat != "" && !conf.IsValidCertFormat(config.LocalFile.CertFormat) {
 		return fmt.Errorf("invalid certificate format: %s", config.LocalFile.CertFormat)
 	}
 
-	// Validate reload interval if file watching is enabled
+	// The reload interval only matters when file watching is on.
 	if config.LocalFile.WatchFiles && config.LocalFile.ReloadInterval != nil {
 		interval := config.LocalFile.ReloadInterval.AsDuration()
 		if !conf.IsValidReloadInterval(interval) {
@@ -114,18 +109,16 @@ func (v *ConfigValidator) validateMemoryConfig(config *conf.Tls) error {
 
 // validateFilePath validates if a file path exists and is readable
 func (v *ConfigValidator) validateFilePath(filePath, fileType string) error {
-	// Resolve absolute path
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve absolute path for %s %s: %w", fileType, filePath, err)
 	}
 
-	// Check if file exists
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
 		return fmt.Errorf("%s file does not exist: %s", fileType, absPath)
 	}
 
-	// Check if file is readable
+	// Opening the file confirms it is actually readable, not just present.
 	file, err := os.Open(absPath)
 	if err != nil {
 		return fmt.Errorf("failed to open %s file %s: %w", fileType, absPath, err)
@@ -141,17 +134,14 @@ func (v *ConfigValidator) ValidateCommonConfig(common *conf.CommonConfig) error 
 		return nil // Common config is optional
 	}
 
-	// Validate authentication type
 	if !conf.IsValidAuthType(common.AuthType) {
 		return fmt.Errorf("invalid authentication type: %d", common.AuthType)
 	}
 
-	// Validate TLS version
 	if common.MinTlsVersion != "" && !conf.IsValidTLSVersion(common.MinTlsVersion) {
 		return fmt.Errorf("invalid minimum TLS version: %s", common.MinTlsVersion)
 	}
 
-	// Validate session cache size
 	if common.SessionCacheSize < 0 {
 		return fmt.Errorf("session cache size cannot be negative")
 	}
@@ -164,12 +154,10 @@ func (v *ConfigValidator) ValidateCommonConfig(common *conf.CommonConfig) error 
 
 // ValidateCompleteConfig validates the complete TLS configuration
 func (v *ConfigValidator) ValidateCompleteConfig(config *conf.Tls) error {
-	// Validate basic configuration
 	if err := v.Validate(config); err != nil {
 		return fmt.Errorf("basic validation failed: %w", err)
 	}
 
-	// Validate common configuration
 	if err := v.ValidateCommonConfig(config.Common); err != nil {
 		return fmt.Errorf("common configuration validation failed: %w", err)
 	}

@@ -16,7 +16,8 @@ type ConsoleWriterConfig struct {
 	TimeFormat  string // Time format string
 }
 
-// NewConsoleWriter creates a console writer based on format
+// NewConsoleWriter returns a writer for the given format, defaulting to raw
+// JSON on os.Stdout for any unrecognized format.
 func NewConsoleWriter(config ConsoleWriterConfig) io.Writer {
 	switch config.Format {
 	case "pretty":
@@ -26,19 +27,17 @@ func NewConsoleWriter(config ConsoleWriterConfig) io.Writer {
 			NoColor:    config.NoColor || !config.ColorOutput,
 		}
 	case "text":
-		// Simple text format writer
 		return &textWriter{
 			out:        os.Stdout,
 			timeFormat: getTimeFormat(config.TimeFormat),
 			color:      config.ColorOutput && !config.NoColor,
 		}
 	default:
-		// JSON format (default)
 		return os.Stdout
 	}
 }
 
-// getTimeFormat returns time format string
+// getTimeFormat returns custom if non-empty, otherwise time.RFC3339.
 func getTimeFormat(custom string) string {
 	if custom != "" {
 		return custom
@@ -46,16 +45,14 @@ func getTimeFormat(custom string) string {
 	return time.RFC3339
 }
 
-// textWriter provides simple text format output
 type textWriter struct {
 	out        io.Writer
 	timeFormat string
 	color      bool
 }
 
+// Write currently passes bytes through unchanged; text formatting of the
+// underlying JSON is not yet implemented.
 func (tw *textWriter) Write(p []byte) (int, error) {
-	// For text format, we need to parse JSON and format it
-	// This is a simplified version - in production, you might want
-	// to use a proper JSON parser
 	return tw.out.Write(p)
 }

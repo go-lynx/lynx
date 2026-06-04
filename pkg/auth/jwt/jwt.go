@@ -190,11 +190,9 @@ func VerifyWithKey(token string, c CustomClaims, key SigningKey) (bool, error) {
 // Deprecated: use SignWithKey(c, ECDSAKey(privateKey)) instead, which
 // selects the algorithm automatically from the curve.
 func Sign(c CustomClaims, alg string, key *ecdsa.PrivateKey) (string, error) {
-	// Initialize custom claims
 	if err := c.Init(); err != nil {
 		return "", err
 	}
-	// Validate custom claims
 	if err := c.Valid(); err != nil {
 		return "", err
 	}
@@ -202,7 +200,7 @@ func Sign(c CustomClaims, alg string, key *ecdsa.PrivateKey) (string, error) {
 	if m == nil {
 		return "", fmt.Errorf("unsupported signing method: %s", alg)
 	}
-	// With ECDSA keys, enforce algorithms with ES* prefix
+	// ECDSA keys only work with ES* algorithms; reject anything else.
 	if !strings.HasPrefix(strings.ToUpper(alg), "ES") {
 		return "", fmt.Errorf("signing method %s not compatible with ECDSA key", alg)
 	}

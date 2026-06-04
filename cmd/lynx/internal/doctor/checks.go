@@ -40,8 +40,9 @@ func (b *BaseCheck) CanAutoFix() bool {
 	return false
 }
 
+// Fix dispatches to a category-specific auto-fix. Concrete checks may override
+// this with a more targeted remediation.
 func (b *BaseCheck) Fix() error {
-	// Provide intelligent auto-fix based on check category and name
 	switch b.category {
 	case "environment":
 		return b.fixEnvironmentIssues()
@@ -62,7 +63,6 @@ func (b *BaseCheck) fixEnvironmentIssues() error {
 	case "Go Version":
 		return fmt.Errorf("Go version upgrade requires manual intervention - please visit https://golang.org/dl/")
 	case "Go Environment":
-		// Set recommended Go environment variables
 		cmd := exec.Command("go", "env", "-w", "GO111MODULE=on")
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to set GO111MODULE: %w", err)
@@ -77,16 +77,14 @@ func (b *BaseCheck) fixEnvironmentIssues() error {
 func (b *BaseCheck) fixToolIssues() error {
 	switch b.name {
 	case "Protocol Buffers Compiler":
-		// Try multiple installation methods
 		if runtime.GOOS == "windows" {
 			return fmt.Errorf("protoc installation on Windows requires manual setup - please visit https://github.com/protocolbuffers/protobuf/releases")
 		}
-		// Try using make init first
+		// Prefer the project's own `make init`; otherwise point at package managers.
 		cmd := exec.Command("make", "init")
 		if err := cmd.Run(); err == nil {
 			return nil
 		}
-		// Fallback to package manager suggestions
 		return fmt.Errorf("protoc installation failed - try: brew install protobuf (macOS) or apt-get install protobuf-compiler (Ubuntu)")
 	case "Wire Dependency Injection":
 		cmd := exec.Command("go", "install", "github.com/google/wire/cmd/wire@latest")
@@ -100,7 +98,6 @@ func (b *BaseCheck) fixToolIssues() error {
 func (b *BaseCheck) fixProjectIssues() error {
 	switch b.name {
 	case "Project Structure":
-		// Create missing essential directories
 		essentialDirs := []string{"app", "boot", "plugins", "cmd"}
 		for _, dir := range essentialDirs {
 			if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
@@ -111,14 +108,12 @@ func (b *BaseCheck) fixProjectIssues() error {
 		}
 		return nil
 	case "Go Modules":
-		// Initialize go.mod if it doesn't exist
 		if _, err := os.Stat("go.mod"); os.IsNotExist(err) {
 			cmd := exec.Command("go", "mod", "init", "github.com/go-lynx/lynx")
 			if err := cmd.Run(); err != nil {
 				return fmt.Errorf("failed to initialize go.mod: %w", err)
 			}
 		}
-		// Run go mod tidy to clean up dependencies
 		cmd := exec.Command("go", "mod", "tidy")
 		return cmd.Run()
 	default:
@@ -130,7 +125,6 @@ func (b *BaseCheck) fixProjectIssues() error {
 func (b *BaseCheck) fixConfigIssues() error {
 	switch b.name {
 	case "Configuration Files":
-		// Create basic config directory structure if missing
 		configDirs := []string{"app/conf", "examples"}
 		for _, dir := range configDirs {
 			if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
@@ -140,7 +134,6 @@ func (b *BaseCheck) fixConfigIssues() error {
 			}
 		}
 
-		// Create a basic boot config example if none exists
 		bootConfigPath := "app/conf/boot-example.yml"
 		if _, err := os.Stat(bootConfigPath); os.IsNotExist(err) {
 			basicConfig := `# Lynx Framework Configuration Example
@@ -191,7 +184,6 @@ func (c *GoVersionCheck) Check() CheckResult {
 		Details:      make(map[string]any),
 	}
 
-	// Check if Go is installed
 	goPath, err := exec.LookPath("go")
 	if err != nil {
 		result.Status = StatusError
@@ -200,7 +192,6 @@ func (c *GoVersionCheck) Check() CheckResult {
 	}
 	result.Details["go_path"] = goPath
 
-	// Get Go version
 	cmd := exec.Command("go", "version")
 	output, err := cmd.Output()
 	if err != nil {
@@ -213,7 +204,6 @@ func (c *GoVersionCheck) Check() CheckResult {
 	versionStr := string(output)
 	result.Details["version_output"] = strings.TrimSpace(versionStr)
 
-	// Parse version
 	re := regexp.MustCompile(`go(\d+)\.(\d+)`)
 	matches := re.FindStringSubmatch(versionStr)
 	if len(matches) < 3 {
@@ -263,7 +253,7 @@ func (c *GoEnvCheck) Check() CheckResult {
 		Details:  make(map[string]any),
 	}
 
-	// Check GOPATH
+	// For each var, prefer the process environment and fall back to `go env`.
 	gopath := os.Getenv("GOPATH")
 	if gopath == "" {
 		cmd := exec.Command("go", "env", "GOPATH")
@@ -272,7 +262,6 @@ func (c *GoEnvCheck) Check() CheckResult {
 	}
 	result.Details["GOPATH"] = gopath
 
-	// Check GO111MODULE
 	go111module := os.Getenv("GO111MODULE")
 	if go111module == "" {
 		cmd := exec.Command("go", "env", "GO111MODULE")
@@ -281,7 +270,6 @@ func (c *GoEnvCheck) Check() CheckResult {
 	}
 	result.Details["GO111MODULE"] = go111module
 
-	// Check GOPROXY
 	goproxy := os.Getenv("GOPROXY")
 	if goproxy == "" {
 		cmd := exec.Command("go", "env", "GOPROXY")
@@ -321,7 +309,6 @@ func (c *ProtocCheck) Check() CheckResult {
 		Details:      make(map[string]any),
 	}
 
-	// Check if protoc is installed
 	protocPath, err := exec.LookPath("protoc")
 	if err != nil {
 		result.Status = StatusError
@@ -332,7 +319,6 @@ func (c *ProtocCheck) Check() CheckResult {
 	}
 	result.Details["protoc_path"] = protocPath
 
-	// Get protoc version
 	cmd := exec.Command("protoc", "--version")
 	output, err := cmd.Output()
 	if err != nil {
@@ -354,7 +340,6 @@ func (c *ProtocCheck) CanAutoFix() bool {
 }
 
 func (c *ProtocCheck) Fix() error {
-	// Try to install protoc using make init
 	cmd := exec.Command("make", "init")
 	return cmd.Run()
 }
@@ -382,10 +367,9 @@ func (c *WireCheck) Check() CheckResult {
 		Details:      make(map[string]any),
 	}
 
-	// Check if wire is installed
 	wirePath, err := exec.LookPath("wire")
 	if err != nil {
-		// Check in GOPATH/bin
+		// Not on PATH: fall back to the conventional GOPATH/bin location.
 		gopath := os.Getenv("GOPATH")
 		if gopath != "" {
 			wirePath = filepath.Join(gopath, "bin", "wire")
@@ -508,7 +492,6 @@ func (c *GoModCheck) Check() CheckResult {
 		Details:      make(map[string]any),
 	}
 
-	// Check if go.mod exists
 	if _, err := os.Stat("go.mod"); err != nil {
 		result.Status = StatusError
 		result.Message = "go.mod not found"
@@ -517,7 +500,6 @@ func (c *GoModCheck) Check() CheckResult {
 		return result
 	}
 
-	// Read go.mod
 	content, err := os.ReadFile("go.mod")
 	if err != nil {
 		result.Status = StatusError
@@ -527,7 +509,6 @@ func (c *GoModCheck) Check() CheckResult {
 		return result
 	}
 
-	// Parse module name
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
 		if strings.HasPrefix(line, "module ") {
@@ -546,7 +527,6 @@ func (c *GoModCheck) Check() CheckResult {
 		}
 	}
 
-	// Check go version
 	for _, line := range lines {
 		if strings.HasPrefix(line, "go ") {
 			goVersion := strings.TrimPrefix(line, "go ")
@@ -565,7 +545,6 @@ func (c *GoModCheck) CanAutoFix() bool {
 }
 
 func (c *GoModCheck) Fix() error {
-	// Run go mod tidy
 	cmd := exec.Command("go", "mod", "tidy")
 	return cmd.Run()
 }
@@ -597,13 +576,13 @@ func (c *ConfigFileCheck) Check() CheckResult {
 	configFiles := []string{}
 	invalidFiles := []string{}
 
-	// Find all YAML config files
+	// Walk the tree for YAML files under conf/config paths and validate each by
+	// attempting to unmarshal it; vendor and hidden dirs are skipped.
 	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
 
-		// Skip vendor and hidden directories
 		if info.IsDir() && (strings.HasPrefix(info.Name(), ".") || info.Name() == "vendor") {
 			return filepath.SkipDir
 		}
@@ -612,7 +591,6 @@ func (c *ConfigFileCheck) Check() CheckResult {
 			if strings.Contains(path, "conf") || strings.Contains(path, "config") {
 				configFiles = append(configFiles, path)
 
-				// Try to parse the YAML file
 				content, err := os.ReadFile(path)
 				if err != nil {
 					invalidFiles = append(invalidFiles, path)
@@ -673,7 +651,6 @@ func (c *MakefileCheck) Check() CheckResult {
 		Details:  make(map[string]any),
 	}
 
-	// Check if Makefile exists
 	if _, err := os.Stat("Makefile"); err != nil {
 		result.Status = StatusWarning
 		result.Message = "Makefile not found"
@@ -681,7 +658,6 @@ func (c *MakefileCheck) Check() CheckResult {
 		return result
 	}
 
-	// Read Makefile
 	content, err := os.ReadFile("Makefile")
 	if err != nil {
 		result.Status = StatusError
@@ -691,7 +667,6 @@ func (c *MakefileCheck) Check() CheckResult {
 		return result
 	}
 
-	// Check for expected targets
 	expectedTargets := []string{"init", "config", "help", "release"}
 	foundTargets := []string{}
 	missingTargets := []string{}
@@ -743,7 +718,6 @@ func (c *GitCheck) Check() CheckResult {
 		Details:  make(map[string]any),
 	}
 
-	// Check if git is installed
 	if _, err := exec.LookPath("git"); err != nil {
 		result.Status = StatusWarning
 		result.Message = "Git is not installed"
@@ -751,7 +725,6 @@ func (c *GitCheck) Check() CheckResult {
 		return result
 	}
 
-	// Check if current directory is a git repo
 	if _, err := os.Stat(".git"); err != nil {
 		result.Status = StatusWarning
 		result.Message = "Not a Git repository"
@@ -760,7 +733,6 @@ func (c *GitCheck) Check() CheckResult {
 		return result
 	}
 
-	// Get git status
 	cmd := exec.Command("git", "status", "--porcelain")
 	output, err := cmd.Output()
 	if err != nil {
@@ -779,7 +751,6 @@ func (c *GitCheck) Check() CheckResult {
 		}
 	}
 
-	// Get current branch
 	cmd = exec.Command("git", "branch", "--show-current")
 	if output, err := cmd.Output(); err == nil {
 		branch := strings.TrimSpace(string(output))

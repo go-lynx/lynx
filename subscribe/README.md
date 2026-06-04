@@ -36,10 +36,10 @@ sub := subscribe.NewGrpcSubscribe(
     subscribe.WithDiscovery(discoveryInstance),
 )
 
-// Connect to the service
-conn, err := sub.NewGrpcConn()
-if err != nil {
-    return err
+// Connect to the service (returns nil on failure; the error is logged)
+conn := sub.Subscribe()
+if conn == nil {
+    return fmt.Errorf("failed to subscribe to user-service")
 }
 defer conn.Close()
 
@@ -89,7 +89,7 @@ sub := subscribe.NewGrpcSubscribe(
 sub := subscribe.NewGrpcSubscribe(
     subscribe.WithServiceName("my-service"),
     subscribe.WithDiscovery(discoveryInstance),
-    subscribe.WithRouterFactory(func(service string) selector.NodeFilter {
+    subscribe.WithNodeRouterFactory(func(service string) selector.NodeFilter {
         return myCustomNodeFilter
     }),
 )
@@ -138,7 +138,7 @@ message GrpcSubscription {
 | `WithRootCAFileName(name)` | Set the root CA certificate filename |
 | `WithRootCAFileGroup(group)` | Set the CA certificate file group |
 | `Required()` | Mark as required dependency |
-| `WithRouterFactory(factory)` | Set custom node routing |
+| `WithNodeRouterFactory(factory)` | Set custom node routing |
 | `WithConfigProvider(provider)` | Set configuration source provider (for loading CA from control plane) |
 | `WithDefaultRootCA(provider)` | Set default root CA provider (uses app certificate when caName not set) |
 
@@ -156,11 +156,10 @@ The package monitors gRPC connection states:
 
 ## Built-in Middleware
 
-Connections are created with standard middleware:
+Connections are created with standard client middleware:
 
 - **Tracing** - Distributed tracing support
 - **Logging** - Request/response logging
-- **Recovery** - Panic recovery
 
 ## Integration with Lynx
 

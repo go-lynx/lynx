@@ -79,21 +79,21 @@ type ProductionMetrics struct {
 	resourceLimit  *prometheus.GaugeVec
 	resourceErrors *prometheus.CounterVec
 
-	// Added: Performance bottleneck detection metrics
+	// Performance bottleneck detection metrics
 	performanceBottlenecks *prometheus.GaugeVec
 	slowOperations         *prometheus.CounterVec
 	timeoutOperations      *prometheus.CounterVec
 	memoryLeaks            *prometheus.GaugeVec
 	goroutineLeaks         *prometheus.GaugeVec
 
-	// Added: Business metrics
+	// Business metrics
 	businessTransactions *prometheus.CounterVec
 	businessErrors       *prometheus.CounterVec
 	businessLatency      *prometheus.HistogramVec
 	userSessions         *prometheus.GaugeVec
 	activeConnections    *prometheus.GaugeVec
 
-	// Added: System health metrics
+	// System health metrics
 	systemHealthScore    prometheus.Gauge
 	componentHealthScore *prometheus.GaugeVec
 	overallHealthStatus  prometheus.Gauge
@@ -104,7 +104,7 @@ type ProductionMetrics struct {
 	lastUpdate     time.Time
 	updateInterval time.Duration
 	stopChan       chan struct{}
-	stopOnce       sync.Once // Protect against multiple Stop() calls
+	stopOnce       sync.Once
 }
 
 // NewProductionMetrics creates a new production metrics instance
@@ -361,7 +361,7 @@ func (pm *ProductionMetrics) initializeMetrics() {
 		Help: "Total number of resource errors",
 	}, []string{"resource_type", "error_type"})
 
-	// Added: Performance bottleneck detection metrics
+	// Performance bottleneck detection metrics
 	pm.performanceBottlenecks = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "lynx_performance_bottlenecks",
 		Help: "Performance bottlenecks detected (1=detected, 0=normal)",
@@ -387,7 +387,7 @@ func (pm *ProductionMetrics) initializeMetrics() {
 		Help: "Goroutine leaks detected (1=detected, 0=normal)",
 	}, []string{"component", "leak_type"})
 
-	// Added: Business metrics
+	// Business metrics
 	pm.businessTransactions = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "lynx_business_transactions_total",
 		Help: "Total number of business transactions",
@@ -414,7 +414,7 @@ func (pm *ProductionMetrics) initializeMetrics() {
 		Help: "Number of active connections",
 	}, []string{"connection_type", "protocol"})
 
-	// Added: System health metrics
+	// System health metrics
 	pm.systemHealthScore = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "lynx_system_health_score",
 		Help: "Overall system health score (0-100)",
@@ -465,11 +465,9 @@ func (pm *ProductionMetrics) updateMetrics() {
 
 	now := time.Now()
 
-	// Update application metrics
 	pm.appStartTime.Set(float64(pm.startTime.Unix()))
 	pm.appUptime.Set(now.Sub(pm.startTime).Seconds())
 
-	// Update system metrics
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 

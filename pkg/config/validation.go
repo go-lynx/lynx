@@ -34,7 +34,6 @@ func (r *ValidationResult) ensureInit() {
 	if r == nil {
 		return
 	}
-	// mark valid by default
 	if r.Errors == nil && r.Warnings == nil {
 		r.Valid = true
 	}
@@ -56,7 +55,6 @@ func (r *ValidationResult) AddWarning(field string, value any, message string) {
 	defer r.mu.Unlock()
 	r.Warnings = append(r.Warnings, ValidationIssue{Field: field, Value: value, Message: message})
 	if r.Valid == false {
-		// keep invalid if already invalid
 		return
 	}
 	if r.Errors == nil {
@@ -126,7 +124,6 @@ func (cv *ConfigValidator) ValidateConfig(config any, prefix string) *Validation
 		if fv.CanInterface() {
 			val = fv.Interface()
 		}
-		// Required check for zero values
 		if rule.Required && isZeroValue(fv) {
 			res.AddError(field, val, "field is required")
 			continue
@@ -210,7 +207,7 @@ func toInt64(v any) (int64, bool) {
 		}
 		return int64(x), true
 	default:
-		// try reflect for pointers to numeric
+		// Follow non-nil pointers to a numeric element.
 		rv := reflect.ValueOf(v)
 		if rv.Kind() == reflect.Ptr && !rv.IsNil() {
 			return toInt64(rv.Elem().Interface())

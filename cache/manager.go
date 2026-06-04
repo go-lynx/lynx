@@ -16,7 +16,6 @@ type Manager struct {
 	caches map[string]*Cache
 	mu     sync.RWMutex
 
-	// New: cache optimizer
 	optimizer *resource.CacheOptimizer
 	logger    zerolog.Logger
 }
@@ -29,14 +28,14 @@ type Config struct {
 
 // NewManager creates a new cache manager with a default logger.
 func NewManager() *Manager {
-	// Create a default logger to avoid nil writer issues.
+	// An explicit stdout logger avoids a nil zerolog writer panic.
 	defLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 	return NewManagerWithLogger(defLogger)
 }
 
-// NewManagerWithLogger creates a new cache manager using the provided logger.
+// NewManagerWithLogger creates a cache manager using the provided logger and
+// starts a background CacheOptimizer. A start failure is logged, not returned.
 func NewManagerWithLogger(logger zerolog.Logger) *Manager {
-	// Create cache optimizer
 	optimizer := resource.NewCacheOptimizer(
 		resource.DefaultCacheOptimizerConfig(),
 		logger.With().Str("component", "cache_optimizer").Logger(),
@@ -48,7 +47,6 @@ func NewManagerWithLogger(logger zerolog.Logger) *Manager {
 		logger:    logger,
 	}
 
-	// Start cache optimizer
 	if err := optimizer.Start(); err != nil {
 		logger.Error().Err(err).Msg("Failed to start cache optimizer")
 	}
@@ -85,12 +83,9 @@ func (m *Manager) Get(name string) (*Cache, bool) {
 
 // GetOrCreate retrieves an existing cache or creates a new one
 func (m *Manager) GetOrCreate(name string, opts *Options) (*Cache, error) {
-	// Try to get existing cache first
 	if cache, exists := m.Get(name); exists {
 		return cache, nil
 	}
-
-	// Create new cache if not exists
 	return m.Create(name, opts)
 }
 
@@ -135,7 +130,6 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Close all caches
 	for name, cache := range m.caches {
 		cache.Close()
 		m.logger.Debug().
@@ -143,7 +137,6 @@ func (m *Manager) Close() error {
 			Msg("Closed cache")
 	}
 
-	// Stop cache optimizer
 	if err := m.optimizer.Stop(); err != nil {
 		m.logger.Error().Err(err).Msg("Failed to stop cache optimizer")
 		return err
@@ -188,14 +181,12 @@ func (m *Manager) CreateOptimized(name string, config Config) (*OptimizedCacheWr
 		return nil, fmt.Errorf("cache %s already exists", name)
 	}
 
-	// Create optimized cache
 	optimizedCache := m.optimizer.CreateCache(
 		name,
 		int64(config.MaxSize),
 		config.TTL,
 	)
 
-	// Wrap as Cache interface
 	wrapper := &OptimizedCacheWrapper{
 		cache:  optimizedCache,
 		config: config,
@@ -304,20 +295,17 @@ func (w *OptimizedCacheWrapper) DeleteMulti(keys []any) {
 }
 
 func (w *OptimizedCacheWrapper) GetOrSet(key any, fn func() (any, error), ttl time.Duration) (any, error) {
-	// Try to get first
 	if value, err := w.Get(key); err == nil {
 		return value, nil
 	}
 
-	// If not exists, call function to get value
 	value, err := fn()
 	if err != nil {
 		return nil, err
 	}
 
-	// Set to cache
 	if err := w.Set(key, value, ttl); err != nil {
-		return value, err // Return value but report set error
+		return value, err // value is valid even though caching it failed
 	}
 
 	return value, nil

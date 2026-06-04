@@ -13,7 +13,6 @@ var (
 	installForce   bool
 )
 
-// cmdInstall represents the install command
 var cmdInstall = &cobra.Command{
 	Use:   "install [plugin-name]",
 	Short: "Install a plugin",
@@ -47,13 +46,11 @@ func init() {
 func runInstall(cmd *cobra.Command, args []string) error {
 	pluginName := args[0]
 
-	// Create plugin manager
 	manager, err := NewPluginManager()
 	if err != nil {
 		return fmt.Errorf("failed to initialize plugin manager: %w", err)
 	}
 
-	// Show installation progress
 	fmt.Printf("🔍 Looking for plugin: %s\n", color.CyanString(pluginName))
 
 	// Resolve metadata up-front (best effort) so we can print actionable steps later.
@@ -67,7 +64,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			fmt.Printf("✓ Official plugin by %s\n", meta.Author)
 		}
 
-		// Show dependencies if any
 		if len(meta.Dependencies) > 0 {
 			fmt.Println("📌 Dependencies:")
 			for _, dep := range meta.Dependencies {
@@ -80,7 +76,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Install the plugin
 	if err := manager.InstallPlugin(pluginName, installVersion, installForce); err != nil {
 		return fmt.Errorf("installation failed: %w", err)
 	}

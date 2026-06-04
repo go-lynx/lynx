@@ -41,8 +41,7 @@ func ToInt(v any) (int, error) {
 	}
 }
 
-// ToIntDefault converts a value of any type to an int, returning a default value if conversion fails.
-// It uses ToInt for the conversion and returns the provided default value if an error occurs.
+// ToIntDefault is ToInt but returns def instead of an error on failure.
 func ToIntDefault(v any, def int) int {
 	if i, err := ToInt(v); err == nil {
 		return i
@@ -50,8 +49,7 @@ func ToIntDefault(v any, def int) int {
 	return def
 }
 
-// toIntFromUint converts unsigned integer types to int.
-// Handles overflow checking for uint64 values.
+// toIntFromUint converts unsigned integer types to int, erroring on uint64 overflow.
 func toIntFromUint(v any) (int, error) {
 	switch x := v.(type) {
 	case uint:
@@ -97,8 +95,7 @@ func ToBool(v any) (bool, error) {
 	}
 }
 
-// ToBoolDefault converts a value of any type to a boolean, returning a default value if conversion fails.
-// It uses ToBool for the conversion and returns the provided default value if an error occurs.
+// ToBoolDefault is ToBool but returns def instead of an error on failure.
 func ToBoolDefault(v any, def bool) bool {
 	if b, err := ToBool(v); err == nil {
 		return b
@@ -134,8 +131,7 @@ func ToFloat64(v any) (float64, error) {
 	}
 }
 
-// ToFloat64Default converts a value of any type to a float64, returning a default value if conversion fails.
-// It uses ToFloat64 for the conversion and returns the provided default value if an error occurs.
+// ToFloat64Default is ToFloat64 but returns def instead of an error on failure.
 func ToFloat64Default(v any, def float64) float64 {
 	if f, err := ToFloat64(v); err == nil {
 		return f
@@ -172,8 +168,7 @@ func ToDuration(v any) (time.Duration, error) {
 	}
 }
 
-// ToDurationDefault converts a value of any type to a time.Duration, returning a default value if conversion fails.
-// It uses ToDuration for the conversion and returns the provided default value if an error occurs.
+// ToDurationDefault is ToDuration but returns def instead of an error on failure.
 func ToDurationDefault(v any, def time.Duration) time.Duration {
 	if d, err := ToDuration(v); err == nil {
 		return d
