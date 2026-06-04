@@ -206,9 +206,13 @@ type PluginCapabilities struct {
 	HasHealthCheck      bool
 	HasLifecycleWithCtx bool
 	IsTrulyContextAware bool
-	IsManagedPlugin     bool
-	Protocol            PluginProtocol
-	ProtocolExplicit    bool
+	// HasContextSteps is true when the plugin implements at least one context-aware
+	// lifecycle step hook (ContextResourceInitializer / ContextStartupTasker /
+	// ContextCleanupTasker), meaning that phase's work genuinely observes ctx.
+	HasContextSteps  bool
+	IsManagedPlugin  bool
+	Protocol         PluginProtocol
+	ProtocolExplicit bool
 }
 
 // DescribePluginCapabilities returns a structured capability report for a plugin-like object.
@@ -225,6 +229,7 @@ func DescribePluginCapabilities(plugin any) PluginCapabilities {
 	if ca, ok := plugin.(ContextAwareness); ok {
 		isContextAware = ca.IsContextAware()
 	}
+	hasContextSteps := SupportsContextSteps(plugin)
 	_, isManaged := plugin.(Plugin)
 	protocol := PluginProtocol{}
 	explicit := false
@@ -242,17 +247,32 @@ func DescribePluginCapabilities(plugin any) PluginCapabilities {
 		HasHealthCheck:      hasHealthCheck,
 		HasLifecycleWithCtx: hasLifecycleWithCtx,
 		IsTrulyContextAware: isContextAware,
+		HasContextSteps:     hasContextSteps,
 		IsManagedPlugin:     isManaged,
 		Protocol:            protocol,
 		ProtocolExplicit:    explicit,
 	}
 }
 
-// HasTrueContextLifecycle reports whether the plugin both exposes lifecycle-with-context
-// hooks and explicitly declares that it truly honors context cancellation.
+// HasTrueContextLifecycle reports whether a plugin's lifecycle is genuinely
+// cancellable through its context-aware entrypoints. It is true when the plugin
+// exposes the LifecycleWithContext entrypoints AND either:
+//
+//   - implements at least one context-aware step hook (the preferred path: the
+//     plugin's own work observes ctx, so cancellation is real), or
+//   - uses the legacy explicit opt-in: declares PluginProtocol().ContextLifecycle
+//     and asserts ContextAwareness.IsContextAware()=true.
+//
+// The framework routes such plugins through StartContext/StopContext/InitializeContext.
 func HasTrueContextLifecycle(plugin any) bool {
 	caps := DescribePluginCapabilities(plugin)
-	return caps.Protocol.ContextLifecycle && caps.HasLifecycleWithCtx && caps.IsTrulyContextAware
+	if !caps.HasLifecycleWithCtx {
+		return false
+	}
+	if caps.HasContextSteps {
+		return true
+	}
+	return caps.Protocol.ContextLifecycle && caps.IsTrulyContextAware
 }
 
 // GetTrueContextLifecycle returns the plugin's LifecycleWithContext only when it is truly
@@ -298,6 +318,75 @@ func RunHealthCheck(plugin any) error {
 		return checker.CheckHealth()
 	}
 	return nil
+}
+
+// Context-aware lifecycle step hooks.
+//
+// These are the path to *genuine* cancellation. When a plugin implements one of
+// these interfaces, the framework passes the lifecycle context straight through,
+// so the plugin's own work can observe ctx.Done() and stop promptly. A plugin
+// that only implements the non-context steps (ResourceInitializer / StartupTasker
+// / CleanupTasker) cannot be force-stopped — Go has no way to kill a running
+// goroutine — so the framework can only abandon it on timeout, never truly cancel
+// the work. Implement these to make cancellation real.
+
+// ContextResourceInitializer is the context-aware form of ResourceInitializer.
+type ContextResourceInitializer interface {
+	InitializeResourcesContext(ctx context.Context, rt Runtime) error
+}
+
+// ContextStartupTasker is the context-aware form of StartupTasker.
+type ContextStartupTasker interface {
+	StartupTasksContext(ctx context.Context) error
+}
+
+// ContextCleanupTasker is the context-aware form of CleanupTasker.
+type ContextCleanupTasker interface {
+	CleanupTasksContext(ctx context.Context) error
+}
+
+// RunInitializeResourcesContext runs the context-aware resource init hook when present.
+// The returned bool reports whether a context-aware hook handled the call; when false,
+// the caller should fall back to the non-context ResourceInitializer.
+func RunInitializeResourcesContext(ctx context.Context, plugin any, rt Runtime) (bool, error) {
+	if init, ok := plugin.(ContextResourceInitializer); ok {
+		return true, init.InitializeResourcesContext(ctx, rt)
+	}
+	return false, nil
+}
+
+// RunStartupTasksContext runs the context-aware startup hook when present.
+// The returned bool reports whether a context-aware hook handled the call.
+func RunStartupTasksContext(ctx context.Context, plugin any) (bool, error) {
+	if startup, ok := plugin.(ContextStartupTasker); ok {
+		return true, startup.StartupTasksContext(ctx)
+	}
+	return false, nil
+}
+
+// RunCleanupTasksContext runs the context-aware cleanup hook when present.
+// The returned bool reports whether a context-aware hook handled the call.
+func RunCleanupTasksContext(ctx context.Context, plugin any) (bool, error) {
+	if cleanup, ok := plugin.(ContextCleanupTasker); ok {
+		return true, cleanup.CleanupTasksContext(ctx)
+	}
+	return false, nil
+}
+
+// SupportsContextSteps reports whether a plugin implements any context-aware
+// lifecycle step hook, meaning at least one phase of its lifecycle can be
+// genuinely cancelled rather than merely abandoned on timeout.
+func SupportsContextSteps(plugin any) bool {
+	if _, ok := plugin.(ContextResourceInitializer); ok {
+		return true
+	}
+	if _, ok := plugin.(ContextStartupTasker); ok {
+		return true
+	}
+	if _, ok := plugin.(ContextCleanupTasker); ok {
+		return true
+	}
+	return false
 }
 
 // ResourceInfo resource information
