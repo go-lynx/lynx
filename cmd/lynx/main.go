@@ -18,7 +18,7 @@ var rootCmd = &cobra.Command{
 	Use:     "lynx",
 	Short:   "Lynx: The Plug-and-Play Go Microservices Framework",
 	Long:    `Lynx: The Plug-and-Play Go Microservices Framework`,
-	Version: release,
+	Version: version(),
 	// On a RunE error, print only our own clean message (see main); do not let
 	// cobra dump the full usage text or print the error a second time.
 	SilenceUsage:  true,
