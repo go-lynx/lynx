@@ -63,13 +63,28 @@ func clearDefaultAppIf(app *LynxApp) bool {
 
 // appShutdownHook is called after every LynxApp.Close() completes.
 // Default is a no-op; the compat layer registers its own cleanup via SetAppShutdownHook.
-var appShutdownHook func() = func() {}
+// Access is guarded by appShutdownHookMu to prevent concurrent read/write races.
+var (
+	appShutdownHook   func() = func() {}
+	appShutdownHookMu sync.RWMutex
+)
 
-// SetAppShutdownHook replaces the post-close hook. Safe to call at init time.
+// SetAppShutdownHook replaces the post-close hook. Safe to call concurrently.
 func SetAppShutdownHook(fn func()) {
+	appShutdownHookMu.Lock()
+	defer appShutdownHookMu.Unlock()
 	if fn == nil {
 		appShutdownHook = func() {}
 		return
 	}
 	appShutdownHook = fn
+}
+
+// invokeShutdownHook reads and calls the post-close hook under a read lock so
+// concurrent SetAppShutdownHook calls cannot race with the invocation.
+func invokeShutdownHook() {
+	appShutdownHookMu.RLock()
+	hook := appShutdownHook
+	appShutdownHookMu.RUnlock()
+	hook()
 }

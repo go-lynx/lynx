@@ -88,9 +88,9 @@ func NewErrorRecoveryManager(metrics *metrics.ProductionMetrics) *ErrorRecoveryM
 
 // registerDefaultStrategies registers default recovery strategies
 func (erm *ErrorRecoveryManager) registerDefaultStrategies() {
-	erm.RegisterRecoveryStrategy("transient", NewDefaultRecoveryStrategy("retry", 5*time.Second))
-	erm.RegisterRecoveryStrategy("component", NewDefaultRecoveryStrategy("restart", 10*time.Second))
-	erm.RegisterRecoveryStrategy("critical", NewDefaultRecoveryStrategy("fallback", 15*time.Second))
+	erm.RegisterRecoveryStrategy("transient", NewRetryRecoveryStrategy(5*time.Second))
+	erm.RegisterRecoveryStrategy("component", NewRestartRecoveryStrategy(10*time.Second))
+	erm.RegisterRecoveryStrategy("critical", NewFallbackRecoveryStrategy(15*time.Second))
 }
 
 // RegisterRecoveryStrategy registers a recovery strategy
@@ -106,8 +106,12 @@ func (erm *ErrorRecoveryManager) RegisterRecoveryStrategy(errorType string, stra
 
 // RecordError records an error with enhanced context and classification
 func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCategory, message, component string, severity ErrorSeverity, context map[string]any) {
+	// Capture the stack trace before acquiring the lock: runtime.Callers traverses
+	// the goroutine stack and would serialise all concurrent RecordError callers
+	// if called under the write lock.
+	stackTrace := getStackTrace()
+
 	erm.mu.Lock()
-	defer erm.mu.Unlock()
 
 	if context == nil {
 		context = make(map[string]any)
@@ -150,7 +154,7 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 		Severity:    severity,
 		Context:     context,
 		Recovered:   false,
-		StackTrace:  getStackTrace(),
+		StackTrace:  stackTrace,
 		Environment: environment,
 		Version:     version,
 	}
@@ -172,14 +176,21 @@ func (erm *ErrorRecoveryManager) RecordError(errorType string, category ErrorCat
 	log.Errorf("Error recorded: type=%s, category=%s, component=%s, severity=%d, message=%s, context=%+v",
 		errorType, category, component, severity, message, context)
 
-	// Skip recovery while the breaker is open to avoid hammering a failing component.
-	circuitBreaker := erm.circuitBreakers[errorType]
-	if circuitBreaker != nil && !circuitBreaker.CanExecute() {
+	// Decide whether to attempt recovery while still holding the lock so the
+	// circuit-breaker state is read atomically with the error-count update.
+	// The goroutine is launched AFTER releasing the lock so it never blocks
+	// concurrent RecordError callers waiting to acquire it.
+	var shouldAttemptRecovery bool
+	cb := erm.circuitBreakers[errorType]
+	if cb != nil && !cb.CanExecute() {
 		log.Warnf("Circuit breaker is open for error type: %s", errorType)
-		return
+	} else if severity <= ErrorSeverityHigh {
+		shouldAttemptRecovery = true
 	}
 
-	if severity <= ErrorSeverityHigh {
+	erm.mu.Unlock()
+
+	if shouldAttemptRecovery {
 		go erm.attemptRecovery(record)
 	}
 }

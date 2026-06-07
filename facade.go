@@ -129,6 +129,16 @@ const (
 var NewErrorRecoveryManager = iapp.NewErrorRecoveryManager
 var NewDefaultRecoveryStrategy = iapp.NewDefaultRecoveryStrategy
 
+// Concrete recovery strategies (preferred over DefaultRecoveryStrategy).
+type RetryRecoveryStrategy = iapp.RetryRecoveryStrategy
+type RestartRecoveryStrategy = iapp.RestartRecoveryStrategy
+type FallbackRecoveryStrategy = iapp.FallbackRecoveryStrategy
+type ActionFunc = iapp.ActionFunc
+
+var NewRetryRecoveryStrategy = iapp.NewRetryRecoveryStrategy
+var NewRestartRecoveryStrategy = iapp.NewRestartRecoveryStrategy
+var NewFallbackRecoveryStrategy = iapp.NewFallbackRecoveryStrategy
+
 // ── Topology ──────────────────────────────────────────────────────────────────
 
 type PluginWithLevel = iapp.PluginWithLevel

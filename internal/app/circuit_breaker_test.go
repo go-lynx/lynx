@@ -246,3 +246,101 @@ func TestCircuitBreaker_OpenRejectsBeforeTimeout(t *testing.T) {
 		}
 	}
 }
+
+// TestCircuitBreaker_HalfOpen_SingleProbe verifies the single-probe guarantee:
+// after the open timeout expires, exactly one goroutine gets through (returns
+// true) regardless of how many call CanExecute concurrently.
+func TestCircuitBreaker_HalfOpen_SingleProbe(t *testing.T) {
+	cb := NewCircuitBreaker(1, 5*time.Millisecond)
+	cb.RecordResult(fmt.Errorf("boom"))
+	if cb.GetState() != CircuitStateOpen {
+		t.Fatalf("expected Open, got %v", cb.GetState())
+	}
+
+	time.Sleep(10 * time.Millisecond) // let the timeout expire
+
+	const goroutines = 64
+	var wg sync.WaitGroup
+	var probes sync.WaitGroup
+	allowed := make([]bool, goroutines)
+
+	wg.Add(goroutines)
+	probes.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			probes.Done()
+			probes.Wait() // align goroutines for maximum concurrency
+			allowed[idx] = cb.CanExecute()
+		}(i)
+	}
+	wg.Wait()
+
+	probeCount := 0
+	for _, v := range allowed {
+		if v {
+			probeCount++
+		}
+	}
+	if probeCount != 1 {
+		t.Fatalf("expected exactly 1 probe goroutine, got %d", probeCount)
+	}
+	if cb.GetState() != CircuitStateHalfOpen {
+		t.Fatalf("expected HalfOpen after probe claimed, got %v", cb.GetState())
+	}
+}
+
+// TestCircuitBreaker_HalfOpen_ProbeSuccessUnblocksCircuit verifies that a
+// successful probe resets the circuit to Closed and allows all callers through.
+func TestCircuitBreaker_HalfOpen_ProbeSuccessUnblocksCircuit(t *testing.T) {
+	cb := NewCircuitBreaker(1, 5*time.Millisecond)
+	cb.RecordResult(fmt.Errorf("err"))
+	time.Sleep(10 * time.Millisecond)
+
+	if !cb.CanExecute() {
+		t.Fatal("first CanExecute after timeout must return true (probe)")
+	}
+	if cb.GetState() != CircuitStateHalfOpen {
+		t.Fatalf("expected HalfOpen, got %v", cb.GetState())
+	}
+	// Second caller before probe completes must be blocked.
+	if cb.CanExecute() {
+		t.Fatal("second CanExecute while probe in flight must return false")
+	}
+
+	// Probe reports success.
+	cb.RecordResult(nil)
+	if cb.GetState() != CircuitStateClosed {
+		t.Fatalf("expected Closed after probe success, got %v", cb.GetState())
+	}
+	// All subsequent callers are now allowed.
+	if !cb.CanExecute() {
+		t.Fatal("closed breaker must allow execution")
+	}
+}
+
+// TestCircuitBreaker_HalfOpen_ProbeFailureReturnsOpen verifies that a failed
+// probe reopens the circuit and that a fresh probe is allowed after the next timeout.
+func TestCircuitBreaker_HalfOpen_ProbeFailureReturnsOpen(t *testing.T) {
+	cb := NewCircuitBreaker(1, 5*time.Millisecond)
+	cb.RecordResult(fmt.Errorf("err"))
+	time.Sleep(10 * time.Millisecond)
+
+	if !cb.CanExecute() {
+		t.Fatal("first CanExecute after timeout must return true (probe)")
+	}
+	// Probe fails.
+	cb.RecordResult(fmt.Errorf("probe failed"))
+	if cb.GetState() != CircuitStateOpen {
+		t.Fatalf("expected Open after probe failure, got %v", cb.GetState())
+	}
+	// Must be blocked again until next timeout.
+	if cb.CanExecute() {
+		t.Fatal("breaker just reopened; must reject calls before timeout")
+	}
+	// After the timeout a new probe is allowed.
+	time.Sleep(10 * time.Millisecond)
+	if !cb.CanExecute() {
+		t.Fatal("expected a fresh probe to be allowed after timeout")
+	}
+}

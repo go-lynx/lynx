@@ -10,28 +10,37 @@ import (
 //
 // Concurrency design
 // ──────────────────
-// State transitions are the only write path that previously required a
-// read-lock → write-lock "upgrade" – a pattern that is fundamentally
-// unsafe in Go's sync.RWMutex (there is no atomic upgrade; the caller
-// must release the read-lock first, creating a window where another
-// goroutine can observe an inconsistent state or perform the same
-// transition).
+// State transitions use atomic CAS on `state`; counters and lastFailure are
+// guarded by a plain sync.Mutex (they are always written together).
 //
-// The fix replaces the mutable `state` field with an atomic int32 and
-// uses a compare-and-swap (CAS) to transition Open → HalfOpen.  Only
-// one goroutine wins the CAS; all others see HalfOpen and return true
-// without touching the state again.  The remaining counters and
-// lastFailure are still guarded by a plain sync.Mutex because they are
-// always written together.
+// HalfOpen single-probe guarantee
+// ─────────────────────────────────
+// The `probing` atomic flag ensures at most one goroutine acts as the probe
+// while the circuit is half-open.
+//
+//   Open → HalfOpen transition (CanExecute):
+//     1. CAS probing 0 → 1.  Exactly one goroutine wins; all others return false.
+//     2. CAS state Open → HalfOpen (the probe goroutine only).
+//
+//   Probe success (RecordResult nil):
+//     state → Closed, then probing → 0.
+//
+//   Probe failure (RecordResult err):
+//     state → Open, then probing → 0 (allows a fresh probe after the next timeout).
 //
 // Rule of thumb for future changes:
 //   - Read/write `state` ONLY through atomicLoadState / atomicStoreState /
 //     atomicCASState.  Never hold `mu` while calling those helpers.
-//   - Read/write failureCount, successCount, lastFailure ONLY while
-//     holding `mu`.
+//   - Read/write failureCount, successCount, lastFailure ONLY while holding `mu`.
+//   - Read/write `probing` ONLY through atomic operations.
 type CircuitBreaker struct {
 	// state is accessed exclusively via atomic helpers; see rule above.
 	state int32 // stores a CircuitState value
+
+	// probing is 1 while a HalfOpen probe is in flight, 0 otherwise.
+	// It is set to 1 by the goroutine that claims the probe slot (in CanExecute)
+	// and reset to 0 by RecordResult once the probe completes.
+	probing int32
 
 	mu           sync.Mutex
 	failureCount int
@@ -41,7 +50,7 @@ type CircuitBreaker struct {
 	timeout      time.Duration
 }
 
-// CircuitState represents the state of circuit breaker.
+// CircuitState represents the state of the circuit breaker.
 type CircuitState int32
 
 const (
@@ -68,7 +77,7 @@ func (cb *CircuitBreaker) atomicCASState(old, new CircuitState) bool {
 
 // ── public API ────────────────────────────────────────────────────────────────
 
-// NewCircuitBreaker creates a new circuit breaker with the provided threshold and timeout.
+// NewCircuitBreaker creates a new circuit breaker with the given threshold and timeout.
 func NewCircuitBreaker(threshold int, timeout time.Duration) *CircuitBreaker {
 	if threshold <= 0 {
 		threshold = 1
@@ -84,45 +93,47 @@ func NewCircuitBreaker(threshold int, timeout time.Duration) *CircuitBreaker {
 	return cb
 }
 
-// CanExecute checks if the circuit breaker allows execution.
+// CanExecute checks whether the circuit breaker allows execution.
 //
-// Concurrency safety
-// ──────────────────
-// The Open → HalfOpen transition is a single CAS.  Exactly one goroutine
-// wins; all others observe HalfOpen and return true without a second
-// state write.  There is no lock-upgrade race and no defer/manual-unlock
-// mismatch.
+// Concurrency safety (HalfOpen single-probe)
+// ─────────────────────────────────────────
+// When the Open timeout expires, exactly one goroutine wins the CAS on `probing`
+// (0 → 1) and becomes the probe.  All other concurrent callers return false until
+// the probe completes and probing is reset to 0.
 func (cb *CircuitBreaker) CanExecute() bool {
 	switch cb.atomicLoadState() {
 	case CircuitStateClosed:
 		return true
 
 	case CircuitStateOpen:
-		// Read lastFailure under mu to avoid a data race: RecordResult
-		// writes it under the same lock.
+		// Read lastFailure under mu to avoid a data race with RecordResult.
 		cb.mu.Lock()
 		elapsed := time.Since(cb.lastFailure)
 		cb.mu.Unlock()
 
-		if elapsed >= cb.timeout {
-			// Only one goroutine transitions Open → HalfOpen.
-			// If the CAS fails, another goroutine already made the
-			// transition (or RecordResult moved state elsewhere); in
-			// either case the state is no longer Open, so allow execution.
-			cb.atomicCASState(CircuitStateOpen, CircuitStateHalfOpen)
-			return true
+		if elapsed < cb.timeout {
+			return false
 		}
-		return false
+		// Claim the probe slot before transitioning to HalfOpen.
+		// The CAS is atomic so exactly one goroutine wins when multiple callers
+		// race on a freshly-expired timeout.
+		if !atomic.CompareAndSwapInt32(&cb.probing, 0, 1) {
+			return false // another goroutine already owns the probe slot
+		}
+		cb.atomicCASState(CircuitStateOpen, CircuitStateHalfOpen)
+		return true
 
 	case CircuitStateHalfOpen:
-		return true
+		// A probe is already in flight (probing == 1); block all other callers.
+		return false
 
 	default:
 		return false
 	}
 }
 
-// RecordResult records the result of an operation.
+// RecordResult records the outcome of an operation and transitions state
+// accordingly.  It also resets the probe slot when leaving HalfOpen.
 func (cb *CircuitBreaker) RecordResult(err error) {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -137,19 +148,24 @@ func (cb *CircuitBreaker) RecordResult(err error) {
 				cb.atomicStoreState(CircuitStateOpen)
 			}
 		case CircuitStateHalfOpen:
+			// Probe failed: reopen the circuit, then release the probe slot so a
+			// fresh probe can be attempted after the next timeout.
 			cb.atomicStoreState(CircuitStateOpen)
+			atomic.StoreInt32(&cb.probing, 0)
 		}
 	} else {
 		cb.successCount++
 
 		if cb.atomicLoadState() == CircuitStateHalfOpen {
+			// Probe succeeded: close the circuit and release the probe slot.
 			cb.atomicStoreState(CircuitStateClosed)
 			cb.resetCounters()
+			atomic.StoreInt32(&cb.probing, 0)
 		}
 	}
 }
 
-// resetCounters resets the failure and success counts.
+// resetCounters resets failure and success counts.
 // MUST be called with cb.mu held.
 func (cb *CircuitBreaker) resetCounters() {
 	cb.failureCount = 0
