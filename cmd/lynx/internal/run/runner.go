@@ -35,6 +35,7 @@ type Runner struct {
 	binaryPath  string
 	process     *exec.Cmd
 	processLock sync.Mutex
+	processDone chan struct{} // closed by the crash-monitor goroutine in run()
 	watcher     *FileWatcher
 }
 
@@ -55,6 +56,11 @@ func (r *Runner) Start(ctx context.Context) error {
 		if err := r.build(ctx); err != nil {
 			return fmt.Errorf("build failed: %w", err)
 		}
+	} else {
+		// Verify the binary exists when skipping the build step.
+		if _, err := os.Stat(r.binaryPath); os.IsNotExist(err) {
+			return fmt.Errorf("--skip-build specified but binary not found: %s", r.binaryPath)
+		}
 	}
 
 	if err := r.run(ctx); err != nil {
@@ -69,6 +75,10 @@ func (r *Runner) Start(ctx context.Context) error {
 	<-ctx.Done()
 
 	r.stop()
+
+	if r.config.WatchMode && r.watcher != nil {
+		r.watcher.Stop()
+	}
 
 	return nil
 }
@@ -149,7 +159,8 @@ func (r *Runner) run(ctx context.Context) error {
 
 	args := []string{}
 	if r.config.RunArgs != "" {
-		args = strings.Fields(r.config.RunArgs)
+		// parseBuildArgs handles quoted tokens so arguments with spaces work correctly.
+		args = parseBuildArgs(r.config.RunArgs)
 	}
 
 	r.process = exec.CommandContext(ctx, r.binaryPath, args...)
@@ -184,7 +195,11 @@ func (r *Runner) run(ctx context.Context) error {
 	}
 	fmt.Println(strings.Repeat("-", 60))
 
+	// processDone is closed once this process exits; stop() listens on it
+	// instead of calling Wait() again (calling Wait twice is not allowed).
+	r.processDone = make(chan struct{})
 	go func() {
+		defer close(r.processDone)
 		if err := r.process.Wait(); err != nil {
 			if ctx.Err() == nil {
 				fmt.Printf("\n❌ %s: %v\n", color.RedString("Application crashed"), err)
@@ -209,26 +224,33 @@ func (r *Runner) streamOutput(reader io.Reader, isError bool) {
 }
 
 // stop sends SIGTERM and waits up to 5s for the process to exit, then SIGKILLs.
+// It uses the processDone channel (closed by the run() goroutine) instead of
+// calling Wait() again; calling Wait twice on the same Cmd is not allowed.
 func (r *Runner) stop() {
 	r.processLock.Lock()
-	defer r.processLock.Unlock()
+	proc := r.process
+	done := r.processDone
+	r.processLock.Unlock()
 
-	if r.process != nil && r.process.Process != nil {
-		r.process.Process.Signal(syscall.SIGTERM)
+	if proc == nil || proc.Process == nil {
+		return
+	}
 
-		done := make(chan bool, 1)
-		go func() {
-			r.process.Wait()
-			done <- true
-		}()
+	_ = proc.Process.Signal(syscall.SIGTERM)
 
-		select {
-		case <-done:
-			fmt.Printf("✅ %s\n", color.GreenString("Application stopped gracefully"))
-		case <-time.After(5 * time.Second):
-			r.process.Process.Kill()
-			fmt.Printf("⚠️  %s\n", color.YellowString("Application force killed"))
-		}
+	if done == nil {
+		// No monitor goroutine (process was never started via run()); fall back.
+		time.Sleep(5 * time.Second)
+		_ = proc.Process.Kill()
+		return
+	}
+
+	select {
+	case <-done:
+		fmt.Printf("✅ %s\n", color.GreenString("Application stopped gracefully"))
+	case <-time.After(5 * time.Second):
+		_ = proc.Process.Kill()
+		fmt.Printf("⚠️  %s\n", color.YellowString("Application force killed"))
 	}
 }
 

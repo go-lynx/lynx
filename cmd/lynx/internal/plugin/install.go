@@ -90,12 +90,13 @@ func printInstallNextSteps(pluginName string, meta *PluginMetadata) {
 	fmt.Printf("\n%s plugin %s installed\n", color.GreenString("✓"), color.CyanString(pluginName))
 	fmt.Println("\n📚 Next steps:")
 
-	// 1) Blank import that registers the plugin with the framework.
+	// 1) Blank import — auto-managed in plugins_gen.go; remind user to verify.
 	if meta != nil && meta.ImportPath != "" {
-		fmt.Println("  1. Register it with a blank import in your service bootstrap (e.g. cmd/<svc>/main.go):")
+		fmt.Println("  1. Blank import added automatically to plugins_gen.go:")
 		fmt.Printf("       import _ %q\n", meta.ImportPath)
+		fmt.Println("     (verify it is present if you manage imports manually)")
 	} else {
-		fmt.Println("  1. Add a blank import for the plugin package in your service bootstrap (cmd/<svc>/main.go)")
+		fmt.Println("  1. Blank import added to plugins_gen.go (verify if managing imports manually)")
 	}
 
 	// 2) Where to configure it.
@@ -103,7 +104,7 @@ func printInstallNextSteps(pluginName string, meta *PluginMetadata) {
 	if meta != nil && meta.ConfigFile != "" {
 		configFile = meta.ConfigFile
 	}
-	fmt.Printf("  2. Add the plugin's configuration section in %s\n", color.YellowString(configFile))
+	fmt.Printf("  2. Fill in your settings in %s\n", color.YellowString(configFile))
 
 	// 3) Verify.
 	fmt.Printf("  3. Verify the setup: %s\n", color.CyanString("lynx doctor"))

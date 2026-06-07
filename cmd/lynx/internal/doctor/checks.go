@@ -512,17 +512,10 @@ func (c *GoModCheck) Check() CheckResult {
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
 		if strings.HasPrefix(line, "module ") {
-			moduleName := strings.TrimPrefix(line, "module ")
-			moduleName = strings.TrimSpace(moduleName)
+			moduleName := strings.TrimSpace(strings.TrimPrefix(line, "module "))
 			result.Details["module"] = moduleName
-
-			if moduleName == "github.com/go-lynx/lynx" || strings.HasPrefix(moduleName, "github.com/go-lynx/") {
-				result.Status = StatusOK
-				result.Message = fmt.Sprintf("Valid go.mod with module: %s", moduleName)
-			} else {
-				result.Status = StatusWarning
-				result.Message = fmt.Sprintf("go.mod found with module: %s", moduleName)
-			}
+			result.Status = StatusOK
+			result.Message = fmt.Sprintf("go.mod found with module: %s", moduleName)
 			break
 		}
 	}

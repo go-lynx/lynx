@@ -46,12 +46,24 @@ func init() {
 	cmdList.Flags().BoolVar(&listNoCache, "no-cache", false, "Force refresh plugin list from GitHub (ignore cache)")
 }
 
+var validPluginTypes = map[string]bool{
+	"service": true, "mq": true, "sql": true, "nosql": true,
+	"tracer": true, "dtx": true, "config": true, "other": true,
+}
+
 func runList(cmd *cobra.Command, args []string) error {
+	if listType != "" && !validPluginTypes[strings.ToLower(listType)] {
+		return fmt.Errorf("invalid --type %q: must be one of service, mq, sql, nosql, tracer, dtx, config, other", listType)
+	}
+
 	if listNoCache {
 		InvalidatePluginCache()
 		SetForceRefreshPluginList(true)
 	}
-	manager, err := NewPluginManager()
+
+	// list is a read-only discovery command; the read-only manager works both
+	// inside and outside a project directory.
+	manager, err := NewReadOnlyPluginManager()
 	if err != nil {
 		return fmt.Errorf("failed to initialize plugin manager: %w", err)
 	}

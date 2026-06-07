@@ -34,7 +34,9 @@ func init() {
 func runInfo(cmd *cobra.Command, args []string) error {
 	pluginName := args[0]
 
-	manager, err := NewPluginManager()
+	// info is a discovery command; use the read-only manager so it works outside
+	// a Go project directory too (installed status will show "Not installed" in that case).
+	manager, err := NewReadOnlyPluginManager()
 	if err != nil {
 		return fmt.Errorf("failed to initialize plugin manager: %w", err)
 	}

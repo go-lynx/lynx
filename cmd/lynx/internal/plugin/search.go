@@ -35,7 +35,9 @@ func init() {
 func runSearch(cmd *cobra.Command, args []string) error {
 	keyword := args[0]
 
-	manager, err := NewPluginManager()
+	// search is a discovery command; it does not need to mutate a project, so
+	// use the read-only manager which works outside a Go project directory too.
+	manager, err := NewReadOnlyPluginManager()
 	if err != nil {
 		return fmt.Errorf("failed to initialize plugin manager: %w", err)
 	}

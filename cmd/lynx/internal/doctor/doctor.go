@@ -104,6 +104,12 @@ type Summary struct {
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
+	switch outputFormat {
+	case "text", "json", "markdown":
+	default:
+		return fmt.Errorf("invalid --format %q: must be text, json, or markdown", outputFormat)
+	}
+
 	startTime := time.Now()
 
 	runner := NewDiagnosticRunner()

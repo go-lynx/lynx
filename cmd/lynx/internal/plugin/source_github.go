@@ -67,7 +67,10 @@ func SetForceRefreshPluginList(force bool) {
 
 // FetchPluginsFromGitHub fetches the list of public plugin repos from go-lynx org and returns PluginMetadata slice.
 // Results are cached in memory and optionally on disk (under projectRoot/.lynx/) with TTL.
+// If GitHub is unreachable and a stale disk cache exists, the stale cache is used as a fallback.
 func FetchPluginsFromGitHub(projectRoot string) ([]*PluginMetadata, error) {
+	var staleFallback []*PluginMetadata // populated if a stale-but-readable disk cache exists
+
 	if !forceRefreshPluginList {
 		githubPluginCacheMu.RLock()
 		if len(githubPluginCache) > 0 {
@@ -81,11 +84,16 @@ func FetchPluginsFromGitHub(projectRoot string) ([]*PluginMetadata, error) {
 			cachePath := filepath.Join(projectRoot, pluginCacheDir, pluginCacheFile)
 			if data, err := os.ReadFile(cachePath); err == nil {
 				var entry pluginCacheEntry
-				if json.Unmarshal(data, &entry) == nil && time.Since(entry.CachedAt) < cacheTTL && len(entry.Plugins) > 0 {
-					githubPluginCacheMu.Lock()
-					githubPluginCache = entry.Plugins
-					githubPluginCacheMu.Unlock()
-					return append([]*PluginMetadata(nil), entry.Plugins...), nil
+				if json.Unmarshal(data, &entry) == nil && len(entry.Plugins) > 0 {
+					if time.Since(entry.CachedAt) < cacheTTL {
+						// Fresh cache — use it directly.
+						githubPluginCacheMu.Lock()
+						githubPluginCache = entry.Plugins
+						githubPluginCacheMu.Unlock()
+						return append([]*PluginMetadata(nil), entry.Plugins...), nil
+					}
+					// Stale cache — keep it as a fallback if the network call fails.
+					staleFallback = entry.Plugins
 				}
 			}
 		}
@@ -94,6 +102,13 @@ func FetchPluginsFromGitHub(projectRoot string) ([]*PluginMetadata, error) {
 
 	plugins, err := fetchFromGitHubAPI()
 	if err != nil {
+		if len(staleFallback) > 0 {
+			fmt.Printf("Warning: GitHub unreachable (%v); using cached plugin list (may be outdated)\n", err)
+			githubPluginCacheMu.Lock()
+			githubPluginCache = staleFallback
+			githubPluginCacheMu.Unlock()
+			return append([]*PluginMetadata(nil), staleFallback...), nil
+		}
 		return nil, err
 	}
 
