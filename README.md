@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pkg.go.dev/github.com/go-lynx/lynx"><img src="https://pkg.go.dev/badge/github.com/go-lynx/lynx/v2" alt="GoDoc"></a>
+  <a href="https://pkg.go.dev/github.com/go-lynx/lynx"><img src="https://pkg.go.dev/badge/github.com/go-lynx/lynx" alt="GoDoc"></a>
   <a href="https://codecov.io/gh/go-lynx/lynx"><img src="https://codecov.io/gh/go-lynx/lynx/master/graph/badge.svg" alt="codeCov"></a>
   <a href="https://goreportcard.com/report/github.com/go-lynx/lynx"><img src="https://goreportcard.com/badge/github.com/go-lynx/lynx" alt="Go Report Card"></a>
   <a href="https://github.com/go-lynx/lynx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/go-lynx/lynx" alt="License"></a>
@@ -303,13 +303,16 @@ lynx new service1 service2 service3
 package main
 
 import (
-    "github.com/go-lynx/lynx/app"
-    "github.com/go-lynx/lynx/app/boot"
+    "log"
+
+    "github.com/go-lynx/lynx/boot"
 )
 
 func main() {
     // That's it! Lynx handles everything else
-    boot.LynxApplication(wireApp).Run()
+    if err := boot.NewApplication(wireApp).Run(); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
@@ -491,7 +494,7 @@ The `lynx doctor` command performs comprehensive health checks on your developme
 #### What It Checks
 
 **Environment Checks:**
-- ✅ Go installation and version (minimum Go 1.20+)
+- ✅ Go installation and version (minimum Go 1.26+)
 - ✅ Go environment variables (GOPATH, GO111MODULE, GOPROXY)
 - ✅ Git repository status and uncommitted changes
 
@@ -622,7 +625,7 @@ lynx run ./my-service
 lynx run --build-args="-ldflags=-s -w"
 
 # Pass runtime configuration
-lynx run --run-args="--config=./configs"
+lynx run --run-args="-conf ./configs/bootstrap.local.yaml"
 
 # Set environment variables
 lynx run -e PORT=8080 -e ENV=development
@@ -678,7 +681,7 @@ Please read our [Contributing Guide](CONTRIBUTING.md) for detailed instructions 
 - 📖 [User Guide](https://go-lynx.cn/docs)
 - 🔧 [API Reference](https://pkg.go.dev/github.com/go-lynx/lynx)
 - 🎯 [Examples](https://github.com/go-lynx/lynx/tree/main/examples)
-- 🚀 [Quick Start](https://go-lynx.cn/docs/quick-start)
+- 🚀 [Quick Start](https://go-lynx.cn/docs/getting-started/quick-start)
 
 ---
 

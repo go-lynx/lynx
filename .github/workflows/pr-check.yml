@@ -3,9 +3,6 @@ name: Pull Request Checks
 on:
   workflow_dispatch:
 
-env:
-  GO_VERSION: '1.25'
-
 jobs:
   pr-validation:
     name: PR Validation
@@ -16,10 +13,10 @@ jobs:
         fetch-depth: 0
     
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
-        go-version: ${{ env.GO_VERSION }}
-        cache-dependency-path: go.mod
+        go-version-file: go.mod
+        cache-dependency-path: go.sum
     
     - name: Get changed files
       id: changed-files
@@ -99,7 +96,7 @@ jobs:
         fi
         
         # Install golangci-lint
-        go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 # pinned: .golangci.yml uses the v1 schema
         
         # Extract unique directories to lint (more efficient than linting individual files)
         dirs=$(echo "$changed_go_files" | xargs -n1 dirname | sort -u | grep -v '^\.$' || true)
@@ -154,7 +151,7 @@ jobs:
         for pkg in $packages; do
           if [ -d "$pkg" ]; then
             echo "Checking coverage for package: $pkg"
-            go test -coverprofile=coverage.out -covermode=atomic "$pkg" || true
+            go test -coverprofile=coverage.out -covermode=atomic "$pkg"
             if [ -f coverage.out ]; then
               coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
               echo "  Coverage: $coverage"

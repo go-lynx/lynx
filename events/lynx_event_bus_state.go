@@ -38,39 +38,72 @@ func (b *LynxEventBus) GetSubscriberCount(eventType EventType) int {
 }
 
 // Pause stops consuming events from the internal queue while publishing still enqueues.
+//
+// The state change happens under b.mu; the "paused" notification is published
+// after the lock is released (see publishStateNotification). Publishing while
+// holding b.mu would self-deadlock when b is the system bus, because the
+// notification is routed back to this bus and Publish takes b.mu.RLock.
 func (b *LynxEventBus) Pause() {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	if !b.paused.Load() {
-		b.pauseStartTime = time.Now()
-		b.paused.Store(true)
-		b.pauseCount.Add(1)
-		pauseEvent := NewLynxEvent(EventSystemError, "system", "event-bus").
-			WithPriority(PriorityHigh).
-			WithCategory("system").
-			WithStatus("paused").
-			WithMetadata("bus_type", b.busType).
-			WithMetadata("reason", "manual_pause")
-		b.publishManagerEvent(pauseEvent)
+	if b.paused.Load() {
+		b.mu.Unlock()
+		return
 	}
+	b.pauseStartTime = time.Now()
+	b.paused.Store(true)
+	count := b.pauseCount.Add(1)
+	b.mu.Unlock()
+
+	pauseEvent := NewLynxEvent(EventSystemError, "system", "event-bus").
+		WithPriority(PriorityHigh).
+		WithCategory("system").
+		WithStatus("paused").
+		WithMetadata("bus_type", b.busType).
+		WithMetadata("pause_count", count).
+		WithMetadata("reason", "manual_pause")
+	b.publishStateNotification(pauseEvent)
 }
 
-// Resume resumes consuming events.
+// Resume resumes consuming events. See Pause for the locking rationale.
 func (b *LynxEventBus) Resume() {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.paused.Load() {
-		b.pauseDuration += time.Since(b.pauseStartTime)
-		b.paused.Store(false)
-		resumeEvent := NewLynxEvent(EventSystemError, "system", "event-bus").
-			WithPriority(PriorityNormal).
-			WithCategory("system").
-			WithStatus("resumed").
-			WithMetadata("bus_type", b.busType).
-			WithMetadata("pause_duration", b.pauseDuration.String()).
-			WithMetadata("reason", "manual_resume")
-		b.publishManagerEvent(resumeEvent)
+	if !b.paused.Load() {
+		b.mu.Unlock()
+		return
 	}
+	b.pauseDuration += time.Since(b.pauseStartTime)
+	b.paused.Store(false)
+	pauseDuration := b.pauseDuration
+	count := b.pauseCount.Load()
+	b.mu.Unlock()
+
+	resumeEvent := NewLynxEvent(EventSystemError, "system", "event-bus").
+		WithPriority(PriorityNormal).
+		WithCategory("system").
+		WithStatus("resumed").
+		WithMetadata("bus_type", b.busType).
+		WithMetadata("pause_count", count).
+		WithMetadata("pause_duration", pauseDuration.String()).
+		WithMetadata("reason", "manual_resume")
+	b.publishStateNotification(resumeEvent)
+}
+
+// publishStateNotification publishes a pause/resume notification through the
+// manager on a fresh goroutine, so it never runs while any bus lock is held.
+//
+// Pause/Resume can be reached from checkDegradation, which Publish calls while
+// holding b.enqueueMu.RLock. A synchronous publish from there would re-acquire
+// enqueueMu.RLock on the same goroutine when b is the system bus; if Close is
+// concurrently waiting for enqueueMu.Lock, that recursive read lock deadlocks.
+// Publishing asynchronously avoids that. Ordering between a pause and a
+// subsequent resume is not guaranteed by delivery order; consumers should use
+// the event Timestamp and the "pause_count" metadata, which are captured
+// synchronously with the state change.
+func (b *LynxEventBus) publishStateNotification(event LynxEvent) {
+	if b == nil || b.manager == nil {
+		return
+	}
+	go b.publishManagerEvent(event)
 }
 
 // GetPauseStats returns pause statistics.

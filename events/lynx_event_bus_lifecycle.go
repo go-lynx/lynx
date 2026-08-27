@@ -62,78 +62,10 @@ func (b *LynxEventBus) Close() error {
 			}
 		}
 
-		b.processedEvents.Range(func(key, value any) bool {
-			b.processedEvents.Delete(key)
-			return true
-		})
-
 		if b.dispatcher != nil {
 			return b.dispatcher.Close()
 		}
 		return nil
 	}
 	return nil
-}
-
-// cleanupProcessedEvents periodically cleans up old entries from processed events map.
-func (b *LynxEventBus) cleanupProcessedEvents() {
-	defer b.wg.Done()
-
-	cleanupInterval := b.dedupWindow / 2
-	if cleanupInterval < 30*time.Second {
-		cleanupInterval = 30 * time.Second
-	}
-	ticker := time.NewTicker(cleanupInterval)
-	defer ticker.Stop()
-
-	maxCleanupCount := 0
-
-	for {
-		select {
-		case <-b.done:
-			now := time.Now()
-			cleaned := 0
-			b.processedEvents.Range(func(key, value any) bool {
-				if lastTime, ok := value.(time.Time); ok && now.Sub(lastTime) > b.dedupWindow {
-					b.processedEvents.Delete(key)
-					cleaned++
-				}
-				return true
-			})
-			if cleaned > 0 && b.logger != nil {
-				log.NewHelper(b.logger).Debugf("final cleanup of processed events: removed %d entries", cleaned)
-			}
-			return
-		case <-ticker.C:
-			now := time.Now()
-			cleaned := 0
-			entryCount := 0
-			b.processedEvents.Range(func(key, value any) bool {
-				entryCount++
-				return true
-			})
-
-			if entryCount > 0 {
-				b.processedEvents.Range(func(key, value any) bool {
-					if lastTime, ok := value.(time.Time); ok && now.Sub(lastTime) > b.dedupWindow {
-						b.processedEvents.Delete(key)
-						cleaned++
-					}
-					return true
-				})
-
-				if entryCount > maxCleanupCount {
-					maxCleanupCount = entryCount
-				}
-
-				if cleaned > 1000 || (entryCount > 10000 && cleaned > 0) {
-					if b.logger != nil {
-						log.NewHelper(b.logger).Warnf(
-							"processed events map cleanup: removed %d entries, remaining %d (max seen: %d)",
-							cleaned, entryCount-cleaned, maxCleanupCount)
-					}
-				}
-			}
-		}
-	}
 }

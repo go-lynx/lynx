@@ -1,6 +1,22 @@
 # Beta Status
 
-更新时间：2026-05-07
+更新时间：2026-08-27
+
+## 当前状态
+
+- **v1.6.2 已于 2026-06-04 发布**（见 `CHANGELOG.md`）：插件生命周期取消真正生效、修复 `compareVersionNumeric` / `VersionManager.ParseVersion` 两处 panic、核心 `plugins` 包覆盖率从约 30% 提升到约 72%，无破坏性 API 变更。
+- 核心 `go.mod` 要求 **Go 1.26**；`lynx doctor` 会检查该版本。
+
+## 稳定化工作（2026-08-27）
+
+| 类别 | 内容 | 状态 |
+| --- | --- | --- |
+| 死锁修复 | 控制面插件在 `Start` 钩子中加载远程配置插件时，`LoadPlugins` / `LoadPluginsByName` 不再在 `operationMu` 上死锁，改由进行中的加载排队执行；`SetGlobalConfig` 在引导加载进行中也可接受配置切换 | ✅ 已完成 |
+| 事件总线 | `EventBusManager.Close` 不再持有管理器锁关闭各总线；`Pause` / `Resume` 在总线锁外发布通知，消除系统总线自死锁 | ✅ 已完成 |
+| 死代码清理 | 移除 `plugins.ConflictResolver`、`plugins.VersionManager`、`plugins.TypedRuntimeImpl`、`*PluginAny` 接口、全局类型化事件钩子以及各总线的无用去重逻辑 | ✅ 已完成 |
+| 插件 CI | 新增插件仓库 CI；工作流改用 `go-version-file: go.mod`、运行 `go vet`、测试 `cmd/lynx` 模块并固定第三方 action 版本 | ✅ 已完成 |
+| 依赖治理 | 移除插件 `go.mod` 中指向 `../lynx` 的 `replace` 指令，插件统一依赖已发布的核心版本 | ✅ 已完成 |
+| 其他 | `UnloadPlugins` 超时后强制清理剩余插件；数据竞争修复；`lynx new --module` 不再改写 `*.pb.go` | ✅ 已完成 |
 
 ## 核心稳定化进展（2026-05 更新）
 
@@ -17,11 +33,13 @@
 
 ### v1.6.1 稳定版计划
 
-| 里程碑 | 目标 | 预计时间 |
-| --- | --- | --- |
-| v1.6.1-rc1 | 核心 + 高风险插件（grpc/http/tracer/sql-sdk/redis）完成稳定版对齐 | 2026-06 |
-| v1.6.1 | 中等风险插件（nacos/kafka/mongodb 等）完成，全量集成测试通过 | 2026-07 |
-| v1.7.0 | compat 层移入 `internal/`，低风险插件完成收尾，正式退出 beta | 2026-Q3 |
+| 里程碑 | 目标 | 预计时间 | 状态 |
+| --- | --- | --- | --- |
+| v1.6.1-rc1 | 核心 + 高风险插件（grpc/http/tracer/sql-sdk/redis）完成稳定版对齐 | 2026-06 | ✅ 已完成（随 v1.6.2 发布） |
+| v1.6.1 | 中等风险插件（nacos/kafka/mongodb 等）完成，全量集成测试通过 | 2026-07 | ✅ 已完成（随 v1.6.2 发布） |
+| v1.7.0 | compat 层移入 `internal/`，低风险插件完成收尾，正式退出 beta | 2026-Q3 | ⏳ 进行中 |
+
+> 以下章节为 2026-04-02 的静态审计快照，保留作历史参考。
 
 ## 范围与判定口径
 

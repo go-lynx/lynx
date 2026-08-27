@@ -504,6 +504,9 @@ func copyResourceInfo(info *ResourceInfo) *ResourceInfo {
 		AccessCount:   atomic.LoadInt64(&info.AccessCount),
 		Size:          atomic.LoadInt64(&info.Size),
 	}
+	if n := atomic.LoadInt64(&info.lastUsedUnixNano); n != 0 {
+		c.LastUsedAt = time.Unix(0, n)
+	}
 	if info.Metadata != nil {
 		c.Metadata = make(map[string]any, len(info.Metadata))
 		for k, v := range info.Metadata {
@@ -518,7 +521,7 @@ func (r *UnifiedRuntime) updateAccessStats(name string) {
 	if value, ok := r.resourceInfo.Load(name); ok {
 		if info, ok := value.(*ResourceInfo); ok {
 			atomic.AddInt64(&info.AccessCount, 1)
-			info.LastUsedAt = time.Now()
+			atomic.StoreInt64(&info.lastUsedUnixNano, time.Now().UnixNano())
 		}
 	}
 }

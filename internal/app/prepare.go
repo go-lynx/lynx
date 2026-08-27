@@ -57,6 +57,14 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 			continue
 		}
 
+		// A section carrying `enabled: false` is explicitly disabled by the user. This lets
+		// bootstrap files keep example settings for a plugin without loading it.
+		if isPrefixExplicitlyDisabled(config, confPrefix) {
+			log.Infof("Plugin config prefix %s is disabled (enabled: false), skipping %v", confPrefix, names)
+			report.Skipped = append(report.Skipped, confPrefix)
+			continue
+		}
+
 		var successCount, failCount int
 		for _, name := range names {
 			if name == "" {
@@ -104,6 +112,23 @@ func (m *DefaultPluginManager[T]) PreparePlug(config config.Config) ([]plugins.P
 	}
 
 	return prepared, nil
+}
+
+// isPrefixExplicitlyDisabled reports whether `<prefix>.enabled` is present and set to false.
+// A missing or unparsable key keeps the historical behavior (the plugin is loaded).
+func isPrefixExplicitlyDisabled(config config.Config, confPrefix string) bool {
+	if config == nil || confPrefix == "" {
+		return false
+	}
+	value := config.Value(confPrefix + ".enabled")
+	if value == nil || value.Load() == nil {
+		return false
+	}
+	enabled, err := value.Bool()
+	if err != nil {
+		return false
+	}
+	return !enabled
 }
 
 func allowPartialPrepareFailure(config config.Config) bool {

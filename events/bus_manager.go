@@ -2,12 +2,16 @@ package events
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
+
+// ErrManagerClosed is returned by manager operations after Close has been called.
+var ErrManagerClosed = errors.New("event bus manager is closed")
 
 // EventBusManager owns the per-type buses and routes events to them.
 //
@@ -22,6 +26,9 @@ type EventBusManager struct {
 	monitor    *EventMonitor
 	logger     log.Logger
 	mu         sync.RWMutex
+	// closed is set (under mu) by Close. Once set, buses is nil and every
+	// lookup fails fast with ErrManagerClosed.
+	closed bool
 
 	healthCheckMu      sync.Mutex
 	healthCheckDone    chan struct{}
@@ -96,29 +103,41 @@ func (manager *EventBusManager) GetMonitor() *EventMonitor {
 	return manager.monitor
 }
 
-// GetBus returns the bus for the given bus type, or nil if none is registered.
-func (manager *EventBusManager) GetBus(busType BusType) *LynxEventBus {
+// lookupBus returns the bus for busType, ErrManagerClosed after Close, or a
+// not-found error. It never calls into the bus while holding manager.mu.
+func (manager *EventBusManager) lookupBus(busType BusType) (*LynxEventBus, error) {
 	manager.mu.RLock()
+	closed := manager.closed
 	bus, exists := manager.buses[busType]
 	manager.mu.RUnlock()
 
-	if exists {
-		return bus
+	if closed {
+		return nil, ErrManagerClosed
 	}
+	if !exists {
+		return nil, fmt.Errorf("no bus found for bus type: %d", busType)
+	}
+	return bus, nil
+}
 
-	return nil
+// GetBus returns the bus for the given bus type, or nil if none is registered
+// or the manager has been closed.
+func (manager *EventBusManager) GetBus(busType BusType) *LynxEventBus {
+	bus, err := manager.lookupBus(busType)
+	if err != nil {
+		return nil
+	}
+	return bus
 }
 
 // PublishEvent routes an event to the bus chosen by the classifier.
+// It returns ErrManagerClosed once the manager has been closed.
 func (manager *EventBusManager) PublishEvent(event LynxEvent) error {
 	busType := manager.classifier.GetBusType(event)
 
-	manager.mu.RLock()
-	bus, exists := manager.buses[busType]
-	manager.mu.RUnlock()
-
-	if !exists {
-		return fmt.Errorf("no bus found for bus type: %d", busType)
+	bus, err := manager.lookupBus(busType)
+	if err != nil {
+		return err
 	}
 
 	bus.Publish(event)
@@ -127,12 +146,9 @@ func (manager *EventBusManager) PublishEvent(event LynxEvent) error {
 
 // Subscribe registers a catch-all handler on the given bus.
 func (manager *EventBusManager) Subscribe(busType BusType, handler func(LynxEvent)) error {
-	manager.mu.RLock()
-	bus, exists := manager.buses[busType]
-	manager.mu.RUnlock()
-
-	if !exists {
-		return fmt.Errorf("no bus found for bus type: %d", busType)
+	bus, err := manager.lookupBus(busType)
+	if err != nil {
+		return err
 	}
 
 	bus.Subscribe(handler)
@@ -145,12 +161,9 @@ func (manager *EventBusManager) SubscribeTo(eventType EventType, handler func(Ly
 	dummyEvent := NewLynxEvent(eventType, "system", "event-bus-manager")
 	busType := manager.classifier.GetBusType(dummyEvent)
 
-	manager.mu.RLock()
-	bus, exists := manager.buses[busType]
-	manager.mu.RUnlock()
-
-	if !exists {
-		return fmt.Errorf("no bus found for event type: %d", eventType)
+	bus, err := manager.lookupBus(busType)
+	if err != nil {
+		return err
 	}
 
 	bus.SubscribeTo(eventType, handler)
@@ -159,12 +172,9 @@ func (manager *EventBusManager) SubscribeTo(eventType EventType, handler func(Ly
 
 // SubscribeWithCancel is Subscribe but returns a cancel func to unsubscribe.
 func (manager *EventBusManager) SubscribeWithCancel(busType BusType, handler func(LynxEvent)) (context.CancelFunc, error) {
-	manager.mu.RLock()
-	bus, exists := manager.buses[busType]
-	manager.mu.RUnlock()
-
-	if !exists {
-		return func() {}, fmt.Errorf("no bus found for bus type: %d", busType)
+	bus, err := manager.lookupBus(busType)
+	if err != nil {
+		return func() {}, err
 	}
 
 	cancel := bus.Subscribe(handler)
@@ -176,32 +186,58 @@ func (manager *EventBusManager) SubscribeToWithCancel(eventType EventType, handl
 	dummyEvent := NewLynxEvent(eventType, "system", "event-bus-manager")
 	busType := manager.classifier.GetBusType(dummyEvent)
 
-	manager.mu.RLock()
-	bus, exists := manager.buses[busType]
-	manager.mu.RUnlock()
-
-	if !exists {
-		return func() {}, fmt.Errorf("no bus found for event type: %d", eventType)
+	bus, err := manager.lookupBus(busType)
+	if err != nil {
+		return func() {}, err
 	}
 
 	cancel := bus.SubscribeTo(eventType, handler)
 	return cancel, nil
 }
 
-// Close closes all buses
+// Close closes all buses. It is idempotent.
+//
+// The manager lock is held only long enough to mark the manager closed and
+// detach the bus map; buses are closed afterwards, outside the lock and
+// concurrently. bus.Close waits (up to CloseTimeout) for in-flight handlers,
+// and those handlers may call back into PublishEvent/GetBus; if the lock were
+// held across bus.Close such a handler would block on mu.RLock, the bus would
+// wait on the handler, and shutdown would stall for CloseTimeout per bus.
 func (manager *EventBusManager) Close() error {
 	manager.StopHealthCheck()
 
 	manager.mu.Lock()
-	defer manager.mu.Unlock()
+	if manager.closed {
+		manager.mu.Unlock()
+		return nil
+	}
+	manager.closed = true
+	buses := manager.buses
+	manager.buses = nil
+	manager.mu.Unlock()
+
+	type closeResult struct {
+		busType BusType
+		err     error
+	}
+	results := make(chan closeResult, len(buses))
+	var wg sync.WaitGroup
+	for busType, bus := range buses {
+		wg.Add(1)
+		go func(busType BusType, bus *LynxEventBus) {
+			defer wg.Done()
+			results <- closeResult{busType: busType, err: bus.Close()}
+		}(busType, bus)
+	}
+	wg.Wait()
+	close(results)
 
 	var lastError error
-	for busType, bus := range manager.buses {
-		if err := bus.Close(); err != nil {
-			lastError = fmt.Errorf("failed to close bus %d: %w", busType, err)
+	for r := range results {
+		if r.err != nil {
+			lastError = fmt.Errorf("failed to close bus %d: %w", r.busType, r.err)
 		}
 	}
-
 	return lastError
 }
 
@@ -275,12 +311,9 @@ type BusStatus struct {
 
 // Pause stops a bus from consuming events; Publish keeps enqueuing them.
 func (manager *EventBusManager) Pause(busType BusType) error {
-	manager.mu.RLock()
-	bus, exists := manager.buses[busType]
-	manager.mu.RUnlock()
-
-	if !exists {
-		return fmt.Errorf("no bus found for bus type: %d", busType)
+	bus, err := manager.lookupBus(busType)
+	if err != nil {
+		return err
 	}
 
 	bus.Pause()
@@ -289,12 +322,9 @@ func (manager *EventBusManager) Pause(busType BusType) error {
 
 // Resume restarts consumption on a paused bus.
 func (manager *EventBusManager) Resume(busType BusType) error {
-	manager.mu.RLock()
-	bus, exists := manager.buses[busType]
-	manager.mu.RUnlock()
-
-	if !exists {
-		return fmt.Errorf("no bus found for bus type: %d", busType)
+	bus, err := manager.lookupBus(busType)
+	if err != nil {
+		return err
 	}
 
 	bus.Resume()
@@ -339,12 +369,9 @@ func (manager *EventBusManager) ResumeAll() (int, error) {
 
 // UpdateBusConfig applies runtime-safe config updates to a specific bus.
 func (manager *EventBusManager) UpdateBusConfig(busType BusType, cfg BusConfig) error {
-	manager.mu.RLock()
-	bus, exists := manager.buses[busType]
-	manager.mu.RUnlock()
-
-	if !exists {
-		return fmt.Errorf("no bus found for bus type: %d", busType)
+	bus, err := manager.lookupBus(busType)
+	if err != nil {
+		return err
 	}
 
 	bus.UpdateConfig(cfg)
@@ -354,12 +381,9 @@ func (manager *EventBusManager) UpdateBusConfig(busType BusType, cfg BusConfig) 
 // GetBusMetrics returns a metrics map for one bus, merging the bus's own
 // EventMetrics with the manager monitor snapshot.
 func (manager *EventBusManager) GetBusMetrics(busType BusType) (map[string]any, error) {
-	manager.mu.RLock()
-	bus, exists := manager.buses[busType]
-	manager.mu.RUnlock()
-
-	if !exists {
-		return nil, fmt.Errorf("no bus found for bus type: %d", busType)
+	bus, err := manager.lookupBus(busType)
+	if err != nil {
+		return nil, err
 	}
 
 	result := map[string]any{

@@ -42,7 +42,8 @@ type Application struct {
 	publishDefaultApp bool   // whether Run publishes the created app as the process-wide default
 
 	shutdownTimeout time.Duration
-	shutdownChan    chan struct{} // closed once to broadcast shutdown to all waiters
+	sigChan         chan os.Signal // registered with signal.Notify in Run; released by signal.Stop on shutdown
+	shutdownChan    chan struct{}  // closed once to broadcast shutdown to all waiters
 	shutdownOnce    sync.Once
 	healthChecker   *HealthChecker
 	circuitBreaker  *lynxapp.CircuitBreaker // guards plugin loading against repeated failures
@@ -245,11 +246,18 @@ func (app *Application) initializeEnhancedFeatures() {
 func (app *Application) setupSignalHandling() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	app.sigChan = sigChan
 
 	go func() {
-		sig := <-sigChan
-		log.Infof("Received signal %v, initiating graceful shutdown", sig)
-		app.initiateShutdown()
+		select {
+		case sig := <-sigChan:
+			log.Infof("Received signal %v, initiating graceful shutdown", sig)
+			app.initiateShutdown()
+		case <-app.shutdownChan:
+			// Shutdown started for another reason; stop watching so the goroutine
+			// and the signal registration do not outlive the application.
+		}
+		signal.Stop(sigChan)
 	}()
 }
 

@@ -168,9 +168,19 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 	pm := a.GetPluginManager()
 	oldCfg := a.globalConf
 
+	// While the bootstrap load is still in flight (a control-plane plugin is
+	// replacing the bootstrap configuration with the merged remote one from its
+	// Start hook), sibling plugins of the same dependency level may already be
+	// registered. That is not a runtime reload, so allow the swap; the old
+	// bootstrap config is left open because those plugins may still hold it.
+	bootstrapping := false
+	if lp, ok := pm.(interface{ LoadInProgress() bool }); ok && lp.LoadInProgress() {
+		bootstrapping = true
+	}
+
 	if pm != nil {
 		loaded := Plugins(pm)
-		if len(loaded) > 0 {
+		if len(loaded) > 0 && !bootstrapping {
 			loadedNames := make([]string, 0, len(loaded))
 			for _, plugin := range loaded {
 				if plugin == nil {
@@ -190,7 +200,7 @@ func (a *LynxApp) SetGlobalConfig(cfg config.Config) error {
 	a.globalConf = cfg
 
 	// Avoid closing cfg when it is the same instance as the previous global config (no-op swap / idempotent set).
-	if oldCfg != nil && oldCfg != cfg {
+	if oldCfg != nil && oldCfg != cfg && !bootstrapping {
 		if err := oldCfg.Close(); err != nil {
 			log.Errorf("Failed to close existing configuration: %v", err)
 			return err

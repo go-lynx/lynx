@@ -18,15 +18,15 @@ import (
 // The `probing` atomic flag ensures at most one goroutine acts as the probe
 // while the circuit is half-open.
 //
-//   Open → HalfOpen transition (CanExecute):
-//     1. CAS probing 0 → 1.  Exactly one goroutine wins; all others return false.
-//     2. CAS state Open → HalfOpen (the probe goroutine only).
+//	Open → HalfOpen transition (CanExecute):
+//	  1. CAS probing 0 → 1.  Exactly one goroutine wins; all others return false.
+//	  2. CAS state Open → HalfOpen (the probe goroutine only).
 //
-//   Probe success (RecordResult nil):
-//     state → Closed, then probing → 0.
+//	Probe success (RecordResult nil):
+//	  state → Closed, then probing → 0.
 //
-//   Probe failure (RecordResult err):
-//     state → Open, then probing → 0 (allows a fresh probe after the next timeout).
+//	Probe failure (RecordResult err):
+//	  state → Open, then probing → 0 (allows a fresh probe after the next timeout).
 //
 // Rule of thumb for future changes:
 //   - Read/write `state` ONLY through atomicLoadState / atomicStoreState /

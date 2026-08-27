@@ -3,18 +3,20 @@
 ## Project Structure & Module Organization
 
 ### Root Package (github.com/go-lynx/lynx)
-Core framework files with clear naming:
-- `doc.go`: Package documentation
+The root package is a thin facade: `facade.go` and `compat.go` re-export the
+public API (type aliases and function variables) from `internal/app`; `doc.go`
+holds the package documentation. The implementation lives in `internal/app/`:
 - `app.go`: LynxApp core structure, initialization, and main API
 - `manager.go`: Plugin manager interfaces and DefaultPluginManager implementation
-- `lifecycle.go`: Plugin lifecycle operations (init/start/stop with safety)
-- `ops.go`: Plugin loading/unloading operations and resource management
-- `topology.go`: Plugin dependency resolution and topological sorting
-- `runtime.go`: Backward-compatible runtime wrapper around `plugins.UnifiedRuntime`
+- `lifecycle.go` / `lifecycle_policy.go`: Plugin lifecycle operations (init/start/stop with timeouts and rollback)
+- `ops.go`: Plugin loading/unloading operations (including the deferred load queue used by control-plane plugins)
+- `topology.go`: Plugin dependency resolution, version-constraint checks and topological sorting
+- `runtime.go`: Typed-resource helpers over `plugins.UnifiedRuntime`
 - `controlplane.go`: ControlPlane interfaces for service management
 - `certificate.go`: CertificateProvider interface for TLS
 - `prepare.go`: Plugin preparation and bootstrapping from configuration
-- `recovery.go`: Error recovery and circuit breaker mechanisms
+- `recovery*.go` / `circuit_breaker.go`: Error recovery and circuit breaker mechanisms
+- `compat/`: Deprecated wrappers scheduled for removal in v2.0
 
 ### Sub-packages
 - `boot/`: Bootstrap helpers and config loading used by `lynx` apps.

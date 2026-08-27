@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/config"
@@ -43,6 +44,13 @@ type PluginManager interface {
 	GetUnloadFailures() []UnloadFailureRecord
 	ClearUnloadFailures()
 	GetLastPrepareReport() PrepareReport
+}
+
+// pendingLoadRequest is a Load* call deferred until the in-flight load finishes.
+type pendingLoadRequest struct {
+	conf   config.Config
+	names  []string // nil for LoadPlugins, non-nil for LoadPluginsByName
+	byName bool
 }
 
 // UnloadFailureRecord tracks plugin unload failures for monitoring
@@ -91,6 +99,14 @@ type DefaultPluginManager[T plugins.Plugin] struct {
 	factory           *factory.TypedFactory
 	mu                sync.RWMutex
 	operationMu       sync.Mutex
+	// loadInProgress is set while a Load* operation holds operationMu. Load
+	// requests arriving in the meantime (typically from a control-plane plugin's
+	// Start hook, which runs on a goroutine owned by the in-flight load) are
+	// appended to pendingLoads instead of blocking on operationMu, which would
+	// deadlock until the plugin start timeout fires.
+	loadInProgress    atomic.Bool
+	pendingLoadsMu    sync.Mutex
+	pendingLoads      []pendingLoadRequest
 	runtime           plugins.Runtime
 	config            config.Config
 	lastPrepareReport PrepareReport

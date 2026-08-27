@@ -117,10 +117,6 @@ type LynxEventBus struct {
 	bufferPool   *EventBufferPool
 	metadataPool *MetadataPool
 
-	// Event deduplication
-	processedEvents sync.Map // map[string]time.Time - eventID -> processing timestamp
-	dedupWindow     time.Duration
-
 	// Catch-all subscribers (used by Subscribe/SubscribeWithFilter).
 	// kelindar/event routes by ev.Type(), so Subscribe[LynxEvent] would only
 	// match events whose Type()==0. We maintain our own list instead.
@@ -183,16 +179,9 @@ func NewLynxEventBus(config BusConfig, busType BusType, manager *EventBusManager
 	bus.bufferPool = GetGlobalEventBufferPool()
 	bus.metadataPool = GetGlobalMetadataPool()
 
-	// Initialize deduplication (default: 5 minutes window)
-	bus.dedupWindow = 5 * time.Minute
-
 	// Start worker to drain queue and publish to dispatcher
 	bus.wg.Add(1)
 	go bus.run()
-
-	// Start cleanup goroutine for processed events map
-	bus.wg.Add(1)
-	go bus.cleanupProcessedEvents()
 
 	return bus
 }

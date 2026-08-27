@@ -131,7 +131,7 @@ func (p *Project) New(ctx context.Context, dir string, layout string, branch str
 	}
 	base.Infof("%s\n", color.WhiteString("$ go generate ./..."))
 	base.Infof("%s\n", color.WhiteString("$ go build -o ./bin/ ./... "))
-	base.Infof("%s\n", color.WhiteString("$ ./bin/%s -conf ./configs", p.Name))
+	base.Infof("%s\n", color.WhiteString("$ ./bin/%s -conf ./configs/bootstrap.local.yaml", p.Name))
 	base.Infof("%s", base.T("thanks"))
 	base.Infof("%s", base.T("tutorial"))
 	return nil

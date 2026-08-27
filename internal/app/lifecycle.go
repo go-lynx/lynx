@@ -283,7 +283,9 @@ func (m *DefaultPluginManager[T]) rollbackSinglePlugin(p plugins.Plugin, timeout
 	}
 
 	stopStart := time.Now()
-	if err := m.safeStopPlugin(p, timeout); err != nil {
+	if err := m.safeStopPlugin(p, timeout); errors.Is(err, plugins.ErrPluginNotActive) {
+		log.Debugf("rollback: plugin %s (%s) was not active; nothing to stop", p.Name(), p.ID())
+	} else if err != nil {
 		result.stopErr = err
 		result.success = false
 		log.Errorf("rollback stop failed for plugin %s (%s): %v (took %v)",

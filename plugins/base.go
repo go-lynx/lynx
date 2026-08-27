@@ -42,6 +42,11 @@ type TypedBasePlugin[T any] struct {
 	dependencies []Dependency        // List of plugin dependencies
 	capabilities []UpgradeCapability // List of plugin upgrade capabilities
 
+	// mu guards the mutable slices above (eventFilters, dependencies,
+	// capabilities), which may be appended to from user code while the
+	// manager reads them (topological sort, event dispatch).
+	mu sync.RWMutex
+
 	// orphanedStages counts legacy lifecycle tasks that were abandoned after a
 	// context cancellation but are still running in the background (they ignore
 	// ctx and cannot be force-stopped). It is maintained with atomic ops and
@@ -142,8 +147,8 @@ func (p *TypedBasePlugin[T]) StopContext(ctx context.Context, plugin Plugin) err
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context canceled before stop: %w", err)
 	}
-	if p.getStatus() != StatusActive {
-		return NewPluginError(p.id, "Stop", "Plugin must be active to stop", ErrPluginNotActive)
+	if !p.canStop() {
+		return NewPluginError(p.id, "Stop", "Plugin must be active or suspended to stop", ErrPluginNotActive)
 	}
 
 	p.setStatus(StatusStopping)
@@ -449,8 +454,8 @@ func (p *TypedBasePlugin[T]) Start(plugin Plugin) error {
 
 // Stop runs CleanupTasks and transitions the plugin to Terminated.
 func (p *TypedBasePlugin[T]) Stop(plugin Plugin) error {
-	if p.getStatus() != StatusActive {
-		return NewPluginError(p.id, "Stop", "Plugin must be active to stop", ErrPluginNotActive)
+	if !p.canStop() {
+		return NewPluginError(p.id, "Stop", "Plugin must be active or suspended to stop", ErrPluginNotActive)
 	}
 
 	p.setStatus(StatusStopping)
@@ -647,6 +652,8 @@ func (p *TypedBasePlugin[T]) GetHealth() HealthReport {
 // (during TopologicalSort). Required dependencies that affect load order should
 // be added in the plugin constructor so they are available here.
 func (p *TypedBasePlugin[T]) GetDependencies() []Dependency {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if len(p.dependencies) == 0 {
 		return nil
 	}
@@ -655,12 +662,25 @@ func (p *TypedBasePlugin[T]) GetDependencies() []Dependency {
 	return out
 }
 
+// canStop reports whether the plugin is in a state from which Stop is meaningful.
+// Suspended plugins still hold resources and must be stoppable during unload.
+func (p *TypedBasePlugin[T]) canStop() bool {
+	switch p.getStatus() {
+	case StatusActive, StatusSuspended:
+		return true
+	default:
+		return false
+	}
+}
+
 // AddDependency adds a new dependency to the plugin.
 // The dependency will be validated during plugin initialization.
 // For load-order resolution, add required dependencies in the plugin constructor
 // so GetDependencies() is complete before the manager runs topological sort.
 func (p *TypedBasePlugin[T]) AddDependency(dep Dependency) {
+	p.mu.Lock()
 	p.dependencies = append(p.dependencies, dep)
+	p.mu.Unlock()
 	p.EmitEvent(PluginEvent{
 		Type:     EventDependencyStatusChanged,
 		Priority: PriorityNormal,
@@ -674,11 +694,15 @@ func (p *TypedBasePlugin[T]) AddDependency(dep Dependency) {
 
 // AddEventFilter appends an event filter; events that match no filter are suppressed.
 func (p *TypedBasePlugin[T]) AddEventFilter(filter EventFilter) {
+	p.mu.Lock()
 	p.eventFilters = append(p.eventFilters, filter)
+	p.mu.Unlock()
 }
 
 // RemoveEventFilter removes the filter at the given index.
 func (p *TypedBasePlugin[T]) RemoveEventFilter(index int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if index >= 0 && index < len(p.eventFilters) {
 		p.eventFilters = append(p.eventFilters[:index], p.eventFilters[index+1:]...)
 	}

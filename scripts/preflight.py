@@ -18,7 +18,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 EXPECTED_TOOLCHAIN = "go1.26.2"
 EXPECTED_GO_VERSION = "1.26"
-EXPECTED_LYNX_VERSION = os.environ.get("LYNX_EXPECTED_VERSION", "v1.6.1")
+
+
+def _latest_core_tag() -> str:
+    """Return the v* tag the core checkout (ROOT/lynx HEAD) corresponds to, or "" when unavailable."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(ROOT / "lynx"), "describe", "--tags", "--abbrev=0", "--match", "v*"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    return out
+
+
+# The expected core version defaults to the tag of the core checkout so the check
+# never goes stale after a release; LYNX_EXPECTED_VERSION still overrides it.
+EXPECTED_LYNX_VERSION = os.environ.get("LYNX_EXPECTED_VERSION") or _latest_core_tag() or "v1.6.2"
 STALE_LYNX_MODULE_RE = re.compile(r"github\.com/go-lynx/(lynx-[\w-]+)\s+v1\.5\.")
 LYNX_SDK_MODULE = "github.com/go-lynx/lynx"
 
@@ -103,6 +121,9 @@ def check_modules(modules: list[str]) -> list[str]:
             errors.append(f"{module}: must use go {EXPECTED_GO_VERSION} or toolchain {EXPECTED_TOOLCHAIN}")
         if module != "lynx" and has_module_replace(text, LYNX_SDK_MODULE):
             errors.append(f"{module}: must not commit replace {LYNX_SDK_MODULE}; use go.work for local development")
+        for sibling in re.findall(r"^replace\s+(github\.com/go-lynx/[\w-]+)\s*=>", text, re.MULTILINE):
+            if sibling != LYNX_SDK_MODULE:
+                errors.append(f"{module}: must not commit replace {sibling}; use go.work for local development")
         if module != "lynx" and f"{LYNX_SDK_MODULE} " in text and f"{LYNX_SDK_MODULE} {EXPECTED_LYNX_VERSION}" not in text:
             errors.append(f"{module}: {LYNX_SDK_MODULE} must be {EXPECTED_LYNX_VERSION}")
         for match in STALE_LYNX_MODULE_RE.finditer(text):

@@ -94,6 +94,18 @@ func (m *DefaultPluginManager[T]) TopologicalSort(plugs []plugins.Plugin) ([]Plu
 		return nil, fmt.Errorf("missing required dependencies: %s", strings.Join(missingMsgs, "; "))
 	}
 
+	// Declared version constraints were previously parsed but never enforced;
+	// reject the load when a dependency's actual version violates them.
+	if conflicts, err := dg.CheckVersionConflicts(); err != nil {
+		return nil, fmt.Errorf("version constraint check failed: %w", err)
+	} else if len(conflicts) > 0 {
+		msgs := make([]string, 0, len(conflicts))
+		for _, c := range conflicts {
+			msgs = append(msgs, c.Description)
+		}
+		return nil, fmt.Errorf("plugin version constraints violated: %s", strings.Join(msgs, "; "))
+	}
+
 	orderedIDs, err := dg.ResolveDependencies()
 	if err != nil {
 		return nil, fmt.Errorf("dependency resolution failed: %w", err)

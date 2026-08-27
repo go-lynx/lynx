@@ -1,5 +1,26 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Plugin manager: `LoadPlugins`/`LoadPluginsByName` called while another load is in flight (control-plane plugins loading remote-config plugins from their Start hook) are now queued and executed by the in-flight load instead of deadlocking on `operationMu` until the start timeout.
+- `LynxApp.SetGlobalConfig` accepts the control-plane config swap while the bootstrap load is still in progress; sibling plugins registered by parallel startup no longer make it fail non-deterministically.
+- `UnloadPlugins`: an overall timeout reached mid-batch now force-cleans the remaining plugins instead of dropping them from the registry with their resources still allocated.
+- Suspended plugins can be stopped; `ErrPluginNotActive` during unload/rollback is no longer recorded as a failure (it used to mark the whole application unhealthy).
+- Data races: `ResourceInfo.LastUsedAt` is updated atomically; `TypedBasePlugin` dependency/event-filter slices are mutex-guarded.
+- `boot.Application` releases its `signal.Notify` registration on shutdown.
+- Event bus: `EventBusManager.Close` no longer holds the manager lock while closing buses (could stall shutdown for up to 8×30s); `Pause`/`Resume` publish their notification outside the bus lock (self-deadlock on the system bus); dead per-bus dedup machinery removed.
+- CLI: `lynx new --module` no longer rewrites the serialized descriptor inside generated `*.pb.go` files (the generated project used to panic at init); `lynx doctor` no longer skips the project root when searching for configuration files and checks for Go 1.26.
+
+### Added
+- A plugin config section carrying `enabled: false` is now skipped by `PreparePlug`, so bootstrap files can keep example settings for a plugin without loading it (used by the default `lynx-layout` local config).
+- `lynx-etcd-lock` module path corrected to `github.com/go-lynx/lynx-etcd-lock` (it declared the pre-split `lynx/plugins/etcd-lock` path, making the published tags unusable).
+
+### Changed
+- Production lifecycle policy: plugins without a genuinely cancellable lifecycle are now **warned about** in production instead of refused; set `lynx.plugins.require_context_aware_lifecycle: true` to make it an error. (The old default rejected mysql/redis/kafka/apollo/etcd/elasticsearch/sentinel/mssql/pgsql.)
+- Declared dependency version constraints are now enforced during dependency resolution (`TopologicalSort`).
+- Removed unused code: `plugins.ConflictResolver`, `plugins.VersionManager`, `plugins.TypedRuntimeImpl`, the `*PluginAny` interfaces and the global typed event hooks (`SetGlobalEventHooks`/`Subscribe`/`Publish`).
+- CI: workflows use `go-version-file: go.mod`, run `go vet`, test the `cmd/lynx` module, pin third-party actions, and drop the obsolete single-repo plugin build step. `Makefile` single-repo `tag`/`release` targets replaced by `release-plugins`; `scripts/preflight.py` derives the expected core version from the checkout's tag.
 ## [v1.6.3] - 2026-06-07
 
 > Production-hardening release. Focused on three pillars: correctness fixes to

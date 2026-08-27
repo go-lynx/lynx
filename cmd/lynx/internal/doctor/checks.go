@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -217,10 +218,11 @@ func (c *GoVersionCheck) Check() CheckResult {
 	version := fmt.Sprintf("%s.%s", major, minor)
 	result.Details["parsed_version"] = version
 
-	// Check minimum version (Go 1.20+)
-	if major == "1" && minor < "20" {
+	// Check minimum version: the framework's go.mod requires Go 1.26.
+	minorNum, _ := strconv.Atoi(minor)
+	if major == "1" && minorNum < 26 {
 		result.Status = StatusWarning
-		result.Message = fmt.Sprintf("Go version %s is below recommended 1.20+", version)
+		result.Message = fmt.Sprintf("Go version %s is below the required 1.26+", version)
 		result.FixAvailable = true
 	} else {
 		result.Status = StatusOK
@@ -576,7 +578,8 @@ func (c *ConfigFileCheck) Check() CheckResult {
 			return nil
 		}
 
-		if info.IsDir() && (strings.HasPrefix(info.Name(), ".") || info.Name() == "vendor") {
+		// path == "." is the walk root; its Name() is "." and must not be skipped.
+		if info.IsDir() && path != "." && (strings.HasPrefix(info.Name(), ".") || info.Name() == "vendor") {
 			return filepath.SkipDir
 		}
 

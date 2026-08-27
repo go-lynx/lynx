@@ -57,6 +57,9 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Vet
+        run: go vet ./...
+
       - name: Run stable test suite
         shell: bash
         run: |
@@ -65,6 +68,12 @@ jobs:
           # tests are isolated behind explicit tags or fixed in code.
           packages=$(go list ./... | grep -v '^github.com/go-lynx/lynx/cache$')
           go test -v -race -coverprofile=coverage.out -covermode=atomic $packages
+
+      - name: Test CLI module
+        working-directory: cmd/lynx
+        run: |
+          go vet ./...
+          go test -race ./...
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -95,27 +104,11 @@ jobs:
         working-directory: cmd/lynx
         run: go build -o ../../bin/lynx .
 
-      - name: Build plugins
-        shell: bash
-        run: |
-          shopt -s nullglob
-          for plugin in plugins/*/; do
-            if [ -f "${plugin}go.mod" ]; then
-              echo "Building plugin: $plugin"
-              (
-                cd "$plugin"
-                go build -buildmode=plugin -o "$(basename "$plugin").so" .
-              )
-            fi
-          done
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: lynx-binaries
-          path: |
-            bin/
-            plugins/**/*.so
+          path: bin/
 
   release:
     name: Release
@@ -134,9 +127,7 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            bin/*
-            plugins/**/*.so
+          files: bin/*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

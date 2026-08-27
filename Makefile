@@ -40,45 +40,15 @@ ACTIVE_CORE_FMT_FILES = $$(find . -maxdepth 1 \( -name 'app*.go' -o -name 'runti
 	$$(find ./plugins -name 'unified_runtime*.go')
 REPO_FMT_FILES = $$(find . -name '*.go' -not -path './third_party/*')
 
-.PHONY: tag
-# tag modules with version
-tag:
+.PHONY: release-plugins
+# release plugins across the multi-repo layout (dry run by default); see RELEASE_SCRIPT_README.md
+release-plugins:
 	@if [ -z "$(MODULES_VERSION)" ]; then \
-		echo "❌ MODULES_VERSION is required. Usage: make tag MODULES_VERSION=v2.0.0 MODULES=\"plugins/xxx plugins/yyy\""; \
+		echo "❌ MODULES_VERSION is required. Usage: make release-plugins MODULES_VERSION=v1.6.3 [RELEASE_ARGS=--no-dry-run]"; \
 		exit 1; \
 	fi
-	@if [ -z "$(MODULES)" ]; then \
-		echo "❌ MODULES is required. Usage: make tag MODULES_VERSION=v2.0.0 MODULES=\"plugins/xxx plugins/yyy\""; \
-		exit 1; \
-	fi
-	@echo "Tagging modules with version $(MODULES_VERSION)..."
-	@for module in $(MODULES); do \
-		TAG="$$module/$(MODULES_VERSION)"; \
-		echo "Creating tag $$TAG"; \
-		git tag $$TAG || { echo "Failed to tag $$TAG"; exit 1; }; \
-	done
-
-.PHONY: push-tags
-# push tags to origin
-push-tags:
-	@if [ -z "$(MODULES_VERSION)" ]; then \
-		echo "❌ MODULES_VERSION is required. Usage: make push-tags MODULES_VERSION=v2.0.0 MODULES=\"plugins/xxx plugins/yyy\""; \
-		exit 1; \
-	fi
-	@if [ -z "$(MODULES)" ]; then \
-		echo "❌ MODULES is required. Usage: make push-tags MODULES_VERSION=v2.0.0 MODULES=\"plugins/xxx plugins/yyy\""; \
-		exit 1; \
-	fi
-	@echo "Pushing tags to origin..."
-	@for module in $(MODULES); do \
-		TAG="$$module/$(MODULES_VERSION)"; \
-		echo "Pushing tag $$TAG"; \
-		git push origin $$TAG || { echo "Failed to push $$TAG"; exit 1; }; \
-	done
-
-.PHONY: release
-# release modules with version
-release: tag push-tags
+	python3 scripts/preflight.py
+	python3 scripts/release_plugins.py $(MODULES_VERSION) $(if $(filter --no-dry-run,$(RELEASE_ARGS)),,--dry-run) $(filter-out --no-dry-run,$(RELEASE_ARGS))
 
 .PHONY: fmt
 # format core Go files in root, boot, events, and plugins

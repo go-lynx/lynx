@@ -182,7 +182,7 @@ func getLynxVersion() string {
 		return version
 	}
 
-	return "v2.0.0-unknown"
+	return "dev"
 }
 
 // getVersionFromGit returns the latest tag, or a "dev-<hash>" form derived from

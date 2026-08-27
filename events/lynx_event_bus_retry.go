@@ -28,20 +28,11 @@ func (b *LynxEventBus) handleEnqueueOverflow(event LynxEvent, reason string) {
 }
 
 // handleWithRetry executes the handler with panic recovery and schedules retries asynchronously.
+//
+// The bus does not deduplicate by EventID: every subscriber receives every
+// published event, including re-published events that share an EventID.
+// Handlers must be idempotent (see README "Ordering & Idempotency").
 func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), attempt int) {
-	shouldCheckDedup := attempt == 0 && ev.EventID != ""
-	if shouldCheckDedup {
-		now := time.Now()
-		if lastProcessed, ok := b.processedEvents.Load(ev.EventID); ok {
-			if lastTime, ok := lastProcessed.(time.Time); ok && now.Sub(lastTime) < b.dedupWindow {
-				if b.logger != nil {
-					log.NewHelper(b.logger).Debugf("duplicate event detected and skipped: eventID=%s, lastProcessed=%v", ev.EventID, lastTime)
-				}
-				return
-			}
-		}
-	}
-
 	start := time.Now()
 	panicked := false
 	func() {
@@ -52,10 +43,6 @@ func (b *LynxEventBus) handleWithRetry(ev LynxEvent, handler func(LynxEvent), at
 		}()
 		handler(ev)
 	}()
-
-	if !panicked && ev.EventID != "" {
-		b.processedEvents.Store(ev.EventID, time.Now())
-	}
 
 	duration := time.Since(start)
 	if panicked {

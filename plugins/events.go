@@ -1,13 +1,6 @@
 // Package plugins provides a plugin system for extending application functionality.
 package plugins
 
-import (
-	"context"
-	"fmt"
-	"sync"
-	"time"
-)
-
 // EventType represents the type of event that occurred in the plugin system.
 type EventType string
 
@@ -77,10 +70,10 @@ const (
 
 // Resource lifecycle event strings.
 const (
-	EventResourceCreated      = "resource.created"
-	EventResourceModified     = "resource.modified"
-	EventResourceDeleted      = "resource.deleted"
-	EventResourceUnavailable  = "resource.unavailable"
+	EventResourceCreated     = "resource.created"
+	EventResourceModified    = "resource.modified"
+	EventResourceDeleted     = "resource.deleted"
+	EventResourceUnavailable = "resource.unavailable"
 )
 
 // Error event strings.
@@ -233,83 +226,4 @@ type EventListener interface {
 	// can correctly unregister it. Avoid using pointer addresses (e.g. fmt.Sprintf("%p", l))
 	// if the listener struct is recreated between Add and Remove.
 	GetListenerID() string
-}
-
-// globalEventHooks holds injected runtime callbacks so that the plugins package
-// avoids a circular import on the lynx root package.
-var globalEventHooks struct {
-	mu      sync.RWMutex
-	emitter func(PluginEvent)
-	adder   func(EventListener, *EventFilter)
-}
-
-// SetGlobalEventHooks wires up the runtime event emitter and listener adder.
-// This must be called once during framework initialisation (typically from lynx.App).
-// Calling it a second time replaces the previous hooks.
-func SetGlobalEventHooks(emitter func(PluginEvent), adder func(EventListener, *EventFilter)) {
-	globalEventHooks.mu.Lock()
-	defer globalEventHooks.mu.Unlock()
-	globalEventHooks.emitter = emitter
-	globalEventHooks.adder = adder
-}
-
-// Subscribe registers a typed event listener with optional filtering.
-// The listener function receives strongly-typed event payloads.
-// Example:
-//
-//	type OrderCreated struct { OrderID string }
-//	Subscribe[OrderCreated](func(ctx context.Context, event OrderCreated) error)
-func Subscribe[T any](listener func(ctx context.Context, event T) error, filter *EventFilter) {
-	globalEventHooks.mu.RLock()
-	adder := globalEventHooks.adder
-	globalEventHooks.mu.RUnlock()
-	if adder == nil {
-		return
-	}
-	wrapper := &typedListenerAdapter[T]{
-		handler: listener,
-		id:      fmt.Sprintf("typed-%T-%d", (*T)(nil), time.Now().UnixNano()),
-	}
-	adder(wrapper, filter)
-}
-
-// Publish broadcasts a typed event to all registered listeners.
-// The event payload is wrapped in an Event envelope for type safety.
-// Example:
-//
-//	type OrderCreated struct { OrderID string }
-//	Publish(OrderCreated{OrderID: "123"})
-func Publish[T any](payload T) {
-	globalEventHooks.mu.RLock()
-	emitter := globalEventHooks.emitter
-	globalEventHooks.mu.RUnlock()
-	if emitter == nil {
-		return
-	}
-	pluginEvent := PluginEvent{
-		Type:      EventType(fmt.Sprintf("typed.%T", payload)),
-		Priority:  PriorityNormal,
-		Timestamp: time.Now().Unix(),
-		Metadata:  map[string]any{"payload": payload},
-	}
-	emitter(pluginEvent)
-}
-
-// typedListenerAdapter adapts a typed listener function to the EventListener interface.
-type typedListenerAdapter[T any] struct {
-	handler func(ctx context.Context, event T) error
-	id      string
-}
-
-// HandleEvent implements EventListener by unwrapping typed events.
-func (a *typedListenerAdapter[T]) HandleEvent(event PluginEvent) {
-	ctx := context.Background()
-	if payload, ok := event.Metadata["payload"].(T); ok {
-		_ = a.handler(ctx, payload)
-	}
-}
-
-// GetListenerID returns the unique identifier for this listener.
-func (a *typedListenerAdapter[T]) GetListenerID() string {
-	return a.id
 }

@@ -545,8 +545,10 @@ func main() {
     defer errorRecoveryManager.Stop()
 
     // Record error
+    // Signature: RecordError(errorType string, category ErrorCategory, message, component string, severity ErrorSeverity, context map[string]any)
     errorRecoveryManager.RecordError(
-        "database",
+        "database_timeout",
+        lynx.ErrorCategoryDatabase,
         "connection timeout",
         "mysql-plugin",
         lynx.ErrorSeverityMedium,

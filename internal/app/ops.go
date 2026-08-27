@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -240,13 +241,33 @@ func (m *DefaultPluginManager[T]) unloadBatch(
 }
 
 // LoadPlugins loads and starts all plugins.
+//
+// If another load is already in flight (for example, a control-plane plugin
+// calling LoadPlugins from its Start hook to load the plugins described by the
+// remote configuration), the request is queued and executed by the in-flight
+// load right after it finishes its own batch, and this call returns nil
+// immediately. Any error from the queued load is returned by the in-flight
+// call, so an application bootstrap still fails as a whole.
 func (m *DefaultPluginManager[T]) LoadPlugins(conf config.Config) error {
 	if m == nil {
 		return fmt.Errorf("plugin manager is nil")
 	}
+	if m.enqueueLoadIfInProgress(pendingLoadRequest{conf: conf}) {
+		return nil
+	}
 	m.operationMu.Lock()
 	defer m.operationMu.Unlock()
+	m.loadInProgress.Store(true)
+	defer m.loadInProgress.Store(false)
 
+	if err := m.loadAllLocked(conf); err != nil {
+		return err
+	}
+	return m.drainPendingLoadsLocked()
+}
+
+// loadAllLocked is the body of LoadPlugins; the caller must hold operationMu.
+func (m *DefaultPluginManager[T]) loadAllLocked(conf config.Config) error {
 	m.SetConfig(conf)
 
 	preparedPlugins, err := m.PreparePlug(conf)
@@ -327,10 +348,13 @@ func (m *DefaultPluginManager[T]) UnloadPlugins() {
 		}
 
 		if m.unloadBatch(ctx, batch, perPluginTimeout, parallelism, &cleaningUp, &unloadErrors, &mu) {
-			// Overall timeout reached
-			log.Errorf("UnloadPlugins: overall timeout (%v) reached, some plugins may not have been properly unloaded",
+			// Overall timeout reached mid-batch: plugins that never got a chance to
+			// stop must still have their runtime resources released and be
+			// unregistered, exactly like the pre-batch timeout path above.
+			log.Errorf("UnloadPlugins: overall timeout (%v) reached, forcing cleanup of plugins that were not unloaded",
 				totalTimeout)
 			timeoutReached = true
+			m.forceCleanupRemainingPlugins(ordered, &cleaningUp)
 		}
 	}
 
@@ -402,6 +426,12 @@ func (m *DefaultPluginManager[T]) stopPluginForUnload(pluginCtx context.Context,
 	}
 
 	err := m.safeStopPlugin(plugin, effectiveTimeout)
+	if errors.Is(err, plugins.ErrPluginNotActive) {
+		// The plugin had nothing running (never reached Active, or already stopped);
+		// that is not an unload failure and must not mark the application unhealthy.
+		log.Debugf("Plugin %s was not active; skipping stop", plugin.Name())
+		return nil
+	}
 	if err != nil {
 		log.Errorf("Failed to unload plugin %s: %v", plugin.Name(), err)
 		m.emitPluginErrorEvent(plugin.ID(), plugin.Name(), opts.operation, err)
@@ -451,13 +481,84 @@ func (m *DefaultPluginManager[T]) unloadPluginSynchronously(plugin plugins.Plugi
 }
 
 // LoadPluginsByName loads a subset of plugins by Name().
+// Like LoadPlugins, a call made while another load is in flight is queued and
+// executed by that load; see LoadPlugins for the error-propagation semantics.
 func (m *DefaultPluginManager[T]) LoadPluginsByName(conf config.Config, pluginNames []string) error {
 	if m == nil {
 		return fmt.Errorf("plugin manager is nil")
 	}
+	if m.enqueueLoadIfInProgress(pendingLoadRequest{conf: conf, names: append([]string(nil), pluginNames...), byName: true}) {
+		return nil
+	}
 	m.operationMu.Lock()
 	defer m.operationMu.Unlock()
+	m.loadInProgress.Store(true)
+	defer m.loadInProgress.Store(false)
 
+	if err := m.loadByNameLocked(conf, pluginNames); err != nil {
+		return err
+	}
+	return m.drainPendingLoadsLocked()
+}
+
+// enqueueLoadIfInProgress queues req when a load is in flight and reports whether it did so.
+func (m *DefaultPluginManager[T]) enqueueLoadIfInProgress(req pendingLoadRequest) bool {
+	if !m.loadInProgress.Load() {
+		return false
+	}
+	m.pendingLoadsMu.Lock()
+	defer m.pendingLoadsMu.Unlock()
+	// Re-check under the queue lock: the in-flight load clears loadInProgress
+	// only after it has drained the queue with pendingLoadsMu held, so a request
+	// that observes the flag here is guaranteed to be picked up.
+	if !m.loadInProgress.Load() {
+		return false
+	}
+	m.pendingLoads = append(m.pendingLoads, req)
+	log.Infof("plugin load requested while another load is in progress; queued (%d pending)", len(m.pendingLoads))
+	return true
+}
+
+// drainPendingLoadsLocked executes queued load requests until the queue is empty.
+// The caller must hold operationMu with loadInProgress set. Returns the first
+// error; remaining requests are still attempted so that independent loads are
+// not skipped because an unrelated one failed.
+func (m *DefaultPluginManager[T]) drainPendingLoadsLocked() error {
+	var errs []error
+	for {
+		m.pendingLoadsMu.Lock()
+		if len(m.pendingLoads) == 0 {
+			// Clear the flag while holding pendingLoadsMu so no request can slip
+			// into the queue after we decided it is empty.
+			m.loadInProgress.Store(false)
+			m.pendingLoadsMu.Unlock()
+			break
+		}
+		req := m.pendingLoads[0]
+		m.pendingLoads = m.pendingLoads[1:]
+		m.pendingLoadsMu.Unlock()
+
+		var err error
+		if req.byName {
+			err = m.loadByNameLocked(req.conf, req.names)
+		} else {
+			err = m.loadAllLocked(req.conf)
+		}
+		if err != nil {
+			log.Errorf("queued plugin load failed: %v", err)
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// LoadInProgress reports whether a Load* operation is currently executing.
+func (m *DefaultPluginManager[T]) LoadInProgress() bool {
+	return m != nil && m.loadInProgress.Load()
+}
+
+// loadByNameLocked is the body of LoadPluginsByName; the caller must hold operationMu.
+func (m *DefaultPluginManager[T]) loadByNameLocked(conf config.Config, pluginNames []string) error {
 	m.SetConfig(conf)
 
 	preparedPlugins, err := m.PreparePlug(conf)

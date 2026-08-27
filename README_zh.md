@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pkg.go.dev/github.com/go-lynx/lynx"><img src="https://pkg.go.dev/badge/github.com/go-lynx/lynx/v2" alt="GoDoc"></a>
+  <a href="https://pkg.go.dev/github.com/go-lynx/lynx"><img src="https://pkg.go.dev/badge/github.com/go-lynx/lynx" alt="GoDoc"></a>
   <a href="https://codecov.io/gh/go-lynx/lynx"><img src="https://codecov.io/gh/go-lynx/lynx/master/graph/badge.svg" alt="codeCov"></a>
   <a href="https://goreportcard.com/report/github.com/go-lynx/lynx"><img src="https://goreportcard.com/badge/github.com/go-lynx/lynx" alt="Go Report Card"></a>
   <a href="https://github.com/go-lynx/lynx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/go-lynx/lynx" alt="License"></a>
@@ -159,13 +159,16 @@ lynx new service1 service2 service3
 package main
 
 import (
-    "github.com/go-lynx/lynx/app"
-    "github.com/go-lynx/lynx/app/boot"
+    "log"
+
+    "github.com/go-lynx/lynx/boot"
 )
 
 func main() {
     // 就这么简单！Lynx 处理其余一切
-    boot.LynxApplication(wireApp).Run()
+    if err := boot.NewApplication(wireApp).Run(); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
@@ -512,7 +515,7 @@ lynx new svc-a svc-b svc-c svc-d -c 4
 #### 检查内容
 
 **环境检查：**
-- ✅ Go 安装和版本（最低要求 Go 1.20+）
+- ✅ Go 安装和版本（最低要求 Go 1.26+）
 - ✅ Go 环境变量（GOPATH、GO111MODULE、GOPROXY）
 - ✅ Git 仓库状态和未提交的更改
 
@@ -643,7 +646,7 @@ lynx run ./my-service
 lynx run --build-args="-ldflags=-s -w"
 
 # 传递运行时配置
-lynx run --run-args="--config=./configs"
+lynx run --run-args="-conf ./configs/bootstrap.local.yaml"
 
 # 设置环境变量
 lynx run -e PORT=8080 -e ENV=development
@@ -704,7 +707,7 @@ lynx run --skip-build
 - 📖 [用户指南](https://go-lynx.cn/docs)
 - 🔧 [API 参考](https://pkg.go.dev/github.com/go-lynx/lynx)
 - 🎯 [示例](https://github.com/go-lynx/lynx/examples)
-- 🚀 [快速开始](https://go-lynx.cn/docs/quick-start)
+- 🚀 [快速开始](https://go-lynx.cn/docs/getting-started/quick-start)
 
 ---
 

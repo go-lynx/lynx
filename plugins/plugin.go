@@ -376,6 +376,10 @@ type ResourceInfo struct {
 	AccessCount   int64
 	Size          int64 // Resource size (bytes)
 	Metadata      map[string]any
+
+	// lastUsedUnixNano is the atomically updated source of truth for LastUsedAt
+	// on the live entry; LastUsedAt is populated on snapshots returned to callers.
+	lastUsedUnixNano int64
 }
 
 // ResourceManager manages named resources shared across plugins, plus their
@@ -522,45 +526,6 @@ type ServiceDiscoveryPlugin[T any] interface {
 	GetDiscovery() T
 }
 
-// ========== Backward Compatible Interfaces ==========
-
-// ServicePluginAny backward compatible service plugin interface
-type ServicePluginAny interface {
-	Plugin
-	GetServer() any
-	GetServerType() string
-}
-
-// DatabasePluginAny backward compatible database plugin interface
-type DatabasePluginAny interface {
-	Plugin
-	GetDriver() any
-	GetStats() any
-	IsConnected() bool
-	CheckHealth() error
-}
-
-// CachePluginAny backward compatible cache plugin interface
-type CachePluginAny interface {
-	Plugin
-	GetClient() any
-	GetConnectionStats() map[string]any
-}
-
-// MessagingPluginAny backward compatible messaging plugin interface
-type MessagingPluginAny interface {
-	Plugin
-	GetProducer() any
-	GetConsumer() any
-}
-
-// ServiceDiscoveryPluginAny backward compatible service discovery plugin interface
-type ServiceDiscoveryPluginAny interface {
-	Plugin
-	GetRegistry() any
-	GetDiscovery() any
-}
-
 // Runtime is the main interface for plugin runtime environment (resources, config, log, events, context).
 // Implementations may compose smaller interfaces (ResourceManager, EventEmitter, etc.) for clarity.
 type Runtime interface {
@@ -592,117 +557,8 @@ type Runtime interface {
 	Shutdown()
 }
 
-// TypedRuntime generic runtime interface
-type TypedRuntime interface {
-	Runtime
-}
-
-// TypedRuntimeImpl generic runtime implementation
-type TypedRuntimeImpl struct {
-	runtime Runtime
-}
-
-// NewTypedRuntime create generic runtime environment
-func NewTypedRuntime() *TypedRuntimeImpl {
-	return &TypedRuntimeImpl{
-		runtime: NewUnifiedRuntime(),
-	}
-}
-
-// NewSimpleRuntime returns the default Runtime implementation (UnifiedRuntime).
-// Kept for backward compatibility; prefer NewUnifiedRuntime() for new code.
+// NewSimpleRuntime returns a ready-to-use Runtime backed by UnifiedRuntime.
+// It exists for tests and small programs that do not need the manager.
 func NewSimpleRuntime() Runtime {
 	return NewUnifiedRuntime()
-}
-
-func (r *TypedRuntimeImpl) AddListener(listener EventListener, filter *EventFilter) {
-	r.runtime.AddListener(listener, filter)
-}
-
-func (r *TypedRuntimeImpl) RemoveListener(listener EventListener) {
-	r.runtime.RemoveListener(listener)
-}
-
-func (r *TypedRuntimeImpl) GetEventHistory(filter EventFilter) []PluginEvent {
-	return r.runtime.GetEventHistory(filter)
-}
-
-func (r *TypedRuntimeImpl) GetPrivateResource(name string) (any, error) {
-	return r.runtime.GetPrivateResource(name)
-}
-
-func (r *TypedRuntimeImpl) RegisterPrivateResource(name string, resource any) error {
-	return r.runtime.RegisterPrivateResource(name, resource)
-}
-
-func (r *TypedRuntimeImpl) GetSharedResource(name string) (any, error) {
-	return r.runtime.GetSharedResource(name)
-}
-
-func (r *TypedRuntimeImpl) RegisterSharedResource(name string, resource any) error {
-	return r.runtime.RegisterSharedResource(name, resource)
-}
-
-func (r *TypedRuntimeImpl) GetResource(name string) (any, error) {
-	return r.runtime.GetResource(name)
-}
-
-func (r *TypedRuntimeImpl) RegisterResource(name string, resource any) error {
-	return r.runtime.RegisterResource(name, resource)
-}
-
-func (r *TypedRuntimeImpl) EmitPluginEvent(pluginName string, eventType string, data map[string]any) {
-	r.runtime.EmitPluginEvent(pluginName, eventType, data)
-}
-
-func (r *TypedRuntimeImpl) WithPluginContext(pluginName string) Runtime {
-	return r.runtime.WithPluginContext(pluginName)
-}
-
-func (r *TypedRuntimeImpl) GetCurrentPluginContext() string {
-	return r.runtime.GetCurrentPluginContext()
-}
-
-func (r *TypedRuntimeImpl) GetResourceInfo(name string) (*ResourceInfo, error) {
-	return r.runtime.GetResourceInfo(name)
-}
-
-func (r *TypedRuntimeImpl) ListResources() []*ResourceInfo {
-	return r.runtime.ListResources()
-}
-
-func (r *TypedRuntimeImpl) CleanupResources(pluginID string) error {
-	return r.runtime.CleanupResources(pluginID)
-}
-
-func (r *TypedRuntimeImpl) GetResourceStats() map[string]any {
-	return r.runtime.GetResourceStats()
-}
-
-func (r *TypedRuntimeImpl) GetConfig() config.Config {
-	return r.runtime.GetConfig()
-}
-
-func (r *TypedRuntimeImpl) SetConfig(conf config.Config) {
-	r.runtime.SetConfig(conf)
-}
-
-func (r *TypedRuntimeImpl) GetLogger() log.Logger {
-	return r.runtime.GetLogger()
-}
-
-func (r *TypedRuntimeImpl) EmitEvent(event PluginEvent) {
-	r.runtime.EmitEvent(event)
-}
-
-func (r *TypedRuntimeImpl) AddPluginListener(pluginName string, listener EventListener, filter *EventFilter) {
-	r.runtime.AddPluginListener(pluginName, listener, filter)
-}
-
-func (r *TypedRuntimeImpl) GetPluginEventHistory(pluginName string, filter EventFilter) []PluginEvent {
-	return r.runtime.GetPluginEventHistory(pluginName, filter)
-}
-
-func (r *TypedRuntimeImpl) Shutdown() {
-	r.runtime.Shutdown()
 }

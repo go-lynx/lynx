@@ -47,7 +47,7 @@ func NewRetryRecoveryStrategy(timeout time.Duration) *RetryRecoveryStrategy {
 	}
 }
 
-func (s *RetryRecoveryStrategy) Name() string             { return s.name }
+func (s *RetryRecoveryStrategy) Name() string              { return s.name }
 func (s *RetryRecoveryStrategy) GetTimeout() time.Duration { return s.timeout }
 
 // CanRecover returns true for Low and Medium severity (transient errors).
@@ -115,8 +115,8 @@ func (s *RetryRecoveryStrategy) backoffDelay(attempt int) time.Duration {
 // component should be restarted.  If ActionFunc is set it is invoked after the
 // cooldown as the actual restart mechanism (e.g. unloading and re-loading a plugin).
 type RestartRecoveryStrategy struct {
-	name       string
-	timeout    time.Duration
+	name    string
+	timeout time.Duration
 	// ActionFunc is invoked after the cooldown as the restart action. Optional.
 	ActionFunc ActionFunc
 }
@@ -130,7 +130,7 @@ func NewRestartRecoveryStrategy(timeout time.Duration) *RestartRecoveryStrategy 
 	}
 }
 
-func (s *RestartRecoveryStrategy) Name() string             { return s.name }
+func (s *RestartRecoveryStrategy) Name() string              { return s.name }
 func (s *RestartRecoveryStrategy) GetTimeout() time.Duration { return s.timeout }
 
 // CanRecover returns true for Medium and High severity (component-level errors).
@@ -177,8 +177,8 @@ func (s *RestartRecoveryStrategy) Recover(ctx context.Context, record ErrorRecor
 // For Critical severity without an ActionFunc the strategy returns failure so
 // the error remains flagged as unrecovered — avoiding a misleading success log.
 type FallbackRecoveryStrategy struct {
-	name       string
-	timeout    time.Duration
+	name    string
+	timeout time.Duration
 	// ActionFunc is called to execute the fallback action. Optional.
 	ActionFunc ActionFunc
 }
@@ -191,7 +191,7 @@ func NewFallbackRecoveryStrategy(timeout time.Duration) *FallbackRecoveryStrateg
 	}
 }
 
-func (s *FallbackRecoveryStrategy) Name() string             { return s.name }
+func (s *FallbackRecoveryStrategy) Name() string              { return s.name }
 func (s *FallbackRecoveryStrategy) GetTimeout() time.Duration { return s.timeout }
 
 // CanRecover returns true for all severity levels.
@@ -244,7 +244,7 @@ func NewDefaultRecoveryStrategy(name string, timeout time.Duration) *DefaultReco
 	return &DefaultRecoveryStrategy{name: name, timeout: timeout}
 }
 
-func (s *DefaultRecoveryStrategy) Name() string             { return s.name }
+func (s *DefaultRecoveryStrategy) Name() string              { return s.name }
 func (s *DefaultRecoveryStrategy) GetTimeout() time.Duration { return s.timeout }
 func (s *DefaultRecoveryStrategy) CanRecover(_ string, severity ErrorSeverity) bool {
 	return severity <= ErrorSeverityMedium

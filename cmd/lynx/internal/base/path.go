@@ -53,16 +53,56 @@ func copyFile(src, dst string, replaces []string) error {
 		return err
 	}
 	if bytes.IndexByte(buf, 0) == -1 && len(replaces) > 0 {
-		var old string
-		for i, next := range replaces {
-			if i%2 == 0 {
-				old = next
-				continue
-			}
-			buf = bytes.ReplaceAll(buf, []byte(old), []byte(next))
+		if strings.HasSuffix(src, ".pb.go") {
+			buf = applyReplacesToGeneratedProto(buf, replaces)
+		} else {
+			buf = applyReplaces(buf, replaces)
 		}
 	}
 	return os.WriteFile(dst, buf, srcInfo.Mode())
+}
+
+// applyReplaces applies the flat [old1, new1, ...] substitution list to buf.
+func applyReplaces(buf []byte, replaces []string) []byte {
+	var old string
+	for i, next := range replaces {
+		if i%2 == 0 {
+			old = next
+			continue
+		}
+		buf = bytes.ReplaceAll(buf, []byte(old), []byte(next))
+	}
+	return buf
+}
+
+// applyReplacesToGeneratedProto applies replaces to a protoc-gen-go output file
+// while leaving the serialized file descriptor (the *_rawDesc literal) untouched.
+// The descriptor is a length-prefixed binary encoding rendered as a Go string
+// literal; rewriting the module path inside it changes string lengths and makes
+// the generated package panic at init time ("slice bounds out of range" in
+// filedesc.unmarshalSeed). Only the go_package option lives in there, which the
+// protobuf runtime never uses for resolution, so leaving it stale is harmless.
+func applyReplacesToGeneratedProto(buf []byte, replaces []string) []byte {
+	lines := bytes.Split(buf, []byte("\n"))
+	inDesc := false
+	for i, line := range lines {
+		trimmed := bytes.TrimSpace(line)
+		if !inDesc {
+			if bytes.Contains(line, []byte("_rawDesc = ")) {
+				// `const x_rawDesc = "" +` (multi-line string) or `var x_rawDesc = []byte{`.
+				inDesc = bytes.HasSuffix(trimmed, []byte("+")) || bytes.HasSuffix(trimmed, []byte("{"))
+				continue
+			}
+			lines[i] = applyReplaces(line, replaces)
+			continue
+		}
+		// Inside the descriptor: a string block ends at the first line not continued
+		// with "+"; a byte-slice block ends at the closing brace.
+		if !bytes.HasSuffix(trimmed, []byte("+")) || bytes.Equal(trimmed, []byte("}")) {
+			inDesc = false
+		}
+	}
+	return bytes.Join(lines, []byte("\n"))
 }
 
 // copyDir recursively copies src to dst, applying replaces to each file (see
